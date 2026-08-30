@@ -354,21 +354,16 @@ class TestTaggedBakTTL(unittest.TestCase):
         self.assertFalse(os.path.exists(old))
         self.assertTrue(os.path.exists(young))
 
-    def test_rotation_reaps_expired_tagged_bak(self):
+    def test_rotation_never_touches_tagged_baks(self):
+        """The rotation must NOT auto-reap tagged baks — the recovery
+        scripts consume that corpus (2026-08-30 review finding). reap_by_ttl
+        exists for explicit, scoped invocations only."""
         old = self._touch('brain_logs.db.v1.bak',
                           age_days=db_backup.TAGGED_BAK_TTL_DAYS + 1)
-        young = self._touch('brain_logs.db.v2.bak', age_days=1)
-        backup_dir = os.path.join(self.tmp, 'backups')
-        result = db_backup.backup_database(self.db_path, backup_dir)
-        self.assertEqual(result.get('tagged_reaped'),
-                         ['brain_logs.db.v1.bak'])
-        self.assertFalse(os.path.exists(old))
-        self.assertTrue(os.path.exists(young))
-
-    def test_rotation_with_no_tagged_baks_is_silent(self):
         backup_dir = os.path.join(self.tmp, 'backups')
         result = db_backup.backup_database(self.db_path, backup_dir)
         self.assertNotIn('tagged_reaped', result)
+        self.assertTrue(os.path.exists(old))
 
 
 if __name__ == '__main__':

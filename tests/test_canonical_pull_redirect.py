@@ -268,6 +268,38 @@ def test_recall_node_follows_redirect_coherently(brain):
     assert out2['results'][0]['archived'] is True
 
 
+def test_edge_endpoints_emit_live_candidates(brain):
+    """Regression for the 2026-08-30 dedup bug: LIVE edge endpoints must
+    emit edge_source/edge_target candidates (the two-id-space seen-set
+    dropped every live endpoint); absorbed endpoints emit their survivor;
+    retired endpoints drop."""
+    from servers.scales.s1.fetch_tools import _fetch_edges_with_endpoints
+    ids = _build(brain, {
+        'e1-src': (False, None, None),
+        'e1-tgt': (False, None, None),
+        'e1-arch': (True, 'e1-surv', None),
+        'e1-surv': (False, None, None),
+        'e1-retired': (True, None, None),
+    })
+    live_edge = brain._graph.add_relation(
+        ids['e1-src'], ids['e1-tgt'], 'test_endpoint_rel')['edge_id']
+    mixed_edge = brain._graph.add_relation(
+        ids['e1-arch'], ids['e1-retired'], 'test_endpoint_rel')['edge_id']
+
+    out = _fetch_edges_with_endpoints(brain, [live_edge])
+    by_tier = {}
+    for c in out:
+        by_tier.setdefault(c.get('tier'), []).append(c['id'])
+    assert by_tier.get('edge_source') == [ids['e1-src']]
+    assert by_tier.get('edge_target') == [ids['e1-tgt']]
+
+    out = _fetch_edges_with_endpoints(brain, [mixed_edge])
+    endpoint_ids = {c['id'] for c in out
+                    if c.get('tier') in ('edge_source', 'edge_target')}
+    assert endpoint_ids == {ids['e1-surv']}, (
+        'absorbed endpoint must emit its survivor; retired must drop')
+
+
 # --- dispatch keeps request order through redirects ---------------------------
 
 def test_dispatch_get_nodes_preserves_order_through_redirect(brain):
