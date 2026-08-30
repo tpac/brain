@@ -127,9 +127,15 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
                 'AND dedup_key = ? AND state = ? LIMIT 1',
                 (source, dedup_key, tc.STATE_OPEN)).fetchone()
             if existing:
+                # A re-file is a re-arm: bump the generation (the same
+                # mechanism as resolve's defer) so a once-item already
+                # delivered at the old epoch delivers again with the updated
+                # content. Without the bump the current-epoch ledger row
+                # suppresses the update forever while file() reports success.
                 conn.execute(
                     'UPDATE thalamus_items SET body = ?, refs = ?, '
-                    'deliver_at = ?, expires_at = ?, updated_at = ? '
+                    'deliver_at = ?, expires_at = ?, '
+                    'armed_epoch = armed_epoch + 1, updated_at = ? '
                     'WHERE id = ?',
                     (body, refs_json, deliver_at, expires_at, now,
                      existing[0]))
@@ -196,8 +202,11 @@ def _attach_ref_lines(brain, items, session_id):
     pull() holds both `brain` and `session_id`, so resolution lives here.
     Routes through filter_nodes (the existing veil door, default-deny): a
     globally-filed item can ref a walled node, and its title must not print
-    into another session's boot — an unreturned ref (walled, or a bad id)
-    renders bare. Failure-isolated: on any error every ref renders bare."""
+    into another session's boot — an unreturned ref (walled, archived, or a
+    bad id) renders bare. Failure-isolated and LOUD: on any error every ref
+    renders bare AND the failure is logged — bare ids are also the normal
+    walled/bad-id output, so an unlogged dead resolution path would be
+    invisible forever."""
     want = []
     for item in items:
         for ref in (item['refs'] or [])[:tc.RENDER_REFS_MAX]:
@@ -211,8 +220,9 @@ def _attach_ref_lines(brain, items, session_id):
                 session_id=session_id, limit=len(want))
             for n in res.get('nodes') or []:
                 titles[n['id']] = n.get('title') or ''
-        except Exception:
-            pass
+        except Exception as e:
+            brain._log_error('thalamus_ref_resolve', e,
+                             'pull ref batch failed — refs render bare')
     for item in items:
         refs = item['refs'] or []
         lines = []
@@ -227,8 +237,9 @@ def _attach_ref_lines(brain, items, session_id):
 
 def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
-    rendered block + count. Writes the ledger at render (INSERT OR IGNORE:
-    the PK makes re-render idempotent per session and epoch). Asks (needs_answer)
+    rendered block + count of items actually shown. Writes the ledger at
+    render for exactly those items (INSERT OR IGNORE: the PK makes re-render
+    idempotent per session and epoch). Asks (needs_answer)
     deliver at BOOT ONLY — an architecture question arriving mid-thread
     trains reflex-deferral; at boot there is no thread to protect.
 
@@ -263,6 +274,10 @@ def pull(brain, session_id, via):
     overflow = total - len(rows)
     items = [_row_to_item(r) for r in rows]
     _attach_ref_lines(brain, items, session_id)
+    # Render FIRST, then ledger only what the block actually shows — a
+    # cap-dropped item was never delivered, and a ledger row would suppress
+    # it forever; unledgered, it stays armed for the next moment.
+    block, kept = tc.render_block(items, overflow=overflow)
     delivered_at = iso_now()
     with brain.logs_write_lock:
         brain.logs_conn_w.executemany(
@@ -270,9 +285,9 @@ def pull(brain, session_id, via):
             '(item_id, session_id, delivered_at, via, armed_epoch) '
             'VALUES (?, ?, ?, ?, ?)',
             [(i['id'], session_id, delivered_at, via, i['armed_epoch'])
-             for i in items])
+             for i in items[:kept]])
         brain.logs_conn_w.commit()
-    return tc.render_block(items, overflow=overflow), len(items)
+    return block, kept
 
 
 def list_items(brain, include_closed=False, limit=50):
@@ -351,7 +366,8 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
                 return {'ok': False, 'error': str(e)}
             if new_deliver is None:
                 new_deliver = iso_now()
-            new_expires = tc.extend_window(new_deliver, item['expires_at'])
+            new_expires = tc.extend_window(item['needs_answer'], new_deliver,
+                                           item['expires_at'])
             # Re-arm is a GENERATION, not a deletion: bumping armed_epoch
             # makes the pull predicate ignore prior-epoch ledger rows, so the
             # item delivers again when due — while the ledger keeps truthful
@@ -408,7 +424,8 @@ def withdraw(brain, source, item_id=None, dedup_key=None):
 
 
 def expire_due(brain):
-    """The window sweep (daemon idle maintenance). An expired NOTICE is a
+    """The window sweep (Brain.sweep_channels_if_due, hourly, ahead of the
+    S2 fire gate). An expired NOTICE is a
     natural death; an expired ASK is the dead-letter case — logged LOUDLY to
     the errors table (which has a reader: query_logs) so an unanswered
     question never dissolves silently. Returns count expired."""

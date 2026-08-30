@@ -1809,8 +1809,13 @@ LOG_INDEXES = [
 def _migrate_logs_v2_thalamus_armed_epoch(conn):
     """Thalamus ledger goes append-only: armed_epoch on both tables; the
     ledger PK widens to (item_id, session_id, armed_epoch). SQLite can't
-    alter a PK, so the ledger is recreated (it is days old — a handful of
-    rows, all epoch 0). Column-probe idempotent."""
+    alter a PK, so the ledger is recreated. Column-probe idempotent.
+
+    Both halves use raw conn.execute — NEVER _add_column_if_missing inside a
+    versioned step: that helper swallows non-duplicate OperationalErrors, and
+    a swallowed failure would let the runner stamp the version with the
+    column missing, permanently (a step must raise so the stamp stays
+    unwritten and the migration retries on the next open)."""
     cols = [r[1] for r in conn.execute(
         'PRAGMA table_info(thalamus_deliveries)').fetchall()]
     if 'armed_epoch' not in cols:
@@ -1823,8 +1828,11 @@ def _migrate_logs_v2_thalamus_armed_epoch(conn):
             'SELECT item_id, session_id, delivered_at, via, 0 '
             'FROM thalamus_deliveries_old')
         conn.execute('DROP TABLE thalamus_deliveries_old')
-    _add_column_if_missing(conn, 'thalamus_items', 'armed_epoch',
-                           'INTEGER DEFAULT 0')
+    cols = [r[1] for r in conn.execute(
+        'PRAGMA table_info(thalamus_items)').fetchall()]
+    if 'armed_epoch' not in cols:
+        conn.execute('ALTER TABLE thalamus_items '
+                     'ADD COLUMN armed_epoch INTEGER DEFAULT 0')
 
 
 LOGS_MIGRATIONS = [

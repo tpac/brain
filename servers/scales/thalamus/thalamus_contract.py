@@ -168,13 +168,12 @@ def window_for(needs_answer, deliver_at):
     return iso_after(days=span, at=anchor)
 
 
-def extend_window(new_deliver, current_expires):
-    """Defer's window rule: the same ANCHOR × SPAN composition — expiry must
-    outlive the new due date by the grace span; a window already past that
-    keeps its length."""
-    return max(current_expires or '',
-               iso_after(days=REMIND_GRACE_DAYS,
-                         at=_dt.fromisoformat(new_deliver)))
+def extend_window(needs_answer, new_deliver, current_expires):
+    """Defer's window rule: literally window_for's ANCHOR × SPAN composition
+    re-anchored at the new due date — a deferred item keeps its KIND's full
+    span (an ask stays an ask: 14 days past due, not a reminder's 7). A
+    window already past that keeps its length."""
+    return max(current_expires or '', window_for(needs_answer, new_deliver))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -255,13 +254,18 @@ def render_item(item):
 
 
 def render_block(items, overflow=0, cap=BLOCK_MAX):
-    """Compose due items into ONE budgeted block ('' when empty). Two loud
-    caps — per item (BODY_MAX, in render_item) and whole block (`cap`);
-    overflow items are named at the tail, never silently cut. Items are from
-    the brain's own machinery (not a stream) — rendered under a brain head so
-    origin is honest."""
+    """Compose due items into ONE budgeted block. Two loud caps — per item
+    (BODY_MAX, in render_item) and whole block (`cap`); overflow items are
+    named at the tail, never silently cut. Items are from the brain's own
+    machinery (not a stream) — rendered under a brain head so origin is
+    honest.
+
+    Returns (block, kept) — kept is how many items actually rendered ('' and
+    0 when items is empty). The caller must ledger ONLY the kept items: a
+    cap-dropped item was never shown, and recording it as delivered would
+    suppress it forever (it stays armed for the next moment instead)."""
     if not items:
-        return ''
+        return '', 0
     head = '🧠 from the brain (thalamus) — %d item(s)' % len(items)
     parts, used, dropped = [], len(head), 0
     for i, item in enumerate(items):
@@ -275,4 +279,4 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
     tail = dropped + max(0, overflow)
     if tail:
         body += '\n\n(+%d more due — thalamus_list shows them)' % tail
-    return '%s\n\n%s' % (head, body)
+    return '%s\n\n%s' % (head, body), len(parts)

@@ -289,8 +289,8 @@ def drain_and_render(brain, to_session):
 
 def reap_expired(brain):
     """Delete messages past their TTL (the dead-letter sweep) + orphan delivery
-    rows. Returns count reaped. Wired into the daemon's idle-maintenance tick
-    (daemon_server._run_idle_maintenance); safe to call anytime."""
+    rows. Returns count reaped. Wired into Brain.sweep_channels_if_due
+    (hourly, ahead of the S2 fire gate); safe to call anytime."""
     now = iso_now()
     with brain.logs_write_lock:
         # expires_at <= now → dead. IS NULL → a pre-expires_at legacy row (column

@@ -317,6 +317,32 @@ class TestResolveWithdraw(ThalamusBase):
         self.assertEqual(item['deliveries'], 2)        # all-time
         self.assertEqual(item['deliveries_epoch'], 1)  # current generation
 
+    def test_dedup_refile_rearms_delivery(self):
+        """A re-file under the same (source, dedup_key) is a re-arm: a
+        once-item already delivered must deliver again with the updated
+        content — not stay suppressed by the old generation's ledger row."""
+        self._file('v1', dedup_key='concern-x')
+        _, n1 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n1, 1)
+        r2 = self._file('v2 updated concern', dedup_key='concern-x')
+        self.assertTrue(r2.get('updated'))
+        block, n2 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n2, 1)
+        self.assertIn('v2 updated concern', block)
+
+    def test_deferred_ask_keeps_ask_window(self):
+        """extend_window composes through window_for — a deferred ask keeps
+        its kind's full span (14d) past the new due date, not a reminder's
+        7-day grace."""
+        from datetime import datetime, timedelta
+        r = self._file('decide X?', needs_answer=True)
+        out = thalamus.resolve(self.brain, r['id'], defer_until='30d')
+        self.assertTrue(out['ok'])
+        due = datetime.fromisoformat(out['deliver_at'])
+        expires = datetime.fromisoformat(out['expires_at'])
+        self.assertGreaterEqual(expires - due,
+                                timedelta(days=tc.ASK_EXPIRES_DAYS))
+
     def test_resolve_unknown_or_closed(self):
         self.assertFalse(thalamus.resolve(self.brain, 'th_nope',
                                           dismiss=True)['ok'])
@@ -478,6 +504,19 @@ class TestRender(ThalamusBase):
         self.assertIn('chars', block)          # the loud marker, not a bare cut
         self.assertIn('thalamus_list', block)  # points at the full text
         self.assertLess(len(block), tc.BLOCK_MAX + 500)
+
+    def test_cap_dropped_items_not_ledgered(self):
+        """Only items the block actually shows are ledgered — a cap-dropped
+        item was never delivered and stays armed for the next moment."""
+        for i in range(4):
+            self._file('x' * 1400, source='src-%d' % i)  # distinct budgets
+        _, n1 = thalamus.pull(self.brain, S1, via='boot')
+        self.assertLess(n1, 4)  # the block cap dropped at least one
+        ledgered = self.brain.logs_conn.execute(
+            'SELECT COUNT(*) FROM thalamus_deliveries').fetchone()[0]
+        self.assertEqual(ledgered, n1)
+        _, n2 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n1 + n2, 4)  # the dropped items deliver next moment
 
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')
