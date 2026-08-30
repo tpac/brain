@@ -55,7 +55,9 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
     filing session — the locked stream-speech render must stay honest) and the
     row goes terminal 'sent'. Everything else queues for pull delivery.
     A repeat (source, dedup_key) UPDATES the open item instead of inserting —
-    identity is producer-owned or absent, never derived from text.
+    identity is producer-owned or absent, never derived from text. A repeat
+    that CHANGES the item (body/refs/deliver_at) re-arms delivery (epoch
+    bump); an identical repeat only refreshes the window (idempotent).
     """
     body = (body or '').strip()
     if not body:
@@ -123,25 +125,37 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
             # read snapshot and the next write fails INSTANTLY on a concurrent
             # commit (SQLITE_BUSY_SNAPSHOT, busy_timeout bypassed).
             existing = conn.execute(
-                'SELECT id FROM thalamus_items WHERE source = ? '
-                'AND dedup_key = ? AND state = ? LIMIT 1',
+                'SELECT id, body, refs, deliver_at FROM thalamus_items '
+                'WHERE source = ? AND dedup_key = ? AND state = ? LIMIT 1',
                 (source, dedup_key, tc.STATE_OPEN)).fetchone()
             if existing:
-                # A re-file is a re-arm: bump the generation (the same
-                # mechanism as resolve's defer) so a once-item already
+                # A CHANGED re-file is a re-arm: bump the generation (the
+                # same mechanism as resolve's defer) so a once-item already
                 # delivered at the old epoch delivers again with the updated
-                # content. Without the bump the current-epoch ledger row
+                # content — without the bump the current-epoch ledger row
                 # suppresses the update forever while file() reports success.
-                conn.execute(
-                    'UPDATE thalamus_items SET body = ?, refs = ?, '
-                    'deliver_at = ?, expires_at = ?, '
-                    'armed_epoch = armed_epoch + 1, updated_at = ? '
-                    'WHERE id = ?',
-                    (body, refs_json, deliver_at, expires_at, now,
-                     existing[0]))
+                # An UNCHANGED re-file (a cyclic producer re-asserting its
+                # standing item) is idempotent: it refreshes the window and
+                # nothing else — bumping on a no-op would re-deliver the same
+                # text to every session on every producer cycle, unbounded.
+                changed = (existing[1], existing[2], existing[3]) != (
+                    body, refs_json, deliver_at)
+                if changed:
+                    conn.execute(
+                        'UPDATE thalamus_items SET body = ?, refs = ?, '
+                        'deliver_at = ?, expires_at = ?, '
+                        'armed_epoch = armed_epoch + 1, updated_at = ? '
+                        'WHERE id = ?',
+                        (body, refs_json, deliver_at, expires_at, now,
+                         existing[0]))
+                else:
+                    conn.execute(
+                        'UPDATE thalamus_items SET expires_at = ?, '
+                        'updated_at = ? WHERE id = ?',
+                        (expires_at, now, existing[0]))
                 conn.commit()
                 return {'filed': True, 'id': existing[0], 'updated': True,
-                        'route': 'queue'}
+                        'rearmed': changed, 'route': 'queue'}
 
         # expires_at filter: expired-but-unswept items must not wedge a
         # producer at its cap while being invisible to delivery.
@@ -203,10 +217,10 @@ def _attach_ref_lines(brain, items, session_id):
     Routes through filter_nodes (the existing veil door, default-deny): a
     globally-filed item can ref a walled node, and its title must not print
     into another session's boot — an unreturned ref (walled, archived, or a
-    bad id) renders bare. Failure-isolated and LOUD: on any error every ref
-    renders bare AND the failure is logged — bare ids are also the normal
-    walled/bad-id output, so an unlogged dead resolution path would be
-    invisible forever."""
+    bad id) renders bare. Failure-isolated and LOUD: refs left untitled by a
+    failed batch render bare AND the failure is logged — bare ids are also
+    the normal walled/bad-id output, so an unlogged dead resolution path
+    would be invisible forever."""
     want = []
     for item in items:
         for ref in (item['refs'] or [])[:tc.RENDER_REFS_MAX]:

@@ -266,8 +266,11 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
     suppress it forever (it stays armed for the next moment instead)."""
     if not items:
         return '', 0
-    head = '🧠 from the brain (thalamus) — %d item(s)' % len(items)
-    parts, used, dropped = [], len(head), 0
+    # Budget against the widest possible head, then rebuild it from the
+    # kept count — the head must claim what the block SHOWS, never what
+    # was fetched (head, tail, ledger, and pull's count all say `kept`).
+    parts, used, dropped = [], len('🧠 from the brain (thalamus) — %d item(s)'
+                                   % len(items)), 0
     for i, item in enumerate(items):
         rendered = render_item(item).strip()
         if parts and used + len(rendered) + 2 > cap:  # always keep one
@@ -275,6 +278,7 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
             break
         parts.append(rendered)
         used += len(rendered) + 2
+    head = '🧠 from the brain (thalamus) — %d item(s)' % len(parts)
     body = '\n\n'.join(parts)
     tail = dropped + max(0, overflow)
     if tail:

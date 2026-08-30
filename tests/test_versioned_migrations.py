@@ -148,6 +148,48 @@ class RunnerContractTest(unittest.TestCase):
             conn.execute('SELECT COUNT(*) FROM t').fetchone()[0], 0,
             'partial work must not survive on the shared connection')
 
+    def test_logs_v2_step_is_atomic_across_its_ddl(self):
+        """Regression: DDL autocommits in legacy isolation mode, so without
+        the step's own BEGIN IMMEDIATE a second-half failure rolled back only
+        the DML — the ledger rows stayed stranded in thalamus_deliveries_old
+        while the retry's column probe skipped the first half: permanent
+        ledger loss. The step must fail whole and retry whole."""
+        conn = _meta_conn(table='logs_meta')
+        conn.execute("""CREATE TABLE thalamus_deliveries (
+            item_id TEXT NOT NULL, session_id TEXT NOT NULL,
+            delivered_at TEXT NOT NULL, via TEXT NOT NULL,
+            PRIMARY KEY (item_id, session_id))""")
+        conn.execute("INSERT INTO thalamus_deliveries VALUES "
+                     "('th_1', 'sessA', '2026-01-01', 'boot')")
+        stamp_schema_version(conn, 'logs_meta', LOGS_VERSION_KEY, 1)
+        conn.commit()
+        # No thalamus_items table → the step's second half raises.
+        from servers.schema import _migrate_logs_v2_thalamus_armed_epoch
+        with self.assertRaises(sqlite3.OperationalError):
+            run_versioned_migrations(
+                conn, 'logs_meta', LOGS_VERSION_KEY, 2,
+                [(2, _migrate_logs_v2_thalamus_armed_epoch)])
+        tables = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        self.assertNotIn('thalamus_deliveries_old', tables,
+                         'a failed step must not strand the renamed ledger')
+        self.assertEqual(  # old shape + its row fully restored
+            conn.execute('SELECT COUNT(*) FROM thalamus_deliveries'
+                         ).fetchone()[0], 1)
+        self.assertEqual(
+            read_schema_version(conn, 'logs_meta', LOGS_VERSION_KEY), 1)
+        # Retry with the missing table present: the whole step reruns.
+        conn.execute("""CREATE TABLE thalamus_items (id TEXT PRIMARY KEY)""")
+        conn.commit()
+        run_versioned_migrations(
+            conn, 'logs_meta', LOGS_VERSION_KEY, 2,
+            [(2, _migrate_logs_v2_thalamus_armed_epoch)])
+        row = conn.execute('SELECT item_id, armed_epoch FROM '
+                           'thalamus_deliveries').fetchone()
+        self.assertEqual((row[0], row[1]), ('th_1', 0))
+        self.assertEqual(
+            read_schema_version(conn, 'logs_meta', LOGS_VERSION_KEY), 2)
+
     def test_fresh_db_is_baselined_without_running_steps(self):
         conn = _meta_conn()
         ran = []

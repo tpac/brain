@@ -1815,7 +1815,18 @@ def _migrate_logs_v2_thalamus_armed_epoch(conn):
     versioned step: that helper swallows non-duplicate OperationalErrors, and
     a swallowed failure would let the runner stamp the version with the
     column missing, permanently (a step must raise so the stamp stays
-    unwritten and the migration retries on the next open)."""
+    unwritten and the migration retries on the next open).
+
+    The step is ONE transaction (BEGIN IMMEDIATE): in legacy isolation mode
+    only DML opens an implicit transaction, so without it the RENAME/CREATE
+    autocommit — a failure in the second half would then roll back only the
+    copy, stranding the ledger rows in thalamus_deliveries_old while the
+    retry's column probe skips the first half: permanent ledger loss.
+    Inside one transaction the runner's rollback restores everything
+    (SQLite DDL is transactional) and the retry reruns the step whole.
+    IMMEDIATE also fails fast on a locked DB, before any DDL runs."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
     cols = [r[1] for r in conn.execute(
         'PRAGMA table_info(thalamus_deliveries)').fetchall()]
     if 'armed_epoch' not in cols:

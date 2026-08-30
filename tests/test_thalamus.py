@@ -330,6 +330,21 @@ class TestResolveWithdraw(ThalamusBase):
         self.assertEqual(n2, 1)
         self.assertIn('v2 updated concern', block)
 
+    def test_identical_refile_is_idempotent(self):
+        """An UNCHANGED re-file (a cyclic producer re-asserting its standing
+        item) must not re-arm — bumping on a no-op would re-deliver the same
+        text every producer cycle, unbounded. It refreshes the window only."""
+        self._file('standing concern', dedup_key='concern-x')
+        _, n1 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n1, 1)
+        r2 = self._file('standing concern', dedup_key='concern-x')
+        self.assertTrue(r2['updated'])
+        self.assertFalse(r2['rearmed'])
+        _, n2 = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n2, 0)  # no re-delivery
+        # Window refreshed: expires_at moved forward with the re-file.
+        self.assertGreater(self._row(r2['id'])[4], iso_now())
+
     def test_deferred_ask_keeps_ask_window(self):
         """extend_window composes through window_for — a deferred ask keeps
         its kind's full span (14d) past the new due date, not a reminder's
@@ -517,6 +532,16 @@ class TestRender(ThalamusBase):
         self.assertEqual(ledgered, n1)
         _, n2 = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n1 + n2, 4)  # the dropped items deliver next moment
+
+    def test_block_head_counts_shown_items(self):
+        """Head, tail, ledger, and pull's count all say `kept` — the head
+        must not claim fetched items the cap dropped."""
+        for i in range(4):
+            self._file('x' * 1400, source='src-%d' % i)
+        block, n = thalamus.pull(self.brain, S1, via='boot')
+        self.assertLess(n, 4)
+        self.assertIn('— %d item(s)' % n, block)
+        self.assertIn('(+%d more due' % (4 - n), block)
 
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')
