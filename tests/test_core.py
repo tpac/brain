@@ -563,6 +563,73 @@ class TestRememberRich(BrainTestBase):
 class TestSurfaceLayer(BrainTestBase):
     """P6: Test context boot, health check, and suggest."""
 
+    def test_seed_pack_generation_guard(self):
+        """A brain holding a previous-generation seed pack is left untouched:
+        gap-fill is crash recovery for THIS pack, never a migration path.
+        The faithful fixture keeps titles INTACT — the old and new packs
+        genuinely share a title verbatim, which is exactly why the guard is
+        a brain_meta marker and not a title match."""
+        from servers.seed_pack import seed_baby_brain
+
+        # Pristine seeded brain (marker stamped at init-seed) → fast path.
+        self.assertEqual(seed_baby_brain(self.brain)['status'], 'already_seeded')
+
+        # Simulate a previous-generation install: seed nodes present — titles
+        # untouched, including any shared ones — but no generation marker,
+        # and a partial count (so the fast path can't mask the guard).
+        self.brain.conn.execute(
+            "DELETE FROM brain_meta WHERE key = 'seed_pack_generation'")
+        self.brain.conn.execute(
+            "UPDATE nodes SET archived = 1 WHERE id IN ("
+            "  SELECT id FROM nodes WHERE encoding_source = 'anchor:seed' LIMIT 10)")
+        before = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+        result = seed_baby_brain(self.brain)
+        self.assertEqual(result['status'], 'previous_generation')
+        self.assertEqual(result['nodes_created'], 0)
+        after = self.brain.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+        self.assertEqual(before, after, "previous-generation brain was modified")
+
+        # With the marker restored, the same state is OUR crash-recovery
+        # case: gap-fill runs and re-creates only the missing nodes.
+        self.brain._meta.set('seed_pack_generation', 'nursery_v1')
+        result = seed_baby_brain(self.brain)
+        self.assertEqual(result['status'], 'partial')
+        self.assertGreater(result['nodes_created'], 0)
+        self.assertEqual(result['nodes_created'] + result['nodes_skipped'], 26)
+
+    def test_context_boot_zero_memory_gate(self):
+        """The Nursery's Zero-Memory gate: active while the brain is young
+        (few lived memories OR under the age floor); retires only when BOTH
+        thresholds are exceeded."""
+        import servers.brain_assembly as ba
+
+        # This test brain auto-seeds at init → birth record exists, no lived
+        # memories yet → active (young by both thresholds).
+        boot = self.brain.context_boot()
+        self.assertTrue(boot['zero_memory']['active'])
+
+        # Old enough but too few lived → still active (lived branch holds).
+        self.brain.conn.execute(
+            "UPDATE nodes SET created_at = '2020-01-01T00:00:00+00:00' "
+            "WHERE encoding_source = 'anchor:seed'")
+        boot = self.brain.context_boot()
+        self.assertTrue(boot['zero_memory']['active'])
+
+        # Both thresholds exceeded → the block retires.
+        orig = ba.ZERO_MEMORY_MIN_LIVED
+        ba.ZERO_MEMORY_MIN_LIVED = 2
+        try:
+            for i in range(3):
+                self.brain.remember(type='fact', title='gate: lived %d' % i,
+                                    content='x', encoding_source='hook:test')
+            boot = self.brain.context_boot()
+            self.assertFalse(boot['zero_memory']['active'])
+            self.assertGreaterEqual(boot['zero_memory']['lived'], 3)
+        finally:
+            ba.ZERO_MEMORY_MIN_LIVED = orig
+
     def test_context_boot_returns_structure(self):
         """context_boot should return dict with essential keys."""
         _seed_brain_with_realistic_data(self.brain)

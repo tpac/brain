@@ -21,6 +21,8 @@ from .brain_constants import (
     CONTEXT_BOOT_LOCKED_LIMIT,
     CONTEXT_BOOT_RECALL_LIMIT,
     CONTEXT_BOOT_RECENT_LIMIT,
+    ZERO_MEMORY_MIN_DAYS,
+    ZERO_MEMORY_MIN_LIVED,
 )
 
 DESTRUCTIVE_PATTERNS = [
@@ -372,8 +374,30 @@ class BrainAssemblyMixin:
         # Get total locked count
         total_locked = self._nodes.count_locked()
 
+        # Zero-Memory gate — the Nursery's spoken half; brain_voice renders
+        # the block. Young = fewer than ZERO_MEMORY_MIN_LIVED non-seed
+        # memories OR younger than ZERO_MEMORY_MIN_DAYS since the seeds were
+        # born; it retires only when both are exceeded. The age test is a
+        # bound iso_cutoff against created_at (transaction-time column →
+        # wall-clock anchor is correct; no timestamp parsing in Python).
+        zero_memory = {'active': False, 'lived': 0}
+        try:
+            from .clock import iso_cutoff
+            stats = self._nodes.nursery_gate_stats(
+                iso_cutoff(days=ZERO_MEMORY_MIN_DAYS))
+            zero_memory = {
+                'active': stats['born'] and (
+                    stats['lived'] < ZERO_MEMORY_MIN_LIVED
+                    or not stats['old_enough']),
+                'lived': stats['lived'],
+            }
+        except Exception as e:
+            self._log_error('zero_memory_gate', e,
+                            'context_boot zero-memory gate — block skipped')
+
         return {
             'brain_version': BRAIN_VERSION,
+            'zero_memory': zero_memory,
             'total_nodes': self._get_node_count(),
             'total_edges': self._get_edge_count(),
             'total_locked': total_locked,

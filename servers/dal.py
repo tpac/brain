@@ -376,6 +376,28 @@ class NodeDAL:
         row = self.conn.execute(sql).fetchone()
         return row[0] if row else 0
 
+    def nursery_gate_stats(self, age_cutoff: str) -> Dict[str, Any]:
+        """The Zero-Memory boot gate's three facts (brain_assembly.context_boot).
+
+        lived: live nodes NOT from the seed pack (COALESCE guards legacy
+        NULL encoding_source rows out of silent exclusion). born: any seed
+        node exists at all — deliberately ignores archived, so archiving the
+        seeds doesn't erase the birth record. old_enough: a seed node exists
+        older than age_cutoff (an ISO-T string — always bind one from
+        clock.iso_cutoff, per the time-window contract)."""
+        lived = self.conn.execute(
+            "SELECT COUNT(*) FROM nodes WHERE archived = 0 "
+            "AND COALESCE(encoding_source, '') != 'anchor:seed'"
+        ).fetchone()[0]
+        born = self.conn.execute(
+            "SELECT 1 FROM nodes WHERE encoding_source = 'anchor:seed' LIMIT 1"
+        ).fetchone() is not None
+        old_enough = self.conn.execute(
+            "SELECT 1 FROM nodes WHERE encoding_source = 'anchor:seed' "
+            "AND created_at < ? LIMIT 1", (age_cutoff,)
+        ).fetchone() is not None
+        return {'lived': lived, 'born': born, 'old_enough': old_enough}
+
     def count_by_type(self, node_type: str) -> int:
         """Count nodes of a specific type."""
         row = self.conn.execute(
