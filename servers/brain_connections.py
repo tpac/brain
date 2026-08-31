@@ -158,13 +158,13 @@ class BrainConnectionsMixin:
         # with the pointer so it re-aims, never silently re-point. Machinery
         # below this door (absorb's own edge migration) keeps its latitude by
         # calling GraphDAL.add_relation directly. Retired endpoints (archived,
-        # no survivor) keep add_relation's existing behavior.
-        for nid in self._nodes.archived_subset([source_id, target_id]):
-            surv = self._nodes.survivor_of(nid)
-            if surv:
-                raise ValueError(
-                    "Cannot connect %s: it was absorbed into %s — "
-                    "connect that node instead" % (nid[:8], surv[:8]))
+        # no survivor) keep add_relation's existing behavior. ONE batched
+        # walk answers liveness and redirect for both endpoints — 1 query
+        # when both are live, no per-id re-walk.
+        from .contract import absorbed_refusal
+        for nid, surv in self._nodes.resolve_live(
+                [source_id, target_id])['redirected'].items():
+            raise ValueError(absorbed_refusal('connect', nid, surv))
 
         # Known types get configured weight; unknown types get 0.5 default
         edge_def = EDGE_TYPES.get(relation)

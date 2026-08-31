@@ -588,6 +588,16 @@ class BrainRememberMixin:
         old_locked = bool(old_locked)
 
         if locked and archived:
+            # Writes never redirect — an absorbed id refuses with the
+            # pointer (the shared write-door contract).
+            surv = self._nodes.survivor_of(full_id)
+            if surv:
+                from .contract import absorbed_refusal
+                msg = absorbed_refusal('lock', full_id, surv)
+                self._log_error('lock_archived_node', ValueError(msg),
+                                'set_node_lock(%s, locked=True)' % full_id[:8])
+                return {'ok': False, 'error': msg,
+                        'node_id': full_id, 'survivor_id': surv}
             self._log_error('lock_archived_node',
                             ValueError('Cannot lock an archived node'),
                             'set_node_lock(%s, locked=True)' % full_id[:8])
@@ -720,9 +730,13 @@ class BrainRememberMixin:
             return {'ok': False, 'error': 'absorbed not found', 'node_id': absorbed_id}
         if rows[survivor_id][3]:
             live = self._nodes.survivor_of(survivor_id)
-            hint = (' — itself absorbed into %s; use that as survivor'
-                    % live[:8]) if live else ''
-            return {'ok': False, 'error': 'survivor is archived%s' % hint,
+            if live:
+                from .contract import absorbed_refusal
+                return {'ok': False,
+                        'error': absorbed_refusal('absorb into',
+                                                  survivor_id, live),
+                        'node_id': survivor_id, 'survivor_id': live}
+            return {'ok': False, 'error': 'survivor is archived',
                     'node_id': survivor_id}
 
         a_locked, a_critical, a_archived, a_access = rows[absorbed_id][1:]
@@ -1568,9 +1582,8 @@ class BrainRememberMixin:
             # absorbed node refuses WITH the pointer so the caller re-aims.
             surv = self._nodes.survivor_of(node_id)
             if surv:
-                return {'error': 'Cannot revise %s — absorbed into %s; '
-                                 'revise that node instead'
-                                 % (node_id[:8], surv[:8]),
+                from .contract import absorbed_refusal
+                return {'error': absorbed_refusal('revise', node_id, surv),
                         'node_id': node_id, 'survivor_id': surv}
             return {'error': 'Cannot revise archived node', 'node_id': node_id}
 

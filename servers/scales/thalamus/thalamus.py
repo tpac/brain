@@ -236,12 +236,13 @@ def _attach_ref_lines(brain, items, session_id):
             res = brain.filter_nodes(
                 field='id', include=want, rich=False,
                 session_id=session_id, limit=len(want))
+            from servers.contract import REDIRECTED_FROM_KEY
             for n in res.get('nodes') or []:
                 titles[n['id']] = n.get('title') or ''
                 # Canonical-pull redirect: a stored ref whose node was
                 # absorbed resolves to its live survivor — render both ids
                 # so the consumer knows the ref migrated.
-                for src in n.get('_redirected_from') or ():
+                for src in n.get(REDIRECTED_FROM_KEY) or ():
                     redirects[src] = (n['id'], n.get('title') or '')
         except Exception as e:
             brain._log_error('thalamus_ref_resolve', e,
@@ -251,9 +252,9 @@ def _attach_ref_lines(brain, items, session_id):
         lines = []
         for ref in refs[:tc.RENDER_REFS_MAX]:
             if ref in redirects:
+                from servers.contract import redirect_ref_line
                 sid, title = redirects[ref]
-                lines.append('%s ↦ %s · %s (absorbed)'
-                             % (ref[:8], sid[:8], title))
+                lines.append(redirect_ref_line(ref, sid, title))
                 continue
             title = titles.get(ref)
             lines.append('%s · %s' % (ref[:8], title) if title else ref[:8])
