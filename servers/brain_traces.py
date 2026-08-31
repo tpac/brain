@@ -33,7 +33,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 from . import embedder
-from .clock import iso_cutoff
+from .clock import iso_cutoff, resolve_offset, PAST
 from .contract import flag_truncation as _flag_truncation, truncation_payload
 from .brain_constants import (
     EPISODE_DEFAULT_LIMIT, EPISODE_DEFAULT_WINDOW_DAYS,
@@ -44,38 +44,23 @@ def _resolve_time_bound(value):
     """Resolve a recall_episodes time bound to an ISO created_at string.
 
     Accepts relative shorthand ('30m', '2h', '3d', '1w', case-insensitive) →
-    that-much-ago via iso_cutoff, or an ISO timestamp literal (YYYY-MM-DD…,
-    passed through). Returns '' for falsy input. Anything else raises
-    ValueError — a malformed bound must fail loud, not silently bind a
-    non-timestamp into a lexical comparison (empty result, or a no-op that
-    disables the filter). Parsing is a presentation concern, kept out of the
-    DAL, which only ever sees resolved ISO bounds.
+    that-much-ago, or an ISO timestamp literal. Returns '' for falsy input.
+    Anything else raises ValueError — a malformed bound must fail loud, not
+    silently bind a non-timestamp into a lexical comparison (empty result, or
+    a no-op that disables the filter). Parsing is a presentation concern,
+    kept out of the DAL, which only ever sees resolved ISO bounds.
+
+    The grammar itself lives in clock.py, shared with the Thalamus door: one
+    published contract, one implementation, one direction argument. This
+    keeps only what is genuinely local — the ''-for-empty convention and the
+    bound-flavoured error message.
     """
     if not value:
         return ''
-    s = str(value).strip()
-    m = re.fullmatch(r'(\d+)\s*([mhdw])', s, re.IGNORECASE)
-    if m:
-        n, unit = int(m.group(1)), m.group(2).lower()
-        kw = {'m': {'minutes': n}, 'h': {'hours': n},
-              'd': {'days': n}, 'w': {'days': 7 * n}}[unit]
-        return iso_cutoff(**kw)
-    # ISO timestamp literal: validate AND normalize via fromisoformat. A bare
-    # date-prefix check would pass a space-separated bound ('2026-06-14 12:00')
-    # or an out-of-range date verbatim, and a space-separated bound lex-mis-
-    # compares against ISO-T storage (the documented 'T'(0x54) > ' '(0x20)
-    # hazard). fromisoformat rejects junk/impossible dates and re-emits ISO-T.
     try:
-        from datetime import datetime as _dt, timezone as _tz
-        dt = _dt.fromisoformat(s)
-        if dt.tzinfo is None:        # storage is tz-aware ('+00:00') — match it
-            dt = dt.replace(tzinfo=_tz.utc)
-        return dt.isoformat()
-    except ValueError:
-        raise ValueError(
-            "time bound %r not understood — use relative shorthand "
-            "('30m','2h','3d','1w') or an ISO timestamp ('2026-06-14T12:00:00')"
-            % value)
+        return resolve_offset(value, direction=PAST)
+    except ValueError as e:
+        raise ValueError('time bound %r %s' % (value, e))
 
 
 class BrainTracesMixin:

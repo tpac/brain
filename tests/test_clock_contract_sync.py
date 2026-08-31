@@ -159,3 +159,90 @@ def test_conversation_now_falls_back_to_brain_now():
     # Within a few seconds of each other — exact equality is impossible
     delta_s = abs((c - n).total_seconds())
     assert delta_s < 5.0, f'fallback should match brain_now ± 5s; delta {delta_s}s'
+
+
+# ── The relative-time grammar (resolve_offset) ──
+
+
+def test_resolve_offset_directions_are_opposite():
+    """One grammar, two directions: the same shorthand resolves backwards for
+    a lookback bound and forwards for a deadline."""
+    from servers.clock import resolve_offset, iso_now, PAST, FUTURE
+    now = iso_now()
+    assert resolve_offset('2h', direction=PAST) < now
+    assert resolve_offset('2h', direction=FUTURE) > now
+    # Case-insensitive, and 'w' is 7 days.
+    assert resolve_offset('1W', direction=FUTURE) > resolve_offset(
+        '6d', direction=FUTURE)
+
+
+def test_resolve_offset_normalizes_a_tz_offset_literal_to_utc():
+    """An offset-bearing literal is CONVERTED, never passed through wearing
+    its own offset. As text '…12:00:00+03:00' sorts AFTER '…09:30:00+00:00'
+    while naming an EARLIER instant, so a bound that keeps its offset shifts
+    every window it filters. Absolute literals ignore direction."""
+    from servers.clock import resolve_offset, PAST, FUTURE
+    for direction in (PAST, FUTURE):
+        assert resolve_offset('2026-06-14T12:00:00+03:00',
+                              direction=direction) == \
+            '2026-06-14T09:00:00+00:00'
+
+
+def test_resolve_offset_reports_an_unrepresentable_offset_as_valueerror():
+    """An offset large enough to leave datetime's range must surface as
+    ValueError, not OverflowError: both doors guard on ValueError alone, so
+    an OverflowError sails past them and out as an opaque failure instead of
+    the loud, actionable rejection the write boundary promises."""
+    from servers.clock import resolve_offset, PAST, FUTURE
+    for value in ('99999999h', '500000w'):
+        for direction in (PAST, FUTURE):
+            with pytest.raises(ValueError):
+                resolve_offset(value, direction=direction)
+
+
+def test_both_doors_reject_an_unrepresentable_offset_loudly():
+    """The doors' own guards, end to end — a fat-fingered deadline comes back
+    as guidance, never as a crash. And the guidance must be TRUE: each door
+    supplies the subject, the grammar supplies the reason, so a
+    valid-but-out-of-range shorthand is never described as 'not shorthand'."""
+    from servers.brain_traces import _resolve_time_bound
+    from servers.scales.thalamus.thalamus_contract import resolve_when
+    for door, subject in ((_resolve_time_bound, 'time bound'),
+                          (resolve_when, 'when=')):
+        with pytest.raises(ValueError) as caught:
+            door('99999999h')
+        msg = str(caught.value)
+        assert subject in msg, f'{subject!r} must name the offending param'
+        assert 'range' in msg, f'range refusal lost its reason: {msg}'
+        assert 'neither' not in msg, (
+            f'valid shorthand wrongly reported as unparseable: {msg}')
+        # ...while a genuinely unparseable value still says so.
+        with pytest.raises(ValueError) as caught:
+            door('next full moon')
+        assert 'neither' in str(caught.value)
+
+
+def test_resolve_offset_rejects_an_unknown_direction():
+    """direction is closed vocabulary. A typo must not fall through to the
+    else-branch and silently turn a lookback bound into a deadline."""
+    from servers.clock import resolve_offset
+    with pytest.raises(ValueError):
+        resolve_offset('2h', direction='pst')
+
+
+def test_one_grammar_across_both_doors():
+    """The grammar is a PUBLISHED contract — quoted verbatim in the
+    recall_episodes / remind / thalamus_resolve tool descriptions — so both
+    doors must resolve an absolute literal to the same instant. They had
+    already drifted: the trace bound preserved a literal's own UTC offset
+    while the Thalamus door converted it, so one string named two different
+    moments depending on which door received it."""
+    from servers.brain_traces import _resolve_time_bound
+    from servers.scales.thalamus.thalamus_contract import resolve_when
+    literal = '2026-06-14T12:00:00+03:00'
+    assert _resolve_time_bound(literal) == resolve_when(literal)
+    assert _resolve_time_bound(literal) == '2026-06-14T09:00:00+00:00'
+    # Each door still owns its own empty-value convention: a queue has a
+    # "next opportunity", a lookback bound does not.
+    assert _resolve_time_bound('') == ''
+    assert resolve_when('now') is None
