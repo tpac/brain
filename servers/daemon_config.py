@@ -287,10 +287,18 @@ def _validate_instance_env() -> None:
 _validate_instance_env()
 
 
-def resolve_db_dir() -> str:
+def resolve_db_dir(trust_env: bool = True) -> str:
     """Where the brain's data lives — the Python half of the resolution
     contract (D-13: one configurable location, every runtime resolves
     through the same chain).
+
+    `trust_env=False` drops the `$BRAIN_DB_DIR` rung and lets the rest of the
+    ladder answer. Only for callers asking the OTHER question — *where is
+    there an existing brain* rather than *where should the brain be*. The
+    default rung is deliberately unconditional (the hook wrappers validate the
+    variable, and a dir with no brain.db yet is a legitimate birthplace), so a
+    caller that needs a brain to actually be there must opt out of it rather
+    than reinterpret the answer.
 
     Order — mirrors the shell ladder's semantics exactly (a knob dir WITHOUT
     brain.db is an explicit birthplace choice, not a verdict; it must not
@@ -310,7 +318,7 @@ def resolve_db_dir() -> str:
     resolver, which enforces the net (the direct-spawn fallback does not).
     """
     d = os.environ.get('BRAIN_DB_DIR')
-    if d:
+    if d and trust_env:
         return d
     xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
         os.path.expanduser('~'), '.config')
