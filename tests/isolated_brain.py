@@ -53,14 +53,7 @@ def _default_production_dir():
     env = os.environ.get('BRAIN_DB_DIR', '')
     if _has_brain(env):
         return env
-    if not env:
-        d = resolve_db_dir()
-        return d if _has_brain(d) else None
-    saved = os.environ.pop('BRAIN_DB_DIR')
-    try:
-        d = resolve_db_dir()
-    finally:
-        os.environ['BRAIN_DB_DIR'] = saved
+    d = resolve_db_dir(trust_env=False)
     return d if _has_brain(d) else None
 
 
