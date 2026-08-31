@@ -42,10 +42,12 @@ as its orphan-recovery seed.
 Loader contract
 ===============
 - Generation guard: SEED_PACK_GENERATION is stamped in brain_meta at first
-  seed. Gap-fill (crash recovery) runs only when the marker matches; a
-  marker-less brain with seed nodes is a previous-generation install and is
-  left untouched — the Nursery raises newborns, it never re-seeds grown
-  brains.
+  seed. Gap-fill (crash recovery) runs only when the marker matches; any
+  other non-empty state (seed nodes without the marker, or a foreign
+  marker) is a brain not born from this pack and is left untouched — the
+  Nursery raises newborns, it never re-seeds grown brains.
+- Archived seeds count as present: retirement (e.g. a scaffold archiving
+  itself when outgrown) is respected, never resurrected.
 - Re-seeding is idempotent by title: exact-title match first (deterministic),
   embedding fuzzy match second (catches organic near-equivalents).
 - Node dicts pass to brain.remember() minus `slug`; `exemplar` /
@@ -1481,8 +1483,11 @@ def seed_baby_brain(brain):
          "status": "fresh" | "partial" | "already_seeded"
                  | "previous_generation"}
     """
+    # Archived seeds count as PRESENT: an archived seed is retired, not
+    # missing — several scaffolds instruct the entity to archive them when
+    # outgrown, and resurrection at the next boot would undo exactly that.
     seed_count = brain.conn.execute(
-        "SELECT COUNT(*) FROM nodes WHERE encoding_source = 'anchor:seed' AND archived = 0"
+        "SELECT COUNT(*) FROM nodes WHERE encoding_source = 'anchor:seed'"
     ).fetchone()[0]
 
     # Generation guard: gap-fill is crash recovery for THIS pack, never a
@@ -1503,9 +1508,13 @@ def seed_baby_brain(brain):
         print(f"[seed-pack] partial seed state ({seed_count}/{len(SEED_NODES)} present) — filling gaps",
               flush=True)
         status = "partial"
-    elif seed_count > 0:
-        print(f"[seed-pack] existing brain with a previous-generation pack "
-              f"({seed_count} seed nodes, no {SEED_PACK_GENERATION} marker) — leaving it untouched",
+    elif seed_count > 0 or marker:
+        # Either seed nodes without our marker (a previous-generation
+        # install) or a foreign marker with no seeds (e.g. a future pack's
+        # brain whose seeds were archived away) — both mean this brain was
+        # not born from this pack. Never seed, never overwrite the marker.
+        print(f"[seed-pack] existing brain not born from this pack "
+              f"(marker={marker or 'none'}, {seed_count} seed nodes) — leaving it untouched",
               flush=True)
         return {"nodes_created": 0, "nodes_skipped": 0,
                 "edges_created": 0, "edges_skipped": 0,
@@ -1538,7 +1547,7 @@ def seed_baby_brain(brain):
         # stays as the second tier so a brain that already holds an organic
         # near-equivalent of a seed doesn't get a duplicate.
         exact = brain.conn.execute(
-            "SELECT id FROM nodes WHERE title = ? AND archived = 0 LIMIT 1",
+            "SELECT id FROM nodes WHERE title = ? LIMIT 1",
             (title,),
         ).fetchone()
         existing = {"id": exact[0]} if exact else brain.find_node_by_title(title, threshold=0.95, top_k=1)
