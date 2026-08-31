@@ -29,9 +29,11 @@ sys.path.insert(0, '.')
 
 
 def get_test_brain():
-    src = os.path.expanduser('~/AgentsContext/brain/brain.db')
-    if not os.path.exists(src):
+    from tests.isolated_brain import _default_production_dir
+    prod = _default_production_dir()
+    if not prod:
         return None
+    src = os.path.join(prod, 'brain.db')
     test_db = '/tmp/brain_test_mechanisms_%d.db' % os.getpid()
     shutil.copy2(src, test_db)
     from servers.brain import Brain

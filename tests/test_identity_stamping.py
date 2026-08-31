@@ -72,7 +72,7 @@ class StampingEnabledTest(unittest.TestCase):
     def setUp(self):
         self.conn = _open_logs()
         self.dal = TraceDAL(self.conn)
-        self.dal.set_identity('Tom', 'Anchor')
+        self.dal.set_identity('Ada', 'Anchor')
 
     def tearDown(self):
         self.conn.close()
@@ -83,7 +83,7 @@ class StampingEnabledTest(unittest.TestCase):
             ref_type='user_message', metadata={'content': 'hi'})
         meta = _read_metadata(self.conn, eid)
         self.assertEqual(meta['content'], 'hi')
-        self.assertEqual(meta['human_identity'], 'Tom')
+        self.assertEqual(meta['human_identity'], 'Ada')
         self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_stamp_when_metadata_none(self):
@@ -91,7 +91,7 @@ class StampingEnabledTest(unittest.TestCase):
             chain_id='c1', scale='s0', event_type='K',
             ref_type='user_message', metadata=None)
         meta = _read_metadata(self.conn, eid)
-        self.assertEqual(meta, {'human_identity': 'Tom',
+        self.assertEqual(meta, {'human_identity': 'Ada',
                                 'agent_identity': 'Anchor'})
 
     def test_caller_override_preserved(self):
@@ -106,16 +106,16 @@ class StampingEnabledTest(unittest.TestCase):
         self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_partial_identity_human_only(self):
-        self.dal.set_identity('Tom', '')
+        self.dal.set_identity('Ada', '')
         eid = self.dal.append(
             chain_id='c1', scale='s0', event_type='K',
             ref_type='user_message', metadata={})
         meta = _read_metadata(self.conn, eid)
-        self.assertEqual(meta, {'human_identity': 'Tom'})
+        self.assertEqual(meta, {'human_identity': 'Ada'})
 
     def test_set_identity_strips_whitespace(self):
-        self.dal.set_identity('  Tom  ', '  Anchor  ')
-        self.assertEqual(self.dal._human_identity, 'Tom')
+        self.dal.set_identity('  Ada  ', '  Anchor  ')
+        self.assertEqual(self.dal._human_identity, 'Ada')
         self.assertEqual(self.dal._agent_identity, 'Anchor')
 
     def test_stamp_in_append_batch(self):
@@ -128,7 +128,7 @@ class StampingEnabledTest(unittest.TestCase):
         ids = self.dal.append_batch(events)
         for eid in ids:
             meta = _read_metadata(self.conn, eid)
-            self.assertEqual(meta['human_identity'], 'Tom')
+            self.assertEqual(meta['human_identity'], 'Ada')
             self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_stamp_skips_non_dict_metadata(self):
@@ -157,7 +157,7 @@ class StampingEnabledTest(unittest.TestCase):
                 chain_id='c1', scale=scale, event_type=event_type,
                 ref_type=ref_type, metadata=None)
             meta = _read_metadata(self.conn, eid)
-            self.assertEqual(meta['human_identity'], 'Tom', scale)
+            self.assertEqual(meta['human_identity'], 'Ada', scale)
             self.assertEqual(meta['agent_identity'], 'Anchor', scale)
 
 
@@ -204,7 +204,7 @@ class WritePathWarningTest(unittest.TestCase):
         self.assertEqual(out.count('identity unset'), 1)
 
     def test_silent_when_identity_configured(self):
-        self.dal.set_identity('Tom', 'Anchor')
+        self.dal.set_identity('Ada', 'Anchor')
 
         def do_write():
             self.dal.append(chain_id='c', scale='s0', event_type='K',
@@ -223,7 +223,7 @@ class WritePathWarningTest(unittest.TestCase):
 
     def test_partial_identity_still_fires(self):
         # Only one side set — still missing the other
-        self.dal.set_identity('Tom', '')
+        self.dal.set_identity('Ada', '')
 
         def do_write():
             self.dal.append(chain_id='c', scale='s0', event_type='K',

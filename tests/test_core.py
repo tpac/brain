@@ -211,7 +211,7 @@ def _seed_brain_with_realistic_data(brain):
     nodes.append(brain.remember(type='rule', title='Experimental features must never block core operations',
         content='When adding new features (bridging, proposals, archive) to existing methods (remember, consolidate, dream, smartPrune), always wrap in try/catch. A bridge failure should never prevent a remember from succeeding.',
         locked=True, confidence=0.85))
-    nodes.append(brain.remember(type='rule', title='Communication style with Tom: direct, peer-to-peer',
+    nodes.append(brain.remember(type='rule', title='Communication style with Ada: direct, peer-to-peer',
         content='Speak peer-to-peer. Be direct. Challenge when warranted. Always plan before executing. Never dump a full spec — work iteratively through components.',
         locked=True))
     # Lessons
@@ -662,7 +662,7 @@ class TestSurfaceLayer(BrainTestBase):
     def test_context_boot_returns_structure(self):
         """context_boot should return dict with essential keys."""
         _seed_brain_with_realistic_data(self.brain)
-        result = self.brain.context_boot(user='Tom', project='brain')
+        result = self.brain.context_boot(user='Ada', project='brain')
         self.assertIsInstance(result, dict)
         self.assertIn('brain_version', result)
         self.assertIn('total_nodes', result)

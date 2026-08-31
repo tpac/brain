@@ -466,13 +466,13 @@ class TestSaveSessionContext:
         self.brain.conn.commit()
 
         dispatch_fn, calls = self._mock_dispatch()
-        final_text = 'Some encoding output.\nSESSION_CONTEXT: Tom exploring recall mechanisms.\nDone.'
+        final_text = 'Some encoding output.\nSESSION_CONTEXT: Ada exploring recall mechanisms.\nDone.'
         _save_session_context(self.brain, dispatch_fn, self.SID, final_text)
 
         ctx_calls = [(cmd, args) for cmd, args in calls
                      if cmd == 'set_config' and args.get('key') == key]
         assert len(ctx_calls) == 1
-        assert 'Tom exploring recall mechanisms.' in ctx_calls[0][1]['value']
+        assert 'Ada exploring recall mechanisms.' in ctx_calls[0][1]['value']
 
     def test_no_context_line_does_nothing(self):
         """When no SESSION_CONTEXT: line exists, nothing is dispatched."""

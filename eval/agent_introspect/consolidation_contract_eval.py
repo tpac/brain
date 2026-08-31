@@ -31,7 +31,7 @@ ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from servers.scales.s2.consolidation_quality_contract import (
+from eval.agent_introspect.consolidation_quality_contract import (
     DIMENSIONS, HARD_GATE_DIMS, AB_IMPROVEMENT_DIMS, VERDICTS, SCOPE)
 
 CANDIDATE_PATH = os.path.join(

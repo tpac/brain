@@ -114,12 +114,12 @@ class TestSelfPresence(BrainTestBase):
         # and are surfaced in peek so streams can tell where each other is working.
         from servers.session_context import SessionContext
         ctx = SessionContext(session_id='streamENV0')
-        ctx.cwd = '/Users/tom/brain/.claude/worktrees/foo'
+        ctx.cwd = '/Users/ada/brain/.claude/worktrees/foo'
         ctx.branch = 'claude/foo-123'
         ctx.worktree = 'foo'
         ctx.save(self.brain._session_state)
         p = presence.peek(self.brain, 'streamENV0')
-        self.assertEqual(p['cwd'], '/Users/tom/brain/.claude/worktrees/foo')
+        self.assertEqual(p['cwd'], '/Users/ada/brain/.claude/worktrees/foo')
         self.assertEqual(p['branch'], 'claude/foo-123')
         self.assertEqual(p['worktree'], 'foo')
         # absent ⇒ empty strings, never missing keys (degrades, never half-shaped)

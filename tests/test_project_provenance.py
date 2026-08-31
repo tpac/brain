@@ -92,14 +92,14 @@ class TestStampPolicy:
         # dimension-specific code path.
         args = {'title': 't', 'counterpart': 'agent-invented'}
         warnings = stamp_scope_provenance(
-            'remember', args, {'project': 'brain', 'counterpart': 'Tom'})
-        assert args['counterpart'] == 'Tom'
+            'remember', args, {'project': 'brain', 'counterpart': 'Ada'})
+        assert args['counterpart'] == 'Ada'
         assert args['project'] == 'brain'
         assert len(warnings) == 1
 
     def test_counterpart_strips_on_revise(self):
         args = {'node_id': 'n', 'reason': 'r', 'counterpart': 'anything'}
-        stamp_scope_provenance('revise', args, {'counterpart': 'Tom'})
+        stamp_scope_provenance('revise', args, {'counterpart': 'Ada'})
         assert 'counterpart' not in args
 
     def test_batch_branch_derives_from_op_contract(self):

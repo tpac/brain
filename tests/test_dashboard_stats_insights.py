@@ -68,7 +68,7 @@ def test_operator_name_in_content_does_not_count(tmp_path, monkeypatch):
     # and wrong on any brain whose operator isn't named Tom. Name mentions in
     # content are NOT quote capture; only the structured fields count.
     nodes = _plain_nodes(6)
-    nodes[0] = ("n0", "node 0", "fact", "Tom said this. Claude: replied. " + "x" * 200)
+    nodes[0] = ("n0", "node 0", "fact", "Ada said this. Claude: replied. " + "x" * 200)
     _make_brain_db(tmp_path, nodes)
     assert _zero_quotes_fired(tmp_path, monkeypatch)
 

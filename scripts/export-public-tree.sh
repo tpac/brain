@@ -35,6 +35,39 @@ DENYLIST=(
                                    # data; consuming tests need graceful-skip
   conversations                    # belt-and-braces (not tracked today)
   archives                         # belt-and-braces (not tracked today)
+
+  # Gold corpora — real session content, incl. a real birthday. Ruled
+  # 2026-08-31: exclude rather than sanitize, because a sanitized corpus that
+  # still passes proves less than an honest gap. Consumers graceful-skip.
+  tests/golden_dataset_v2.json
+  tests/golden_dataset.json
+  tests/golden_canary.json
+  tests/corpus
+
+  # The deploy gate itself. It only runs in the dev repo — but the PUBLIC repo
+  # IS a git checkout with plugin.json tracked, so it would NOT skip there: it
+  # would run and fail, because TestPublicTreeExport shells out to
+  # scripts/export-public-tree.sh and scripts/ is outside the manifest. It also
+  # carries this gate's own fixtures (deliberate `/Users/tpac` + `Tom Pachys`
+  # strings that prove gate B catches them), so it can never pass gate B and
+  # must not be allowlisted either — allowlisting the co-located leak on line
+  # 487 would defeat the very check that line exists to prove.
+  tests/test_deploy_contract.py
+
+  # Dev harnesses, not tests — zero importers among tests/test_*.py, and each
+  # hardcodes the author's machine as a default source. Same class as
+  # tests/archive and tests/results above.
+  tests/run_tests.py
+  tests/eval_runner.py
+  tests/generate_golden.py
+  tests/relearning.py
+  tests/benchmark_canary.py
+  tests/benchmark_multivec_encoding.py
+  tests/benchmark_real_conversations.py
+  tests/bench_vector_cache.py
+  tests/bench_precision_corpus.py
+  tests/bench_precision_lifecycle.py
+  tests/benchmark_full_baseline_214.py
 )
 
 # ── Gate B: personal-information patterns (grep -E, case-insensitive) and the
@@ -52,6 +85,19 @@ ALLOWLIST=(
   "hooks/scripts/boot-brain.sh:AgentsContext"
   "servers/daemon_config.py:AgentsContext"
   "dashboard/db.py:AgentsContext"
+  # ...and the tests that exercise that rung. Same rationale as the four
+  # resolver files above: the string names shipped behavior, not the author.
+  "tests/test_db_resolution.py:AgentsContext"
+  "tests/test_daemon_recovery.py:AgentsContext"
+  # The seed pack's three origin-story tributes are deliberate CONTENT, not
+  # identity assertions (D-5 amendment, ratified 2026-08-30) — and the test
+  # that holds their boundary must name them to check them.
+  "servers/seed_pack.py:Tom"
+  "tests/test_seed_pack.py:Tom"
+  # A D-12 guardrail that must name what it forbids: the test asserts a
+  # surface prompt says "Operator:" and never a hardcoded operator name.
+  # Renaming its literal to a name nobody uses would make it assert nothing.
+  "tests/test_pipeline_contract.py:Tom"
 )
 
 _denylist_gate() {

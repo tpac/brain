@@ -29,14 +29,16 @@ import sqlite3
 
 
 def _default_production_dir():
-    """Resolve production brain DB directory."""
-    env_dir = os.environ.get('BRAIN_DB_DIR', '')
-    if env_dir and os.path.exists(os.path.join(env_dir, 'brain.db')):
-        return env_dir
-    default = os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
-    if os.path.exists(os.path.join(default, 'brain.db')):
-        return default
-    return None
+    """Resolve production brain DB directory through the one owner.
+
+    D-13: `resolve_db_dir` is the single Python authority for where a brain
+    lives — it already walks the knob, resolved.env, the XDG service dir and
+    the legacy rung. Re-implementing that ladder here made this helper work
+    only on a machine whose brain sat at one hardcoded legacy path.
+    """
+    from servers.daemon_config import resolve_db_dir
+    d = resolve_db_dir()
+    return d if d and os.path.isfile(os.path.join(d, 'brain.db')) else None
 
 
 class IsolatedBrain:

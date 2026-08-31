@@ -60,7 +60,7 @@ class TestPatternMatching(unittest.TestCase):
                          [('2023-05-01', '2023-05-31', '2023-05')])
 
     def test_month_day_year(self):
-        self.assertEqual(_intervals("Tom finished on May 27, 2023."),
+        self.assertEqual(_intervals("Ada finished on May 27, 2023."),
                          [('2023-05-27', '2023-05-27', 'May 27, 2023')])
 
     def test_month_year(self):
@@ -114,7 +114,7 @@ class TestOverlapConsumption(unittest.TestCase):
 
     def test_day_consumes_month_and_year(self):
         # "May 27, 2023" should emit ONE day interval, not also a month + year
-        result = _intervals("Tom finished on May 27, 2023.")
+        result = _intervals("Ada finished on May 27, 2023.")
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0][0], '2023-05-27')
         self.assertEqual(result[0][1], '2023-05-27')
@@ -167,7 +167,7 @@ class TestOverlapGuard(unittest.TestCase):
     def test_two_distinct_mentions_both_emit(self):
         # "Tom finished in May 2023 on May 27, 2023" — there ARE two
         # distinct mentions (a month and a day). Both should emit.
-        result = _intervals("Tom finished in May 2023 on May 27, 2023")
+        result = _intervals("Ada finished in May 2023 on May 27, 2023")
         self.assertEqual(len(result), 2)
         starts = {r[0] for r in result}
         self.assertEqual(starts, {'2023-05-01', '2023-05-27'})
@@ -228,7 +228,7 @@ class TestExtractNodeIntervals(unittest.TestCase):
     def test_content_only(self):
         result = extract_node_intervals(
             title=None,
-            content="Tom finished on May 27, 2023",
+            content="Ada finished on May 27, 2023",
             kv_pairs=[])
         self.assertEqual(len(result), 1)
         _, _, source, _ = result[0]
@@ -445,7 +445,7 @@ class TestRegressionCases(unittest.TestCase):
     def test_real_brain_titles_extract_correctly(self):
         # These shapes were observed extracting correctly on the live brain
         cases = [
-            ("Tom read 'The Nightingale' by Kristin Hannah — May 2023, 440 pages",
+            ("Ada read 'The Nightingale' by Kristin Hannah — May 2023, 440 pages",
              '2023-05-01'),
             ("Glo project history — research, pivot, build phases (March 2026)",
              '2026-03-01'),
