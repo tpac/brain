@@ -48,11 +48,13 @@ Observation at turn-end by the Stop hook. The only scarce resource is **turns** 
 quiet window takes none, so it hears nothing. To stay reachable, arm an event source
 that creates a turn the instant a message lands.
 
-**Arm it by default — don't ask first.** If you sent a message that expects a reply,
-arming the listener is the second half of that same action, not a separate decision to
-put to the operator. It costs ~zero while the channel is quiet and self-drops the
-instant the operator speaks (see Exit) — so there's no downside to weigh and nothing to
-seek permission for. "Should I watch?" is almost always already answered: yes.
+**Arm it FIRST — before the send, not after — and don't ask.** Anything that will answer
+on this channel (a `self_send` expecting a reply, a spawned session told to report back)
+needs the listener up before you fire, or the reply lands in the gap — "I'll arm it once
+it's running" is the deferral that never happens. It costs ~zero while the channel is
+quiet and self-drops the instant the operator speaks (see Exit) — so there's no downside
+to weigh and nothing to seek permission for. Only this channel needs it: work your
+harness hands back on its own (a background task, a subagent) arrives without a listener.
 
 You know your own id from the boot banner (`MY_STREAM_ID: <id>`). Arm the listener in
 one step — `brain-watch` ships with the plugin at `hooks/scripts/brain-watch`, and every
@@ -70,9 +72,11 @@ with `TaskStop` (or it self-expires at `timeout_ms`).
 
 ## Delegate with a return path
 
-When you `spawn_task` work whose result you'll act on, make it report back: append
-to its prompt "when done, `self_send` your findings to `<MY_STREAM_ID>`" (your id
-from the boot banner), then arm the listener above. Fire-and-forget is a dropped thread.
+When you spawn a session whose result you'll act on: arm the listener above FIRST, then
+append to its prompt "when done, `self_send` your findings to `<MY_STREAM_ID>`" (your id
+from the boot banner). Fire-and-forget is a dropped thread; arming afterwards is a race
+you can lose. Make its first instruction to arm its own listener too — then it's
+steerable mid-run instead of a black box you wait on.
 
 ## SAFE-ACT boundary (a guardrail, not a suggestion)
 

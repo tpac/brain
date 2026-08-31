@@ -20,6 +20,8 @@ To add a new field:
   3. That's it. All layers pick it up.
 """
 
+import re
+
 
 # ── BRAIN_BATCH PER-OP CONTRACT ──
 # Single source of truth for brain_batch's discriminated op schemas. Three
@@ -76,10 +78,10 @@ CONNECT_TO_ITEM_SCHEMA = {
         "title": {
             "type": "string",
             "description": (
-                "Target: for an EXISTING node, its 8-char hex id copied from any "
-                "visible id: surface (the expected form — a hex-shaped value is "
-                "always treated as an id: resolved by unique id prefix, and on a "
-                "miss dropped loudly, never matched as a title); for a node "
+                "Target: for an EXISTING node, its exact 8-char hex id copied "
+                "verbatim from any visible id: surface (a hex-shaped value is "
+                "always treated as an id — never matched as a title — and on a "
+                "miss dropped loudly); for a node "
                 "created in this same batch, its exact title (siblings resolve "
                 "before catalog matches, any declaration order). NEW wins on "
                 "title collision — "
@@ -449,6 +451,30 @@ def validate_field(name, value):
     return True, None
 
 
+# The `encoding_source` convention declared above, made executable for the
+# doors that key BEHAVIOUR off provenance rather than just recording it.
+# Today that is the Thalamus door, where the same string is both the
+# per-producer budget key and the withdraw-ownership key, so free text forks
+# silently (a typo'd source gets a fresh budget and orphans its own items).
+# Shape only: the category set stays open so a new producer needs no
+# registration.
+_SOURCE_RE = re.compile(r'[a-z][a-z0-9_.-]*(:[a-z0-9_.-]+)?')
+
+
+def validate_encoding_source(value):
+    """Validate a `category:process` provenance string. Returns
+    (ok, error_msg) — validate_field's convention."""
+    if not value or not isinstance(value, str):
+        return False, ("source is required — 'category' or 'category:process' "
+                       "(e.g. 'anchor', 'encoder:sonnet', 's2:consolidation')")
+    if not _SOURCE_RE.fullmatch(value):
+        return False, ("source %r is not 'category[:process]' — lowercase "
+                       "letters, digits and _ . - , at most one colon "
+                       "(e.g. 'anchor', 'encoder:sonnet', 's2:consolidation')"
+                       % (value,))
+    return True, None
+
+
 # ── NODE FORMATTING ──
 # The standard way any LLM consumer sees a node.
 # A node is never naked — it always includes edges, corrections, metadata.
@@ -777,22 +803,34 @@ def truncation_payload(limit, rows, reason=''):
     }
 
 
+TRUNCATION_IDS_LISTED = 25   # ids named in a note before it only counts them
+
+
 def truncation_payload_ids(requested, cap):
     """The 'truncated' payload for a saturated ID-LIST read (get_traces).
 
     Same dict shape and same ⚠ banner as the windowed sibling, different
     cause: there is no window to under-cover and no +1 probe to run — the
     caller named the ids, so the overflow is exact and so is the remedy
-    (call again with the rest). `requested` is the full id list as asked for.
+    (call again with the rest). `requested` is the DEDUPED id list.
+
+    The note NAMES the dropped ids, it doesn't just count them — the banner
+    renders only `note`, so a count would make 'call again with them'
+    unactionable. The caller can't re-derive them either: the cap applies
+    after dedupe, so slicing their own input at `cap` gives the wrong set.
+    Long overflows are listed up to TRUNCATION_IDS_LISTED (the full set
+    always stays in `dropped_ids` for programmatic readers).
     """
     dropped = list(requested[cap:])
+    shown = dropped[:TRUNCATION_IDS_LISTED]
+    more = ('' if len(dropped) <= len(shown)
+            else ' +%d more (paginate)' % (len(dropped) - len(shown)))
     return {
         'limit': cap,
         'dropped_ids': dropped,
-        'note': ('%d ids requested, %d served — this door fetches %d per '
-                 'call. The %d id(s) past the cap were not looked up; call '
-                 'again with them to complete the set.'
-                 % (len(requested), cap, cap, len(dropped))),
+        'note': ('%d distinct ids requested, %d served — this door fetches '
+                 '%d per call. Not looked up, call again with these: %s%s'
+                 % (len(requested), cap, cap, ', '.join(shown), more)),
     }
 
 

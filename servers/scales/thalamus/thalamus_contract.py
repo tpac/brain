@@ -21,12 +21,11 @@ nothing here is on the eval-replay conversation-time path.
 Design: docs/THALAMUS-DESIGN.md
 """
 
-import re
-from datetime import datetime as _dt, timezone as _tz
+from datetime import datetime as _dt
 
 from servers.trace_contract import REF_TYPES as _REF_TYPES
 from servers.loud_truncation import cap_text_loud
-from servers.clock import iso_after
+from servers.clock import iso_after, resolve_offset, FUTURE
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -134,33 +133,24 @@ def kind_of(item):
 # `when` RESOLUTION  —  the door's time grammar (a presentation concern,
 # kept out of the mechanics; the table only ever sees resolved ISO)
 # ═══════════════════════════════════════════════════════════════
-_SHORTHAND_RE = re.compile(r'(\d+)\s*([mhdw])', re.IGNORECASE)
-
 
 def resolve_when(value):
     """Resolve a producer's `when` to a future ISO deliver_at, or None for
     "next opportunity". Accepts relative shorthand ('30m', '2h', '3d', '1w'),
-    an ISO timestamp literal (normalized via fromisoformat), or ''/None/'now'.
-    Anything else raises ValueError — a malformed deadline must fail loud at
-    the door, not silently become an immediate delivery."""
+    an ISO timestamp literal, or ''/None/'now'. Anything else raises
+    ValueError — a malformed deadline must fail loud at the door, not
+    silently become an immediate delivery.
+
+    The grammar itself lives in clock.py, shared with recall_episodes'
+    lookback bounds; what stays here is what is genuinely the door's — the
+    'now'/empty convention (a queue has a "next opportunity"; a lookback
+    bound does not) and the door-flavoured error message."""
     if not value or str(value).strip().lower() == 'now':
         return None
-    s = str(value).strip()
-    m = _SHORTHAND_RE.fullmatch(s)
-    if m:
-        n, unit = int(m.group(1)), m.group(2).lower()
-        kw = {'m': {'minutes': n}, 'h': {'hours': n},
-              'd': {'days': n}, 'w': {'days': 7 * n}}[unit]
-        return iso_after(**kw)
     try:
-        parsed = _dt.fromisoformat(s.replace('Z', '+00:00'))
-    except ValueError:
-        raise ValueError(
-            "thalamus: when=%r is neither shorthand ('30m','2h','3d','1w') "
-            "nor an ISO timestamp" % (value,))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_tz.utc)
-    return parsed.astimezone(_tz.utc).isoformat()
+        return resolve_offset(value, direction=FUTURE)
+    except ValueError as e:
+        raise ValueError('thalamus: when=%r %s' % (value, e))
 
 
 def window_for(needs_answer, deliver_at):
@@ -187,7 +177,7 @@ def extend_window(needs_answer, new_deliver, current_expires):
 # `for_whom` RESOLUTION  —  producer intent → route
 # ═══════════════════════════════════════════════════════════════
 FOR_WHOM_LIVE = ('live', 'live-now', 'all-live')  # → courier broadcast, no queue row lifecycle
-FOR_WHOM_ALL = 'all'                              # → audience 'all' (window)
+FOR_WHOM_ALL = 'all'                              # → AUDIENCE_EVERY (window)
 
 
 def resolve_for_whom(for_whom, needs_answer):

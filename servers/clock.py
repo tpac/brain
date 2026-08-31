@@ -192,6 +192,74 @@ def iso_after(hours: float = 0, minutes: float = 0,
     return dt.astimezone(_dt.timezone.utc).isoformat()
 
 
+# The relative-time grammar a producer or caller WRITES, resolving into the
+# iso_cutoff/iso_after pair above. It is a published contract — quoted
+# verbatim in the recall_episodes / remind / thalamus_resolve tool
+# descriptions — so it lives in one place or those descriptions become true
+# for one caller and false for the other.
+PAST = 'past'      # shorthand runs backwards → iso_cutoff (a lookback bound)
+FUTURE = 'future'  # shorthand runs forwards  → iso_after (a deadline)
+
+_OFFSET_RE = _re.compile(r'(\d+)\s*([mhdw])', _re.IGNORECASE)
+
+
+def resolve_offset(value: Any, *, direction: str) -> str:
+    """Resolve a relative-time expression to an ISO UTC timestamp.
+
+    Accepts the shorthand ('30m', '2h', '3d', '1w', case-insensitive) or an
+    ISO timestamp literal. ``direction`` picks which way the shorthand runs;
+    an ISO literal is absolute and ignores it.
+
+    Always returns the ``'…T…+00:00'`` UTC form the rest of this file emits,
+    so the result stays lex-comparable against stored timestamps. An
+    offset-bearing literal is CONVERTED to UTC rather than passed through
+    wearing its own offset — ``'2026-09-01T12:00:00+03:00'`` sorts as later
+    than ``'2026-09-01T09:30:00+00:00'`` as text while naming an earlier
+    instant, which silently shifts any window it bounds. The literal goes
+    through ``fromisoformat`` rather than a date-prefix check so that junk
+    and impossible dates are REJECTED and the space-separated form is
+    re-emitted as ISO-T (see iso_cutoff on the ``'T' > ' '`` lex hazard).
+
+    Raises ValueError on anything else — including an offset too large to
+    land inside datetime's range. A malformed or unrepresentable deadline
+    must fail loud, never become an immediate delivery or a disabled filter,
+    and every caller here guards on ValueError alone.
+
+    The message is a bare REASON ("is neither…", "resolves outside…") with no
+    subject: callers own their empty-value convention and supply their own
+    subject and framing, so the composed sentence names the offending
+    parameter AND why it was refused. A caller that swallows the reason tells
+    a producer its valid-but-out-of-range shorthand "is not shorthand".
+    """
+    if direction not in (PAST, FUTURE):
+        raise ValueError('resolve_offset: direction=%r is not %r or %r'
+                         % (direction, PAST, FUTURE))
+    s = str(value).strip()
+    m = _OFFSET_RE.fullmatch(s)
+    if m:
+        n, unit = int(m.group(1)), m.group(2).lower()
+        kw = {'m': {'minutes': n}, 'h': {'hours': n},
+              'd': {'days': n}, 'w': {'days': 7 * n}}[unit]
+        try:
+            return iso_cutoff(**kw) if direction == PAST else iso_after(**kw)
+        except OverflowError:
+            # datetime's range, surfaced as the door's own vocabulary: the
+            # callers catch ValueError, so an OverflowError here would sail
+            # past their guards and out as an opaque failure.
+            raise ValueError(
+                'resolves outside the representable date range — use a '
+                'smaller offset')
+    try:
+        parsed = _dt.datetime.fromisoformat(s.replace('Z', '+00:00'))
+    except ValueError:
+        raise ValueError(
+            "is neither relative shorthand ('30m','2h','3d','1w') nor an "
+            "ISO timestamp ('2026-06-14T12:00:00')")
+    if parsed.tzinfo is None:      # storage is tz-aware — match it
+        parsed = parsed.replace(tzinfo=_dt.timezone.utc)
+    return parsed.astimezone(_dt.timezone.utc).isoformat()
+
+
 def conversation_now(messages: Optional[Iterable[Any]] = None,
                       session_started_at: Optional[Any] = None,
                       brain=None,

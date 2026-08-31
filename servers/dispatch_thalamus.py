@@ -38,7 +38,7 @@ def _handle_remind(brain, args, graph_changes):
         refs=args.get('refs'),
         dedup_key=args.get('dedup_key'),
         session_id=caller_session(args))
-    if not result.get('filed'):
+    if not result.get('ok'):
         return {"ok": False, "error": result.get('error', 'thalamus.file failed')}
     return {"ok": True, "result": result}
 

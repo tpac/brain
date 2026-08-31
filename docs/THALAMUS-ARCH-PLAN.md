@@ -1,6 +1,84 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-08-30 (late) — canonical-pull arc SHIPPED end-to-end; queue resumes at Step 7 ◀ ACTIVE ARC
+## §2026-08-31 — Steps 7, 9 and 11-partial SHIPPED; queue resumes at Step 8 ◀ ACTIVE ARC
+
+**Done since the section below:** Steps 7 and 9, each reviewed pre-commit
+(the review window is pre-commit — merging to main IS deploying).
+
+- **Step 7 — door polish (b7e364a).** `file()` 139 → 66 lines: validate,
+  resolve the grammars, route to `_file_live` / `_file_queued`, both writing
+  through one `_insert_item` (one INSERT, one id-minting site, KeyError on a
+  missing column rather than a silent NULL). ONE envelope module-wide —
+  `{'ok', 'id'}`, with `filed` a compatibility alias **for one release**,
+  pinned by a test that it never disagrees. `source` validated against the
+  `category:process` grammar via a new `contract.validate_encoding_source`
+  — the convention had been declared in contract.py's field spec and
+  enforced nowhere. Shape only; the category set stays open so a Phase 2
+  producer needs no registration.
+- **Two pre-existing defects the review surfaced (cd36029).** The
+  `thalamus_items` DDL still defaulted `audience` to the pre-rename `'once'`
+  (v3 renamed rows, not the column default) — a value outside the closed set,
+  so any insert omitting the column would never deliver and would die
+  silently. Latent only because `_insert_item` names every column. Existing
+  installs keep the old stored default; SQLite cannot alter one without a
+  table rebuild, and the single-writer guard makes it unreachable. And the
+  dedup change-gate compared three fields, so a re-file that flipped
+  `needs_answer` was read as identical — a note could not be escalated into
+  an ask. It now compares (and sets) all six producer-controlled delivery
+  attributes: a re-file leaves the row in the state the producer described,
+  or it is a no-op.
+- **Step 9 — one relative-time grammar (c746023).**
+  `clock.resolve_offset(value, *, direction)`; each caller keeps its own
+  empty-value convention, `'now'`, and error subject. The two copies had
+  already drifted and one was WRONG: an offset-bearing literal kept its
+  offset in the trace bound, so it sorted by text rather than by the instant
+  it named and silently shifted the window. Review also found that a large
+  shorthand raised **OverflowError**, which both doors' `except ValueError`
+  missed — it escaped as an opaque failure. Fixed, and then the fix's own
+  message had to be recomposed: the shared function raises a bare REASON,
+  each caller supplies the SUBJECT, or a valid-but-out-of-range shorthand
+  gets told it "is not shorthand".
+
+- **Step 11's ready items — DONE (e0f1ea8).** `_ITEM_COLS` is now the single
+  tuple of column names; `_ITEM_SELECT` joins it, `_INSERT_COLS` filters
+  `armed_epoch` out of it, `_row_to_item` zips it. The hazard removed: rows
+  were mapped by numeric position against a column list that, being a string,
+  nothing could validate against — a column added mid-list shifted every
+  field after it into the wrong key. Position is now irrelevant, and the
+  SELECT cannot diverge from the mapping by construction. The package
+  `__init__.py` answers "why under `scales/` when it isn't a scale" where its
+  neighbour answers the same question: no integrate loop, and a delivery is
+  traced as an s0 K event beside `self_message`, so it rides the S0 loop as
+  an incoming correspondent. NOTE the plan's earlier framing was wrong — the
+  LATERAL-SCALES "prove it's not just async S0" burden belongs to the
+  `operator` channel (async Anchor↔Tom, deprioritized), not to this package,
+  whose recipient is Anchor.
+
+**Step 8 is now BIGGER and changed subsystems** (operator ruling
+id:7c7e805c): Thalamus owns NO transport. It must not deliver by itself,
+only leverage messaging — so boot delivery requires giving the MESSAGING
+system a boot leg FIRST (a self-channel change), after which Thalamus rides
+it and retires its own direct boot pull; the delivery report then comes
+along for free. The June failure does not condemn this: boot reaches the
+model through `additionalContext` and demonstrably lands — what failed was
+`additionalContext` **mid-thread at PreToolUse**, competing with recall.
+
+**Step 10 narrowed** (ruling id:1e22a2f0): the composed Stop reason WARNS
+above 5000 chars — no cap yet. Each source already caps itself at 4000, so
+4000 would fire on one legitimate full block and ~8000 is both full; 5000 is
+where more than one channel is contributing meaningfully. To the errors
+table, the channel that has a reader. The `compose_block_loud` extraction is
+untouched by that ruling and stands as planned.
+
+**Queue:** Step 8 (fresh session — new subsystem, and the biggest of the
+three), then Step 10, then what remains of Step 11 — its boot-renderer
+comment WAITS for Step 8 (what boot commits changes when the boot leg moves)
+and its sweep-block consolidation waits for 7–10 per ruling id:23cd4d61.
+Nothing else in the plan is open.
+
+---
+
+## §2026-08-30 (late) — canonical-pull arc SHIPPED end-to-end; Steps 7/9 now done above
 
 **Read first:** ship milestones id:0cbc1e53 (canonical pull + TTL) and
 id:b0940238 (review fix pass); ruling id:d42a49ce.

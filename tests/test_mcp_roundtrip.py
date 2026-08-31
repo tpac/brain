@@ -354,6 +354,11 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result['truncated']['dropped_ids'],
                          asked[TRACE_BATCH_MAX_IDS:])
         self.assertIn('call again', result['truncated']['note'])
+        # The note must NAME the dropped ids, not just count them: the banner
+        # renders only `note`, and the caller can't re-derive the set (the cap
+        # applies after dedupe, so slicing their own input at 50 is wrong).
+        for dropped in result['truncated']['dropped_ids']:
+            self.assertIn(dropped, result['truncated']['note'])
         # The served page still answered: the one real id is in it.
         self.assertEqual([r['id'] for r in result['traces']], [tid])
 
@@ -508,6 +513,12 @@ class TestMCPRoundTrip(BrainTestBase):
                          '2026-06-14T00:00:00+00:00')
         self.assertEqual(_resolve_time_bound('2026-06-14 12:00:00'),
                          '2026-06-14T12:00:00+00:00')
+        # An offset-bearing literal is CONVERTED to UTC, not passed through
+        # wearing its own offset: as text '…12:00:00+03:00' sorts AFTER
+        # '…09:30:00+00:00' while naming an earlier instant, so the window it
+        # bounds silently shifted.
+        self.assertEqual(_resolve_time_bound('2026-06-14T12:00:00+03:00'),
+                         '2026-06-14T09:00:00+00:00')
         for junk in ('1mo', 'garbage', '7', '2026-13-99', '2026-06-14xyz'):
             with self.assertRaises(ValueError):
                 _resolve_time_bound(junk)
@@ -1070,7 +1081,8 @@ class TestMCPRoundTrip(BrainTestBase):
         boot delivery; the item lands open with a window."""
         result = self._dispatch("remind", {
             "what": "roundtrip: decide the thing", "needs_answer": True})
-        self.assertTrue(result["filed"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["filed"])  # one-release compatibility alias
         self.assertTrue(result["id"].startswith("th_"))
         self.assertEqual(result["route"], "queue")
         self.assertEqual(result["audience"], "every_session")
