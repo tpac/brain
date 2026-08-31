@@ -94,7 +94,11 @@ def _check_judge() -> dict:
 def _check_embedder() -> dict:
     """Embedder status — read from /tmp status file written by the daemon."""
     try:
-        status_path = "/tmp/brain-status-%d.json" % os.getuid()
+        # Instance-keyed like daemon_config.get_status_path() (the dashboard is
+        # deliberately servers-decoupled, so it mirrors the env protocol).
+        inst = os.environ.get("BRAIN_INSTANCE", "").strip()
+        status_path = "/tmp/brain-status-%d%s.json" % (
+            os.getuid(), "-" + inst if inst else "")
         if not os.path.exists(status_path):
             return {'alive': False, 'error': 'No status file'}
         with open(status_path) as f:

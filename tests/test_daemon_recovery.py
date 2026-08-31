@@ -800,6 +800,7 @@ class TestSupervisorPhaseScoping(unittest.TestCase):
     def _make(self, tmp):
         from servers import daemon_server as ds
         d = ds.BrainDaemon.__new__(ds.BrainDaemon)   # skip __init__ — no pool/brain
+        d.db_path = os.path.join(tmp, "brain.db")    # start()'s db lock keys on it
         d._restart_count = 0
         d._reload_requested = False
         d._run_started_at = 0
@@ -817,6 +818,8 @@ class TestSupervisorPhaseScoping(unittest.TestCase):
         lock_path = os.path.join(tmp, "daemon.lock")
         with patch("shutil.rmtree"), \
              patch("servers.daemon_server.get_lock_path", return_value=lock_path), \
+             patch("servers.daemon_server.get_db_lock_path",
+                   return_value=os.path.join(tmp, "db.lock")), \
              patch("servers.daemon_server.signal.signal"), \
              patch("servers.daemon_server.atexit.register"), \
              patch("servers.daemon_server.time.sleep"):
@@ -1146,6 +1149,8 @@ class TestExecReloadInPlace(unittest.TestCase):
                 d._exec_reload = manager.exec_reload
                 with patch("servers.daemon_server.get_lock_path",
                            return_value=os.path.join(tmp, "daemon.lock")), \
+                     patch("servers.daemon_server.get_db_lock_path",
+                           return_value=os.path.join(tmp, "db.lock")), \
                      patch("servers.daemon_server.signal.signal"), \
                      patch("servers.daemon_server.atexit.register"), \
                      patch("servers.daemon_server.time.sleep"):
