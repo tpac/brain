@@ -109,6 +109,61 @@ def corpus_config_hash(config: Dict[str, Any]) -> str:
     return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:6]
 
 
+# ─── Variant pins (launcher parity) ─────────────────────────────────────────
+
+# Frozen historical baseline for the variant address keys: the implicit value
+# of every valid corpus built before the variants joined the address
+# (production has exported both via brain-env.sh throughout). NEVER update
+# this pair to track production — it exists so pre-fix corpora keep their
+# hashes, and a future production variant flip joins the address precisely
+# BECAUSE it differs from this frozen pair.
+_ADDRESS_BASELINE_VARIANTS = {"surface_variant": "v5_agentic",
+                              "recall_variant": "laf_v1"}
+
+
+def require_variant_pins() -> Dict[str, str]:
+    """Refuse to run in an unpinned shell; return the effective variant pair.
+
+    Every longmem leg encodes or recalls under BRAIN_SURFACE_VARIANT /
+    BRAIN_RECALL_VARIANT. The code defaults (v4 / baseline) differ from the
+    production pins, so an unpinned shell silently measures a different
+    pipeline than the one it reports — same command, same corpus hash,
+    different graph. Every entry point (build, sweep, ab, requery) calls this
+    before touching a brain.
+    """
+    surface = os.environ.get("BRAIN_SURFACE_VARIANT")
+    recall = os.environ.get("BRAIN_RECALL_VARIANT")
+    if not surface or not recall:
+        raise SystemExit(
+            "[longmem] BRAIN_SURFACE_VARIANT / BRAIN_RECALL_VARIANT unset — "
+            "this shell is not production-pinned (launch via ./dev, which "
+            "sources hooks/scripts/brain-env.sh). Refusing: an unpinned run "
+            "measures a different pipeline than the one it reports.")
+    return {"surface_variant": surface, "recall_variant": recall}
+
+
+def address_variants(config: Dict[str, Any], pins: Dict[str, str]) -> None:
+    """Join non-baseline variants to the content address. Absent-on-baseline
+    (same pattern as s1e_lived), so every valid pre-fix corpus — all built
+    v5_agentic/laf_v1 via ./dev — keeps its hash."""
+    for key, baseline in _ADDRESS_BASELINE_VARIANTS.items():
+        if pins[key] != baseline:
+            config[key] = pins[key]
+
+
+def check_variant_pins(manifest: Dict[str, Any], pins: Dict[str, str],
+                       leg: str) -> None:
+    """Read side of the build-time variant_pins stamp: refuse to score a
+    corpus under a different pipeline than it was built with. Pre-stamp
+    manifests carry no variant_pins and pass (their arms were verified via
+    per-item traces)."""
+    stamped = manifest.get("variant_pins")
+    if stamped and stamped != pins:
+        raise SystemExit(
+            "[%s] variant mismatch: corpus built under %s, shell is %s — "
+            "refusing to score one pipeline as another." % (leg, stamped, pins))
+
+
 # ─── S2 delta ────────────────────────────────────────────────────────────
 
 def summarize_s2_deltas(deltas: List[Dict[str, Any]]) -> Dict[str, Any]:

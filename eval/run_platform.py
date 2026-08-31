@@ -27,7 +27,6 @@ def main():
     parser = argparse.ArgumentParser(description="Eval Platform Runner")
     parser.add_argument("--suite", choices=["encoding", "e2e", "all"], default="all")
     parser.add_argument("--model", default="claude-sonnet-4-6")
-    parser.add_argument("--db", default=os.path.expanduser("~/AgentsContext/brain/brain.db"))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--category", help="Filter conversations to category")
     parser.add_argument("--save", action="store_true")

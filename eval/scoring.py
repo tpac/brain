@@ -12,10 +12,6 @@ from pathlib import Path
 from typing import List, Dict, Optional, Set
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from tests.metrics import (
-    precision_at_k, recall_at_k, mrr, ndcg_at_k,
-    hit_rate_at_k, compute_all_metrics, aggregate_metrics,
-)
 
 
 # ── Encoding KPIs ──
@@ -158,25 +154,6 @@ def _richness_score(nodes: List[Dict]) -> float:
 
 
 # ── Decoding KPIs ──
-
-def score_decoding_query(retrieved_ids: List[str], expected_ids: Set[str],
-                         latency_ms: float = 0) -> Dict:
-    """Score a single decoding query.
-
-    Args:
-        retrieved_ids: Ordered node IDs from recall
-        expected_ids: Set of expected node IDs
-        latency_ms: Query latency in milliseconds
-    """
-    return {
-        "recall_at_3": recall_at_k(retrieved_ids, expected_ids, 3),
-        "recall_at_8": recall_at_k(retrieved_ids, expected_ids, 8),
-        "mrr": mrr(retrieved_ids, expected_ids),
-        "hit_at_3": hit_rate_at_k(retrieved_ids, expected_ids, 3),
-        "hit_at_8": hit_rate_at_k(retrieved_ids, expected_ids, 8),
-        "latency_ms": latency_ms,
-    }
-
 
 def score_decoding_suite(query_results: List[Dict]) -> Dict:
     """Aggregate decoding results across all queries."""

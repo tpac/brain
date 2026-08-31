@@ -48,7 +48,8 @@ from eval.longmem.judge import judge_one
 from eval.longmem.classifier import classify_failure, _read_s1r_trace
 from eval.longmem.fresh_brain import create_fresh_eval_brain
 from eval.longmem.corpus import (load_manifest, corpus_item_dir,
-                                 ingest_session_id)
+                                 ingest_session_id, require_variant_pins,
+                                 check_variant_pins)
 
 
 def _load_env() -> None:
@@ -121,6 +122,10 @@ def sweep(corpus_hash: str, surface: str, variance: int, label: str,
         print(f"[sweep] no corpus {corpus_hash} — build it first with build_corpus.py",
               file=sys.stderr)
         sys.exit(1)
+
+    # Launcher parity, read side: refuse an unpinned shell, and refuse to
+    # score a corpus under a different pipeline than it was built with.
+    check_variant_pins(manifest, require_variant_pins(), "sweep")
 
     if surface != "active":
         os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"

@@ -38,15 +38,12 @@ class TestCorpusConfigHash(unittest.TestCase):
 
 
 class TestVariantAddressing(unittest.TestCase):
-    """Locks the launcher-parity guard: builds refuse to run in an unpinned
-    shell, and a non-baseline variant joins the content address (a baseline
-    build keeps every pre-fix corpus hash)."""
+    """Locks the launcher-parity guard: every leg refuses an unpinned shell,
+    a non-baseline variant joins the content address (a baseline build keeps
+    every pre-fix corpus hash), and the sweep leg refuses a corpus stamped
+    with different pins than the live shell."""
 
     def setUp(self):
-        from eval.longmem.build_corpus import (
-            _effective_variant_pins, _address_variants)
-        self._pins = _effective_variant_pins
-        self._address = _address_variants
         self._saved = {k: os.environ.get(k) for k in
                        ("BRAIN_SURFACE_VARIANT", "BRAIN_RECALL_VARIANT")}
 
@@ -57,37 +54,66 @@ class TestVariantAddressing(unittest.TestCase):
             else:
                 os.environ[k] = v
 
-    def test_unpinned_shell_refuses(self):
-        os.environ.pop("BRAIN_SURFACE_VARIANT", None)
-        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
+    def _pin(self, surface, recall):
+        for k, v in (("BRAIN_SURFACE_VARIANT", surface),
+                     ("BRAIN_RECALL_VARIANT", recall)):
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_unpinned_surface_refuses(self):
+        from eval.longmem.corpus import require_variant_pins
+        self._pin(None, "laf_v1")
         with self.assertRaises(SystemExit):
-            self._pins("active")
+            require_variant_pins()
+
+    def test_unpinned_recall_refuses(self):
+        from eval.longmem.corpus import require_variant_pins
+        self._pin("v5_agentic", None)
+        with self.assertRaises(SystemExit):
+            require_variant_pins()
 
     def test_baseline_pins_leave_hash_stable(self):
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
-        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
+        from eval.longmem.corpus import require_variant_pins, address_variants
+        self._pin("v5_agentic", "laf_v1")
         cfg = {"s1e": "active", "qids": ["a"]}
         before = corpus_config_hash(cfg)
-        self._address(cfg, self._pins("active"))
+        address_variants(cfg, require_variant_pins())
         self.assertEqual(before, corpus_config_hash(cfg),
                          "baseline variants must not invalidate pre-fix corpora")
 
     def test_nonbaseline_variant_changes_hash(self):
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
-        os.environ["BRAIN_RECALL_VARIANT"] = "baseline"
+        from eval.longmem.corpus import require_variant_pins, address_variants
+        self._pin("v5_agentic", "baseline")
         cfg = {"s1e": "active", "qids": ["a"]}
         before = corpus_config_hash(cfg)
-        self._address(cfg, self._pins("active"))
+        address_variants(cfg, require_variant_pins())
         self.assertEqual(cfg.get("recall_variant"), "baseline")
         self.assertNotEqual(before, corpus_config_hash(cfg))
 
     def test_ingest_surface_override_forces_agentic(self):
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v4"
-        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
-        pins = self._pins("eval/surface_v12_prompt.txt")
+        from eval.longmem.build_corpus import _resolve_build_pins
+        self._pin("v4", "laf_v1")
+        pins = _resolve_build_pins("eval/surface_v12_prompt.txt")
         self.assertEqual(pins["surface_variant"], "v5_agentic",
                          "a surface override runs the agentic loop regardless "
                          "of the shell pin")
+        self.assertEqual(os.environ["BRAIN_SURFACE_VARIANT"], "v5_agentic",
+                         "the resolver owns the env pin — address and run agree")
+
+    def test_sweep_refuses_mismatched_stamp(self):
+        from eval.longmem.corpus import require_variant_pins, check_variant_pins
+        self._pin("v5_agentic", "baseline")
+        manifest = {"variant_pins": {"surface_variant": "v5_agentic",
+                                     "recall_variant": "laf_v1"}}
+        with self.assertRaises(SystemExit):
+            check_variant_pins(manifest, require_variant_pins(), "sweep")
+
+    def test_prestamp_manifest_passes(self):
+        from eval.longmem.corpus import require_variant_pins, check_variant_pins
+        self._pin("v5_agentic", "laf_v1")
+        check_variant_pins({}, require_variant_pins(), "sweep")
 
 
 class TestSourceToken(unittest.TestCase):

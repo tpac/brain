@@ -572,6 +572,9 @@ def main():
                              "so the agentic tool-use loop runs. Live brain is untouched.")
     args = parser.parse_args()
 
+    from eval.longmem.corpus import require_variant_pins
+    require_variant_pins()   # launcher parity — refuse an unpinned shell
+
     # If --surface-override is set, opt the harness into the agentic variant.
     # Live daemon is unaffected — this only sets the env var for THIS process.
     if args.surface_override:

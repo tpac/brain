@@ -243,6 +243,9 @@ def main():
                          "e.g. effort via interaction parameters)")
     args = ap.parse_args()
 
+    from eval.longmem.corpus import require_variant_pins
+    require_variant_pins()   # launcher parity — both arms must encode pinned
+
     with open(args.oracle) as f:
         data = json.load(f)
     items = {it["question_id"]: it for it in data if it["question_id"] in args.qids}

@@ -37,6 +37,7 @@ from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
     load_manifest, save_manifest, source_token, interaction_token,
     summarize_s2_deltas, merge_s2_totals, ingest_session_id,
+    require_variant_pins, address_variants,
 )
 from tests.interaction_override import override_interaction
 
@@ -287,51 +288,18 @@ def _k_fingerprints(override_templates: dict = None) -> dict:
     return fps
 
 
-# Frozen historical baseline for the variant address keys below — the implicit
-# value of every valid corpus built before the variants joined the address
-# (production has exported both via brain-env.sh throughout). NEVER update this
-# pair to track production: it exists so pre-fix corpora keep their hashes, and
-# a future production variant flip joins the address precisely BECAUSE it
-# differs from this frozen pair.
-_ADDRESS_BASELINE_VARIANTS = {"surface_variant": "v5_agentic",
-                              "recall_variant": "laf_v1"}
+def _resolve_build_pins(ingest_surface: str) -> dict:
+    """Effective variant pair for this build, env applied BEFORE the hash.
 
-
-def _effective_variant_pins(ingest_surface: str) -> dict:
-    """Resolve the surface/recall variants this build will actually run.
-
-    Parity used to depend on the launcher: `./dev` sources brain-env.sh and
-    exports BRAIN_SURFACE_VARIANT / BRAIN_RECALL_VARIANT, while a bare
-    `python3` silently fell back to the code defaults (v4 / baseline) and
-    encoded a DIFFERENT graph under the SAME corpus hash — the cache then
-    handed back whichever was built first. Refuse to build when either is
-    unset, and return the effective pair for the content address.
-
-    A non-"active" ingest_surface forces the agentic-loop env pin after the
-    hash is computed (see the env-set below), so its effective surface is
-    v5_agentic regardless of the shell.
+    A surface-override build runs the agentic loop, so the env pin is applied
+    here — the one place — and the returned pair is what the address and the
+    run both see. Guard + addressing live in corpus.py (the addressing owner).
     """
-    surface = os.environ.get("BRAIN_SURFACE_VARIANT")
-    recall = os.environ.get("BRAIN_RECALL_VARIANT")
-    if not surface or not recall:
-        raise SystemExit(
-            "[corpus] BRAIN_SURFACE_VARIANT / BRAIN_RECALL_VARIANT unset — "
-            "this shell is not production-pinned (launch via ./dev, which "
-            "sources hooks/scripts/brain-env.sh). Refusing to build: an "
-            "unpinned build encodes a different graph under the same hash.")
+    pins = require_variant_pins()
     if ingest_surface != "active":
-        surface = "v5_agentic"
-    return {"surface_variant": surface, "recall_variant": recall}
-
-
-def _address_variants(config: dict, pins: dict) -> None:
-    """Join the effective variants to the content address — only when they
-    differ from the frozen baseline, so every valid pre-fix corpus (all built
-    v5_agentic/laf_v1 via ./dev) keeps its hash. Same absent-on-baseline
-    pattern as s1e_lived."""
-    for key, baseline in _ADDRESS_BASELINE_VARIANTS.items():
-        if pins[key] != baseline:
-            config[key] = pins[key]
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+        pins["surface_variant"] = "v5_agentic"
+    return pins
 
 
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
@@ -390,7 +358,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                   flush=True)
 
     # Content address: everything that determines the encoded graph.
-    variant_pins = _effective_variant_pins(ingest_surface)
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "s1e": source_token(s1e),
         "ingest_surface": source_token(ingest_surface),
@@ -398,7 +366,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
-    _address_variants(config, variant_pins)
+    address_variants(config, variant_pins)
     # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
     # encoded graph, so they're part of the content address — a v22 corpus and a
     # v24+v7 corpus get distinct hashes. Addressed on the template CONTENT: a
@@ -427,10 +395,6 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         print(f"[corpus] CACHE HIT — manifest exists at {manifest_path(h)}; "
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
-
-    # Surface override needs the agentic-loop env var, same as harness.
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
 
     os.makedirs(corpus_dir(h), exist_ok=True)
 
@@ -647,7 +611,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     n_user_turns = sum(sum(1 for t in e["session"] if t.get("role") == "user")
                        for e in plan)
     qid_list = sorted(it["question_id"] for it in picked)
-    variant_pins = _effective_variant_pins(ingest_surface)
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "pooled": True,
         # Harness generation joins the content address: a graph-changing
@@ -665,7 +629,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
-    _address_variants(config, variant_pins)
+    address_variants(config, variant_pins)
     config["k_fingerprints"] = _k_fingerprints()
     config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
@@ -677,8 +641,6 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
 
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
     os.makedirs(corpus_dir(h), exist_ok=True)
 
     pooled_path = corpus_item_dir(h, "pooled")
