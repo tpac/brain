@@ -782,7 +782,7 @@ def main():
                    help="'active' (the resolved default) or a path to an s1e prompt file to encode with")
     p.add_argument("--ingest-surface", dest="ingest_surface", default="active",
                    help="'active' or a path to a surface prompt file used during ingest recall")
-    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=2,
+    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=4,
                    help="S2 fires every N encodings during ingest (default 2)")
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")

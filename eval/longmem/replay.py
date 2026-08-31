@@ -19,7 +19,10 @@ import time
 from typing import List, Dict, Any, Optional, Tuple
 
 
-S2_EVERY_N_ENCODINGS = 2   # S2 fires every 2 encodings during ingestion
+S2_EVERY_N_ENCODINGS = 4   # S2 fires every 4 encodings during ingestion — closer
+                           # to production, whose 1h min-interval accrues several
+                           # encodes per cycle (Tom, 2026-08-31); finalize_item's
+                           # loop-until-quiet still flushes at item end
 S2_FINAL_MAX_PASSES = 10   # Safety cap — final flush loops until every unit reports
                            # no-op (skipped / 0 actions) or this cap is hit
 
