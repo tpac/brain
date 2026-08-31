@@ -486,6 +486,24 @@ class TestVocabulary(ThalamusBase):
             self.assertIn(member, params,
                           'pull predicate does not bind audience %r' % member)
 
+    def test_ddl_audience_default_is_inside_the_closed_set(self):
+        """The CREATED table's audience default must be a member of the closed
+        set. A default outside it matches neither pull-predicate branch, so any
+        insert omitting the column writes a row that never delivers and dies
+        silently at expiry — below the reach of file()'s runtime tripwire. The
+        v3 rename updated existing rows but left the column default at 'once'.
+        """
+        default = None
+        for col in self.brain.logs_conn.execute(
+                'PRAGMA table_info(thalamus_items)').fetchall():
+            if col[1] == 'audience':
+                default = (col[4] or '').strip("'")
+        self.assertIn(
+            default, tc.AUDIENCES,
+            'thalamus_items.audience DDL default %r is not in %s — an insert '
+            'omitting the column would be undeliverable' % (default,
+                                                            tc.AUDIENCES))
+
     def test_kind_is_one_derivation_for_verb_and_span(self):
         self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
         self.assertEqual(tc.kind_of({'deliver_at': '2027-01-01T00:00:00+00:00'}),
