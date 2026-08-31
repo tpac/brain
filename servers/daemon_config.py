@@ -265,6 +265,23 @@ def _validate_instance_env() -> None:
             "BRAIN_DAEMON_PORT and BRAIN_DB_DIR in the environment — an "
             "instance inheriting production's port or DB dir would collide "
             "with the live daemon." % inst)
+    # Presence is not enough: brain-env.sh unconditionally exports the uid
+    # formula when the var is unset, so every shell-launched process arrives
+    # here with production's port already "set". Refuse production's VALUE —
+    # the formula and the user env file are the two sources production reads.
+    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
+        os.path.expanduser('~'), '.config')
+    prod_port = (_read_env_file_key(os.path.join(xdg, 'brain', 'env'),
+                                    'BRAIN_DAEMON_PORT')
+                 or str(47200 + (os.getuid() % 100)))
+    if os.environ["BRAIN_DAEMON_PORT"].strip() == prod_port.strip():
+        raise SystemExit(
+            "[daemon-config] BRAIN_INSTANCE=%r has BRAIN_DAEMON_PORT=%s — "
+            "production's port (the shell fills it in when unset). Pick a "
+            "distinct port for the instance." % (inst, prod_port.strip()))
+    # The DB-dir half of this collision is enforced where it can't be spoofed:
+    # the daemon's bind-time DB lock (get_db_lock_path) makes a second writer
+    # on any one brain.db exit as a duplicate regardless of env.
 
 
 _validate_instance_env()
@@ -335,6 +352,19 @@ def get_pid_path() -> str:
 def get_lock_path() -> str:
     """Get the daemon lock file path for startup serialization."""
     return os.path.join("/tmp", "brain-daemon-{}{}.lock".format(os.getuid(), _instance_suffix()))
+
+
+def get_db_lock_path(db_path: str) -> str:
+    """Writer-identity lock keyed on the BRAIN, not the instance label: one
+    daemon per brain.db, machine-wide, regardless of BRAIN_INSTANCE. This is
+    the backstop the instance-keyed singleton lock cannot provide — a
+    mis-enved entity whose launch ladder resolves onto production's DB exits
+    as a duplicate instead of becoming a silent second writer (the
+    index-corruption class). Keyed on the realpath'd DB directory so symlinked
+    and relative spellings of one brain share one inode."""
+    real = os.path.realpath(os.path.dirname(os.path.abspath(db_path)))
+    return os.path.join("/tmp", "brain-db-{}-{}.lock".format(
+        os.getuid(), hashlib.sha1(real.encode()).hexdigest()[:12]))
 
 
 def get_startup_lock_path() -> str:

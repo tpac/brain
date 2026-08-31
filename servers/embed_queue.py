@@ -70,7 +70,10 @@ TRACE_EMBED_WINDOW_DAYS = 30
 _queue: Set[str] = set()           # node ids needing vector + date recomputation
 _edge_queue: Set[str] = set()      # edge ids needing date recomputation
 _lock = threading.Lock()
-_drain_busy = threading.Lock()  # non-blocking; used for skip-tick semantics
+_drain_busy = threading.Lock()  # serializes a WHOLE tick's stages (worker skips
+                                # its tick non-blocking; drain_now waits up to
+                                # DRAIN_NOW_TIMEOUT_S) — two threads must never
+                                # interleave transactions on conn_bg_writer
 _worker_started = False
 # Coverage-sweep throttle. Stamped at worker start, NOT left at 0.0: the
 # staleness floor below compares elapsed time, and 0.0 makes "time since last
@@ -168,26 +171,51 @@ def _is_shutdown_requested() -> bool:
     return _shutdown_event.is_set()
 
 
+# How long an explicit drain waits for the tick lock before reporting busy.
+# Bounded: drain_now runs on a dispatch-pool thread, and an unbounded wait
+# behind a cold-start multi-minute worker drain would park dispatch threads
+# until the pool starves and the health monitor kickstarts a busy-but-healthy
+# daemon. A busy answer is honest; the caller retries.
+DRAIN_NOW_TIMEOUT_S = 60.0
+
+
 def drain_now(brain) -> dict:
-    """One synchronous worker tick, on the caller's thread: node/edge embed
-    drain, trace-embedding pull, coverage sweep, access-mark drain — the same
-    four stages the background worker runs, in the same order.
+    """One synchronous worker tick, on the caller's thread — the same four
+    stages as the background worker (_worker_tick_stages), under the same
+    _drain_busy lock, so the two can never interleave transactions on
+    conn_bg_writer.
 
     The door for callers that must not race the worker's interval: an eval
     entity's harness turn ("everything written is embedded before the next
-    recall"), or a deploy step that needs the queues settled. Blocks on
-    _drain_busy so it composes with a mid-flight background drain instead of
-    overlapping it. Stages raise to the caller rather than logging-and-
-    continuing — a caller invoking an explicit drain wants the failure."""
+    recall"), or a deploy step that needs the queues settled.
+
+    Honesty contract: the stages themselves log-and-continue (worker
+    semantics), so success is judged by OBSERVABLE state, not absence of
+    exceptions — `ok` is True only when the embedder is ready AND the
+    node/edge queues drained to empty. A not-ready embedder or a re-enqueued
+    failure batch yields ok=False with the reason, never a green signal over
+    semantically invisible nodes."""
     from servers import recall_write_queue
-    with _drain_busy:
-        _drain_once(brain)
-    _drain_trace_embeddings_once(brain)
-    _coverage_sweep(brain)
-    recall_write_queue.drain_once(brain)
+    from servers import embedder
+    if not _drain_busy.acquire(timeout=DRAIN_NOW_TIMEOUT_S):
+        return {"ok": False, "busy": True,
+                "error": "drain lock held >%ds (background drain in flight) — "
+                         "retry" % int(DRAIN_NOW_TIMEOUT_S)}
+    try:
+        _worker_tick_stages(brain, recall_write_queue)
+    finally:
+        _drain_busy.release()
     with _lock:
         pending = len(_queue) + len(_edge_queue)
-    return {"ok": True, "pending_after": pending}
+    ready = embedder.is_ready()
+    result = {"ok": ready and pending == 0, "pending_after": pending,
+              "embedder_ready": ready}
+    if not ready:
+        result["error"] = "embedder not ready — nothing was embedded"
+    elif pending:
+        result["error"] = ("%d ids re-enqueued by a failed batch — see the "
+                           "errors table" % pending)
+    return result
 
 
 def join_worker(timeout: float = 3.0) -> None:
@@ -239,82 +267,21 @@ def _worker_loop(brain) -> None:
             # blocked / slow worker without an external watchdog.
             _check_stall(brain, recall_write_queue)
 
-            # Drain embed_queue if it has work. Skip-tick if previous
-            # drain still running (cold-start defensive measure).
-            with _lock:
-                embed_pending = bool(_queue or _edge_queue)
-            if embed_pending:
-                if _drain_busy.acquire(blocking=False):
-                    try:
-                        _drain_once(brain)
-                    except Exception as e:
-                        try:
-                            brain._log_error(
-                                'embed_queue_drain', e,
-                                'top-level embed drain caught')
-                        except Exception as le:
-                            print('[embed_queue] drain error: %s '
-                                  '(log failed: %s)' % (e, le),
-                                  file=sys.stderr)
-                    finally:
-                        _drain_busy.release()
-                else:
-                    with _lock:
-                        _stats['drains_skipped_busy'] += 1
-            else:
+            # The whole four-stage tick runs under _drain_busy — the same lock
+            # drain_now() (a dispatch thread) takes — because two of the stages
+            # (_drain_once's temporal phase and recall_write_queue.drain_once)
+            # issue BEGIN IMMEDIATE/commit on the single conn_bg_writer, and
+            # two threads interleaving on that connection nest transactions or
+            # cross-commit each other's half-written batches. Skip-tick if a
+            # previous tick (or an explicit drain_now) still holds it.
+            if not _drain_busy.acquire(blocking=False):
                 with _lock:
-                    _stats['drains_skipped_empty'] += 1
-
-            # Pull-reconciliation: trace embeddings. Independent of
-            # node/edge queues — reads via the shared logs conn, writes
-            # through TraceDAL's write boundary (dedicated write conn under
-            # write_lock). Caps per-tick work via TRACE_DRAIN_LIMIT; runs on
-            # every tick so newly-written S0 trace events get anchored
-            # within ~5s.
+                    _stats['drains_skipped_busy'] += 1
+                continue
             try:
-                _drain_trace_embeddings_once(brain)
-            except Exception as e:
-                try:
-                    brain._log_error(
-                        'embed_queue_trace_top', e,
-                        'top-level trace embed drain caught')
-                except Exception as le:
-                    print('[embed_queue] trace embed error: %s '
-                          '(log failed: %s)' % (e, le), file=sys.stderr)
-
-            # Unscoped coverage sweep — every tick, throttled internally.
-            # Runs here rather than inside _drain_once so sustained write load
-            # can't starve it (the drain's empty-tick branch is never reached
-            # while work keeps arriving), and LAST in the tick because a sweep
-            # can embed a full batch — ahead of the trace drain it would push
-            # S0 anchoring past its ~5s contract. Own try/except, like every
-            # other step here: one failing step must not cost the others.
-            try:
-                _coverage_sweep(brain)
-            except Exception as e:
-                try:
-                    brain._log_error(
-                        'embed_queue_coverage_top', e,
-                        'top-level coverage sweep caught')
-                except Exception as le:
-                    print('[embed_queue] coverage sweep error: %s '
-                          '(log failed: %s)' % (e, le), file=sys.stderr)
-
-            # Drain recall_write_queue (access marks). Fast,
-            # separate connection, separate transaction. drain_once is
-            # contract-bound never to raise out — this try/except is
-            # belt-and-suspenders.
-            try:
-                recall_write_queue.drain_once(brain)
-            except Exception as e:
-                try:
-                    brain._log_error(
-                        'recall_write_queue_drain', e,
-                        'top-level recall_write drain caught — '
-                        'drain_once is supposed to not raise')
-                except Exception as le:
-                    print('[embed_queue] recall_write drain error: %s '
-                          '(log failed: %s)' % (e, le), file=sys.stderr)
+                _worker_tick_stages(brain, recall_write_queue)
+            finally:
+                _drain_busy.release()
 
         except Exception as e:
             # Worker thread MUST never die silently. Catch everything,
@@ -335,6 +302,81 @@ def _worker_loop(brain) -> None:
             # let it propagate — the OUTER while True will resume the
             # loop body at the next iteration.
             time.sleep(EMBED_DRAIN_INTERVAL)
+
+
+def _worker_tick_stages(brain, recall_write_queue) -> None:
+    """The four drain stages of one tick, in order. Caller holds _drain_busy.
+    Each stage keeps its own try/except: one failing step must not cost the
+    others (the worker's loud-logging semantics; drain_now() reports outcomes
+    to its caller instead — see its docstring)."""
+    with _lock:
+        embed_pending = bool(_queue or _edge_queue)
+    if embed_pending:
+        try:
+            _drain_once(brain)
+        except Exception as e:
+            try:
+                brain._log_error(
+                    'embed_queue_drain', e,
+                    'top-level embed drain caught')
+            except Exception as le:
+                print('[embed_queue] drain error: %s '
+                      '(log failed: %s)' % (e, le),
+                      file=sys.stderr)
+    else:
+        with _lock:
+            _stats['drains_skipped_empty'] += 1
+
+    # Pull-reconciliation: trace embeddings. Independent of
+    # node/edge queues — reads via the shared logs conn, writes
+    # through TraceDAL's write boundary (dedicated write conn under
+    # write_lock). Caps per-tick work via TRACE_DRAIN_LIMIT; runs on
+    # every tick so newly-written S0 trace events get anchored
+    # within ~5s.
+    try:
+        _drain_trace_embeddings_once(brain)
+    except Exception as e:
+        try:
+            brain._log_error(
+                'embed_queue_trace_top', e,
+                'top-level trace embed drain caught')
+        except Exception as le:
+            print('[embed_queue] trace embed error: %s '
+                  '(log failed: %s)' % (e, le), file=sys.stderr)
+
+    # Unscoped coverage sweep — every tick, throttled internally.
+    # Runs here rather than inside _drain_once so sustained write load
+    # can't starve it (the drain's empty-tick branch is never reached
+    # while work keeps arriving), and LAST in the tick because a sweep
+    # can embed a full batch — ahead of the trace drain it would push
+    # S0 anchoring past its ~5s contract. Own try/except, like every
+    # other step here: one failing step must not cost the others.
+    try:
+        _coverage_sweep(brain)
+    except Exception as e:
+        try:
+            brain._log_error(
+                'embed_queue_coverage_top', e,
+                'top-level coverage sweep caught')
+        except Exception as le:
+            print('[embed_queue] coverage sweep error: %s '
+                  '(log failed: %s)' % (e, le), file=sys.stderr)
+
+    # Drain recall_write_queue (access marks). Fast,
+    # separate connection, separate transaction. drain_once is
+    # contract-bound never to raise out — this try/except is
+    # belt-and-suspenders.
+    try:
+        recall_write_queue.drain_once(brain)
+    except Exception as e:
+        try:
+            brain._log_error(
+                'recall_write_queue_drain', e,
+                'top-level recall_write drain caught — '
+                'drain_once is supposed to not raise')
+        except Exception as le:
+            print('[embed_queue] recall_write drain error: %s '
+                  '(log failed: %s)' % (e, le), file=sys.stderr)
 
 
 def _check_stall(brain, recall_write_queue) -> None:
