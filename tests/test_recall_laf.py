@@ -616,10 +616,11 @@ class TestSurvivorCredit(_LafEngineFixtures):
         self.brain.resolve_live = lambda ids, **kw: (calls.append(sorted(ids))
                                                      or orig(ids, **kw))
         try:
-            got = role_rows(self.brain, [a, c], rows.get)
+            got, orphans = role_rows(self.brain, [a, c], rows.get)
         finally:
             self.brain.resolve_live = orig
         self.assertEqual(got, {a: 0, c: 0})            # A→B→C lands on C's row
+        self.assertEqual(orphans, set())               # both landed
         self.assertEqual(calls, [[a]])                 # live C never walked
 
 

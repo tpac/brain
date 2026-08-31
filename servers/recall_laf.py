@@ -342,7 +342,7 @@ def roles_for_moments(brain, moments, window_turns, pull_limit, as_of=None):
 
 
 def role_rows(brain, ids, resolve):
-    """Episodic role node ids → {id: master row}, absorbed ids credited to their survivor.
+    """Episodic role node ids → ({id: master row}, unresolvable ids).
 
     Role ids come from TRACES, so they are HISTORY, not live node ids (the
     docs/TRACE-NODE-RESOLUTION.md contract). S2 consolidation absorbs A into
@@ -356,6 +356,11 @@ def role_rows(brain, ids, resolve):
     all-live id set costs zero queries; otherwise the walk is level-batched
     (2 queries per chain level, independent of id count). Retired nodes (archived,
     no survivor) and true orphans stay dropped — there is nothing live to credit.
+
+    The second return is those still-unresolvable ids. Dropping them is routine
+    (§6: the redirect is normal retrieval, the drop is at most low-severity), so
+    this reports rather than logs — a per-recall warning would fire constantly
+    and drown the signal it exists to carry. The engine owns the cadence.
     """
     rows, missing = {}, []
     for nid in set(ids):
@@ -364,12 +369,17 @@ def role_rows(brain, ids, resolve):
             rows[nid] = i
         else:
             missing.append(nid)
-    if missing:
-        for dead, surv in brain.resolve_live(missing)['redirected'].items():
-            i = resolve(surv)
-            if i is not None:
-                rows[dead] = i
-    return rows
+    if not missing:
+        return rows, set()
+    walked = brain.resolve_live(missing, on_orphan='mark')
+    for dead, surv in walked['redirected'].items():
+        i = resolve(surv)
+        if i is not None:
+            rows[dead] = i
+    # A survivor outside the matrix (retired terminal, or no embedding row)
+    # leaves the input unresolved just as an orphan does — same outcome, so
+    # the report is keyed on what LANDED, not on how the walk classified it.
+    return rows, {n for n in missing if n not in rows}
 
 
 class LafV1Engine:
@@ -388,6 +398,8 @@ class LafV1Engine:
         self._idx = {}               # node_id → row
         self._short = {}             # 8-char short id → row (unambiguous only)
         self._ambig = set()          # shorts that collided (never resolved)
+        self._orphan_ids = set()     # role ids already warned about (see
+                                     # _report_unresolvable — first-sighting)
         self._n = 0                  # rows in use
         self._cap = 0                # allocated rows
         self._dim = 768
@@ -741,7 +753,8 @@ class LafV1Engine:
         harvested = set()
         for r in records:
             harvested |= r['picked'] | r['encoded']
-        rows = role_rows(brain, harvested, self._resolve)
+        rows, unresolvable = role_rows(brain, harvested, self._resolve)
+        self._report_unresolvable(brain, unresolvable)
         for r in records:
             s = r['score']
             for node in r['picked']:
@@ -753,6 +766,28 @@ class LafV1Engine:
                 if i is not None and s > enc[i]:
                     enc[i] = s
         return pick, enc
+
+    def _report_unresolvable(self, brain, ids):
+        """Warn ONCE per never-before-seen unresolvable role id.
+
+        A steady background of these is normal — retired nodes carry no
+        survivor, and old traces outlive nodes. What must not stay silent is
+        NEW rot: pointers that stopped being written, or a regression that
+        turns every redirect into a drop. First-sighting cadence gives that:
+        quiet once the daemon is warm, loud the moment a new id starts
+        falling through. The seen-set is per-engine (bounded by the corpus's
+        dead-id count, ~10^2) and resets with the daemon.
+        """
+        new = ids - self._orphan_ids
+        if not new:
+            return
+        self._orphan_ids |= new
+        brain._log_warning(
+            'laf_role_ids_unresolvable',
+            '%d episodic role id(s) reached no live row — evidence dropped'
+            % len(new),
+            'new=%s; total seen this daemon=%d'
+            % (sorted(new)[:8], len(self._orphan_ids)))
 
     def _resolve(self, node_id):
         """Role node id (8-char short OR full) → master row, or None.

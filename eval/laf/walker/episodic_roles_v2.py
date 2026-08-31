@@ -340,7 +340,8 @@ def main():
         worst1 = 0.0
         for key, j, kind, vec, ts in sample[:20]:
             sims = trace_mat @ vec
-            v1 = episodic_from_sims(eng, role_map_v1, sims, ts, trace_created)
+            v1 = episodic_from_sims(eng, env.brain, role_map_v1, sims, ts,
+                                    trace_created)
             mine = {}
             for (sess, _short, stop), s in select_moments(
                     eng, sims, ts, trace_created).items():

@@ -140,7 +140,8 @@ def main():
             records = episodic_roles(brain, c["query"], c["cutoff"], window=EPI_WINDOW)
             harvested = {nid for r in records for nid in r["picked"] + r["encoded"]}
             off = plain_rows(harvested, idx, s2f)
-            on = role_rows(brain, harvested, lambda nid: _resolve(nid, idx, s2f))
+            on, _ = role_rows(brain, harvested,
+                              lambda nid: _resolve(nid, idx, s2f))
             n_harvest += len(harvested)
             n_dead += len(harvested) - len(off)
             n_credited += len(on) - len(off)

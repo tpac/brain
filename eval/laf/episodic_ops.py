@@ -197,8 +197,9 @@ def _rows(brain, records, role, idx):
     """
     from servers.recall_laf import role_rows
     s2f, _ = _short_to_full(idx)
-    return role_rows(brain, [nid for r in records for nid in r[role]],
-                     lambda nid: _resolve(nid, idx, s2f))
+    rows, _ = role_rows(brain, [nid for r in records for nid in r[role]],
+                        lambda nid: _resolve(nid, idx, s2f))
+    return rows
 
 
 # ─────────────────────────── the three operators ───────────────────────────

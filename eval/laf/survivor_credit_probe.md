@@ -1,6 +1,6 @@
 # Survivor-credit A/B — absorbed-id drop in the LAF episodic lanes
 
-23 cues · master 10234 nodes · shipped laf_v1 gains (maxsim 1.0 · pick 0.5 · enc 0.3 · idf 0.5 · sit 0.5), ±1-turn moments
+23 cues · master 10246 nodes · shipped laf_v1 gains (maxsim 1.0 · pick 0.5 · enc 0.3 · idf 0.5 · sit 0.5), ±1-turn moments
 
 ## Footprint — did the fix fire at all?
 
@@ -49,9 +49,9 @@ Those are OCCURRENCES (an id harvested by 5 cues counts 5×) — the honest meas
 | z_norm | band | gold nodes | improved | worsened | unchanged | median Δrank | best Δ | worst Δ |
 |---|---|---|---|---|---|---|---|---|
 | support | near-top | 29 | 3 | 3 | 23 | +0 | +1 | -1 |
-| support | tail | 66 | 15 | 14 | 37 | +0 | +35 | -10 |
+| support | tail | 66 | 15 | 11 | 40 | +0 | +32 | -9 |
 | current | near-top | 29 | 2 | 10 | 17 | +0 | +1 | -4 |
-| current | tail | 66 | 7 | 44 | 15 | -2 | +2 | -13 |
+| current | tail | 66 | 7 | 44 | 15 | -2 | +1 | -13 |
 
 ### need@k boundary crossings — z_norm='support'
 
@@ -67,17 +67,17 @@ None — no need changed side at k=5 or k=25. The lanes moved; nothing crossed.
 
 | Δrank | cue | gold node | OFF | ON |
 |---|---|---|---|---|
-| +35 | operator_msg_0183 | 6a964255 | 2344 | 2309 |
-| +26 | operator_msg_1572 | 0d3d7771 | 745 | 719 |
-| -10 | anchor_turn_1106 | 3bcc506c | 654 | 664 |
-| -9 | operator_msg_1162 | 0cd2f9cb | 1539 | 1548 |
-| +3 | anchor_turn_1106 | e56dc13b | 294 | 291 |
+| +32 | operator_msg_0183 | 6a964255 | 2341 | 2309 |
+| +27 | operator_msg_1572 | 0d3d7771 | 745 | 718 |
+| -9 | operator_msg_1162 | 0cd2f9cb | 1538 | 1547 |
+| -8 | anchor_turn_1106 | 3bcc506c | 656 | 664 |
+| +3 | anchor_turn_0538 | 1472bf53 | 843 | 840 |
 | +3 | operator_msg_0183 | 495f4aca | 1372 | 1369 |
 | -3 | operator_msg_0718 | b7958bad | 360 | 363 |
-| -2 | anchor_turn_0087 | 0b0ae0e7 | 1183 | 1185 |
-| -2 | anchor_turn_0345 | 6146cf2e | 83 | 85 |
-| +2 | operator_msg_0183 | 83873db2 | 3776 | 3774 |
-| +2 | operator_msg_1558 | b4d6f876 | 3733 | 3731 |
+| -2 | anchor_turn_0087 | 0b0ae0e7 | 1184 | 1186 |
+| +2 | anchor_turn_1106 | e56dc13b | 294 | 292 |
+| +2 | operator_msg_0183 | 83873db2 | 3775 | 3773 |
+| +2 | operator_msg_1558 | b4d6f876 | 3732 | 3730 |
 | +2 | operator_msg_1558 | 09bea718 | 583 | 581 |
 
 ### Largest gold-rank moves — z_norm='current'
@@ -91,7 +91,7 @@ None — no need changed side at k=5 or k=25. The lanes moved; nothing crossed.
 | -9 | operator_msg_1572 | 0d3d7771 | 151 | 160 |
 | -6 | anchor_turn_0345 | 203b06d6 | 136 | 142 |
 | -6 | operator_msg_1558 | b4d6f876 | 417 | 423 |
-| -5 | anchor_turn_0906 | 67e31fbe | 571 | 576 |
+| -5 | anchor_turn_0906 | 67e31fbe | 572 | 577 |
 | -5 | operator_msg_1014 | 35f16063 | 63 | 68 |
 | -4 | anchor_turn_1106 | 3bcc506c | 136 | 140 |
 | -4 | operator_msg_0183 | 092df713 | 1195 | 1199 |
