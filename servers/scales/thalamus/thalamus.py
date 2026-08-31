@@ -97,11 +97,12 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
     Identity: a repeat (source, dedup_key) UPDATES the open item instead of
     inserting — identity is producer-owned or absent, never derived from text.
     Both forms return updated=True; they differ in `rearmed`. A repeat that
-    CHANGES the item re-arms delivery (rearmed=True), so an edited item
-    delivers again to sessions that already saw the old text. An identical
-    repeat only refreshes the window (rearmed=False) — a cyclic producer
-    re-asserting its standing item must never re-notify every session on
-    every cycle.
+    CHANGES any producer-controlled delivery attribute — body, refs, when,
+    needs_answer, for_whom — rewrites the item to what this call describes
+    and re-arms delivery (rearmed=True), so an edited item delivers again to
+    sessions that already saw the old one. An identical repeat only refreshes
+    the window (rearmed=False) — a cyclic producer re-asserting its standing
+    item must never re-notify every session on every cycle.
     """
     body = (body or '').strip()
     if not body:
@@ -188,12 +189,20 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
             # read snapshot and the next write fails INSTANTLY on a concurrent
             # commit (SQLITE_BUSY_SNAPSHOT, busy_timeout bypassed).
             existing = conn.execute(
-                'SELECT id, body, refs, deliver_at FROM thalamus_items '
+                'SELECT id, body, refs, deliver_at, needs_answer, audience,'
+                ' target_session FROM thalamus_items '
                 'WHERE source = ? AND dedup_key = ? AND state = ? LIMIT 1',
                 (source, dedup_key, tc.STATE_OPEN)).fetchone()
             if existing:
+                # The gate compares EVERY producer-controlled delivery
+                # attribute, and the UPDATE sets each one it compares: a
+                # re-file leaves the row in the state the producer just
+                # described, or it is a no-op. Comparing a subset silently
+                # keeps stale attributes — a note re-filed as an ask kept
+                # needs_answer=0 (still a note, still Stop-delivered, never
+                # dead-lettering) while taking the ask's longer window.
                 # A CHANGED re-file is a re-arm: bump the generation (the
-                # same mechanism as resolve's defer) so a once-item already
+                # same mechanism as resolve's defer) so an item already
                 # delivered at the old epoch delivers again with the updated
                 # content — without the bump the current-epoch ledger row
                 # suppresses the update forever while file() reports success.
@@ -201,15 +210,19 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
                 # standing item) is idempotent: it refreshes the window and
                 # nothing else — bumping on a no-op would re-deliver the same
                 # text to every session on every producer cycle, unbounded.
-                changed = (existing[1], existing[2], existing[3]) != (
-                    body, refs_json, deliver_at)
+                needs_answer_col = 1 if needs_answer else 0
+                changed = tuple(existing[1:]) != (
+                    body, refs_json, deliver_at, needs_answer_col, audience,
+                    target_session)
                 if changed:
                     conn.execute(
                         'UPDATE thalamus_items SET body = ?, refs = ?, '
-                        'deliver_at = ?, expires_at = ?, '
+                        'deliver_at = ?, expires_at = ?, needs_answer = ?, '
+                        'audience = ?, target_session = ?, '
                         'armed_epoch = armed_epoch + 1, updated_at = ? '
                         'WHERE id = ?',
-                        (body, refs_json, deliver_at, expires_at, now,
+                        (body, refs_json, deliver_at, expires_at,
+                         needs_answer_col, audience, target_session, now,
                          existing[0]))
                 else:
                     conn.execute(
