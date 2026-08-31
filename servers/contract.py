@@ -78,10 +78,10 @@ CONNECT_TO_ITEM_SCHEMA = {
         "title": {
             "type": "string",
             "description": (
-                "Target: for an EXISTING node, its 8-char hex id copied from any "
-                "visible id: surface (the expected form — a hex-shaped value is "
-                "always treated as an id: resolved by unique id prefix, and on a "
-                "miss dropped loudly, never matched as a title); for a node "
+                "Target: for an EXISTING node, its exact 8-char hex id copied "
+                "verbatim from any visible id: surface (a hex-shaped value is "
+                "always treated as an id — never matched as a title — and on a "
+                "miss dropped loudly); for a node "
                 "created in this same batch, its exact title (siblings resolve "
                 "before catalog matches, any declaration order). NEW wins on "
                 "title collision — "

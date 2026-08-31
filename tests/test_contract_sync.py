@@ -316,5 +316,19 @@ class TestConnectToDescriptionContract(unittest.TestCase):
         self.assertIn('DOUBLE-EMIT', rb)
 
 
+class TestNodeIdInvariant(unittest.TestCase):
+    """Every node id is exactly 8 lowercase hex chars. Exact-match id
+    resolution at every door rests on this invariant; if the minting
+    scheme ever changes width or alphabet, every exact-match lookup
+    breaks at once. This is the loud tripwire."""
+
+    def test_generated_node_ids_are_8_lowercase_hex(self):
+        from servers.brain import Brain
+        pat = re.compile(r'^[0-9a-f]{8}$')
+        for _ in range(100):
+            nid = Brain._generate_id(None)
+            self.assertRegex(nid, pat)
+
+
 if __name__ == '__main__':
     unittest.main()

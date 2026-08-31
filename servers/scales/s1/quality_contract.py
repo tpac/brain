@@ -1097,7 +1097,7 @@ EXAMPLE_AUTHORING_CONVENTIONS = {
             "s1e v31 (Option D): catalog targets are ids, and the s2 "
             "encoders prove bare-hex examples are safe exactly when the "
             "id's source is visible in the encoder's input. A copied "
-            "dummy id also fails LOUDLY at Pass 0 prefix lookup, unlike "
+            "dummy id also fails LOUDLY at Pass 0 id lookup, unlike "
             "a copied title, which dies silently in fuzzy matching."
         ),
     },
