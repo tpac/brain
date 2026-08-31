@@ -23,8 +23,10 @@ publish path has no design questions left. Unstarted, in order: **5.0c**
 (classes 1–2 only — class 3 dissolved with the name-free pack) · **5.3**
 (worklist now concrete) · **5.2** (rename — `plugin.json` still
 `name: brain`) · **5.5** · **5.7**.
-Arch-plan steps 7–10 remain open but gate nothing. Operator decision still
-open: **`displayName`** (5.2).
+Arch-plan steps 7–10 remain open but gate nothing. No operator design decision
+is open on the publish path — `displayName` was ruled `Entity` 2026-08-28. The
+one operator question left is 5.8's: whether the official directory requires an
+OSI-permissive license, which the dual PolyForm grant is not (id:ff48ac84).
 **Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
 2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
 at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned
@@ -42,7 +44,8 @@ verified-developer signing (deferred to 5.x polish), knob-dir-exists adoption in
 **Status:** **Goal A closed** — the Layer-4 live install worked end-to-end on a clean
 machine 2026-07-17 (§6b). Now on **Goal B: the public OSS publish** (Phase 5.7, the one-way
 door). Naming + release model settled 2026-08-06 (**D-6…D-9**, §10); §8 fork #1 is
-closed. **D-5 (seed pack)** remains the open design gate; **Phase 1.5** (shipped
+closed. **D-5 (seed pack) is CLOSED — the Nursery, 2026-08-30**; the publish path
+has no design gates left. **Phase 1.5** (shipped
 `examples/` leak) was found and closed by deletion. **2026-08-09:** D-11 (two
 identities — the service layer never renames) and D-12 (every instance name derives
 from config) added. **5.0 fleet gap: first attempt reverted after review — still
@@ -511,10 +514,10 @@ Skill prefixes follow automatically (`brain:brain` → `entity:brain`); no dir
 renames required. **`com.brain.*` launchd labels do NOT change** — D-11. The old
 "change now or never, a later change orphans services" hazard is void.
 
-**OPEN — `displayName`.** Currently `Anchor`. Under D-12 a shipped manifest cannot
-carry a per-install name, so it should read **`Entity`** with the instance name
-resolved from config at runtime. Not yet ruled; it is the most visible string in
-the product.
+**`displayName` — RULED `Entity` 2026-08-28 (id:44025fbb), already shipped in both
+manifests.** Under D-12 a shipped manifest cannot carry a per-install name: the
+manifest names the product, config names the instance. Cosmetic, no identity-key
+coupling — it rides the next version bump to the fleet.
 
 **Skill-prefix check — DONE 2026-08-06, prefix holds.** All four SKILL.md files
 carry `name:` in frontmatter *and* still resolve prefixed (`brain:brain`,
