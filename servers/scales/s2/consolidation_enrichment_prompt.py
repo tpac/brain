@@ -53,15 +53,15 @@ Rewrite `title` when the merge changes what the node is *about*; keep it when it
 
 ## The same cluster, done wrong and right
 
-Cluster (content cosine 0.92): `d1c4a2` decision "Adopt Postgres for the job queue", `f0b317` finding "Postgres SKIP LOCKED gives clean concurrent job pickup", `b9e210` bug "metrics exporter double-counts Postgres connections".
+Cluster (content cosine 0.92): `d1c4a2e8` decision "Adopt Postgres for the job queue", `f0b3174d` finding "Postgres SKIP LOCKED gives clean concurrent job pickup", `b9e210c6` bug "metrics exporter double-counts Postgres connections".
 
 ❌ **BAD** — over-collapse + content-less + stale title:
 ```
 // ❌ ANTI-PATTERN — do NOT do this
 brain_batch({operations: [
-  {op: "absorb", survivor_id: "d1c4a2", absorbed_id: "f0b317",
+  {op: "absorb", survivor_id: "d1c4a2e8", absorbed_id: "f0b3174d",
    reason: "all about Postgres"},
-  {op: "absorb", survivor_id: "d1c4a2", absorbed_id: "b9e210",
+  {op: "absorb", survivor_id: "d1c4a2e8", absorbed_id: "b9e210c6",
    reason: "all about Postgres"}
 ]})
 ```
@@ -70,15 +70,15 @@ Three failures in two ops: (1) *"all about Postgres"* is a shared **noun**, not 
 ✓ **GOOD** — claim test, rewrite, keep the distinct claim:
 ```
 brain_batch({operations: [
-  // d1c4a2 + f0b317 are ONE claim: the finding is the evidence for the decision → absorb + rewrite
-  {op: "absorb", survivor_id: "d1c4a2", absorbed_id: "f0b317",
+  // d1c4a2e8 + f0b3174d are ONE claim: the finding is the evidence for the decision → absorb + rewrite
+  {op: "absorb", survivor_id: "d1c4a2e8", absorbed_id: "f0b3174d",
    reason: "the SKIP LOCKED finding is the evidence behind the Postgres-queue decision — one claim",
    title: "Job queue on Postgres — SKIP LOCKED gives clean concurrent pickup",
-   content: "Decision: the job queue runs on Postgres. Deciding evidence: `FOR UPDATE SKIP LOCKED` lets N workers pull jobs concurrently with no double-pickup and no external broker (id:f0b317). Chosen over Redis/SQS to avoid standing up a second datastore."},
-  // b9e210 is a DIFFERENT claim (metrics subsystem, only shares the word 'Postgres') → keep, link
-  {op: "connect", source_id: "d1c4a2", target_id: "b9e210",
+   content: "Decision: the job queue runs on Postgres. Deciding evidence: `FOR UPDATE SKIP LOCKED` lets N workers pull jobs concurrently with no double-pickup and no external broker (id:f0b3174d). Chosen over Redis/SQS to avoid standing up a second datastore."},
+  // b9e210c6 is a DIFFERENT claim (metrics subsystem, only shares the word 'Postgres') → keep, link
+  {op: "connect", source_id: "d1c4a2e8", target_id: "b9e210c6",
    relation: "similar_to",
-   description: "Related by the word 'Postgres' only — b9e210 is a metrics-exporter connection-counting bug, a different subsystem from the queue decision. Kept separate, not swallowed."}
+   description: "Related by the word 'Postgres' only — b9e210c6 is a metrics-exporter connection-counting bug, a different subsystem from the queue decision. Kept separate, not swallowed."}
 ]})
 ```
 Same three nodes, opposite outcome: the claim test separates "one shared noun" from "one shared claim"; the absorb rewrites `title` + `content` so nothing is orphaned; the unrelated bug is kept and linked, not destroyed.
