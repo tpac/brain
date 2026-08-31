@@ -25,10 +25,11 @@ now shipped, reviewed, and consolidated — four merges on main:
   every door; `test_redirect_door_parity` pins the three doors.
 
 **Gate ledger:** (1) archived refs — CLOSED, shipped (above).
-(2) backup policy (id:54160417) — mechanism shipped (`reap_by_ttl`,
-explicit-only), the 888MB `.v1.bak` reaped; **NEW open ruling:** whether
-the old brain.db migration baks (v15–v29, ~1.6GB) are a recovery corpus
-to keep or clutter to reap — auto-wire stays disarmed until ruled.
+(2) backup policy (id:54160417) — CLOSED end-to-end: `reap_by_ttl` +
+rotation wire live (14d TTL, hardened pattern); corpus ruling landed
+2026-08-30 (the v15–v29 brain.db baks reap — their recovery-script
+consumers served the closed spring incident class; those scripts are now
+retirement candidates, flagged not deleted).
 (3) sweep-block consolidation (id:23cd4d61) — folds into Step 11.
 (4) audience-guard placement — **STILL OPEN**: rec is a contract test
 (`resolve_for_whom outputs ⊆ AUDIENCES`) riding Step 7 + keeping the
