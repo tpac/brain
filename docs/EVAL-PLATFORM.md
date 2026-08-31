@@ -104,6 +104,22 @@ build_corpus.py  (Stage 1, slow, ONCE)        sweep.py  (Stage 2, fast, MANY)
   template, so the arms get distinct addresses). Sweep both
   with the same recall config → delta is *pure encode*. (`--s1e <file>` still works
   for an unregistered draft prompt.)
+- **Seed-pack experiment:** `build_corpus.py --seed-pack <path>` swaps the pack
+  DATA (`SEED_NODES`/`SEED_EDGES`/generation) that each fresh eval brain is born
+  with — the loader code stays current. A pack file without its own
+  `SEED_PACK_GENERATION` gets a distinct eval marker, so the frozen brains read
+  as foreign-generation and the sweep-time open never gap-fills them with the
+  current pack (the id:5f935ada open-time contamination). The seed pack joins the
+  content address unconditionally, so arms can't cache-collide. Recover a prior
+  pack with `git show <commit>:servers/seed_pack.py`. Graph-side comparison:
+  `pack_quality.py --corpus-a/--corpus-b [--sweep-a/--sweep-b]` — field coverage,
+  register depth, type altitude, edge whys, seed crowding in recall candidates.
+  ⚠ **Read [SEED-PACK-EXEMPLAR-FINDINGS.md](SEED-PACK-EXEMPLAR-FINDINGS.md)
+  before designing one:** on a
+  topic-conversation corpus the encoder's prompt contains a seed in only ~1 of 10
+  items and the marked exemplars in none, so LongMemEval cannot measure a pack's
+  effect on encoder register. A first-session-shaped corpus is required for that
+  question.
 
 **First baseline (corpus `a300d2`, v22/v5, 20 items, 2026-05-30):** 94.4%
 recall-conditional (17/18), 85% raw. The only two clean misses were `ENCODE_MISS`

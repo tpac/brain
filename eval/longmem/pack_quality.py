@@ -9,9 +9,16 @@ brain.db read-only and aggregates per-arm stats over encoder-authored nodes,
 plus verification rows (seed count + generation marker per brain) and the
 gold-scan-hit-a-seed contamination check (brain id:9e3afc4d).
 
+Second read, when sweep runs are passed: SEED CROWDING. A bigger pack is more
+identity nodes competing for candidate slots in a nearly-empty graph — the
+concrete way a richer pack could make recall WORSE. Joins each sweep rep's
+recall candidates against the corpus graph to get the seed share of the
+candidate list, per arm.
+
 USE
     ./dev python3 eval/longmem/pack_quality.py --corpus-a <hash> --corpus-b <hash> \
-        --labels oldpack,newpack [--out eval/longmem/reports/pack_ab.json]
+        --labels oldpack,newpack [--sweep-a <run>] [--sweep-b <run>] \
+        [--out eval/longmem/reports/pack_ab.json]
 """
 import argparse
 import json
@@ -147,6 +154,70 @@ def _pct(part, whole):
     return round(100.0 * part / whole, 1) if whole else 0.0
 
 
+def _source_map(brain_dir: str) -> dict:
+    """8-char node id → encoding_source, for one frozen brain."""
+    con = _ro(os.path.join(brain_dir, "brain.db"))
+    try:
+        return {r[0][:8]: (r[1] or "")
+                for r in con.execute(
+                    "SELECT id, encoding_source FROM nodes")}
+    finally:
+        con.close()
+
+
+def _cand_id(c) -> str:
+    """Candidate entries are dicts or 'id|title|score|type' strings."""
+    if isinstance(c, dict):
+        return (c.get("id") or c.get("node_id") or "")[:8]
+    return str(c).split("|")[0].strip()[:8]
+
+
+def seed_crowding(corpus_hash: str, run_name: str, reports_dir: str) -> dict:
+    """Seed share of recall candidates and selections, per sweep rep.
+
+    The bigger-pack risk: in a nearly-empty graph, identity nodes compete with
+    the lived nodes an answer actually needs. If the new pack crowds candidate
+    slots harder, that is a real cost even when the register improves.
+    """
+    manifest = load_manifest(corpus_hash)
+    srcs = {}
+    for it in manifest["items"]:
+        srcs[it["qid"]] = _source_map(it["brain_dir"])
+    items_dir = os.path.join(reports_dir, run_name, "items")
+    if not os.path.isdir(items_dir):
+        return {"error": f"no sweep artifacts at {items_dir}"}
+    per_item, cand_tot, seed_tot, sel_tot, sel_seed = {}, 0, 0, 0, 0
+    for leaf in sorted(os.listdir(items_dir)):
+        blob_path = os.path.join(items_dir, leaf, "recall.json")
+        if not os.path.exists(blob_path):
+            continue
+        with open(blob_path) as f:
+            blob = json.load(f)
+        qid = leaf.split("-r")[0]
+        smap = srcs.get(qid, {})
+        cands = [_cand_id(c) for c in blob.get("candidates", [])]
+        sels = [_cand_id(s) for s in blob.get("selected", [])]
+        n_seed = sum(1 for c in cands if smap.get(c) == "anchor:seed")
+        n_sel_seed = sum(1 for s in sels if smap.get(s) == "anchor:seed")
+        per_item[leaf] = {
+            "candidates": len(cands), "seed_candidates": n_seed,
+            "seed_pct": _pct(n_seed, len(cands)),
+            "selected": len(sels), "seed_selected": n_sel_seed,
+        }
+        cand_tot += len(cands); seed_tot += n_seed
+        sel_tot += len(sels); sel_seed += n_sel_seed
+    return {
+        "run": run_name,
+        "candidates_total": cand_tot,
+        "seed_candidates_total": seed_tot,
+        "seed_share_of_candidates_pct": _pct(seed_tot, cand_tot),
+        "selected_total": sel_tot,
+        "seed_selected_total": sel_seed,
+        "seed_share_of_selected_pct": _pct(sel_seed, sel_tot),
+        "per_item": per_item,
+    }
+
+
 def arm_report(corpus_hash: str) -> dict:
     manifest = load_manifest(corpus_hash)
     if not manifest:
@@ -224,12 +295,25 @@ def main():
     p.add_argument("--corpus-a", required=True)
     p.add_argument("--corpus-b", required=True)
     p.add_argument("--labels", default="A,B")
+    p.add_argument("--sweep-a", default=None,
+                   help="sweep run name for corpus-a → seed-crowding read")
+    p.add_argument("--sweep-b", default=None,
+                   help="sweep run name for corpus-b → seed-crowding read")
     p.add_argument("--out", default=None, help="write full JSON here")
     args = p.parse_args()
     la, lb = (args.labels.split(",") + ["A", "B"])[:2]
 
     a = arm_report(args.corpus_a)
     b = arm_report(args.corpus_b)
+
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "reports")
+    if args.sweep_a:
+        a["seed_crowding"] = seed_crowding(args.corpus_a, args.sweep_a,
+                                           reports_dir)
+    if args.sweep_b:
+        b["seed_crowding"] = seed_crowding(args.corpus_b, args.sweep_b,
+                                           reports_dir)
 
     print(f"\n{'metric':<38} {la:>18} {lb:>18}")
     print("-" * 76)
@@ -250,6 +334,22 @@ def main():
     print(f"types {lb}: {json.dumps(sb['types'])}")
     print(f"relations {la}: {json.dumps(sa['relations'])}")
     print(f"relations {lb}: {json.dumps(sb['relations'])}")
+
+    if a.get("seed_crowding") or b.get("seed_crowding"):
+        print("\nseed crowding (share of recall candidates that are seeds)")
+        for lbl, arm in ((la, a), (lb, b)):
+            sc = arm.get("seed_crowding") or {}
+            if sc.get("error"):
+                print(f"  {lbl}: {sc['error']}")
+                continue
+            if not sc:
+                continue
+            print(f"  {lbl:<10} candidates={sc['candidates_total']:<5} "
+                  f"seeds={sc['seed_candidates_total']:<4} "
+                  f"({sc['seed_share_of_candidates_pct']}%)   "
+                  f"selected={sc['selected_total']:<4} "
+                  f"seed-selected={sc['seed_selected_total']} "
+                  f"({sc['seed_share_of_selected_pct']}%)")
 
     if args.out:
         with open(args.out, "w") as f:
