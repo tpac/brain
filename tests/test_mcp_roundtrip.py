@@ -357,6 +357,27 @@ class TestMCPRoundTrip(BrainTestBase):
         # The served page still answered: the one real id is in it.
         self.assertEqual([r['id'] for r in result['traces']], [tid])
 
+    def test_get_traces_duplicate_ids_dont_spend_the_cap(self):
+        """Repeats are deduped BEFORE the cap. Expanding source_refs across
+        nodes repeats shared anchors; a repeat that spends a slot would drop a
+        unique id that fit (silently — missing_ids only covers what was looked
+        up) and would flag truncation on a fully-served request."""
+        from servers.trace_contract import TRACE_BATCH_MAX_IDS
+        tid = self.brain._trace_dal.append(
+            chain_id='roundtrip-dupes', scale='s0', event_type='K',
+            ref_type='user_message', summary='dupe probe')
+        # cap+5 entries, but only cap-5 distinct — every unique id must be served.
+        uniq = [tid] + ['%08x' % i for i in range(TRACE_BATCH_MAX_IDS - 6)]
+        asked = uniq[:10] + uniq[:10] + uniq[10:]
+        self.assertGreater(len(asked), TRACE_BATCH_MAX_IDS)   # raw list overflows
+        self.assertLess(len(set(asked)), TRACE_BATCH_MAX_IDS)  # unique set fits
+        result = self._dispatch("get_traces", {"trace_ids": asked})
+        self.assertNotIn('truncated', result, 'flagged a fully-served request')
+        # Nothing unique was skipped: every id is either a row or named missing.
+        accounted = {r['id'] for r in result['traces']} | set(result['missing_ids'])
+        self.assertEqual(accounted, set(asked))
+        self.assertEqual([r['id'] for r in result['traces']], [tid])
+
 
     def test_count_traces(self):
         """count_traces returns {event_type: int}. Append two known events and

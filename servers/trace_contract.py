@@ -1670,12 +1670,16 @@ def _trim_body(body, limit):
     natural ending from a chopped one. The dropped-char count plus the escape
     hatch says which it is, mirroring how a truncated windowed read names its
     remedy rather than just its limit.
+
+    The notice costs ~40 chars, so a body barely over the limit would render
+    LONGER trimmed than whole. Trimming that costs more than it saves isn't
+    trimming — those bodies pass through intact.
     """
     if not limit or len(body) <= limit:
         return body
     kept = body[:limit - 1].rstrip()
-    return '%s… (+%d chars — get_trace for the whole body)' % (
-        kept, len(body) - len(kept))
+    notice = '… (+%d chars — get_trace for the whole body)' % (len(body) - len(kept))
+    return body if len(kept) + len(notice) >= len(body) else kept + notice
 
 
 def render_trace(row, config=None):

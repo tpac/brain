@@ -80,13 +80,18 @@ def _handle_get_traces(brain, args, graph_changes):
     if bad:
         return {"ok": False,
                 "error": "trace_ids must be 8-char hex strings (v29); rejected: %r" % bad[:5]}
-    cleaned = [t.strip().lower() for t in trace_ids]
-    served = cleaned[:TRACE_BATCH_MAX_IDS]
+    # Dedupe BEFORE the cap. Expanding source_refs across nodes repeats shared
+    # anchors, and a repeat that spends a slot costs a unique id that would
+    # have fit — a loss invisible in the render, since missing_ids only covers
+    # what we looked up. Capping the raw list also flags truncation on a
+    # request that was fully served. dict.fromkeys keeps caller order.
+    unique = list(dict.fromkeys(t.strip().lower() for t in trace_ids))
+    served = unique[:TRACE_BATCH_MAX_IDS]
     rows = brain.get_traces(served) if served else []
     result = {"traces": rows,
               "missing_ids": sorted(set(served) - {r["id"] for r in rows})}
-    if len(cleaned) > TRACE_BATCH_MAX_IDS:
-        result["truncated"] = truncation_payload_ids(cleaned, TRACE_BATCH_MAX_IDS)
+    if len(unique) > TRACE_BATCH_MAX_IDS:
+        result["truncated"] = truncation_payload_ids(unique, TRACE_BATCH_MAX_IDS)
     return {"ok": True, "result": result}
 
 

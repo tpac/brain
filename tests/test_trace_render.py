@@ -160,6 +160,20 @@ class TestTraceRender(unittest.TestCase):
         self.assertIn("chars — get_trace for the whole body", out)
         self.assertIn("+2", out)  # dropped-char count, not a bare ellipsis
 
+    def test_trim_never_inflates_the_body(self):
+        """A body barely over the cap renders WHOLE: the ~40-char notice would
+        cost more than the trim saves, and body_limit is a cap, not a floor."""
+        from servers.trace_contract import _trim_body
+        for over in (1, 5, 20, 40):
+            body = "z" * (280 + over)
+            out = _trim_body(body, 280)
+            self.assertLessEqual(len(out), len(body),
+                                 "trimming inflated a body %d over the cap" % over)
+            self.assertEqual(out, body)  # left intact, not chopped for no gain
+        # Far past the cap, the trim earns its keep and fires.
+        long_body = "z" * 2000
+        self.assertLess(len(_trim_body(long_body, 280)), len(long_body))
+
     # ── recall_batch reuses the recall formatter ──────────────────────
     def test_recall_batch_renders_not_raw(self):
         result = [
