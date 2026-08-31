@@ -32,22 +32,31 @@ from servers.clock import iso_now
 from servers.scales.thalamus import thalamus_contract as tc
 
 
+# The item's columns, declared ONCE as names. Everything else derives: the
+# SELECT text, the INSERT text, and _row_to_item's mapping — which is BY NAME,
+# so a column may be added anywhere in this tuple without silently shifting
+# every field after it into the wrong key.
+_ITEM_COLS = ('id', 'source', 'body', 'refs', 'audience', 'target_session',
+              'needs_answer', 'dedup_key', 'deliver_at', 'expires_at',
+              'state', 'answer', 'created_at', 'armed_epoch')
+
+_ITEM_SELECT = ', '.join(_ITEM_COLS)
+
+# The door supplies every column it writes; armed_epoch is the exception —
+# it takes its DDL default, generation 0. Derived rather than re-listed so a
+# new column reaches the INSERT too, where _insert_item's KeyError makes the
+# author decide what to write instead of defaulting silently.
+_INSERT_COLS = tuple(c for c in _ITEM_COLS if c != 'armed_epoch')
+
+
 def _row_to_item(row):
-    """sqlite row tuple → item dict (column order = the SELECT below)."""
-    return {
-        'id': row[0], 'source': row[1], 'body': row[2],
-        'refs': json.loads(row[3] or '[]'),
-        'audience': row[4], 'target_session': row[5],
-        'needs_answer': bool(row[6]), 'dedup_key': row[7],
-        'deliver_at': row[8], 'expires_at': row[9],
-        'state': row[10], 'answer': row[11],
-        'created_at': row[12], 'armed_epoch': row[13],
-    }
-
-
-_ITEM_COLS = ('id, source, body, refs, audience, target_session, '
-              'needs_answer, dedup_key, deliver_at, expires_at, state, '
-              'answer, created_at, armed_epoch')
+    """A SELECT of _ITEM_COLS → item dict, mapped by NAME. Extra trailing
+    columns (list_items' delivery counts) are ignored — zip stops at the
+    names — and the caller attaches them itself."""
+    item = dict(zip(_ITEM_COLS, row))
+    item['refs'] = json.loads(item['refs'] or '[]')
+    item['needs_answer'] = bool(item['needs_answer'])
+    return item
 
 
 def _ok(**fields):
@@ -62,16 +71,11 @@ def _reject(error):
     return {'ok': False, 'filed': False, 'error': error}
 
 
-_INSERT_COLS = ('id', 'source', 'body', 'refs', 'audience', 'target_session',
-                'needs_answer', 'dedup_key', 'deliver_at', 'expires_at',
-                'state', 'answer', 'created_at')
-
-
 def _insert_item(conn, **fields):
-    """The one INSERT and the one id-minting site, shared by both routes —
-    armed_epoch takes its column default (generation 0). Every column is
-    named by the caller: a missing field is a KeyError here, not a silent
-    NULL in the row. The caller holds the write lock and commits."""
+    """The one INSERT and the one id-minting site, shared by both routes.
+    Every column is named by the caller: a missing field is a KeyError here,
+    not a silent NULL in the row. The caller holds the write lock and
+    commits."""
     item_id = 'th_%s' % uuid.uuid4().hex[:8]
     row = dict(fields, id=item_id, answer='')
     conn.execute(
@@ -370,7 +374,7 @@ def pull(brain, session_id, via):
     rows = brain.logs_conn.execute(
         'SELECT %s FROM thalamus_items%s'
         ' ORDER BY needs_answer DESC, COALESCE(deliver_at, created_at) ASC'
-        ' LIMIT ?' % (_ITEM_COLS, where),
+        ' LIMIT ?' % (_ITEM_SELECT, where),
         params + [tc.PULL_MAX_ITEMS]).fetchall()
     overflow = total - len(rows)
     items = [_row_to_item(r) for r in rows]
@@ -404,10 +408,10 @@ def list_items(brain, include_closed=False, limit=50):
         '  WHERE d.item_id = thalamus_items.id'
         '  AND d.armed_epoch = thalamus_items.armed_epoch) AS deliveries_epoch'
         ' FROM thalamus_items %s ORDER BY created_at DESC LIMIT ?'
-        % (_ITEM_COLS, where), params + [int(limit)]).fetchall()
+        % (_ITEM_SELECT, where), params + [int(limit)]).fetchall()
     items = []
     for r in rows:
-        item = _row_to_item(r[:-2])
+        item = _row_to_item(r)            # the two aggregates fall off the zip
         item['deliveries'] = r[-2]        # all-time, across re-arms
         item['deliveries_epoch'] = r[-1]  # since the last re-arm
         items.append(item)
@@ -416,7 +420,7 @@ def list_items(brain, include_closed=False, limit=50):
 
 def _get_item(conn, item_id):
     row = conn.execute(
-        'SELECT %s FROM thalamus_items WHERE id = ?' % _ITEM_COLS,
+        'SELECT %s FROM thalamus_items WHERE id = ?' % _ITEM_SELECT,
         (item_id,)).fetchone()
     return _row_to_item(row) if row else None
 
