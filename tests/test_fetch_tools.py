@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from tests.brain_test_base import BrainTestBase
 from tests.isolated_brain import IsolatedBrain
 from servers.scales.s1.fetch_tools import (
     TOOL_DEFINITIONS,
@@ -398,6 +399,55 @@ class TestExpandNode:
     def test_unknown_ref_returns_empty(self, env):
         results = expand_node(env.brain, node_ref='zzzzzzzz_not_a_node', hops=1)
         assert results == []
+
+
+class TestExpandNodeEndToEnd(BrainTestBase):
+    """expand_node against a small fresh brain with a known seed→neighbor
+    constellation. Regression for the traverse() shape bug: traverse returns
+    {'neighbors': [...], 'corrections': {...}, 'metadata': {...}} but
+    expand_node iterated the dict itself (string keys → AttributeError,
+    swallowed by the except) — so the tool returned 0 candidates on every
+    production call (finding id:18e4a651)."""
+    needs_embedder = False
+
+    def _node(self, title):
+        r = self.brain.remember(type='fact', title=title, content='content of %s' % title,
+                                encoding_source='anchor')
+        return r['id']
+
+    def setUp(self):
+        super().setUp()
+        self.seed = self._node('seed node about daemon restarts')
+        self.nb1 = self._node('neighbor one — restart ladder')
+        self.nb2 = self._node('neighbor two — launchd kickstart')
+        self.brain.connect(self.seed, self.nb1, relation='extends', weight=0.8)
+        self.brain.connect(self.seed, self.nb2, relation='grounds', weight=0.6)
+
+    def test_expand_by_id_returns_neighbor_candidates(self):
+        results = expand_node(self.brain, node_ref=self.seed, hops=1)
+        ids = {r['id'] for r in results}
+        self.assertEqual(ids, {self.nb1, self.nb2})
+        for r in results:
+            self.assertEqual(r['source_tool'], 'expand_node')
+            self.assertEqual(r['discovery'], 'expand_node')
+            self.assertTrue(r.get('title'))
+
+    def test_expand_by_title_returns_neighbor_candidates(self):
+        results = expand_node(self.brain, node_ref='seed node about daemon restarts',
+                              hops=1)
+        ids = {r['id'] for r in results}
+        self.assertEqual(ids, {self.nb1, self.nb2})
+
+    def test_expand_via_execute_tool_dispatch(self):
+        # Full path: dispatch → tool → boundary enrichment. No error key,
+        # and no fetch_expand_node row logged (the old failure mode logged
+        # one per call while returning []).
+        out = execute_tool(self.brain, 'expand_node',
+                           {'node_ref': self.seed, 'hops': 1})
+        self.assertNotIn('error', out)
+        ids = {r['id'] for r in out['results']}
+        self.assertEqual(ids, {self.nb1, self.nb2})
+        self.assertFalse(_event_ids(self.brain, 'error', source='fetch_expand_node'))
 
 
 # ─── Dispatch + format helpers ───────────────────────────────────────────
