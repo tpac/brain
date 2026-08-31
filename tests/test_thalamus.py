@@ -108,6 +108,36 @@ class TestFile(ThalamusBase):
         ).fetchone()[0]
         self.assertEqual(n, 1)
 
+    def test_dedup_refile_escalates_a_note_into_an_ask(self):
+        """The change-gate covers every producer-controlled delivery
+        attribute, so escalating a standing note into an ask actually lands.
+        Comparing only (body, refs, deliver_at) left needs_answer=0 — still a
+        note, still Stop-delivered, never dead-lettering — while the door had
+        already granted it the ask's longer window."""
+        r1 = self._file('the recurring thing', dedup_key='esc')
+        self.assertEqual(self._row(r1['id'])[2], 0)
+        r2 = self._file('the recurring thing', dedup_key='esc',
+                        needs_answer=True)
+        self.assertEqual(r2['id'], r1['id'])
+        self.assertTrue(r2['rearmed'])
+        _, audience, needs_answer, _, _, _ = self._row(r2['id'])
+        self.assertEqual(needs_answer, 1)
+        # ...including the audience the new kind implies — an ask left on the
+        # notice audience would deliver to exactly one session, ever.
+        self.assertEqual(audience, tc.AUDIENCE_EVERY)
+
+    def test_dedup_refile_retargets_and_rearms(self):
+        """for_whom is producer-controlled too: re-filing the same text to a
+        different recipient set must move the row, not silently keep the old
+        one."""
+        r1 = self._file('heads up', dedup_key='aim')
+        self.assertEqual(self._row(r1['id'])[1], tc.AUDIENCE_FIRST)
+        r2 = self._file('heads up', dedup_key='aim', for_whom=S1)
+        self.assertTrue(r2['rearmed'])
+        _, audience, _, _, _, target = self._row(r2['id'])
+        self.assertEqual(target, S1)
+        self.assertEqual(audience, tc.AUDIENCE_FIRST)
+
     def test_dated_item_keeps_full_window(self):
         """Expiry anchors at deliver_at, not now — an ask due in 3 weeks must
         not expire after 2 (it would be undeliverable and fire a FALSE loud
