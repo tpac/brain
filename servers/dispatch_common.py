@@ -1,25 +1,15 @@
 """Daemon dispatch — shared helpers.
 
 Imported by every dispatch_* handler module AND by daemon_dispatch (the
-registry). Holds the CmdEntry contract, the unknown-key guard, id resolution
-and session-context popping. No dependency on the handler modules, so the
+registry). Holds the CmdEntry contract, the unknown-key guard and
+session-context popping. No dependency on the handler modules, so the
 import graph stays acyclic: common <- {write,read,observability,ops} <- daemon_dispatch.
+
+Node ids are exact 8-char hex everywhere — there is no prefix resolution
+step at the dispatch layer; misses are the owning brain method's to report.
 """
 
 from typing import Any, Dict, Callable, Optional, NamedTuple
-
-
-def _resolve_id(brain, node_id):
-    """Resolve a node ID — exact match first, then prefix match.
-
-    Handles both new 8-char IDs and old 32-char IDs gracefully.
-    Returns the full ID if found, or the original input if not.
-    """
-    if not node_id:
-        return node_id
-    dal = brain._nodes
-    full_id = dal.resolve_id(node_id)
-    return full_id if full_id else node_id  # Not found — let the caller handle the error
 
 
 # Reserved arg key: the calling session's identity, stamped by the MCP proxy

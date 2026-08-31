@@ -66,7 +66,6 @@ Run via the audit harness: ./dev python3 eval/laf/gold24_episodic_audit.py
 """
 import os
 import sys
-from collections import defaultdict
 
 import numpy as np
 
@@ -156,36 +155,6 @@ def episodic_roles(brain, cue, cutoff, *, top=DEFAULT_TOP_MOMENTS,
             for r in roles_for_moments(brain, moments, w, SESSION_TRACE_PULL)]
 
 
-# ─────────────────────────── id-width resolution ───────────────────────────
-def _short_to_full(idx):
-    """Map 8-char short id → full id, from the master index keys.
-
-    picked/dropped roles are recorded as 8-char short ids (what surface traces store);
-    encoded roles are full ids. The master `idx` is full-id keyed, so short ids must be
-    resolved. A short id that collides (two full ids share a prefix) is dropped from the
-    map (ambiguous → skip, never mis-attribute); the collision count is returned for callers that want it (current callers ignore it — collisions are ~0 since node ids are natively 8-char).
-    """
-    by_short = defaultdict(list)
-    for full in idx:
-        by_short[full[:8]].append(full)
-    out = {}
-    collisions = 0
-    for short, fulls in by_short.items():
-        if len(fulls) == 1:
-            out[short] = fulls[0]
-        else:
-            collisions += 1
-    return out, collisions
-
-
-def _resolve(node_id, idx, s2f):
-    """Resolve a role node id (short OR full) to a master row index, or None."""
-    if node_id in idx:                     # already a full id in the master
-        return idx[node_id]
-    full = s2f.get(node_id)                # short → full
-    return idx.get(full) if full else None
-
-
 def _rows(brain, records, role, idx):
     """{role id → master row} for one role across the records — survivor-credited.
 
@@ -196,9 +165,8 @@ def _rows(brain, records, role, idx):
     probes measure the shipped episodic lanes rather than a stale variant.
     """
     from servers.recall_laf import role_rows
-    s2f, _ = _short_to_full(idx)
     rows, _ = role_rows(brain, [nid for r in records for nid in r[role]],
-                        lambda nid: _resolve(nid, idx, s2f))
+                        idx.get)
     return rows
 
 
@@ -270,14 +238,13 @@ def episodic_dropped_detail(brain, cue, cutoff, idx, n, *,
     cand_w = np.zeros(n, dtype=np.float64)   # Σ score over moments node was a CANDIDATE
     records = _records if _records is not None else episodic_roles(
         brain, cue, cutoff, top=top, window=window, score_fn=score_fn)
-    s2f, _ = _short_to_full(idx)
     for r in records:
         s = r["score"]
         dropped = set(r["dropped"])
         picked = set(r["picked"])
         # candidate pool at this moment = picked ∪ dropped (everything offered to Haiku)
         for node in dropped | picked:
-            i = _resolve(node, idx, s2f)
+            i = idx.get(node)
             if i is None:
                 continue
             cand_w[i] += s

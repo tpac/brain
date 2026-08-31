@@ -853,13 +853,8 @@ class BrainTracesMixin:
         return _from_jsonl(resolved_timestamp, before, after)
 
     def _resolve_node_timestamp(self, node_id):
-        """Get a node's created_at timestamp (full id or short-id prefix) —
-        through NodeDAL, so prefix-resolution semantics live in one place."""
-        nid = (self._nodes.resolve_id(node_id)
-               or self._nodes.resolve_id(node_id[:8]))
-        if not nid:
-            return None
-        node = self._nodes.get_naked_node(nid)
+        """Get a node's created_at timestamp — exact id match via NodeDAL."""
+        node = self._nodes.get_naked_node(node_id) if node_id else None
         return node['created_at'] if node else None
 
     def _find_encoding_session(self, node_id, node_created_at):

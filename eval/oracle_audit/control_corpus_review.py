@@ -17,7 +17,7 @@ with IsolatedBrain() as env:
     b = env.brain
 
     def t(n8):
-        r = b.conn.execute("SELECT type,title FROM nodes WHERE id LIKE ?", (n8 + '%',)).fetchone()
+        r = b.conn.execute("SELECT type,title FROM nodes WHERE id = ?", (n8,)).fetchone()
         return ("%s: %s" % (r[0][:4], r[1][:52])) if r else ("?? %s (NOT FOUND)" % n8)
 
     md = ["# Control corpus — gold review (titles)\n",

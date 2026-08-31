@@ -373,15 +373,9 @@ def traverse(brain, seed_ids, depth=1, limit_per_seed=3):
         'metadata': {node_id: {key: value, ...}},
     }
     """
-    ndal = brain._nodes
     mdal = brain._meta_kv
 
-    # Resolve short IDs
-    resolved_ids = set()
-    for sid in seed_ids:
-        full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
-        if full:
-            resolved_ids.add(full)
+    resolved_ids = {sid for sid in seed_ids if sid}
 
     if not resolved_ids:
         return {'neighbors': [], 'corrections': {}, 'metadata': {}}

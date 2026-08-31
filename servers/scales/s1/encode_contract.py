@@ -307,8 +307,15 @@ def _dedup_correction_relations(nodes_map, brain):
         node['connections'] = kept
 
 
+# The one pattern for ids referenced in surface judge_output text. Exact
+# 8-char ids only (the id-resolution unification) — shorter fragments are
+# corrupted emissions and are not treated as ids. Owned here; encode's
+# lived-timeline SURFACED parse imports it so the two can never disagree.
+SURFACED_ID_PATTERN = r'id:([a-z0-9_]{8})'
+
+
 def surfaced_ids_of(judge_outputs):
-    """Node ids referenced by the surface outputs (pattern: id:XXXXXXXX) —
+    """Node ids referenced by the surface outputs (SURFACED_ID_PATTERN) —
     the single owner of that parse. build_node_catalog derives its surfaced
     category from this; encode's associated-stub retrieval derives its
     exclusion set from the same parse so the two can never disagree about
@@ -318,7 +325,7 @@ def surfaced_ids_of(judge_outputs):
     for jo in (judge_outputs or ()):
         if not jo or jo == '(no selection)':
             continue
-        for match in re.finditer(r'id:([a-z0-9_]{6,8})', jo):
+        for match in re.finditer(SURFACED_ID_PATTERN, jo):
             ids.add(match.group(1))
     return ids
 

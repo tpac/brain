@@ -28,9 +28,9 @@ with IsolatedBrain() as env:
     b = env.brain
 
     def neigh(n8):
-        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id LIKE ? "
-                              "UNION SELECT source_id FROM edges WHERE target_id LIKE ?",
-                              (n8 + '%', n8 + '%')).fetchall()
+        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id = ? "
+                              "UNION SELECT source_id FROM edges WHERE target_id = ?",
+                              (n8, n8)).fetchall()
         return {x[0][:8] for x in rows}
 
     tally = {'1hop': 0, 'fts': 0, '2hop': 0, 'UNREACH': 0}

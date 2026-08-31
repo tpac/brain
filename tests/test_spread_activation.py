@@ -207,9 +207,9 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         nyc = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '4e8acb7a%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '4e8acb7a'").fetchone()[0]
 
         query = ("How many days did I spend in total traveling "
                  "in Hawaii and in New York City?")
@@ -231,9 +231,9 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         community = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '3d25ca4c%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '3d25ca4c'").fetchone()[0]
 
         query = "What's my travel style?"
         qv = np.frombuffer(embed_query(query), dtype=np.float32)
@@ -250,7 +250,7 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("Hawaii trip"), dtype=np.float32)
 
         result = spread_activation([hawaii], qv, self.brain)
@@ -266,7 +266,7 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("travel"), dtype=np.float32)
 
         result = spread_activation([hawaii], qv, self.brain)
@@ -314,9 +314,9 @@ class TestActivationRenderingOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         nyc = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '4e8acb7a%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '4e8acb7a'").fetchone()[0]
 
         query = ("How many days did I spend in total traveling in "
                  "Hawaii and in New York City?")
@@ -353,7 +353,7 @@ class TestActivationRenderingOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("travel"), dtype=np.float32)
 
         act = spread_activation([hawaii], qv, self.brain)

@@ -170,7 +170,7 @@ stay deferred.
 | 2 | `recall_by_time` **event** | `fetch_tools.py:507` | `entity_dates` (DAL) | archived filtered (`n.archived=0`) ✓ | route through resolver for survivor-redirect |
 | 3 | `_get_recently_surfaced` (surface dedup) | `scales/s1/surface.py:21-55` | `surface_selected` traces → `get_title` | **no liveness** — archived titles enter dedup set | resolve_live — track survivor, not dead id |
 | 4 | Hebbian drain | REMOVED — `_hebbian_strengthen` deleted 2026-05-18, surface-picks successor retired 2026-08-17 (node ab56d25a) | — | gone | nothing to migrate |
-| 5 | Surface outside-candidate recovery | `surface.py:716-741` (`_drop_archived_selected`) | Haiku id not in menu → `resolve_id` | archived dropped + loud (bc34734d) | resolve_live — absorbed id → its survivor (this is the `spread_seed_no_vectors` self-heal) |
+| 5 | Surface outside-candidate recovery | `surface.py:716-741` (`_drop_archived_selected`) | Haiku id not in menu → exact-id lookup | archived dropped + loud (bc34734d) | resolve_live — absorbed id → its survivor (this is the `spread_seed_no_vectors` self-heal) |
 | 6 | S1 Scribe catalog | `scales/s1/encode.py:462-475` | `recalled_raw` surface output → ids | **no liveness** | resolve_live — encoder sees live survivors, not dead ids it then tries to revise |
 | 7 | S2 community decoder | `scales/s2/community_decoder.py:189` | own S2 traces (ref_id) | reads ids (suppression) | **deferred** (Q3) — audit only |
 | 8 | S2 consolidation decoder | `scales/s2/consolidation_decoder.py:704` | own S2 traces (selected_ids) | reads ids | **deferred** (Q3) — audit only |

@@ -213,10 +213,13 @@ def test_markdown_control_arm_renders_surfaced_refs():
     # Exercises the SURFACED branch (judge_output → id extraction → get_title) the
     # other control test doesn't reach, so 'byte-identical control' is fully proven.
     msgs = [{'role': 'user', 'content': 'fix it', 'id': 'turn1', 'trace_id': 'u1',
-             'judge_output': 'picked id:abc1234'},
+             'judge_output': 'picked id:abc12345'},
             {'role': 'assistant', 'content': 'done', 'trace_id': 'a1'}]
     out = _render_markdown_timeline(_StubBrain([]), msgs)
-    assert 'SURFACED: abc1234 ("Title-abc1234")' in out
+    assert 'SURFACED: abc12345 ("Title-abc12345")' in out
+    # Exact-id contract: a sub-8-char fragment is not treated as an id.
+    msgs[0]['judge_output'] = 'picked id:abc1234'
+    assert 'SURFACED' not in _render_markdown_timeline(_StubBrain([]), msgs)
 
 
 def test_system_prompt_injects_review_block_and_closure_when_lived():

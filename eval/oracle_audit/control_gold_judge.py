@@ -51,14 +51,14 @@ with IsolatedBrain() as env:
     b = env.brain
 
     def fetch(n8):
-        r = b.conn.execute("SELECT id,type,title,substr(content,1,260) FROM nodes WHERE id LIKE ?",
-                           (n8 + '%',)).fetchone()
+        r = b.conn.execute("SELECT id,type,title,substr(content,1,260) FROM nodes WHERE id = ?",
+                           (n8,)).fetchone()
         return (r[1], r[2], (r[3] or '')) if r else ('?', '?', '')
 
     def neighbors(n8):
-        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id LIKE ? "
-                              "UNION SELECT source_id FROM edges WHERE target_id LIKE ?",
-                              (n8 + '%', n8 + '%')).fetchall()
+        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id = ? "
+                              "UNION SELECT source_id FROM edges WHERE target_id = ?",
+                              (n8, n8)).fetchall()
         return [x[0][:8] for x in rows][:8]
 
     def judge(query, pool):

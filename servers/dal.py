@@ -170,19 +170,10 @@ class NodeDAL:
             out[d['id']] = d
         return out
 
-    def resolve_id(self, prefix: str) -> Optional[str]:
-        """Resolve a short ID prefix (e.g. 8-char) to a full node ID."""
-        if not prefix:
-            return None
-        row = self.conn.execute(
-            'SELECT id FROM nodes WHERE id LIKE ?', (prefix + '%',)
-        ).fetchone()
-        return row[0] if row else None
-
     def get_title(self, node_id: str) -> Optional[str]:
-        """Get just the title of a node. Accepts full ID or prefix."""
+        """Get just the title of a node. Exact id match."""
         row = self.conn.execute(
-            'SELECT title FROM nodes WHERE id LIKE ?', (node_id + '%',)
+            'SELECT title FROM nodes WHERE id = ?', (node_id,)
         ).fetchone()
         return row[0] if row else None
 
