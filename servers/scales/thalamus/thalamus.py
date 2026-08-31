@@ -206,7 +206,7 @@ def _due_filter(session_id, via, now):
             '   SELECT 1 FROM thalamus_deliveries d WHERE d.item_id = thalamus_items.id'
             '   AND d.armed_epoch = thalamus_items.armed_epoch'
             '   AND d.session_id = ?)))')
-    params.extend([tc.AUDIENCE_ONCE, tc.AUDIENCE_ALL, session_id])
+    params.extend([tc.AUDIENCE_FIRST, tc.AUDIENCE_EVERY, session_id])
     return sql, params
 
 

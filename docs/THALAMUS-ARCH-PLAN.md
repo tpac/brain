@@ -1,42 +1,53 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-08-30 — canonical-pull resolution ruled; three gates closed ◀ ACTIVE ARC
+## §2026-08-30 (late) — canonical-pull arc SHIPPED end-to-end; queue resumes at Step 7 ◀ ACTIVE ARC
 
-**Read first:** canonical-pull ruling id:d42a49ce; handoff id:9ca1577a.
+**Read first:** ship milestones id:0cbc1e53 (canonical pull + TTL) and
+id:b0940238 (review fix pass); ruling id:d42a49ce.
 
 Steps 1–6 + two review fix rounds live (merge 9766ca7, logs schema v2).
-Three of the four operator gates ruled 2026-08-30:
+The archived-refs gate closed by WIDENING and the whole widened arc is
+now shipped, reviewed, and consolidated — four merges on main:
 
-- **Archived refs — WIDENED (id:d42a49ce):** survivor resolution moves INTO
-  the canonical pull (get_node / get_nodes / filter_nodes-by-id), not into
-  thalamus. Absorb is an identity claim by the brain's own machinery: an
-  absorbed id redirects loudly to its live survivor (both ids shown); a
-  retired node (no survivor) keeps the honest ⚠ ARCHIVED render; WRITES
-  never redirect (refuse with the pointer); the corpse stays readable via
-  an opt-in; predicate scans keep `archived = 0`; recall is untouched
-  (queries live directly). Consolidation becomes invisible above the store.
-  Supersedes the thalamus-local design (id:4df6150b — mechanism kept,
-  placement moved) and collapses most of TRACE-NODE-RESOLUTION.md's
-  per-site migration queue. **The session converted to implement this
-  first; thalamus `_attach_ref_lines` inherits redirect + titles through
-  filter_nodes.**
-- **Backup policy (id:54160417):** a general TTL reaper in db_backup.py —
-  a retention-policy enabler routine backups can adopt, NOT a
-  migration-specific patch; the 888MB `.v1.bak` is its first reap. Own
-  small commit.
-- **Sweep-block consolidation (id:23cd4d61):** folds into Step 11.
+- **Canonical-pull redirect (2f0b54b):** absorbed ids resolve at the door
+  (get_node / get_nodes / filter_nodes-by-id / recall_node) — survivor
+  under the requested id, `_redirected_from` marked in every render;
+  retired nodes render `⚠ ARCHIVED`; writes refuse with the pointer;
+  thalamus `_attach_ref_lines` inherits redirect + titles for free
+  (`old ↦ new · Title (absorbed)`). Consumer trace id:6686c3a5.
+- **8-angle Opus review → hotfix (9f769b4):** endpoint-dedup regression
+  fixed; the TTL reaper's rotation wire REMOVED before it fired (the
+  tagged-bak corpus is the recovery scripts' data source).
+- **Fix pass (2bed982):** one owner per redirect concern —
+  contract.py holds REDIRECTED_FROM_KEY + both markers + the shared
+  write-refusal; canonicalize_results owns the identity swap;
+  copy-on-stamp (no false banners); zero-extra-queries when live at
+  every door; `test_redirect_door_parity` pins the three doors.
 
-**Still open:** audience-guard placement — fuller context delivered
-(rec: contract test `resolve_for_whom outputs ⊆ AUDIENCES` riding Step 7,
-runtime tripwire kept); awaiting Tom's judgment.
+**Gate ledger — ALL FOUR CLOSED:** (1) archived refs — shipped (above).
+(2) backup policy (id:54160417) — `reap_by_ttl` + rotation wire live
+(14d TTL, hardened pattern); corpus ruling landed (the v15–v29 brain.db
+baks reap; their recovery-script consumers are retirement candidates,
+flagged not deleted).
+(3) sweep-block consolidation (id:23cd4d61) — folds into Step 11.
+(4) audience guard — CLOSED via the recipient-set rename (logs v3,
+merge b2adb5e): audiences renamed `first_session` / `every_session`
+(the enum picks WHO is eligible; cardinality is the ledger's, repetition
+is the epoch's), the contract test (`resolve_for_whom outputs ⊆
+AUDIENCES` + predicate binds both) shipped with it, the runtime tripwire
+in `file()` stays for future-new-branch drift.
 
 **Locked:** append-only epoch ledger (re-arm = generation); change-gated
 re-file (identical re-file refreshes window only, never re-delivers);
 kept-count rendering (head/tail/ledger/count agree); sweeps ahead of the
 S2 gate.
 
-**Next builds:** canonical-pull resolution (this session), TTL reaper,
-then Step 7 (door polish — before Phase 2 producers) and 8–11 below.
+**Next builds:** Step 7 (door polish — before Phase 2 producers; the
+audience contract test already landed with the v3 rename), then 8–11
+below. Adjacent, non-thalamus follow-ons spun off as their own tasks:
+LAF survivor-credit for pick/enc lanes (finding id:ad74941e, chip armed —
+algorithmic pre/post eval, no Haiku); recovery-script retirement
+(bak corpus reaped, scripts empty — awaiting the beat).
 
 **Do not reopen:** ThalamusDAL; producer-facing kind vocabulary; sweep
 placement (Step 3's directive); delete-on-defer; unconditional dedup bump.

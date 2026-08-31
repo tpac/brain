@@ -47,8 +47,8 @@ Producers state intent; the door routes:
 | Producer intent | Route |
 |---|---|
 | everyone alive **now** | delegate to `signal.send(broadcast)`; row goes terminal `sent` — fire-and-forget, the courier owns its death |
-| everyone in a window | queue: `expires_at`, audience `window` |
-| next session / a specific stream | queue: audience `next-boot` / `directed` |
+| everyone in a window | queue: audience `every_session` (once each, per epoch), `expires_at` window |
+| next session to pull / a specific stream | queue: audience `first_session` (+ `target_session` when directed) |
 | at a time ("Tuesday", "in 3 days") | queue: `deliver_at` |
 | needs a decision | queue: `needs_answer=true`, loud expiry |
 
