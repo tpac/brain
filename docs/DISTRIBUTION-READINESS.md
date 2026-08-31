@@ -1,6 +1,6 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-28) — prerequisites SHIPPED incl. relocation; publish path (5.0c → 5.7) unstarted; **next: version bump, then 5.6 / D-5**
+## §ACTIVE ARC (2026-08-30) — 5.6 / D-5 DONE (the Nursery); **next: 5.0c classes 1–2, then 5.3 → 5.2 → 5.5 → 5.7**
 **Where the work actually is.** Shipped and verified on main: 5.0 (`e3d9481`),
 the versioned migration runner (`b11e45d` — both DBs, one real step at v31),
 5.0a (`89e8286`) **completed 2026-08-28 by the relocation offer (`d4f4772`)**:
@@ -18,12 +18,13 @@ update first.
 the fleet; the rename soak clock starts when existing installs take it.
 **5.1 SHIPPED 2026-08-28** (`scripts/export-public-tree.sh` — see the item;
 its scrub gate emits the live 5.3 worklist: 217 hits / 81 files). **5.4 DONE**
-same day. Unstarted, in order: **5.6 / D-5** (the design gate) · **5.0c** ·
-**5.3** (worklist now concrete) · **5.2** (rename — `plugin.json` still
+same day. **5.6 / D-5 DONE 2026-08-30** — the design gate is closed; the
+publish path has no design questions left. Unstarted, in order: **5.0c**
+(classes 1–2 only — class 3 dissolved with the name-free pack) · **5.3**
+(worklist now concrete) · **5.2** (rename — `plugin.json` still
 `name: brain`) · **5.5** · **5.7**.
-Arch-plan steps 7–10 remain open but gate nothing. Operator decisions still
-open: **D-5** (§8 fork 2, gates 5.6 and therefore the publish) and
-**`displayName`** (5.2).
+Arch-plan steps 7–10 remain open but gate nothing. Operator decision still
+open: **`displayName`** (5.2).
 **Read first:** handoff node `[thread:d13-arch-plan]` + the 5.0a ruling (id:cfe2113b). Shipped
 2026-08-11: arch-plan steps 2+4+5. Shipped 2026-08-12 (5.0a, three-lens reviewed): new brains born
 at `${XDG_DATA_HOME:-~/.local/share}/brain`; adoption net refuses to create over an orphaned
@@ -271,7 +272,8 @@ the fetched `uv`. The earlier `!bin/brain-dashboard` gitignore fix no longer exi
 ### Phase 5 — Packaging & distribution
 
 Ordered execution checklist as of 2026-08-06. Every naming/model decision is closed
-(D-6…D-9); only **5.6 (D-5 seed pack)** is still a design question.
+(D-6…D-9), and **5.6 (D-5 seed pack) closed 2026-08-30** — no design questions remain
+on the publish path.
 
 **5.0 Plugin updates reach existing installs — SHIPPED. Merged `e3d9481`
 (2026-08-16); the runner landed the same day as `b11e45d`.** The gap it
@@ -456,10 +458,13 @@ gains an acquisition path (`userConfig`, D-4 shape). Three unequal classes:
   2. **prompts (~45)** — `encoding_prompt`, `quality_contract`, `surface_contract`
      are code defaults: edit the `.py` and every install picks it up at its next
      daemon restart
-  3. **seed pack (45)** — **this is D-5.** A fresh brain is seeded with nodes
-     asserting "I'm Anchor" before it holds a memory; that is precisely the
-     seed-pack session's question, not this one's
-*M–L; classes 1–2 here, class 3 routes to D-5.*
+  3. **seed pack — RESOLVED by D-5 (2026-08-30):** the Nursery pack is
+     name-free by construction (no node asserts the entity's name; no
+     interpolation machinery). The only remaining `Tom`/`Anchor` literals in
+     `seed_pack.py` are the three deliberate origin-story tributes
+     (`test_names_only_in_tribute_sites` holds the boundary) — they are
+     content, not identity assertions, and stay.
+*M; classes 1–2 remain here.*
 
 **5.1 Export script — SHIPPED 2026-08-28: `scripts/export-public-tree.sh`.**
 Materializes the public tree from `build-plugin.sh --list` (the builder grew
@@ -615,9 +620,22 @@ version → update → brain intact) — today that property rests on the manual
 would now surface publicly (D-8 skips address it). Plus a secrets scan on the tree
 before first push. *M.*
 
-**5.6 [DESIGN GATE] D-5 seed pack.** What a stranger's Anchor wakes up as. A
-functional pack exists (19 nodes, cold-install validated §6b); this is the quality
-pass. **§5 sequencing: the publish must not happen before this.** *L.*
+**5.6 D-5 seed pack — DONE 2026-08-30 (the Nursery).** Full redesign shipped:
+26 nodes (4 locked safety core · 6 self-knowledge · 6 growth reflexes · 3
+marked exemplars · 1 seed community with loader-generated membership + the
+`community_members` reconcile seed · 6 developmental scaffolds designed to be
+revised away), all types/relations from registered aspect families, name-free
+by construction (names live in config + boot; three origin-story tributes are
+the only literals). The Zero-Memory boot block ships as the pack's spoken
+half (`brain_voice`, gated in `context_boot`): fires while the brain is under
+10 days old or under 100 lived memories, carries the newness disclosure, the
+naming invitation (nameless installs only), and the anti-sycophancy floor,
+then retires itself. Gates run: 4-lens adversarial review + re-verification,
+recall probes on a seeded fresh brain, and a simulated first-session
+rehearsal (9/11 instincts pass; transcript + findings id:2a9aa2c7). Contracts
+in `tests/test_seed_pack.py::TestNurseryPackContracts` +
+`test_context_boot_zero_memory_gate`. Remaining follow-on (not a gate): the
+new-vs-old encoder eval on the frozen-corpus harness. *Was L; shipped.*
 
 **5.7 [LAST — one-way door] Publish.** *Mechanics gap named 2026-08-28: the
 release step itself is unbuilt — a `release` command that runs
