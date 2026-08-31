@@ -186,6 +186,22 @@ def _resolve(node_id, idx, s2f):
     return idx.get(full) if full else None
 
 
+def _rows(brain, records, role, idx):
+    """{role id → master row} for one role across the records — survivor-credited.
+
+    Delegates the absorbed-id walk to the PRODUCTION helper
+    (servers/recall_laf.py:role_rows), the same single-source discipline
+    roles_for_moments already follows: an id absorbed since its trace was
+    written credits its live survivor's row instead of being dropped, so the
+    probes measure the shipped episodic lanes rather than a stale variant.
+    """
+    from servers.recall_laf import role_rows
+    s2f, _ = _short_to_full(idx)
+    rows, _ = role_rows(brain, [nid for r in records for nid in r[role]],
+                        lambda nid: _resolve(nid, idx, s2f))
+    return rows
+
+
 # ─────────────────────────── the three operators ───────────────────────────
 def episodic_encoded(brain, cue, cutoff, idx, n, *,
                      top=DEFAULT_TOP_MOMENTS, window="turn", score_fn=default_score,
@@ -200,11 +216,11 @@ def episodic_encoded(brain, cue, cutoff, idx, n, *,
     vec = np.zeros(n, dtype=np.float64)
     records = _records if _records is not None else episodic_roles(
         brain, cue, cutoff, top=top, window=window, score_fn=score_fn)
-    s2f, _ = _short_to_full(idx)
+    rows = _rows(brain, records, "encoded", idx)
     for r in records:
         s = r["score"]
         for node in set(r["encoded"]):
-            i = _resolve(node, idx, s2f)
+            i = rows.get(node)
             if i is not None and s > vec[i]:
                 vec[i] = s
     return vec
@@ -222,11 +238,11 @@ def episodic_picked(brain, cue, cutoff, idx, n, *,
     vec = np.zeros(n, dtype=np.float64)
     records = _records if _records is not None else episodic_roles(
         brain, cue, cutoff, top=top, window=window, score_fn=score_fn)
-    s2f, _ = _short_to_full(idx)
+    rows = _rows(brain, records, "picked", idx)
     for r in records:
         s = r["score"]
         for node in set(r["picked"]):
-            i = _resolve(node, idx, s2f)
+            i = rows.get(node)
             if i is not None and s > vec[i]:
                 vec[i] = s
     return vec
@@ -244,6 +260,11 @@ def episodic_dropped_detail(brain, cue, cutoff, idx, n, *,
     moments where it WAS a candidate. prevalence lets the caller floor on thin evidence
     (a 1/1 drop has rate=1 but tiny prevalence). Both are [n] non-negative vectors; rate is
     the magnitude of inhibition (the LAF consumer SUBTRACTS gain·zscore(rate)).
+
+    NOT survivor-credited (unlike picked/encoded): these accumulators are `+=`, so two ids
+    that a walk collapses onto one survivor would double-count that row's evidence mass —
+    a real change to the ÷prevalence semantics, not a free fix. The lane is out of shipped
+    laf_v1, so the drop stands until the denominator question is settled on its own terms.
     """
     drop_w = np.zeros(n, dtype=np.float64)   # Σ score over moments node was DROPPED
     cand_w = np.zeros(n, dtype=np.float64)   # Σ score over moments node was a CANDIDATE
