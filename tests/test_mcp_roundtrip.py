@@ -513,6 +513,12 @@ class TestMCPRoundTrip(BrainTestBase):
                          '2026-06-14T00:00:00+00:00')
         self.assertEqual(_resolve_time_bound('2026-06-14 12:00:00'),
                          '2026-06-14T12:00:00+00:00')
+        # An offset-bearing literal is CONVERTED to UTC, not passed through
+        # wearing its own offset: as text '…12:00:00+03:00' sorts AFTER
+        # '…09:30:00+00:00' while naming an earlier instant, so the window it
+        # bounds silently shifted.
+        self.assertEqual(_resolve_time_bound('2026-06-14T12:00:00+03:00'),
+                         '2026-06-14T09:00:00+00:00')
         for junk in ('1mo', 'garbage', '7', '2026-13-99', '2026-06-14xyz'):
             with self.assertRaises(ValueError):
                 _resolve_time_bound(junk)
