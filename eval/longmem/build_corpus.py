@@ -221,6 +221,48 @@ def _fetch_interaction_template(name: str, version: int) -> str:
     return tmpl
 
 
+def _seed_pack_token() -> dict:
+    """The seed pack joins the content address: it is the encoder's only
+    early catalog, so it shapes every encoded graph. Fingerprint the RESOLVED
+    module state — after any --seed-pack override — so a corpus built under
+    one pack never cache-hits a corpus built under another (the same stale-
+    default masquerade _k_fingerprints closes for prompts; brain id:5f935ada
+    for the seed flavor). One-time cache invalidation for pre-existing
+    corpora: intended — they all predate the Nursery pack anyway."""
+    import hashlib
+    import servers.seed_pack as sp
+    blob = json.dumps({"nodes": sp.SEED_NODES, "edges": sp.SEED_EDGES,
+                       "generation": sp.SEED_PACK_GENERATION},
+                      sort_keys=True, ensure_ascii=False)
+    return {"generation": sp.SEED_PACK_GENERATION,
+            "digest": hashlib.sha1(blob.encode()).hexdigest()[:12]}
+
+
+def _apply_seed_pack_override(path: str) -> None:
+    """Swap servers.seed_pack's pack DATA (nodes/edges/generation) for another
+    pack file's, before any eval Brain is created — the loader code stays
+    current, only the data changes. Pack files are data-only modules
+    (SEED_NODES/SEED_EDGES at module level, no imports required).
+
+    A pack without its own SEED_PACK_GENERATION (pre-Nursery) gets a distinct
+    eval marker: the frozen brains then carry a foreign generation, so the
+    sweep-time open's seeding pass reads them as not-born-from-the-current-pack
+    and leaves them untouched — otherwise the current pack's gap-fill would
+    inject its nodes into the frozen graph at open (id:5f935ada)."""
+    import hashlib
+    import servers.seed_pack as sp
+    src = Path(path).read_text()
+    ns: dict = {"__name__": "seed_pack_override"}
+    exec(compile(src, path, "exec"), ns)
+    sp.SEED_NODES = ns["SEED_NODES"]
+    sp.SEED_EDGES = ns["SEED_EDGES"]
+    gen = ns.get("SEED_PACK_GENERATION") or (
+        "eval_ext_" + hashlib.sha1(src.encode()).hexdigest()[:8])
+    sp.SEED_PACK_GENERATION = gen
+    print(f"[corpus] seed-pack override: {path} → {len(sp.SEED_NODES)} nodes, "
+          f"{len(sp.SEED_EDGES)} edges, generation={gen}", flush=True)
+
+
 def _k_fingerprints(override_templates: dict = None) -> dict:
     """Resolved-K fingerprints for the content address, per encoding name.
 
@@ -248,8 +290,14 @@ def _k_fingerprints(override_templates: dict = None) -> dict:
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
-                 interaction_overrides: dict = None, lived: bool = True) -> str:
+                 interaction_overrides: dict = None, lived: bool = True,
+                 seed_pack: str = None) -> str:
     _load_env()
+
+    # Seed-pack override must land before any eval Brain is created — the
+    # loader reads the module globals at Brain init.
+    if seed_pack:
+        _apply_seed_pack_override(seed_pack)
 
     # The lived arm (BRAIN_S1E_LIVED_SEQUENCE) changes the ENCODED GRAPH — the
     # XML lived-sequence input, widened catalog, 2-scout muster, inline scout
@@ -320,6 +368,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     if lived:
         config["s1e_lived"] = True
     config["k_fingerprints"] = _k_fingerprints(override_templates)
+    config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
     ov_str = (" / overrides=%s" % config["interaction_overrides"]) if interaction_overrides else ""
     print(f"[corpus] config hash = {h}  ({config['s1e']} / surface={config['ingest_surface']} "
@@ -564,6 +613,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "qids": qid_list,
     }
     config["k_fingerprints"] = _k_fingerprints()
+    config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
     print(f"[pooled] config hash = {h}  ({len(qid_list)} items / "
           f"{len(plan)} sessions / {n_user_turns} user turns / "
@@ -724,6 +774,12 @@ def main():
                         "`## Arc` residue). Default LIVED — production's arm since v29 "
                         "activation. Joins the content address — a lived corpus never "
                         "collides with a control corpus.")
+    p.add_argument("--seed-pack", dest="seed_pack", default=None,
+                   help="Path to an alternate seed-pack module (SEED_NODES/SEED_EDGES "
+                        "at module level) to seed each eval brain with, e.g. a "
+                        "git-show of a prior generation. Part of the corpus hash; "
+                        "frozen brains carry the pack's generation marker so sweeps "
+                        "never gap-fill them with the current pack.")
     p.add_argument("--interaction-override", dest="interaction_override", default=None,
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
@@ -747,8 +803,9 @@ def main():
     if args.pooled:
         # args.lived is None unless the user pinned an arm explicitly — pooled
         # takes no arm pin (it always builds lived; there is no control pooled).
-        if args.lived is not None or overrides:
-            p.error("--pooled does not compose with --lived/--no-lived/--interaction-override")
+        if args.lived is not None or overrides or args.seed_pack:
+            p.error("--pooled does not compose with --lived/--no-lived/"
+                    "--interaction-override/--seed-pack")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
                             args.s2_every_n, args.label, force=args.force,
                             items_per_axis=args.items, seed=args.seed)
@@ -757,7 +814,8 @@ def main():
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,
                  interaction_overrides=overrides or None,
-                 lived=(True if args.lived is None else args.lived))
+                 lived=(True if args.lived is None else args.lived),
+                 seed_pack=args.seed_pack)
 
 
 if __name__ == "__main__":
