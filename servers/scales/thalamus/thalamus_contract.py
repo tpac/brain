@@ -49,21 +49,28 @@ TERMINAL_STATES = (STATE_ANSWERED, STATE_DISMISSED, STATE_WITHDRAWN,
 
 
 # ═══════════════════════════════════════════════════════════════
-# AUDIENCES  —  how many sessions one item reaches (the pull predicate)
+# AUDIENCES  —  the item's RECIPIENT SET (who the pull predicate serves).
+# NOT a frequency: delivery cardinality is constant — the ledger PK caps
+# every item at one delivery per session per armed_epoch, and repetition
+# over time is the epoch axis (re-arm). This enum only picks who is
+# eligible. A directed item narrows first_session to one named session
+# via the target_session column.
 # ═══════════════════════════════════════════════════════════════
-AUDIENCE_ONCE = 'once'   # first session that pulls after due — reminders/notices
-AUDIENCE_ALL = 'all'     # once per session inside the window — standing notices
-                         # and asks ("push once per session, stay pullable")
+AUDIENCE_FIRST = 'first_session'  # the first session to pull after due —
+                                  # a dynamic singleton (reminders/notices)
+AUDIENCE_EVERY = 'every_session'  # every session inside the window, once
+                                  # each (standing notices and asks)
 
-AUDIENCES = (AUDIENCE_ONCE, AUDIENCE_ALL)  # the closed set the pull predicate
-                                           # matches — a value outside it would
-                                           # never deliver and die silently at
-                                           # expiry; file() guards the door
+AUDIENCES = (AUDIENCE_FIRST, AUDIENCE_EVERY)  # the closed set the pull
+                                              # predicate matches — a value
+                                              # outside it would never deliver
+                                              # and die silently at expiry;
+                                              # file() guards the door
 
 def default_audience(needs_answer):
     """An ask renders at each new session's boot until answered/expired; a
     reminder/notice fires once. Both overridable via for_whom."""
-    return AUDIENCE_ALL if needs_answer else AUDIENCE_ONCE
+    return AUDIENCE_EVERY if needs_answer else AUDIENCE_FIRST
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -196,12 +203,12 @@ def resolve_for_whom(for_whom, needs_answer):
     if fw.lower() in FOR_WHOM_LIVE:
         return 'live', '', ''
     if fw.lower() == FOR_WHOM_ALL:
-        return 'queue', AUDIENCE_ALL, ''
+        return 'queue', AUDIENCE_EVERY, ''
     from servers.scales.self_channel.self_contract import is_session_id
     if is_session_id(fw):
         # Directed: the session-keyed correction (b474ccbd) — full UUID only;
         # an 8-char short is a display convention, not a key.
-        return 'queue', AUDIENCE_ONCE, fw
+        return 'queue', AUDIENCE_FIRST, fw
     raise ValueError(
         "thalamus: for_whom=%r is not 'live', 'all', or a full session UUID"
         % (for_whom,))

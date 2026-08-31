@@ -53,7 +53,7 @@ class TestFile(ThalamusBase):
         self.assertEqual(r['route'], 'queue')
         state, audience, needs_answer, deliver_at, expires_at, _ = self._row(r['id'])
         self.assertEqual(state, tc.STATE_OPEN)
-        self.assertEqual(audience, tc.AUDIENCE_ONCE)
+        self.assertEqual(audience, tc.AUDIENCE_FIRST)
         self.assertEqual(needs_answer, 0)
         self.assertIsNone(deliver_at)
         self.assertGreater(expires_at, iso_now())
@@ -61,7 +61,7 @@ class TestFile(ThalamusBase):
     def test_ask_defaults_to_all_audience(self):
         r = self._file('should X be configurable?', needs_answer=True)
         _, audience, needs_answer, _, expires_at, _ = self._row(r['id'])
-        self.assertEqual(audience, tc.AUDIENCE_ALL)
+        self.assertEqual(audience, tc.AUDIENCE_EVERY)
         self.assertEqual(needs_answer, 1)
         # Ask window is the long one.
         self.assertGreater(expires_at, iso_cutoff(days=-(tc.ASK_EXPIRES_DAYS - 1)))
@@ -86,7 +86,7 @@ class TestFile(ThalamusBase):
         r = self._file(for_whom=S1)
         _, audience, _, _, _, target = self._row(r['id'])
         self.assertEqual(target, S1)
-        self.assertEqual(audience, tc.AUDIENCE_ONCE)
+        self.assertEqual(audience, tc.AUDIENCE_FIRST)
         # An 8-char short is a display convention, not a key.
         r2 = self._file(for_whom=S1[:8])
         self.assertFalse(r2['filed'])
@@ -129,7 +129,8 @@ class TestFile(ThalamusBase):
                 'INSERT INTO thalamus_items (id, source, body, refs, audience,'
                 ' target_session, needs_answer, dedup_key, deliver_at,'
                 ' expires_at, state, answer, created_at)'
-                " VALUES ('th_dupdup', 'test', 'second', '', 'once', '', 0,"
+                " VALUES ('th_dupdup', 'test', 'second', '', 'first_session',"
+                " '', 0,"
                 " 'dup', NULL, ?, 'open', '', ?)",
                 (iso_cutoff(days=-7), iso_now()))
             self.brain.logs_conn_w.commit()
@@ -198,7 +199,7 @@ class TestPull(ThalamusBase):
         block, n = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n, 1)
         self.assertIn(r['id'], block)
-        # audience 'once': a second session gets nothing.
+        # audience first_session: a second session gets nothing.
         _, n2 = thalamus.pull(self.brain, S2, via='stop')
         self.assertEqual(n2, 0)
 
@@ -426,6 +427,29 @@ class TestVocabulary(ThalamusBase):
             r = self._file('x')
         self.assertFalse(r['filed'])
         self.assertIn('audience', r['error'])
+
+    def test_resolve_for_whom_outputs_stay_inside_audiences(self):
+        """The contract half of the audience guard (gate 4): every reachable
+        resolve_for_whom audience is in the closed set, and the pull
+        predicate binds BOTH members — resolver, vocabulary, and predicate
+        cannot drift apart without this failing at merge time. (The runtime
+        tripwire in file() covers the future-new-branch case a fixed
+        enumeration can't see.)"""
+        cases = [(None, False), (None, True), ('', False), ('', True),
+                 ('all', False), ('all', True),
+                 ('123e4567-e89b-12d3-a456-426614174000', False)]
+        for fw, na in cases:
+            route, audience, _ = tc.resolve_for_whom(fw, na)
+            if route == 'queue':
+                self.assertIn(
+                    audience, tc.AUDIENCES,
+                    'resolve_for_whom(%r, %r) -> %r escaped the closed set'
+                    % (fw, na, audience))
+        _, params = thalamus._due_filter(
+            S1, 'boot', '2027-01-01T00:00:00+00:00')
+        for member in tc.AUDIENCES:
+            self.assertIn(member, params,
+                          'pull predicate does not bind audience %r' % member)
 
     def test_kind_is_one_derivation_for_verb_and_span(self):
         self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
