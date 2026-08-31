@@ -42,7 +42,9 @@ BRAIN_VERSION_KEY = 'brain_schema_version'
 # brain_logs.db structural version. v1 is the baseline stamp: the table shapes
 # that existed when versioning was introduced. Structural changes from here get
 # a numbered step in LOGS_MIGRATIONS and bump this.
-LOGS_VERSION = 2
+# v3: thalamus audience values renamed to name the recipient set they select
+# ('once' → 'first_session', 'all' → 'every_session').
+LOGS_VERSION = 3
 LOGS_VERSION_KEY = 'logs_schema_version'
 
 # ─── Allowed node types ───
@@ -1846,8 +1848,25 @@ def _migrate_logs_v2_thalamus_armed_epoch(conn):
                      'ADD COLUMN armed_epoch INTEGER DEFAULT 0')
 
 
+def _migrate_logs_v3_audience_recipient_set(conn):
+    """v3: thalamus audience values renamed to name the RECIPIENT SET they
+    select — 'once' → 'first_session', 'all' → 'every_session'. 'once' read
+    as a frequency, which was never the enum's axis: delivery cardinality is
+    the ledger PK's job (once per session per armed_epoch), the enum only
+    picks who is eligible. Data-only UPDATEs, idempotent (renamed rows match
+    nothing on retry). BEGIN IMMEDIATE for the same atomicity/fast-fail
+    contract as the v2 step."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+    conn.execute("UPDATE thalamus_items SET audience = 'first_session' "
+                 "WHERE audience = 'once'")
+    conn.execute("UPDATE thalamus_items SET audience = 'every_session' "
+                 "WHERE audience = 'all'")
+
+
 LOGS_MIGRATIONS = [
     (2, _migrate_logs_v2_thalamus_armed_epoch),
+    (3, _migrate_logs_v3_audience_recipient_set),
 ]
 
 

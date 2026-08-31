@@ -1027,14 +1027,14 @@ class TestMCPRoundTrip(BrainTestBase):
 
     def test_remind(self):
         """remind files a Thalamus item — the producer verb. An ask
-        (needs_answer) defaults to the 'all' audience and queues for boot
-        delivery; the item lands open with a window."""
+        (needs_answer) defaults to the every_session audience and queues for
+        boot delivery; the item lands open with a window."""
         result = self._dispatch("remind", {
             "what": "roundtrip: decide the thing", "needs_answer": True})
         self.assertTrue(result["filed"])
         self.assertTrue(result["id"].startswith("th_"))
         self.assertEqual(result["route"], "queue")
-        self.assertEqual(result["audience"], "all")
+        self.assertEqual(result["audience"], "every_session")
         self.assertTrue(result["expires_at"])
 
     def test_thalamus_list(self):
