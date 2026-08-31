@@ -226,6 +226,15 @@ def render_boot(brain, session_id: str, operator: str, keep_block: bool) -> dict
             "block_stripped": stripped}
 
 
+def _own_nodes_in(brain, mem: str) -> int:
+    """How many of the entity's OWN written nodes appear in a recall block."""
+    if not mem:
+        return 0
+    titles = [r[0] for r in brain.conn.execute(
+        "SELECT title FROM nodes WHERE archived=0 AND encoding_source='anchor'")]
+    return sum(1 for t in titles if t and t[:60] in mem)
+
+
 def recall_for(brain, prompt: str, session_id: str) -> str:
     """Production per-turn injection path."""
     from servers.daemon_hooks import hook_recall
@@ -379,15 +388,28 @@ def run_arm(arm: str, label: str, pack_path: str, keep_block: bool,
         mem = recall_for(brain, say, session_id)
         nb = call_newborn(boot["text"], history, mem, say)
         applied = execute_ops(brain, nb["memory_ops"])
+        # Drain the embeddings those writes just queued. Production's daemon
+        # drains continuously, so an entity's own fresh nodes are recallable
+        # within the session; without this the newborn is blind to everything
+        # it saved (semantic recall reads node_enrichments._primary, which
+        # stays empty) and duplicates the same memory every turn — measured:
+        # 42 writes, 1 revise, zero own-node surfacings in 12 turns.
+        if any(a.get("ok") for a in applied):
+            brain.backfill_vectors(batch_size=50)
         history.append({"user": say, "assistant": nb["reply"]})
         ok_ops = sum(1 for a in applied if a.get("ok"))
+        # Own-node surfacing is the harness's own validity check: if the
+        # newborn never sees what it wrote, its duplication rate measures the
+        # harness, not the pack.
+        own_surfaced = _own_nodes_in(brain, mem)
         print(f"[arm {arm}]   ENTITY: {nb['reply'][:220]}", flush=True)
-        print(f"[arm {arm}]   recall={len(mem)}c  ops_declared={len(nb['memory_ops'])} "
-              f"applied_ok={ok_ops}"
+        print(f"[arm {arm}]   recall={len(mem)}c  own_nodes_surfaced={own_surfaced}  "
+              f"ops_declared={len(nb['memory_ops'])} applied_ok={ok_ops}"
               + (f"  PARSE_ERR={nb['parse_error']}" if nb["parse_error"] else ""), flush=True)
         turns.append({
             "n": i, "operator": say, "probes": t["probes"],
             "memory_context": mem, "memory_context_chars": len(mem),
+            "own_nodes_surfaced": own_surfaced,
             "reply": nb["reply"], "memory_ops": nb["memory_ops"],
             "applied": applied, "parse_error": nb["parse_error"],
             "truncated": nb["truncated"],
