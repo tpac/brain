@@ -1,6 +1,6 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-08-31 — Steps 7 and 9 SHIPPED; queue resumes at Step 8 ◀ ACTIVE ARC
+## §2026-08-31 — Steps 7, 9 and 11-partial SHIPPED; queue resumes at Step 8 ◀ ACTIVE ARC
 
 **Done since the section below:** Steps 7 and 9, each reviewed pre-commit
 (the review window is pre-commit — merging to main IS deploying).
@@ -39,11 +39,20 @@
   each caller supplies the SUBJECT, or a valid-but-out-of-range shorthand
   gets told it "is not shorthand".
 
-**Carried into Step 11 by the Step 9 review:** `thalamus.py` declares the
-same table's columns twice in incompatible shapes — `_ITEM_COLS` as a joined
-SQL string, `_INSERT_COLS` as a tuple. The string cannot be introspected,
-which is *why* `_row_to_item` maps by numeric position. Make `_ITEM_COLS` a
-tuple, derive the SELECT text with `join`, zip names to values.
+- **Step 11's ready items — DONE (e0f1ea8).** `_ITEM_COLS` is now the single
+  tuple of column names; `_ITEM_SELECT` joins it, `_INSERT_COLS` filters
+  `armed_epoch` out of it, `_row_to_item` zips it. The hazard removed: rows
+  were mapped by numeric position against a column list that, being a string,
+  nothing could validate against — a column added mid-list shifted every
+  field after it into the wrong key. Position is now irrelevant, and the
+  SELECT cannot diverge from the mapping by construction. The package
+  `__init__.py` answers "why under `scales/` when it isn't a scale" where its
+  neighbour answers the same question: no integrate loop, and a delivery is
+  traced as an s0 K event beside `self_message`, so it rides the S0 loop as
+  an incoming correspondent. NOTE the plan's earlier framing was wrong — the
+  LATERAL-SCALES "prove it's not just async S0" burden belongs to the
+  `operator` channel (async Anchor↔Tom, deprioritized), not to this package,
+  whose recipient is Anchor.
 
 **Step 8 is now BIGGER and changed subsystems** (operator ruling
 id:7c7e805c): Thalamus owns NO transport. It must not deliver by itself,
@@ -61,11 +70,11 @@ where more than one channel is contributing meaningfully. To the errors
 table, the channel that has a reader. The `compose_block_loud` extraction is
 untouched by that ruling and stands as planned.
 
-**Queue:** Step 8 (fresh session — new subsystem), Step 10, Step 11. Step
-11's boot-renderer comment WAITS for Step 8 (what boot commits changes when
-the boot leg moves), and its sweep-block consolidation waits for 7–10 per
-ruling id:23cd4d61; its named-columns and package-docstring items are ready
-now.
+**Queue:** Step 8 (fresh session — new subsystem, and the biggest of the
+three), then Step 10, then what remains of Step 11 — its boot-renderer
+comment WAITS for Step 8 (what boot commits changes when the boot leg moves)
+and its sweep-block consolidation waits for 7–10 per ruling id:23cd4d61.
+Nothing else in the plan is open.
 
 ---
 
