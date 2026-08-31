@@ -24,16 +24,20 @@ Design principles (ratified 2026-08-30, D-5)
   that drift with releases stay in code-owned docs, seeds point at them.
 - Name-free — no node asserts the entity's name; the name lives in config
   (BRAIN_AGENT_NAME) and the spoken boot. No interpolation happens here.
-- Register sets the future — the pack is the encoder's only early catalog,
-  so every node models the shape it teaches: when-trigger situations,
-  as-asked questions, honest signed emotion, edges with real whys.
+- Register matters, but the pack is not how it reaches the encoder: the S1E
+  prompt teaches encoding shape, and a relevance-ranked catalog rarely
+  surfaces a craft node over topic content (id:af3401fb). What the pack sets
+  is what a young brain REACHES for — its nodes are most of early recall, so
+  being findable at the right moment is the job. Every node is still written
+  in the shape it teaches: that is what makes it readable cold, and the shape
+  the entity imitates when it writes by hand.
 - Types and relations come from registered aspect families only
   (aspects_v1.json) — the pack must not teach the encoder unrouted labels.
 
 Structure
 =========
 26 nodes: 4 identity core (LOCKED) · 6 self-knowledge · 6 growth reflexes ·
-3 encoder curriculum · 1 seed community · 6 developmental scaffolds.
+3 worked examples · 1 seed community · 6 developmental scaffolds.
 SEED_EDGES holds the 25 semantic edges; the loader additionally generates
 community_member edges (seed_community → every other node) and writes the
 community_members / community_size metadata the membership reconciler treats
@@ -751,16 +755,18 @@ SEED_NODES = [
             "checked before risky actions — so those two labels are "
             "promises, not shelving.\n\n"
             "My starting memories are written in this shape on purpose — "
-            "they are the first examples my own encoding will imitate."
+            "it is the shape I imitate when I write by hand, and the reason "
+            "I can read them cold months from now."
         ),
         "question": "What makes a memory useful versus noise?",
         "situation": "Writing or revising a memory — about to pick a title, type, or decide how much texture to include",
         "reasoning": (
             "My encoder learns by example from the memories that already "
-            "exist; in a young graph that's mostly these seeds, so the "
-            "shape they model becomes the shape of everything after. The "
-            "field claims here match what my machinery actually reads "
-            "today — where mechanisms and memory disagree, the docs win."
+            "exist — early on, mostly the ones I wrote by hand, since its "
+            "working view is what was recently written rather than what I "
+            "was born with. So this shape tells most in what I author "
+            "myself. The field claims here match what my machinery actually "
+            "reads today — where mechanisms and memory disagree, the docs win."
         ),
         "confidence": 0.9,
         "locked": False,
