@@ -777,22 +777,34 @@ def truncation_payload(limit, rows, reason=''):
     }
 
 
+TRUNCATION_IDS_LISTED = 25   # ids named in a note before it only counts them
+
+
 def truncation_payload_ids(requested, cap):
     """The 'truncated' payload for a saturated ID-LIST read (get_traces).
 
     Same dict shape and same ⚠ banner as the windowed sibling, different
     cause: there is no window to under-cover and no +1 probe to run — the
     caller named the ids, so the overflow is exact and so is the remedy
-    (call again with the rest). `requested` is the full id list as asked for.
+    (call again with the rest). `requested` is the DEDUPED id list.
+
+    The note NAMES the dropped ids, it doesn't just count them — the banner
+    renders only `note`, so a count would make 'call again with them'
+    unactionable. The caller can't re-derive them either: the cap applies
+    after dedupe, so slicing their own input at `cap` gives the wrong set.
+    Long overflows are listed up to TRUNCATION_IDS_LISTED (the full set
+    always stays in `dropped_ids` for programmatic readers).
     """
     dropped = list(requested[cap:])
+    shown = dropped[:TRUNCATION_IDS_LISTED]
+    more = ('' if len(dropped) <= len(shown)
+            else ' +%d more (paginate)' % (len(dropped) - len(shown)))
     return {
         'limit': cap,
         'dropped_ids': dropped,
-        'note': ('%d ids requested, %d served — this door fetches %d per '
-                 'call. The %d id(s) past the cap were not looked up; call '
-                 'again with them to complete the set.'
-                 % (len(requested), cap, cap, len(dropped))),
+        'note': ('%d distinct ids requested, %d served — this door fetches '
+                 '%d per call. Not looked up, call again with these: %s%s'
+                 % (len(requested), cap, cap, ', '.join(shown), more)),
     }
 
 

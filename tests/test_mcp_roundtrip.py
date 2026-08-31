@@ -354,6 +354,11 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result['truncated']['dropped_ids'],
                          asked[TRACE_BATCH_MAX_IDS:])
         self.assertIn('call again', result['truncated']['note'])
+        # The note must NAME the dropped ids, not just count them: the banner
+        # renders only `note`, and the caller can't re-derive the set (the cap
+        # applies after dedupe, so slicing their own input at 50 is wrong).
+        for dropped in result['truncated']['dropped_ids']:
+            self.assertIn(dropped, result['truncated']['note'])
         # The served page still answered: the one real id is in it.
         self.assertEqual([r['id'] for r in result['traces']], [tid])
 
