@@ -93,7 +93,6 @@ class HealerEncoder(IntegrationUnit):
             # that triggered it (so we can enforce needs_* flags and reject
             # any unsolicited fields Haiku regenerates).
             by_full = {p['node_id']: p for p in batch}
-            by_short = {p['node_id'][:8]: p for p in batch}
 
             user_content = journal_prefix + self._format_batch(batch)
             result, call_tel = self._call_llm('s2_healer', user_content,
@@ -119,7 +118,7 @@ class HealerEncoder(IntegrationUnit):
                 if not nid:
                     continue
 
-                proposal = by_full.get(nid) or by_short.get(nid[:8])
+                proposal = by_full.get(nid)
                 if proposal is None:
                     # Out-of-batch healing: the journal continuity prefix
                     # shows node ids from past runs, so the model can return
@@ -349,7 +348,7 @@ class HealerEncoder(IntegrationUnit):
         field — the caller drops out-of-batch healings before reaching here,
         and this guard holds even if a new caller doesn't.
 
-        Returns (count of fields written, full_id) — full_id lets the caller
+        Returns (count of fields written, node_id) — node_id lets the caller
         record the revised node in the delta's structured Δ. (0, None) on
         no-op or failure.
         """
@@ -373,15 +372,9 @@ class HealerEncoder(IntegrationUnit):
         if not fields_to_write:
             return 0, None
 
-        # Resolve short node ID
-        ndal = self.brain._nodes
-        full_id = ndal.resolve_id(node_id) if len(node_id) < 16 else node_id
-        if not full_id:
-            return 0, None
-
         try:
             revise_args = {
-                'node_id': full_id,
+                'node_id': node_id,
                 'reason': 'healer: %s' % ', '.join(fields_to_write.keys()),
                 **fields_to_write,
             }
@@ -400,7 +393,7 @@ class HealerEncoder(IntegrationUnit):
                     'revise rejected for %s' % node_id[:8])
                 return 0, None
 
-            return len(fields_to_write), full_id
+            return len(fields_to_write), node_id
 
         except Exception as e:
             self.brain._log_error(self.NAME, e,

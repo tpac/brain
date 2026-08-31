@@ -993,9 +993,19 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
             candidates = []
         rich_nodes = [v for v in candidates
                       if isinstance(v, dict) and v.get('id') and 'error' not in v]
+        # Per-id miss entries must survive the render — a miss silently
+        # dropped here reads as "that node has nothing to say". Rendered
+        # for partial AND all-miss results alike.
+        misses = [v for v in candidates
+                  if isinstance(v, dict) and 'error' in v]
+        miss_line = ("⚠ not found: %s" % ", ".join(
+            repr(v.get('id', '')) for v in misses)) if misses else ""
         if rich_nodes:
             config = _select_node_config(len(rich_nodes), rich, get_nodes_config)
-            return _render_nodes(rich_nodes, config)
+            rendered = _render_nodes(rich_nodes, config)
+            return rendered + ("\n\n" + miss_line if miss_line else "")
+        if miss_line:
+            return miss_line
         # Fall through if result shape is unexpected
 
     # filter_nodes: structural query → {nodes, total_count}. Enriched nodes

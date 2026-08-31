@@ -57,8 +57,8 @@ def _latest_surface_selected_seeds() -> list[str]:
     short_ids = json.loads(evts[0].get('ref_id') or '[]')
     if not short_ids:
         return []
-    ndal = NodeDAL(brain.conn)
-    return [ndal.resolve_id(sid) for sid in short_ids if ndal.resolve_id(sid)]
+    alive = NodeDAL(brain.conn).get_bulk(short_ids)
+    return [sid for sid in short_ids if sid in alive]
 
 
 def _instrumented_build_edge_coeffs(brain, brain_conn, activated_nodes,

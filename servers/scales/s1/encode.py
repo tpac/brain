@@ -1121,7 +1121,8 @@ def _render_markdown_timeline(brain, messages):
 
             judge_output = m.get("judge_output")
             if judge_output and judge_output != '(no selection)':
-                ref_ids = re.findall(r'id:([a-z0-9_]{6,8})', judge_output)
+                from .encode_contract import SURFACED_ID_PATTERN
+                ref_ids = re.findall(SURFACED_ID_PATTERN, judge_output)
                 if ref_ids:
                     dal = brain._nodes
                     refs = []

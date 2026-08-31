@@ -93,12 +93,11 @@ class TestLafEngineUnits(BrainTestBase):
         # stopwords/short tokens contribute nothing
         self.assertTrue(np.all(idf_scores('a of to', title_tok, title_df, 3) == 0.0))
 
-    def test_resolve_short_and_full(self):
+    def test_resolve_exact_only(self):
         eng = LafV1Engine()
-        eng._idx = {'abcdef1234567890': 0}
-        eng._short = {'abcdef12': 0}
-        self.assertEqual(eng._resolve('abcdef1234567890'), 0)
+        eng._idx = {'abcdef12': 0}
         self.assertEqual(eng._resolve('abcdef12'), 0)
+        self.assertIsNone(eng._resolve('abcdef'))   # prefix is a miss
         self.assertIsNone(eng._resolve('ffffffff'))
 
     def test_event_vector_rows_uncapped_and_incremental(self):

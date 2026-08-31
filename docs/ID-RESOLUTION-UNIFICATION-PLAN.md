@@ -1,14 +1,13 @@
 # Node-ID Resolution Unification — plan, dilemmas, and everything already established
 
-**Status:** PLAN, not started. Written 2026-08-31 by the session that shipped the LAF
-survivor-credit fix (merge `ff9ef59`) and the consolidation prompt id widths (merge
-`eea8890`). Nothing in "The work" below has been done. Read §2 before proposing
-anything — most of the expensive discovery is already done and re-deriving it wastes
-the session.
-
-**Deliberation first.** §6 holds live dilemmas the operator has NOT ruled on. Two of
-them (D1, D2) decide whether this is a small subtraction or a large refactor. Do not
-start Phase 0 before D4 is answered — it changes the review bar.
+**Status:** EXECUTED 2026-08-31. All dilemmas ratified by the operator ("nothing to
+overrule"): no `widen()` (D1), `resolve_id` deleted (D2), namespace separation stays
+documentary (D3), write-door miss policies unchanged — pure subtraction (D4),
+`get_nodes` now reports misses (D5), eval `LIKE` copies swept (D6). Phase 0 shipped
+in merge `ec3ec39`; Phase 1 answered from historical logs (zero prefix emissions in
+the retained week — all 12 `haiku_id_outside_candidates` were exact 8-char ids);
+Phases 2–3 shipped in the same session. Decision node id:9158cf30. This doc is now
+the record of the reasoning, not a work queue.
 
 ---
 

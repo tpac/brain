@@ -348,8 +348,7 @@ class BrainRecallMixin:
     def get_source_refs(self, node_id: str) -> list:
         """Source refs (trace event ids) for one node — the public door to
         SourceRefDAL. Readers (eval, tooling) route here, never _source_refs."""
-        full = self._nodes.resolve_id(node_id) if len(str(node_id)) < 16 else node_id
-        return self._source_refs.get_source_refs(full) if full else []
+        return self._source_refs.get_source_refs(node_id) if node_id else []
 
     def resolve_live(self, ids, *, on_orphan: str = 'drop'):
         """Owner door for the survivor walk (NodeDAL.resolve_live) — id-SET
@@ -388,12 +387,7 @@ class BrainRecallMixin:
         if not raw_ids:
             return None if single else {}
 
-        # Resolve short IDs
-        full_ids = []
-        for nid in raw_ids:
-            full = ndal.resolve_id(nid) if len(str(nid)) < 16 else nid
-            if full:
-                full_ids.append(full)
+        full_ids = [nid for nid in raw_ids if nid]
 
         if not full_ids:
             return None if single else {}
@@ -456,7 +450,7 @@ class BrainRecallMixin:
         # balanced, ENCODER_FORMAT heavy).
         corrections = self.correction_enrich(found_ids)
         for nid in found_ids:
-            node_corrs = corrections.get(nid) or corrections.get(nid[:8]) or []
+            node_corrs = corrections.get(nid) or []
             if node_corrs:
                 nodes[nid]['_corrections'] = node_corrs
 

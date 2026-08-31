@@ -51,13 +51,13 @@ with IsolatedBrain() as env:
         return int((allmat @ qv > sN).sum()) + 1
 
     def meta(n8):
-        r = b.conn.execute("SELECT title,created_at FROM nodes WHERE id LIKE ?", (n8 + '%',)).fetchone()
+        r = b.conn.execute("SELECT title,created_at FROM nodes WHERE id = ?", (n8,)).fetchone()
         return (r[0][:46], (r[1] or '')[:10]) if r else ('?', '?')
 
     def neigh(n8):
-        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id LIKE ? "
-                              "UNION SELECT source_id FROM edges WHERE target_id LIKE ?",
-                              (n8 + '%', n8 + '%')).fetchall()
+        rows = b.conn.execute("SELECT target_id FROM edges WHERE source_id = ? "
+                              "UNION SELECT source_id FROM edges WHERE target_id = ?",
+                              (n8, n8)).fetchall()
         return {x[0][:8] for x in rows}
 
     for q in QS:

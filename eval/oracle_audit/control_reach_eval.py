@@ -43,9 +43,9 @@ with IsolatedBrain() as env:
 
     def neighbors(nid):
         rows = b.conn.execute(
-            "SELECT target_id FROM edges WHERE source_id LIKE ? "
-            "UNION SELECT source_id FROM edges WHERE target_id LIKE ?",
-            (nid[:8] + '%', nid[:8] + '%')).fetchall()
+            "SELECT target_id FROM edges WHERE source_id = ? "
+            "UNION SELECT source_id FROM edges WHERE target_id = ?",
+            (nid, nid)).fetchall()
         return [x[0][:8] for x in rows]
 
     def relv(n8, qv):

@@ -4,7 +4,7 @@ Lock-free reads: recall, batch recall, get_node(s), title lookup, structured
 filter, graph expansion, boot context.
 """
 
-from .dispatch_common import _resolve_id, caller_session, _agent_limit
+from .dispatch_common import caller_session, _agent_limit
 
 
 def _handle_recall(brain, args, graph_changes):
@@ -12,7 +12,6 @@ def _handle_recall(brain, args, graph_changes):
     # recall_node, so this door and the by-query one below agree)
     node_id = args.get("node_id")
     if node_id:
-        node_id = _resolve_id(brain, node_id)
         result = brain.recall_node(
             node_id, session_id=caller_session(args))
         return {"ok": True, "result": result}
@@ -78,7 +77,7 @@ def _handle_recall_batch(brain, args, graph_changes):
 
 
 def _handle_get_node(brain, args, graph_changes):
-    node_id = _resolve_id(brain, args.get("node_id", ""))
+    node_id = args.get("node_id", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
 
@@ -91,20 +90,15 @@ def _handle_get_node(brain, args, graph_changes):
 
 def _handle_get_nodes(brain, args, graph_changes):
     """Batch get_node — multiple node IDs in one call, same rich shape as get_node."""
-    node_ids = args.get("node_ids", [])
-    resolved_ids = []
-    errors = []
-    for nid in node_ids[:20]:  # cap at 20
-        resolved = _resolve_id(brain, nid)
-        if resolved:
-            resolved_ids.append(resolved)
-        else:
-            errors.append({"id": nid, "error": "not found"})
-
-    rich_map = brain.get_node(resolved_ids) if resolved_ids else {}
-    # Batch returns {node_id: rich_dict}. Preserve request order.
-    results = [rich_map[nid] for nid in resolved_ids if nid in rich_map]
-    results.extend(errors)
+    node_ids = args.get("node_ids", [])[:20]  # cap at 20
+    real_ids = [nid for nid in node_ids if nid]
+    rich_map = brain.get_node(real_ids) if real_ids else {}
+    # Batch returns {requested_id: rich_dict}. Preserve request order, and
+    # report each unknown or empty id instead of silently dropping it
+    # (get_node's single-id door reports its miss; the batch door must match).
+    results = [rich_map[nid] for nid in real_ids if nid in rich_map]
+    results.extend({"id": nid or "", "error": "not found"}
+                   for nid in node_ids if not (nid and nid in rich_map))
     return {"ok": True, "result": results}
 
 
@@ -156,7 +150,6 @@ def _handle_graph_expand(brain, args, graph_changes):
     if not node_ids:
         return {"ok": True, "result": {"neighbors": []}}
 
-    node_dal = brain._nodes
     graph_dal = brain._graph
     # Scope veil: this door returns 300-char content previews across edges
     # — exactly how content crosses a wall. Seeding `seen` with the veil
@@ -170,14 +163,8 @@ def _handle_graph_expand(brain, args, graph_changes):
     excluded = set(brain.aspects.traversal_exclusions)
 
     for seed_id in node_ids:
-        full_id = seed_id
-        if len(seed_id) < 16:
-            resolved = node_dal.resolve_id(seed_id)
-            if resolved:
-                full_id = resolved
-
         rows = graph_dal.get_neighbors(
-            full_id,
+            seed_id,
             limit=limit_per,
             exclude_relations=excluded,
             exclude_node_ids=seen,
@@ -194,7 +181,7 @@ def _handle_graph_expand(brain, args, graph_changes):
                     "edge_description": r.get('edge_description') or '',
                     "confidence": r['confidence'],
                     "direction": r['direction'],
-                    "seed_id": full_id,
+                    "seed_id": seed_id,
                 })
 
     return {"ok": True, "result": {"neighbors": neighbors, "seeds": len(node_ids)}}

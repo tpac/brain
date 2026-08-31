@@ -396,8 +396,6 @@ class LafV1Engine:
         self._mats = None            # {view: [cap×768] float32, NaN where absent}
         self._master = []            # ordered node ids (rows 0.._n)
         self._idx = {}               # node_id → row
-        self._short = {}             # 8-char short id → row (unambiguous only)
-        self._ambig = set()          # shorts that collided (never resolved)
         self._orphan_ids = set()     # role ids already warned about (see
                                      # _report_unresolvable — first-sighting)
         self._n = 0                  # rows in use
@@ -499,7 +497,7 @@ class LafV1Engine:
         self._cap = new_cap
 
     def _row_for(self, node_id):
-        """Row for node_id, appending a fresh NaN row (and short-id entry) if new."""
+        """Row for node_id, appending a fresh NaN row if new."""
         i = self._idx.get(node_id)
         if i is not None:
             return i
@@ -508,12 +506,6 @@ class LafV1Engine:
         self._n += 1
         self._master.append(node_id)
         self._idx[node_id] = i
-        s = node_id[:8]
-        if s in self._short:
-            del self._short[s]        # collision → ambiguous, never resolve
-            self._ambig.add(s)
-        elif s not in self._ambig:
-            self._short[s] = i
         return i
 
     def _full_matrix_build(self, brain, model):
@@ -529,11 +521,6 @@ class LafV1Engine:
         self._cap = max(int(self._n * _GROW), 64)
         self._master = list(master)
         self._idx = {nid: i for i, nid in enumerate(master)}
-        by_short = defaultdict(list)
-        for nid in master:
-            by_short[nid[:8]].append(nid)
-        self._short = {s: self._idx[f[0]] for s, f in by_short.items() if len(f) == 1}
-        self._ambig = {s for s, f in by_short.items() if len(f) > 1}
         self._mats = {}
         for vt in _ALL_VIEWS:
             m = np.full((self._cap, self._dim), np.nan, dtype=np.float32)
@@ -790,10 +777,9 @@ class LafV1Engine:
             % (sorted(new)[:8], len(self._orphan_ids)))
 
     def _resolve(self, node_id):
-        """Role node id (8-char short OR full) → master row, or None.
-        Surface traces store 8-char shorts; encode deltas store full ids."""
-        i = self._idx.get(node_id)
-        return i if i is not None else self._short.get(node_id)
+        """Role node id → master row, or None. Exact 8-char ids everywhere —
+        surface traces and encode deltas both store the full id."""
+        return self._idx.get(node_id)
 
     def _project_field(self, session_project, n):
         """proj lane raw activations: same-project 1.0, cross-project 0.0,

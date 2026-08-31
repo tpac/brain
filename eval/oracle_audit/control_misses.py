@@ -22,7 +22,7 @@ with IsolatedBrain() as env:
     b = env.brain
 
     def title(n8):
-        r = b.conn.execute("SELECT type,title FROM nodes WHERE id LIKE ?", (n8 + '%',)).fetchone()
+        r = b.conn.execute("SELECT type,title FROM nodes WHERE id = ?", (n8,)).fetchone()
         return (r[0][:4] + ': ' + r[1][:58]) if r else '?'
 
     bandA, bandB = [], []

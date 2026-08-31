@@ -62,8 +62,8 @@ with IsolatedBrain() as env:
     print("dialogue trace_embeddings: %d (of %d embedded)\n" % (len(traces), len(rows)))
 
     def resolve(prefix):
-        r = bc.execute("SELECT id, created_at, revised_at FROM nodes WHERE id LIKE ?",
-                       (prefix + '%',)).fetchone()
+        r = bc.execute("SELECT id, created_at, revised_at FROM nodes WHERE id = ?",
+                       (prefix,)).fetchone()
         return r  # (full_id, created_at, revised_at) or None
 
     for qid, gold8, query in SIX:
