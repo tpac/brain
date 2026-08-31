@@ -354,6 +354,11 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result['truncated']['dropped_ids'],
                          asked[TRACE_BATCH_MAX_IDS:])
         self.assertIn('call again', result['truncated']['note'])
+        # The note must NAME the dropped ids, not just count them: the banner
+        # renders only `note`, and the caller can't re-derive the set (the cap
+        # applies after dedupe, so slicing their own input at 50 is wrong).
+        for dropped in result['truncated']['dropped_ids']:
+            self.assertIn(dropped, result['truncated']['note'])
         # The served page still answered: the one real id is in it.
         self.assertEqual([r['id'] for r in result['traces']], [tid])
 
@@ -1070,7 +1075,8 @@ class TestMCPRoundTrip(BrainTestBase):
         boot delivery; the item lands open with a window."""
         result = self._dispatch("remind", {
             "what": "roundtrip: decide the thing", "needs_answer": True})
-        self.assertTrue(result["filed"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["filed"])  # one-release compatibility alias
         self.assertTrue(result["id"].startswith("th_"))
         self.assertEqual(result["route"], "queue")
         self.assertEqual(result["audience"], "every_session")

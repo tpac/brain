@@ -1,6 +1,6 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-31) — no design gates left; **next: free deletions → one combined literal sweep → 5.5 → 5.2 → 5.7**
+## §ACTIVE ARC (2026-08-31) — no design gates left; **next: free deletions → combined literal sweep → 5.5 skips → full comment audit → 5.2 → 5.7**
 
 **Sequence ruled 2026-08-31, superseding both prior orders** (the doc's
 `5.0c → 5.3 → 5.2 → 5.5 → 5.7` and id:44025fbb's `5.0c → 5.3 → 5.5 → 5.2 → 5.7`).
@@ -10,15 +10,33 @@ Two corrections to both:
   S1 prompt/rubric files they sit in the *same strings* (`quality_contract.py`
   D-dimension examples, `encode.py`, `encoder_view.py`). Those are eval-gated
   artifacts: two passes over them = two eval gates.
-- **5.2 goes late, immediately before 5.7.** It is a three-file edit whose only
-  real precondition is the fleet check. Running 5.5 before it does not protect
-  it — 5.0b's `com.N.` assertion is *dormant until the rename*, so a 5.5 run
-  before 5.2 is a 5.5 you run twice.
+- **5.2 goes late, immediately before 5.7.** It is a three-file edit, and after
+  ruling 3 below it has **no blocking precondition at all**. It still goes late,
+  for a different reason: 5.0b's `com.N.` assertion is *dormant until the
+  rename* and arms at it, so a 5.5 run before 5.2 is a 5.5 you run twice.
 
-Ordered: **(1)** free deletions (below) · **(2)** gold-data ruling · **(3)** the
-combined literal sweep — the long pole · **(4)** 5.5 + D-8 graceful-skip ·
-**(5)** the fleet check · **(6)** 5.2 rename + D-10 bump · **(7)** 5.7.
-The 5.3 **comment audit** (614 lines) gates nothing and is parallel/deferrable.
+**Tom ruled all four open questions 2026-08-31:**
+1. **Gold data → exclude + graceful-skip**, not sanitize. Denylist
+   `golden_dataset_v2.json`, `golden_canary.json`, `corpus/precision_corpus.json`;
+   their consumers join the D-8 skip set. Rationale: a sanitized corpus that
+   still passes proves less than an honest gap, and sanitizing silently changes
+   the ground truth a recall test measures against.
+2. **The two eval-only quality contracts → RELOCATE into `eval/`**, not
+   denylist. They move beside their only consumers; the package stops carrying
+   them by construction rather than by a denylist entry. Update the two
+   `eval/agent_introspect/*_eval.py` imports in the same commit.
+3. **The fleet check → deferred to LAST**, and explicitly *not* a gate on 5.2.
+   Tom: *"Let's defer for last, i dont know their situation yet and perhaps
+   we'll just tailor a 1 time special install."* See the fleet note in §5.
+4. **The 5.3 comment audit → FULL audit before publish.** All 614 lines, on the
+   critical path. Overrides the "ungated, therefore deferrable" reading — the
+   public-repo bar (id:b99bfa36) is the standard, not the gate.
+
+Ordered: **(1)** free deletions + the relocation · **(2)** gold-data exclusion ·
+**(3)** the combined literal sweep — the long pole · **(4)** 5.5 + the 8-file
+D-8 graceful-skip · **(5)** the full 5.3 comment audit · **(6)** 5.2 rename +
+D-10 bump + the missing `0.9.0` assertion · **(7)** 5.7 · **(8)** the fleet,
+last, likely as a hand-tailored one-time install.
 **Where the work actually is.** Shipped and verified on main: 5.0 (`e3d9481`),
 the versioned migration runner (`b11e45d` — both DBs, one real step at v31),
 5.0a (`89e8286`) **completed 2026-08-28 by the relocation offer (`d4f4772`)**:
@@ -64,7 +82,13 @@ mechanical moves that shrink both worklists with no prompt editing and no eval:
    `eval/agent_introspect/encoder_contract_eval.py` and
    `consolidation_contract_eval.py` — both inside `eval/`, which D-8 excludes.
    The S1 one is the densest file in *both* worklists (14 `Anchor` + 12 `Tom`).
-   Denylist them, or relocate them to `eval/` where their consumers live.
+   **Ruled 2026-08-31: relocate both into `eval/`** beside their consumers —
+   the package stops carrying them by construction, not by a denylist entry,
+   and an eval-only instrument in `servers/` was a one-concern-per-file
+   misplacement anyway. Update the two `eval/agent_introspect/*_eval.py`
+   imports in the same commit. *Nothing in the deploy gate checks reachability:
+   a `git ls-files` manifest fixed rot but cannot tell shipped-and-used from
+   shipped-and-dead.*
 2. **The scrub gate has no self-exemption.** `tests/test_deploy_contract.py`
    contributes 5 hits that are the gate's own fixtures — it writes
    `/Users/tpac/brain` and `Tom Pachys` into a tmp tree precisely to prove the
@@ -661,15 +685,16 @@ Conflating them is what made 5.3 look like a single M-sized blocker. Split
 |---|---|---|---|
 | **A — runtime scrub** (`Tom` in shipped `servers/`+`dashboard/`) | **59 hits / 26 files** | **hard-fails gate B** | merges into the 5.0c sweep — same files, same eval gate |
 | **B — test-data scrub** (`Tom`/paths in `tests/`) | **163 hits** | **hard-fails gate B** | needs the gold-data ruling below; the rest is free deletions |
-| **C — comment audit** (dated / removal-verb / dead pointers) | **614 lines / 111 files** | **no gate at all** | quality work; blocks nothing; deferrable |
+| **C — comment audit** (dated / removal-verb / dead pointers) | **614 lines / 111 files** | **no gate at all** | **Tom ruled 2026-08-31: full audit BEFORE publish** — on the critical path |
 
 **Class C, re-measured 2026-08-31** across 13,148 comment lines in the 237-file
 manifest: 327 removal-verb · 307 dated · **33 naming the operator (20 files)** ·
 21 dead `docs/` pointers · 14 brain-node ids · 4 TODO/FIXME. Up from 472/88 —
 it grows on its own, because nothing gates it. Against Tom's own bar — *"if code
 should be public, it should be up to the standard of public repos"* (id:b99bfa36)
-— but no gate means no release blocker. **The long pole is not 5.3; it is 5.0c
-class 2** (the prompt/rubric rewrite), which is eval-gated.
+— and Tom ruled it **in**, before publish: no gate, but the bar is the standard.
+Two long poles now: **5.0c class 2** (the prompt/rubric rewrite, the only
+eval-gated item) and this.
 
 **Class B — the open ruling (Tom's call, blocks the sweep).** 47 of the 163 test
 hits are gold data: `golden_dataset_v2.json` (32), `golden_canary.json` (10),
@@ -716,8 +741,25 @@ dashboard binds `127.0.0.1`** (load-bearing for a trust-me-with-your-identity pi
 and **Linux is graceful-degradation only, no systemd** (D-3) — say it or field issues
 you've already decided not to serve. CONTRIBUTING carries D-9. *M.*
 
-**5.5 Green suite on a clean export. Set RE-DERIVED 2026-08-31 by collecting
-against a materialized export tree — no longer an estimate.**
+**5.5 Green suite on a clean export — RUN 2026-08-31 against a materialized
+export tree. Result: `5 failed, 2979 passed, 8 skipped` in 37m35s, and every
+one of the 5 failures is the same `eval/`-absence class.** This is much closer
+to done than the item implied: nothing outside the eval coupling breaks. No
+`tests/conversations/` fallout, no gold-data fallout, no personal-path fallout.
+
+**The complete D-8 graceful-skip set is 8 files, in two kinds:**
+- **6 import-coupled** (abort collection — `ModuleNotFoundError: No module
+  named 'eval'`): `test_absorb_preservation.py`, `test_consolidation_examples.py`,
+  `test_encoder_eval_probes.py`, `test_eval_corpus.py`,
+  `test_longmem_classifier.py`, `test_longmem_validity.py`.
+- **2 runtime-coupled** (collect fine, fail when run) — found only by running:
+  `test_eval_artifacts.py` (4 tests, same `ModuleNotFoundError` raised inside
+  the test body) and `test_capture_grep_pin.py::test_allowlist_entries_still_exist`
+  (asserts `eval/longmem/connect_ab.py` exists on disk).
+Plus the gold-data consumers, once those three files are denylisted (ruled
+2026-08-31: exclude, not sanitize).
+
+**Set RE-DERIVED — no longer an estimate:**
 - **Import-coupled: exactly 6 files**, all `ModuleNotFoundError: No module
   named 'eval'` — `test_absorb_preservation.py`, `test_consolidation_examples.py`,
   `test_encoder_eval_probes.py`, `test_eval_corpus.py`, `test_longmem_classifier.py`,
@@ -825,18 +867,22 @@ Only once the self-hosted marketplace has real installs. Mechanics in §10.1. *S
 4.1             (independent; needs the 127.0.0.1 guard)
 DONE: 5.0 · 5.0a · 5.0b · 5.1 · 5.4 · 5.6 · 9.7.2
 
-(1) free deletions ──┐   (eval-only contracts, gate self-exemption,
-                     │    legacy-rung allowlist, dev-harness paths)
-(2) gold-data ruling ┼──► (3) COMBINED LITERAL SWEEP ──► (4) 5.5 green suite
-    [Tom's call]     │       = 5.0c cls 1–2 ∪ 5.3 cls A      + D-8 graceful-skip
-                     │       one eval gate, not two              (re-run after 6)
-                     │
-(5) fleet check ─────┴──► (6) 5.2 rename ──► (7) 5.7 release cmd ──► publish
-    [Moshe + laptop]        + D-10 0.9.0 bump      [one-way door]
-                            + the 0.9.0 assertion
-                            + un-xfail assertion 4      ──► 5.8 community directory
+(1) free deletions ──┐   (RELOCATE the 2 eval-only contracts into eval/,
+                     │    gate self-exemption, legacy-rung allowlist,
+                     │    dev-harness personal paths)
+(2) gold-data        ┼──► (3) COMBINED LITERAL SWEEP ──► (4) 5.5 + D-8 skips
+    exclusion        │       = 5.0c cls 1–2 ∪ 5.3 cls A      8 files; suite
+    (3 files → skip) │       one eval gate, not two          already 2979-green
+                     │                                            │
+(5) FULL 5.3 comment audit (614 lines / 111 files) ◄───────────────┘
+              │
+              ▼
+(6) 5.2 rename ──► (7) 5.7 release cmd ──► publish ──► 5.8 community directory
+    + D-10 0.9.0 bump      [one-way door]
+    + the 0.9.0 assertion that doesn't exist
+    + un-xfail gate assertion 4
 
-5.3 class C (comment audit, 614 lines)  — ungated, parallel, deferrable
+(8) the fleet — LAST, off the critical path, likely a one-time special install
 ```
 
 **Why 5.2 sits late.** It is a three-file edit. Its only true precondition is
@@ -844,16 +890,33 @@ the fleet check, and 5.0b's `com.N.` assertion is *dormant until the rename* —
 so a 5.5 run before 5.2 is a 5.5 you run twice. Both prior orders
 (this doc's, and id:44025fbb's) put it earlier; both are superseded.
 
-**The fleet check replaces "the soak" (2026-08-31).** The soak was framed as a
-clock — 9.7.2 shipped 2026-08-28, wait for convergence. It cannot work as a
-clock: there is **no telemetry** (the README promises none), `/plugin update`
-is user-initiated, and `relocate-brain.sh` is **user-run only** — boot renders
-a notice, a human must act on it. So elapsed time carries no information. The
-population is small and named: Tom's main machine (legacy `~/AgentsContext`
-rung — *not* parked, unaffected), Tom's second laptop, and Moshe (installed
-2026-07-30, id:b792b20e). Convert the wait into three direct checks: did each
-take 9.7.2, and if their brain was parked under a plugins-data root, did they
-relocate. Then 5.2 is unblocked — by evidence rather than by elapsed days.
+**The soak is dissolved, not shortened — and the fleet moved OFF the critical
+path (Tom, 2026-08-31).** The soak was framed as a clock: 9.7.2 shipped
+2026-08-28, wait for convergence. It cannot work as a clock — there is **no
+telemetry** (the README promises none), `/plugin update` is user-initiated
+(id:b792b20e: Moshe sat frozen on 9.6.0 for two months while `/plugin update`
+told him he was current), and `relocate-brain.sh` is **user-run only** — boot
+renders a notice, a human must act on it. Elapsed time carries no information.
+
+Tom's ruling: *"Let's defer for last, i dont know their situation yet and
+perhaps we'll just tailor a 1 time special install."* So 5.2 no longer waits on
+anything. **Why that is safe:** the rename cannot *reach* those installs at all
+(id:8e1495cb — no update path crosses `plugin@marketplace`), so a friend's
+`brain@brain` install simply keeps working, frozen, until they act. The residual
+hazard is only their own initiative: `claude plugin uninstall brain` is the
+command proven to delete the data folder (id:8a057057). A hand-tailored install
+is the right mitigation *because* it replaces "hope they relocate" with "we do
+it for them."
+
+**Two things to settle when the fleet comes up, not before:**
+- **Where do those installs source their marketplace from?** If from
+  `tpac/brain`, 5.2 renames that manifest's entry underneath them — behavior of
+  `/plugin update` against a marketplace whose entry vanished is unverified. It
+  should not delete data (only `uninstall` does), but it is an unknown, and it
+  is cheap to check before 5.2 rather than after.
+- **Population:** Tom's main machine is on the legacy `~/AgentsContext` rung —
+  *not* parked under a plugins-data root, so unaffected either way. That leaves
+  Tom's second laptop and Moshe (installed 2026-07-30).
 
 The publish (5.7) must not happen before the seed-pack session (D-5) — closed
 2026-08-30: a stranger's first brain should wake up *well*, not with

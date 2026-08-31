@@ -192,6 +192,41 @@ class TestFile(ThalamusBase):
         self.assertEqual(n, 0)
 
 
+class TestDoorContract(ThalamusBase):
+    """The door's producer-facing contract: ONE result envelope across the
+    module, and `source` as vocabulary rather than free text."""
+
+    def test_one_envelope_across_the_module(self):
+        """file() answers in resolve()/withdraw()'s shape — a Phase 2 producer
+        learns one result contract, not two."""
+        filed = self._file('x')
+        self.assertIs(filed['ok'], True)
+        self.assertIn('id', filed)
+        self.assertIs(thalamus.resolve(self.brain, filed['id'],
+                                       dismiss=True)['ok'], True)
+        # A rejection carries the same key, inverted.
+        self.assertIs(self._file('  ')['ok'], False)
+
+    def test_filed_alias_never_disagrees_with_ok(self):
+        """'filed' survives one release for anything still reading it."""
+        for r in (self._file('x'), self._file('  '),
+                  self._file('y', when='next full moon')):
+            self.assertEqual(r['filed'], r['ok'])
+
+    def test_free_text_source_rejects_loudly(self):
+        """source is the budget key AND the withdraw-ownership key — a typo'd
+        one gets a fresh budget and orphans its own items."""
+        for bad in ('', 'Anchor', 'my source', 's2:', ':unit', 'a:b:c'):
+            r = self._file('x', source=bad)
+            self.assertIs(r['ok'], False, 'source %r should not file' % bad)
+            self.assertIn('source', r['error'])
+
+    def test_category_process_grammar_files(self):
+        for good in ('anchor', 'encoder:sonnet', 's2:consolidation', 'hook'):
+            self.assertIs(self._file('x', source=good)['ok'], True,
+                          'source %r should file' % good)
+
+
 class TestPull(ThalamusBase):
 
     def test_notice_delivers_once_across_sessions(self):
