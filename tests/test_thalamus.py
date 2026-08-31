@@ -108,6 +108,36 @@ class TestFile(ThalamusBase):
         ).fetchone()[0]
         self.assertEqual(n, 1)
 
+    def test_dedup_refile_escalates_a_note_into_an_ask(self):
+        """The change-gate covers every producer-controlled delivery
+        attribute, so escalating a standing note into an ask actually lands.
+        Comparing only (body, refs, deliver_at) left needs_answer=0 — still a
+        note, still Stop-delivered, never dead-lettering — while the door had
+        already granted it the ask's longer window."""
+        r1 = self._file('the recurring thing', dedup_key='esc')
+        self.assertEqual(self._row(r1['id'])[2], 0)
+        r2 = self._file('the recurring thing', dedup_key='esc',
+                        needs_answer=True)
+        self.assertEqual(r2['id'], r1['id'])
+        self.assertTrue(r2['rearmed'])
+        _, audience, needs_answer, _, _, _ = self._row(r2['id'])
+        self.assertEqual(needs_answer, 1)
+        # ...including the audience the new kind implies — an ask left on the
+        # notice audience would deliver to exactly one session, ever.
+        self.assertEqual(audience, tc.AUDIENCE_EVERY)
+
+    def test_dedup_refile_retargets_and_rearms(self):
+        """for_whom is producer-controlled too: re-filing the same text to a
+        different recipient set must move the row, not silently keep the old
+        one."""
+        r1 = self._file('heads up', dedup_key='aim')
+        self.assertEqual(self._row(r1['id'])[1], tc.AUDIENCE_FIRST)
+        r2 = self._file('heads up', dedup_key='aim', for_whom=S1)
+        self.assertTrue(r2['rearmed'])
+        _, audience, _, _, _, target = self._row(r2['id'])
+        self.assertEqual(target, S1)
+        self.assertEqual(audience, tc.AUDIENCE_FIRST)
+
     def test_dated_item_keeps_full_window(self):
         """Expiry anchors at deliver_at, not now — an ask due in 3 weeks must
         not expire after 2 (it would be undeliverable and fire a FALSE loud
@@ -485,6 +515,24 @@ class TestVocabulary(ThalamusBase):
         for member in tc.AUDIENCES:
             self.assertIn(member, params,
                           'pull predicate does not bind audience %r' % member)
+
+    def test_ddl_audience_default_is_inside_the_closed_set(self):
+        """The CREATED table's audience default must be a member of the closed
+        set. A default outside it matches neither pull-predicate branch, so any
+        insert omitting the column writes a row that never delivers and dies
+        silently at expiry — below the reach of file()'s runtime tripwire. The
+        v3 rename updated existing rows but left the column default at 'once'.
+        """
+        default = None
+        for col in self.brain.logs_conn.execute(
+                'PRAGMA table_info(thalamus_items)').fetchall():
+            if col[1] == 'audience':
+                default = (col[4] or '').strip("'")
+        self.assertIn(
+            default, tc.AUDIENCES,
+            'thalamus_items.audience DDL default %r is not in %s — an insert '
+            'omitting the column would be undeliverable' % (default,
+                                                            tc.AUDIENCES))
 
     def test_kind_is_one_derivation_for_verb_and_span(self):
         self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
