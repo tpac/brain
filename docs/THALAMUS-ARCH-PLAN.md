@@ -24,28 +24,30 @@ now shipped, reviewed, and consolidated — four merges on main:
   copy-on-stamp (no false banners); zero-extra-queries when live at
   every door; `test_redirect_door_parity` pins the three doors.
 
-**Gate ledger:** (1) archived refs — CLOSED, shipped (above).
-(2) backup policy (id:54160417) — CLOSED end-to-end: `reap_by_ttl` +
-rotation wire live (14d TTL, hardened pattern); corpus ruling landed
-2026-08-30 (the v15–v29 brain.db baks reap — their recovery-script
-consumers served the closed spring incident class; those scripts are now
-retirement candidates, flagged not deleted).
+**Gate ledger — ALL FOUR CLOSED:** (1) archived refs — shipped (above).
+(2) backup policy (id:54160417) — `reap_by_ttl` + rotation wire live
+(14d TTL, hardened pattern); corpus ruling landed (the v15–v29 brain.db
+baks reap; their recovery-script consumers are retirement candidates,
+flagged not deleted).
 (3) sweep-block consolidation (id:23cd4d61) — folds into Step 11.
-(4) audience-guard placement — **STILL OPEN**: rec is a contract test
-(`resolve_for_whom outputs ⊆ AUDIENCES`) riding Step 7 + keeping the
-3-line runtime tripwire; awaiting Tom's judgment.
+(4) audience guard — CLOSED via the recipient-set rename (logs v3,
+merge b2adb5e): audiences renamed `first_session` / `every_session`
+(the enum picks WHO is eligible; cardinality is the ledger's, repetition
+is the epoch's), the contract test (`resolve_for_whom outputs ⊆
+AUDIENCES` + predicate binds both) shipped with it, the runtime tripwire
+in `file()` stays for future-new-branch drift.
 
 **Locked:** append-only epoch ledger (re-arm = generation); change-gated
 re-file (identical re-file refreshes window only, never re-delivers);
 kept-count rendering (head/tail/ledger/count agree); sweeps ahead of the
 S2 gate.
 
-**Next builds:** Step 7 (door polish — before Phase 2 producers, carrying
-the audience contract test once ruled), then 8–11 below. Adjacent,
-non-thalamus follow-on surfaced by the ship: LAF pick/enc lanes discard
-history evidence for absorbed ids (`recall_laf._resolve` → None) —
-candidate LAF layer change (credit survivors via brain.resolve_live),
-gated on the layer-loop eval, not this queue.
+**Next builds:** Step 7 (door polish — before Phase 2 producers; the
+audience contract test already landed with the v3 rename), then 8–11
+below. Adjacent, non-thalamus follow-ons spun off as their own tasks:
+LAF survivor-credit for pick/enc lanes (finding id:ad74941e, chip armed —
+algorithmic pre/post eval, no Haiku); recovery-script retirement
+(bak corpus reaped, scripts empty — awaiting the beat).
 
 **Do not reopen:** ThalamusDAL; producer-facing kind vocabulary; sweep
 placement (Step 3's directive); delete-on-defer; unconditional dedup bump.
