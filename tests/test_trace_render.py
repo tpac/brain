@@ -2,9 +2,11 @@
 
 query_traces / get_traces / get_trace render through the single trace renderer
 (trace_contract.render_trace), never a raw json.dumps. The default bounds the
-heavy `metadata` field (s2 rows reach ~140KB) to a gist; rich=true returns the
-full row. recall_episodes shares the same renderer; recall_batch reuses the
-recall formatter instead of raw-dumping.
+heavy `metadata` field (s2 rows reach ~140KB) to a gist; rich=true returns full
+metadata. Bodies are trimmed only on multi-row pulls, and the trim says what it
+dropped — get_trace names one row and renders it whole. recall_episodes shares
+the same renderer; recall_batch reuses the recall formatter instead of
+raw-dumping.
 
 Pure-function tests — _format_result + render_trace take a value, no
 brain/embedder.
@@ -99,12 +101,23 @@ class TestTraceRender(unittest.TestCase):
 
     # ── get_trace / get_traces ────────────────────────────────────────
     def test_get_trace_single(self):
-        """Single row dict renders bounded; rich=true → full."""
+        """Point lookup: metadata gisted by default, full under rich."""
         out = _format_result("get_trace", _trace_row())
         self.assertFalse(_is_raw_json(out))
         self.assertIn("SUMMARY_SENTINEL", out)
         self.assertNotIn("BLOB_TAIL_SENTINEL", out)
         self.assertIn("BLOB_TAIL_SENTINEL", _format_result("get_trace", _trace_row(), rich=True))
+
+    def test_get_trace_body_never_trimmed(self):
+        """A named row renders its body WHOLE at both detail levels — the
+        280-char cap was protecting against a body that cannot get large
+        (metadata.content is capped at write time)."""
+        row = _trace_row(big_meta=False)
+        row["metadata"] = {"content": "B" * 3000 + "BODY_TAIL_SENTINEL"}
+        for rich in (False, True):
+            out = _format_result("get_trace", row, rich=rich)
+            self.assertIn("BODY_TAIL_SENTINEL", out, "rich=%s trimmed the body" % rich)
+            self.assertNotIn("chars — get_trace", out)
 
     def test_session_less_trace_no_empty_bracket(self):
         """Session-less traces (S2 system runs — no session_id, no score) render
@@ -115,11 +128,37 @@ class TestTraceRender(unittest.TestCase):
         self.assertNotIn("[]", out)
         self.assertTrue(out.startswith("community_enrichment ·"))
 
-    def test_get_traces_list(self):
-        """List of rows renders each."""
-        out = _format_result("get_traces", [_trace_row("aa000001"), _trace_row("aa000002")])
+    def test_get_traces_envelope(self):
+        """Batch envelope: every row renders."""
+        out = _format_result("get_traces", {
+            "traces": [_trace_row("aa000001"), _trace_row("aa000002")],
+            "missing_ids": []})
         self.assertFalse(_is_raw_json(out))
         self.assertEqual(out.count("SUMMARY_SENTINEL"), 2)
+
+    def test_get_traces_names_missing_ids(self):
+        """An id that matched no row is named — a short list must never be the
+        only sign that something wasn't found."""
+        out = _format_result("get_traces", {
+            "traces": [_trace_row("aa000001")], "missing_ids": ["deadbeef"]})
+        self.assertIn("SUMMARY_SENTINEL", out)
+        self.assertIn("deadbeef", out)
+
+    def test_get_traces_all_missing_still_speaks(self):
+        """No rows at all → still the named ids, never a raw empty dump."""
+        out = _format_result("get_traces", {"traces": [], "missing_ids": ["deadbeef"]})
+        self.assertFalse(_is_raw_json(out))
+        self.assertIn("deadbeef", out)
+
+    def test_multi_row_body_cut_names_the_loss(self):
+        """A trimmed body says how much it dropped and where to get the rest —
+        a bare '…' reads as the speaker trailing off."""
+        row = _trace_row("aa000001", big_meta=False)
+        row["metadata"] = {"content": "B" * 3000 + "BODY_TAIL_SENTINEL"}
+        out = _format_result("get_traces", {"traces": [row], "missing_ids": []})
+        self.assertNotIn("BODY_TAIL_SENTINEL", out)
+        self.assertIn("chars — get_trace for the whole body", out)
+        self.assertIn("+2", out)  # dropped-char count, not a bare ellipsis
 
     # ── recall_batch reuses the recall formatter ──────────────────────
     def test_recall_batch_renders_not_raw(self):

@@ -34,13 +34,17 @@ FLAGGED = {
     'filter_nodes',      # gt/lt bounds — flags via +1 probe (brain_recall)
     'recall_episodes',   # older/younger bounds — time path flags via +1
                          # probe; semantic path is ranked top-k (bare bool)
+    'get_traces',        # no window, but a TRACE_BATCH_MAX_IDS cap on the id
+                         # list — flags via truncation_payload_ids (dispatch).
+                         # The enumeration test below can't see this one: the
+                         # cap isn't a schema `limit`, it's the list length.
 }
 
 EXEMPT = {
     # tool: reason (truncation is the contract, not a lie)
     'recall': 'ranked top-k — relevance claim, not coverage',
     'recall_batch': 'ranked top-k per query',
-    'get_traces': 'point lookups by explicit id list — no window',
+    'get_trace': 'one row by id — nothing to cover, nothing to cut',
     'count_traces': 'returns counts, not rows',
 }
 

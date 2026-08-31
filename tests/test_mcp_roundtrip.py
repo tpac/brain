@@ -324,7 +324,8 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertEqual(result['summary'], 'roundtrip get_trace probe')
 
     def test_get_traces(self):
-        """get_traces returns a list; missing ids silently skipped.
+        """get_traces returns the {traces, missing_ids} envelope; an id that
+        matched nothing is NAMED, not silently skipped.
         v29: ids are 8-char hex strings (reviewer F2 — int input rejected
         loudly). The phantom id 'deadbeef' won't match any real row."""
         a = self.brain._trace_dal.append(
@@ -334,10 +335,27 @@ class TestMCPRoundTrip(BrainTestBase):
             chain_id='roundtrip-get-traces', scale='s0', event_type='delta',
             ref_type='assistant_message', summary='get_traces probe B')
         result = self._dispatch("get_traces", {"trace_ids": [a, b, 'deadbeef']})
-        self.assertIsInstance(result, list)
-        self.assertEqual(len(result), 2)
-        ids = {r['id'] for r in result}
-        self.assertEqual(ids, {a, b})
+        self.assertIsInstance(result, dict)
+        self.assertEqual({r['id'] for r in result['traces']}, {a, b})
+        self.assertEqual(result['missing_ids'], ['deadbeef'])
+        self.assertNotIn('truncated', result)
+
+    def test_get_traces_overflow_is_flagged(self):
+        """Past TRACE_BATCH_MAX_IDS the door serves a page and SAYS SO — the
+        cap used to be a silent list slice."""
+        from servers.trace_contract import TRACE_BATCH_MAX_IDS
+        tid = self.brain._trace_dal.append(
+            chain_id='roundtrip-overflow', scale='s0', event_type='K',
+            ref_type='user_message', summary='overflow probe')
+        asked = [tid] + ['%08x' % i for i in range(TRACE_BATCH_MAX_IDS + 3)]
+        result = self._dispatch("get_traces", {"trace_ids": asked})
+        self.assertIn('truncated', result)
+        self.assertEqual(result['truncated']['limit'], TRACE_BATCH_MAX_IDS)
+        self.assertEqual(result['truncated']['dropped_ids'],
+                         asked[TRACE_BATCH_MAX_IDS:])
+        self.assertIn('call again', result['truncated']['note'])
+        # The served page still answered: the one real id is in it.
+        self.assertEqual([r['id'] for r in result['traces']], [tid])
 
 
     def test_count_traces(self):

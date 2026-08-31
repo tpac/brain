@@ -82,7 +82,8 @@ hex strings — the same ids `source_refs` on nodes point at.
 |---|---|
 | `recall_episodes` | Episodic recall — the verbatim record of what was said and done, with attribution. `query` (semantic) and/or `contains` (exact substring), composable. Defaults to conversation messages at s0; `ref_type='tool_result'` for the "what I did" lens. `limit` default 10, cap 500. |
 | `query_traces` | Search trace events by scale / event_type / ref_type / chain / session. `hours` default 24; a `session_id` filter is authoritative and ignores the window. `grouped=true` nests events by chain. |
-| `get_trace` / `get_traces` | Point-lookup by id (batch up to 50) — the natural way to expand a node's `source_refs`. `rich=true` for full verbatim metadata. |
+| `get_trace` | Point-lookup by id — the body renders whole, never trimmed. `rich=true` swaps the metadata gist for the full payload (the run record on s1/s2 encoder rows; nothing extra on an s0 turn). |
+| `get_traces` | Batch point-lookup — the natural way to expand a node's `source_refs`. Serves 50 ids per call and flags the overflow; unmatched ids are named. Bodies are trimmed with the dropped-char count; `rich=true` for full metadata. |
 | `count_traces` | Group-by counts over trace events (`event_type`, `ref_type`, `chain_id`, `scale`). |
 
 Rule of thumb: `recall` answers "what do I know", `recall_episodes` answers
