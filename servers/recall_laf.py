@@ -341,6 +341,37 @@ def roles_for_moments(brain, moments, window_turns, pull_limit, as_of=None):
     return records
 
 
+def role_rows(brain, ids, resolve):
+    """Episodic role node ids → {id: master row}, absorbed ids credited to their survivor.
+
+    Role ids come from TRACES, so they are HISTORY, not live node ids (the
+    docs/TRACE-NODE-RESOLUTION.md contract). S2 consolidation absorbs A into
+    live survivor B and archives A; the LAF matrix is live-only, so `resolve(A)`
+    returns None and that moment's evidence is dropped on the floor — B never
+    inherits the activation history its own content earned, and the loss
+    compounds with every consolidation cycle.
+
+    One batched `resolve_live` walk over the UNRESOLVED ids only maps each dead
+    id to its survivor's row instead. Live ids never enter the walk, so an
+    all-live id set costs zero queries; otherwise the walk is level-batched
+    (2 queries per chain level, independent of id count). Retired nodes (archived,
+    no survivor) and true orphans stay dropped — there is nothing live to credit.
+    """
+    rows, missing = {}, []
+    for nid in set(ids):
+        i = resolve(nid)
+        if i is not None:
+            rows[nid] = i
+        else:
+            missing.append(nid)
+    if missing:
+        for dead, surv in brain.resolve_live(missing)['redirected'].items():
+            i = resolve(surv)
+            if i is not None:
+                rows[dead] = i
+    return rows
+
+
 class LafV1Engine:
     """Daemon-resident scorer: caches the matrices, computes per-query field scores.
 
@@ -707,14 +738,18 @@ class LafV1Engine:
                 break
         records = roles_for_moments(brain, moments, cfg['window_turns'],
                                     cfg['session_trace_pull'], as_of=as_of)
+        harvested = set()
+        for r in records:
+            harvested |= r['picked'] | r['encoded']
+        rows = role_rows(brain, harvested, self._resolve)
         for r in records:
             s = r['score']
             for node in r['picked']:
-                i = self._resolve(node)
+                i = rows.get(node)
                 if i is not None and s > pick[i]:
                     pick[i] = s
             for node in r['encoded']:
-                i = self._resolve(node)
+                i = rows.get(node)
                 if i is not None and s > enc[i]:
                     enc[i] = s
         return pick, enc

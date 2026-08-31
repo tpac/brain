@@ -333,13 +333,12 @@ class TestProjLane(BrainTestBase):
         assert cid not in rows             # no project anywhere → absent
 
 
-class TestAsOfTimeTravel(BrainTestBase):
-    """as_of read-side time travel — the §20.11 test contract.
+class _LafEngineFixtures(BrainTestBase):
+    """Shared substrate for the engine-level classes below: backdated nodes,
+    hand-written traces, and an engine whose caches are built over them.
 
-    (a) as_of=None is the identical live path (inert by construction; the
-        pre-existing classes above pin its behavior), (b) as_of=now ≡ None
-        exactly, (c) a node/trace/role-row created after as_of contributes
-        nothing, (d) the walker cross-check runs offline (eval/laf/).
+    Not collected (no `Test` prefix, no test methods) — the classes that
+    inherit it own the assertions.
     """
 
     EARLY = '2026-01-01T00:00:00.000000+00:00'
@@ -380,6 +379,16 @@ class TestAsOfTimeTravel(BrainTestBase):
             eng._refresh_projects(self.brain, node_key=nk)
             eng._refresh_traces(self.brain)
         return eng
+
+
+class TestAsOfTimeTravel(_LafEngineFixtures):
+    """as_of read-side time travel — the §20.11 test contract.
+
+    (a) as_of=None is the identical live path (inert by construction; the
+        pre-existing classes above pin its behavior), (b) as_of=now ≡ None
+        exactly, (c) a node/trace/role-row created after as_of contributes
+        nothing, (d) the walker cross-check runs offline (eval/laf/).
+    """
 
     def test_asof_now_equals_none_exactly(self):
         # contract (b): a far-future as_of masks nothing → bit-identical output
@@ -545,6 +554,73 @@ class TestAsOfTimeTravel(BrainTestBase):
             self.brain._log_error = orig
         self.assertEqual(len(recs), 1)
         self.assertIn('laf_roles_pull_truncated', calls)
+
+
+class TestSurvivorCredit(_LafEngineFixtures):
+    """Absorbed role ids credit their live survivor's row, never the floor.
+
+    Role ids come from traces, so they are history (docs/TRACE-NODE-RESOLUTION.md):
+    S2 consolidation absorbs A into B and archives A, leaving A with no row in the
+    live-only matrix. Before the survivor walk the lookup returned None and the
+    moment's evidence was dropped silently — B never inherited the activation
+    history its own content earned. Reuses the as_of fixtures (_mk_node/_mk_trace/
+    _fresh_engine) — same substrate, different contract.
+    """
+
+    def _absorbed_moment(self, survivor_id=None):
+        """Node A picked in a past moment, then archived (into `survivor_id`)."""
+        import json
+        import servers.embedder as embedder
+        dead = self._mk_node('Absorbed node about walruses', 'Walrus habits.',
+                             self.EARLY)
+        qv = _unit(embedder.embed_query('walrus habits'))
+        self._mk_trace('s0-deadbeef-7', self.EARLY, qv)
+        self._mk_trace('s1r-deadbeef-7', self.EARLY, None, scale='s1',
+                       ref_type='surface_selected', ref_id=json.dumps([dead[:8]]))
+        self.brain.archive_node(dead, archived_by='test',
+                                reason='absorbed', survivor_id=survivor_id)
+        return dead, qv
+
+    def test_absorbed_pick_credits_survivor_row(self):
+        surv = self._mk_node('Surviving node about walruses',
+                             'Walrus habits, consolidated.', self.EARLY)
+        dead, qv = self._absorbed_moment(survivor_id=surv)
+        eng = self._fresh_engine(qv)
+        n = eng._n
+        self.assertIsNone(eng._resolve(dead[:8]))       # no row: A is archived
+        pick, _ = eng._episodic_vectors(self.brain, qv, eng.config(self.brain), n)
+        self.assertGreater(pick[eng._idx[surv]], 0.0)   # …credited to B instead
+
+    def test_retired_node_stays_dropped(self):
+        # archived with NO survivor is a retirement, not an identity claim —
+        # there is nothing live to credit, so the evidence stays on the floor
+        dead, qv = self._absorbed_moment(survivor_id=None)
+        eng = self._fresh_engine(qv)
+        pick, enc = eng._episodic_vectors(self.brain, qv, eng.config(self.brain),
+                                          eng._n)
+        self.assertEqual(float(pick.sum()), 0.0)
+        self.assertEqual(float(enc.sum()), 0.0)
+
+    def test_role_rows_walks_chain_and_skips_live(self):
+        # A→B→C: the walk is transitive, and a LIVE id never enters it (an
+        # all-live id set must cost zero resolve_live queries)
+        from servers.recall_laf import role_rows
+        c = self._mk_node('Chain terminal', 'C.', self.EARLY)
+        b = self._mk_node('Chain middle', 'B.', self.EARLY)
+        a = self._mk_node('Chain head', 'A.', self.EARLY)
+        self.brain.archive_node(b, archived_by='test', survivor_id=c)
+        self.brain.archive_node(a, archived_by='test', survivor_id=b)
+        rows = {c: 0}
+        calls = []
+        orig = self.brain.resolve_live
+        self.brain.resolve_live = lambda ids, **kw: (calls.append(sorted(ids))
+                                                     or orig(ids, **kw))
+        try:
+            got = role_rows(self.brain, [a, c], rows.get)
+        finally:
+            self.brain.resolve_live = orig
+        self.assertEqual(got, {a: 0, c: 0})            # A→B→C lands on C's row
+        self.assertEqual(calls, [[a]])                 # live C never walked
 
 
 @unittest.skipUnless(
