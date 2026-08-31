@@ -1705,7 +1705,7 @@ LOG_TABLES = {
             source TEXT NOT NULL,
             body TEXT NOT NULL,
             refs TEXT DEFAULT '',
-            audience TEXT DEFAULT 'once',
+            audience TEXT DEFAULT 'first_session',
             target_session TEXT DEFAULT '',
             needs_answer INTEGER DEFAULT 0,
             dedup_key TEXT DEFAULT '',
