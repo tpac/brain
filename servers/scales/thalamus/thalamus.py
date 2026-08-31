@@ -1,10 +1,16 @@
 """Thalamus mechanics — file / pull / resolve / withdraw / expire.
 
+Every verb answers in ONE envelope — {'ok': bool, 'id': …} — so a producer
+learns one result contract for the whole module ('filed' survives on file()
+as a compatibility alias for one release).
+
 One producer door (`file()`), three entrances: Anchor's MCP tools
 (dispatch_thalamus.py), agent toolsets (Phase 2), direct code calls. Routing
-lives inside the door: a live-now FYI delegates to the courier broadcast and
-goes terminal immediately; everything with a clock, a window, or an answer
-queues. Delivery is PULL-ONLY at the two moments that provably land — the Stop
+lives inside the door, which validates and resolves the grammars and then
+hands off to one storage branch: a live-now FYI delegates to the courier
+broadcast and goes terminal immediately (`_file_live`); everything with a
+clock, a window, or an answer queues (`_file_queued`). Delivery is PULL-ONLY
+at the two moments that provably land — the Stop
 drain and the boot render — so the Thalamus never enumerates sessions, never
 pushes, holds no roster: each session self-serves against the item list and
 records its own delivery in the ledger at render time (annotate-at-render —
@@ -44,26 +50,69 @@ _ITEM_COLS = ('id, source, body, refs, audience, target_session, '
               'answer, created_at, armed_epoch')
 
 
+def _ok(**fields):
+    """The door's success envelope — `ok` + `id`, the shape resolve() and
+    withdraw() already return, so a producer learns ONE result contract.
+    `filed` is a compatibility alias kept for one release."""
+    return {'ok': True, 'filed': True, **fields}
+
+
+def _reject(error):
+    """The door's LOUD synchronous rejection — same envelope, inverted."""
+    return {'ok': False, 'filed': False, 'error': error}
+
+
+_INSERT_COLS = ('id', 'source', 'body', 'refs', 'audience', 'target_session',
+                'needs_answer', 'dedup_key', 'deliver_at', 'expires_at',
+                'state', 'answer', 'created_at')
+
+
+def _insert_item(conn, **fields):
+    """The one INSERT and the one id-minting site, shared by both routes —
+    armed_epoch takes its column default (generation 0). Every column is
+    named by the caller: a missing field is a KeyError here, not a silent
+    NULL in the row. The caller holds the write lock and commits."""
+    item_id = 'th_%s' % uuid.uuid4().hex[:8]
+    row = dict(fields, id=item_id, answer='')
+    conn.execute(
+        'INSERT INTO thalamus_items (%s) VALUES (%s)'
+        % (', '.join(_INSERT_COLS), ', '.join('?' * len(_INSERT_COLS))),
+        tuple(row[col] for col in _INSERT_COLS))
+    return item_id
+
+
 def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
          refs=None, dedup_key=None, expires=None, session_id=''):
-    """The single producer door. Returns {'filed': True, ...} or a LOUD
-    synchronous rejection {'filed': False, 'error': <guidance>} — the budget
-    guard lives here, at the write boundary, where the rejection lands in the
-    caller's loop while it can still adapt (never in a sweeper hours later).
+    """The single producer door: validate → resolve the grammars → route.
+
+    Returns {'ok': True, 'id': …} or a LOUD synchronous rejection
+    {'ok': False, 'error': <guidance>} — every guard fires HERE, at the write
+    boundary, where the rejection lands in the caller's loop while it can
+    still adapt (never in a sweeper hours later).
 
     Routing: for_whom 'live' delegates to the courier broadcast (requires a
     filing session — the locked stream-speech render must stay honest) and the
     row goes terminal 'sent'. Everything else queues for pull delivery.
-    A repeat (source, dedup_key) UPDATES the open item instead of inserting —
-    identity is producer-owned or absent, never derived from text. A repeat
-    that CHANGES the item (body/refs/deliver_at) re-arms delivery (epoch
-    bump); an identical repeat only refreshes the window (idempotent).
+
+    Identity: a repeat (source, dedup_key) UPDATES the open item instead of
+    inserting — identity is producer-owned or absent, never derived from text.
+    Both forms return updated=True; they differ in `rearmed`. A repeat that
+    CHANGES the item re-arms delivery (rearmed=True), so an edited item
+    delivers again to sessions that already saw the old text. An identical
+    repeat only refreshes the window (rearmed=False) — a cyclic producer
+    re-asserting its standing item must never re-notify every session on
+    every cycle.
     """
     body = (body or '').strip()
     if not body:
-        return {'filed': False, 'error': 'thalamus.file: empty body'}
-    if not source:
-        return {'filed': False, 'error': 'thalamus.file: source is required'}
+        return _reject('thalamus.file: empty body')
+    # `source` is the budget key AND the withdraw-ownership key — a typo'd
+    # one gets a fresh budget and orphans its own items, so it is vocabulary
+    # (the repo-wide encoding_source grammar), not free text.
+    from servers.contract import validate_encoding_source
+    ok, err = validate_encoding_source(source)
+    if not ok:
+        return _reject('thalamus.file: %s' % err)
 
     try:
         route, audience, target_session = tc.resolve_for_whom(
@@ -72,51 +121,65 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
         expires_at = (tc.resolve_when(expires) if expires
                       else tc.window_for(needs_answer, deliver_at))
     except ValueError as e:
-        return {'filed': False, 'error': str(e)}
+        return _reject(str(e))
     if route == 'queue' and audience not in tc.AUDIENCES:
         # Internal drift guard at the write boundary: an audience outside the
         # closed set matches neither pull-predicate branch — the row would
         # stay open forever and die silently at expiry.
-        return {'filed': False, 'error':
-                'thalamus.file: internal audience %r is not one of %s'
-                % (audience, tc.AUDIENCES)}
+        return _reject('thalamus.file: internal audience %r is not one of %s'
+                       % (audience, tc.AUDIENCES))
 
     now = iso_now()
     refs_json = json.dumps(list(refs or []))
 
     if route == 'live':
-        # Fire-and-forget to whoever is alive NOW — the courier's contract.
-        # Terminal 'sent' row kept for observability (thalamus_list), no
-        # ledger lifecycle: the courier owns delivery and death (1h TTL).
         # A queue-shaped param on a live send is an intent the route cannot
-        # honor — reject loudly rather than silently dropping it.
+        # honor — reject loudly rather than silently dropping it. Routing
+        # validation stays at the door; the branch only stores.
         if deliver_at or needs_answer or dedup_key or expires:
-            return {'filed': False, 'error':
-                    "thalamus.file: for_whom='live' is fire-and-forget — it "
-                    "cannot honor when/needs_answer/dedup_key/expires; drop "
-                    "them, or queue instead (for_whom='all' or omit)"}
+            return _reject(
+                "thalamus.file: for_whom='live' is fire-and-forget — it "
+                "cannot honor when/needs_answer/dedup_key/expires; drop "
+                "them, or queue instead (for_whom='all' or omit)")
         if not session_id:
-            return {'filed': False, 'error':
-                    "thalamus.file: for_whom='live' requires a filing session "
-                    "(the stream-speech render needs an honest sender); "
-                    "machine live-now is Phase 3"}
-        from servers.scales.self_channel import signal, self_contract
-        sent = signal.send(brain, from_session=session_id,
-                           address=self_contract.ADDR_BROADCAST,
-                           body=body, refs=refs)
-        item_id = 'th_%s' % uuid.uuid4().hex[:8]
-        with brain.logs_write_lock:
-            brain.logs_conn_w.execute(
-                'INSERT INTO thalamus_items (id, source, body, refs, audience,'
-                ' target_session, needs_answer, dedup_key, deliver_at,'
-                ' expires_at, state, answer, created_at)'
-                ' VALUES (?, ?, ?, ?, ?, ?, 0, ?, NULL, ?, ?, ?, ?)',
-                (item_id, source, body, refs_json, '', '', dedup_key or '',
-                 sent['expires_at'], tc.STATE_SENT, '', now))
-            brain.logs_conn_w.commit()
-        return {'filed': True, 'id': item_id, 'route': 'live',
-                'courier_id': sent['id']}
+            return _reject(
+                "thalamus.file: for_whom='live' requires a filing session "
+                "(the stream-speech render needs an honest sender); "
+                "machine live-now is Phase 3")
+        return _file_live(brain, source, body, refs, refs_json, session_id,
+                          now)
 
+    return _file_queued(brain, source, body, refs_json, now,
+                        audience=audience, target_session=target_session,
+                        needs_answer=needs_answer, dedup_key=dedup_key,
+                        deliver_at=deliver_at, expires_at=expires_at)
+
+
+def _file_live(brain, source, body, refs, refs_json, session_id, now):
+    """Route 'live' — fire-and-forget to whoever is alive NOW, the courier's
+    contract. The terminal 'sent' row is kept for observability
+    (thalamus_list) and has no ledger lifecycle: the courier owns delivery and
+    death (1h TTL). Phase 3's machine live-now rewrites exactly this."""
+    from servers.scales.self_channel import signal, self_contract
+    sent = signal.send(brain, from_session=session_id,
+                       address=self_contract.ADDR_BROADCAST,
+                       body=body, refs=refs)
+    with brain.logs_write_lock:
+        item_id = _insert_item(
+            brain.logs_conn_w, source=source, body=body, refs=refs_json,
+            audience='', target_session='', needs_answer=0, dedup_key='',
+            deliver_at=None, expires_at=sent['expires_at'],
+            state=tc.STATE_SENT, created_at=now)
+        brain.logs_conn_w.commit()
+    return _ok(id=item_id, route='live', courier_id=sent['id'])
+
+
+def _file_queued(brain, source, body, refs_json, now, *, audience,
+                 target_session, needs_answer, dedup_key, deliver_at,
+                 expires_at):
+    """Route 'queue' — the durable path, in order: dedup upsert, then budget,
+    then insert. The door owns the identity contract; the epoch mechanics are
+    below."""
     with brain.logs_write_lock:
         conn = brain.logs_conn_w
         if dedup_key:
@@ -154,8 +217,8 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
                         'updated_at = ? WHERE id = ?',
                         (expires_at, now, existing[0]))
                 conn.commit()
-                return {'filed': True, 'id': existing[0], 'updated': True,
-                        'rearmed': changed, 'route': 'queue'}
+                return _ok(id=existing[0], updated=True, rearmed=changed,
+                           route='queue')
 
         # expires_at filter: expired-but-unswept items must not wedge a
         # producer at its cap while being invisible to delivery.
@@ -164,25 +227,21 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
             'AND state = ? AND expires_at > ?',
             (source, tc.STATE_OPEN, now)).fetchone()[0]
         if open_count >= tc.MAX_OPEN_PER_SOURCE:
-            return {'filed': False, 'error':
-                    'thalamus budget: %r has %d open items (cap %d) — '
-                    'resolve, update (same dedup_key), or withdraw before '
-                    'filing new ones; thalamus_list shows them'
-                    % (source, open_count, tc.MAX_OPEN_PER_SOURCE)}
+            return _reject(
+                'thalamus budget: %r has %d open items (cap %d) — '
+                'resolve, update (same dedup_key), or withdraw before '
+                'filing new ones; thalamus_list shows them'
+                % (source, open_count, tc.MAX_OPEN_PER_SOURCE))
 
-        item_id = 'th_%s' % uuid.uuid4().hex[:8]
-        conn.execute(
-            'INSERT INTO thalamus_items (id, source, body, refs, audience,'
-            ' target_session, needs_answer, dedup_key, deliver_at,'
-            ' expires_at, state, answer, created_at)'
-            ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            (item_id, source, body, refs_json, audience, target_session,
-             1 if needs_answer else 0, dedup_key or '', deliver_at,
-             expires_at, tc.STATE_OPEN, '', now))
+        item_id = _insert_item(
+            conn, source=source, body=body, refs=refs_json, audience=audience,
+            target_session=target_session,
+            needs_answer=1 if needs_answer else 0, dedup_key=dedup_key or '',
+            deliver_at=deliver_at, expires_at=expires_at,
+            state=tc.STATE_OPEN, created_at=now)
         conn.commit()
-    return {'filed': True, 'id': item_id, 'route': 'queue',
-            'audience': audience, 'deliver_at': deliver_at,
-            'expires_at': expires_at}
+    return _ok(id=item_id, route='queue', audience=audience,
+               deliver_at=deliver_at, expires_at=expires_at)
 
 
 def _due_filter(session_id, via, now):

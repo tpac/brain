@@ -1031,7 +1031,8 @@ class TestMCPRoundTrip(BrainTestBase):
         boot delivery; the item lands open with a window."""
         result = self._dispatch("remind", {
             "what": "roundtrip: decide the thing", "needs_answer": True})
-        self.assertTrue(result["filed"])
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["filed"])  # one-release compatibility alias
         self.assertTrue(result["id"].startswith("th_"))
         self.assertEqual(result["route"], "queue")
         self.assertEqual(result["audience"], "every_session")

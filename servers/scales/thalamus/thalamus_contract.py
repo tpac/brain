@@ -187,7 +187,7 @@ def extend_window(needs_answer, new_deliver, current_expires):
 # `for_whom` RESOLUTION  —  producer intent → route
 # ═══════════════════════════════════════════════════════════════
 FOR_WHOM_LIVE = ('live', 'live-now', 'all-live')  # → courier broadcast, no queue row lifecycle
-FOR_WHOM_ALL = 'all'                              # → audience 'all' (window)
+FOR_WHOM_ALL = 'all'                              # → AUDIENCE_EVERY (window)
 
 
 def resolve_for_whom(for_whom, needs_answer):

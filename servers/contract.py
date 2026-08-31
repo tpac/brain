@@ -20,6 +20,8 @@ To add a new field:
   3. That's it. All layers pick it up.
 """
 
+import re
+
 
 # ── BRAIN_BATCH PER-OP CONTRACT ──
 # Single source of truth for brain_batch's discriminated op schemas. Three
@@ -446,6 +448,30 @@ def validate_field(name, value):
         if not isinstance(value, str):
             return False, "%s must be string, got %s" % (name, type(value).__name__)
 
+    return True, None
+
+
+# The `encoding_source` convention declared above, made executable for the
+# doors that key BEHAVIOUR off provenance rather than just recording it.
+# Today that is the Thalamus door, where the same string is both the
+# per-producer budget key and the withdraw-ownership key, so free text forks
+# silently (a typo'd source gets a fresh budget and orphans its own items).
+# Shape only: the category set stays open so a new producer needs no
+# registration.
+_SOURCE_RE = re.compile(r'[a-z][a-z0-9_.-]*(:[a-z0-9_.-]+)?')
+
+
+def validate_encoding_source(value):
+    """Validate a `category:process` provenance string. Returns
+    (ok, error_msg) — validate_field's convention."""
+    if not value or not isinstance(value, str):
+        return False, ("source is required — 'category' or 'category:process' "
+                       "(e.g. 'anchor', 'encoder:sonnet', 's2:consolidation')")
+    if not _SOURCE_RE.fullmatch(value):
+        return False, ("source %r is not 'category[:process]' — lowercase "
+                       "letters, digits and _ . - , at most one colon "
+                       "(e.g. 'anchor', 'encoder:sonnet', 's2:consolidation')"
+                       % (value,))
     return True, None
 
 
