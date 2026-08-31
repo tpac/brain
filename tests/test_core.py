@@ -574,30 +574,59 @@ class TestSurfaceLayer(BrainTestBase):
         # Pristine seeded brain (marker stamped at init-seed) → fast path.
         self.assertEqual(seed_baby_brain(self.brain)['status'], 'already_seeded')
 
-        # Simulate a previous-generation install: seed nodes present — titles
-        # untouched, including any shared ones — but no generation marker,
-        # and a partial count (so the fast path can't mask the guard).
+        # Retirement is respected, never resurrected: archived seeds count
+        # as present (scaffolds instruct the entity to archive them when
+        # outgrown — the next boot must not undo that).
+        self.brain.conn.execute(
+            "UPDATE nodes SET archived = 1 WHERE id IN ("
+            "  SELECT id FROM nodes WHERE encoding_source = 'anchor:seed' LIMIT 5)")
+        result = seed_baby_brain(self.brain)
+        self.assertEqual(result['status'], 'already_seeded')
+        self.assertEqual(result['nodes_created'], 0)
+        dup = self.brain.conn.execute(
+            "SELECT title FROM nodes WHERE encoding_source = 'anchor:seed' "
+            "GROUP BY title HAVING COUNT(*) > 1").fetchall()
+        self.assertEqual(dup, [], "archived seed was resurrected: %r" % dup)
+
+        # Previous-generation install: seed nodes present — titles untouched,
+        # including any shared ones — but no generation marker, and truly
+        # missing rows (hard delete = real crash/foreign state, distinct
+        # from archived-retirement above).
         self.brain.conn.execute(
             "DELETE FROM brain_meta WHERE key = 'seed_pack_generation'")
         self.brain.conn.execute(
-            "UPDATE nodes SET archived = 1 WHERE id IN ("
-            "  SELECT id FROM nodes WHERE encoding_source = 'anchor:seed' LIMIT 10)")
+            "DELETE FROM nodes WHERE id IN ("
+            "  SELECT id FROM nodes WHERE encoding_source = 'anchor:seed' "
+            "  AND archived = 0 LIMIT 10)")
         before = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+            "SELECT COUNT(*) FROM nodes").fetchone()[0]
         result = seed_baby_brain(self.brain)
         self.assertEqual(result['status'], 'previous_generation')
         self.assertEqual(result['nodes_created'], 0)
         after = self.brain.conn.execute(
-            "SELECT COUNT(*) FROM nodes WHERE archived = 0").fetchone()[0]
+            "SELECT COUNT(*) FROM nodes").fetchone()[0]
         self.assertEqual(before, after, "previous-generation brain was modified")
 
         # With the marker restored, the same state is OUR crash-recovery
-        # case: gap-fill runs and re-creates only the missing nodes.
+        # case: gap-fill re-creates only the truly missing nodes (the
+        # archived ones stay retired).
         self.brain._meta.set('seed_pack_generation', 'nursery_v1')
         result = seed_baby_brain(self.brain)
         self.assertEqual(result['status'], 'partial')
         self.assertGreater(result['nodes_created'], 0)
         self.assertEqual(result['nodes_created'] + result['nodes_skipped'], 26)
+
+        # A foreign marker means "not ours" even with zero seed nodes —
+        # never seed over it, never overwrite it (no silent downgrade of a
+        # future pack's brain).
+        self.brain._meta.set('seed_pack_generation', 'nursery_v99')
+        self.brain.conn.execute(
+            "DELETE FROM nodes WHERE encoding_source = 'anchor:seed'")
+        result = seed_baby_brain(self.brain)
+        self.assertEqual(result['status'], 'previous_generation')
+        self.assertEqual(
+            self.brain._meta.get('seed_pack_generation'), 'nursery_v99',
+            "foreign marker was overwritten")
 
     def test_context_boot_zero_memory_gate(self):
         """The Nursery's Zero-Memory gate: active while the brain is young
