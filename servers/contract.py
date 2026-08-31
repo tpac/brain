@@ -542,15 +542,45 @@ GET_NODES_FULL_FORMAT = {
 # filtered field it should surface. Keep in sync with the DAL's SELECT.
 SKINNY_NODE_FIELDS = ('id', 'title', 'type', 'confidence', 'created_at')
 
+# ── Absorbed-id redirect vocabulary — ONE owner for the key and the marker.
+# The canonical pull stamps REDIRECTED_FROM_KEY (a list of the requested ids
+# that resolved to this node); every render marks it through these two
+# formatters, never a hand-written glyph. Node-body renders use the sentence
+# form; one-line ref renders use the compact form.
+REDIRECTED_FROM_KEY = '_redirected_from'
+
 # What the canonical pull (Brain.get_node) attaches on top of the bare DB row:
 # the KV block, the two fields promoted out of it to top-level, the correction
-# chain, and the edges. `canonicalize_results` overlays exactly these onto a
-# recall result, so a result carries the same shape whichever recall door the
-# caller came through. Keep in sync with get_node's assembly — the parity test
+# chain, the edges, and — when the requested id was absorbed — the redirect
+# marker. `canonicalize_results` overlays exactly these onto a recall result,
+# so a result carries the same shape whichever recall door the caller came
+# through. Keep in sync with get_node's assembly — the parity test
 # (tests/test_recall_door_parity.py) fails if get_node grows an attachment
 # this tuple doesn't name.
 CANONICAL_ATTACHMENT_KEYS = ('_metadata', 'situation', 'project',
-                             '_corrections', 'connections')
+                             '_corrections', 'connections',
+                             REDIRECTED_FROM_KEY)
+
+
+def redirect_marker(src_id, dst_id):
+    """Sentence-form marker for node-body renders."""
+    return ('⚠ %s ↦ %s — requested id was absorbed into this node'
+            % (str(src_id)[:8], str(dst_id)[:8]))
+
+
+def redirect_ref_line(src_id, dst_id, title):
+    """Compact one-line marker for ref-list renders."""
+    return '%s ↦ %s · %s (absorbed)' % (
+        str(src_id)[:8], str(dst_id)[:8], title or '')
+
+
+def absorbed_refusal(verb, node_id, survivor_id):
+    """The write-door refusal message — writes never redirect; every door
+    refuses an absorbed id with the SAME sentence and the pointer, so a
+    producer holding a stale alias can re-aim regardless of which door it
+    hit. Dict-shaped doors also return survivor_id as a structured field."""
+    return ('Cannot %s %s — absorbed into %s; %s that node instead'
+            % (verb, str(node_id)[:8], str(survivor_id)[:8], verb))
 
 # connect_to catalog-title matching (write path) — deterministic token
 # matching, NO vectors (decision 2026-07-30: a wrong edge outlives a missing
@@ -873,9 +903,8 @@ def render_rich_node(node, config=None):
     # Canonical-pull redirect: the consumer asked for an absorbed id and got
     # this survivor — say so, always, with both ids (a silent swap would breed
     # the confusion class the redirect exists to prevent).
-    for _src in node.get('_redirected_from') or ():
-        lines.append('  ⚠ %s ↦ %s — requested id was absorbed into this node'
-                     % (str(_src)[:8], nid[:8]))
+    for _src in node.get(REDIRECTED_FROM_KEY) or ():
+        lines.append('  ' + redirect_marker(_src, nid))
 
     # Content (None = no truncation, 0 = hide, N = truncate to N chars)
     content_limit = cfg.get('content_limit')
@@ -1055,7 +1084,12 @@ def render_skinny_node(node, extra_value_limit=120):
     extra = ' '.join(
         '%s=%s' % (k, _truncate(str(v), extra_value_limit))
         for k, v in node.items()
-        if k not in SKINNY_NODE_FIELDS and v is not None)
+        if k not in SKINNY_NODE_FIELDS and k != REDIRECTED_FROM_KEY
+        and v is not None)
+    # Redirect marker, not a raw list dump — same owner as the rich render.
+    for _src in node.get(REDIRECTED_FROM_KEY) or ():
+        extra = (redirect_marker(_src, node.get('id') or '')
+                 + (('  ' + extra) if extra else ''))
     return '[%s] "%s" (id:%s)%s' % (
         node.get('type', '?'), node.get('title', '?'),
         (node.get('id') or '')[:8], ('  ' + extra) if extra else '')

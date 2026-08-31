@@ -340,10 +340,19 @@ class TestTaggedBakTTL(unittest.TestCase):
         self._touch('brain_logs.db.20260625T120000Z.gz')   # rolling scheme
         self._touch('brain_logs.db-wal')                   # sibling
         self._touch('other.db.v1.bak')                     # different DB
+        self._touch('brain_logs.db.bak')      # hand-made copy — no tag segment
+        self._touch('brain_logs.db.bak.gz')   # hand-made compressed copy
+        self._touch('brain_logs.db.v1.bak-shm')  # orphan sibling of a bak
         found = {p for _, p in db_backup.list_tagged_backups(self.db_path)}
         self.assertEqual(found, {want_old, want_gz})
         # the live DB itself is never listed
         self.assertNotIn(self.db_path, found)
+
+    def test_reap_by_ttl_reports_failures_loudly(self):
+        missing = os.path.join(self.tmp, 'ghost', 'brain_logs.db.v9.bak')
+        res = db_backup.reap_by_ttl([missing], ttl_days=0)
+        self.assertEqual(res['failed'], ['brain_logs.db.v9.bak'])
+        self.assertEqual(res['reaped'], [])
 
     def test_reap_by_ttl_deletes_old_keeps_young(self):
         old = self._touch('brain_logs.db.v1.bak', age_days=20)

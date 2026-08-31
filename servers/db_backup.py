@@ -69,9 +69,12 @@ _DEFAULT_MAX_AGE_S = int(1.5 * BACKUP_INTERVAL_S)
 # nothing reaps automatically.
 TAGGED_BAK_TTL_DAYS = 14
 
-# `{db_basename}.{tag}.bak` or `.bak.gz` — cannot match the DB itself, its
-# -wal/-shm siblings, or rolling `.{ts}.gz` snapshots.
-_TAGGED_BAK_RE = re.compile(r'\.[A-Za-z0-9_.-]+\.bak(\.gz)?$')
+# Matched against the REMAINDER after `{db_basename}.` — a non-empty tag
+# segment then `.bak[.gz]`. Anchoring on the remainder (not searching the
+# whole name) is what keeps a hand-made `cp brain.db brain.db.bak` out of
+# the set: its remainder is bare `bak`, no tag segment. Also can't match
+# the DB itself, -wal/-shm siblings, or rolling `.{ts}.gz` snapshots.
+_TAGGED_BAK_RE = re.compile(r'^[A-Za-z0-9_.-]+\.bak(\.gz)?$')
 
 
 def default_backup_dir(db_path: str) -> str:
@@ -172,15 +175,22 @@ def list_tagged_backups(db_path: str) -> List[Tuple[float, str]]:
     out: List[Tuple[float, str]] = []
     try:
         names = os.listdir(d)
-    except OSError:
+    except OSError as e:
+        # Loud: an unreadable DB directory must not read as "no tagged
+        # backups" — the caller would silently skip retention forever.
+        print('[brain] list_tagged_backups FAILED for %s: %s' % (d, e),
+              flush=True)
         return out
     for name in names:
-        if not (name.startswith(prefix) and _TAGGED_BAK_RE.search(name)):
+        if not (name.startswith(prefix)
+                and _TAGGED_BAK_RE.match(name[len(prefix):])):
             continue
         path = os.path.join(d, name)
         try:
             out.append((os.path.getmtime(path), path))
-        except OSError:
+        except OSError as e:
+            print('[brain] list_tagged_backups: cannot stat %s: %s'
+                  % (path, e), flush=True)
             continue
     out.sort(reverse=True)
     return out
@@ -196,6 +206,7 @@ def reap_by_ttl(files: List[str], ttl_days: float,
         now = datetime.now(timezone.utc)
     cutoff = now.timestamp() - ttl_days * 86400
     reaped: List[str] = []
+    failed: List[str] = []
     kept = 0
     for path in files:
         try:
@@ -204,9 +215,13 @@ def reap_by_ttl(files: List[str], ttl_days: float,
                 reaped.append(os.path.basename(path))
             else:
                 kept += 1
-        except OSError:
-            pass
-    return {'reaped': reaped, 'kept': kept}
+        except OSError as e:
+            # Loud: a reap that cannot delete must not report clean success —
+            # the disk-bloat pathology this exists to fix would silently
+            # return (module convention: failures print, e.g. 'Backup FAILED').
+            failed.append(os.path.basename(path))
+            print('[brain] Reap FAILED for %s: %s' % (path, e), flush=True)
+    return {'reaped': reaped, 'kept': kept, 'failed': failed}
 
 
 def seconds_since_last_backup(db_path: str, backup_dir: str,
@@ -274,6 +289,10 @@ def backup_before_destructive(db_path: str, tag: str,
     months-old leftover is a trap, and the operator must see it. Two
     unserialized processes racing the same tag cannot interleave: each
     builds a uniquely-named temp and the atomic rename wins whole.
+    The guarantee holds only while the tag file exists: an explicit
+    `reap_by_ttl` that removes it mid-operation makes a later retry
+    snapshot the CURRENT (possibly half-mutated) state — reap only tags
+    whose operation is verified complete. Nothing reaps automatically.
 
     Returns the backup path, or None on failure (printed loudly; the caller
     decides whether the operation may proceed without it).

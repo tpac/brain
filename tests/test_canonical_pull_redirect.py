@@ -104,15 +104,30 @@ def test_get_node_batch_keys_by_requested_id(brain):
 
 
 def test_get_node_two_absorbed_one_survivor(brain):
+    """Copy-on-stamp: each redirected request gets its OWN entry carrying
+    only its OWN requested id — never one shared dict under two keys."""
     ids = _build(brain, {
         'g5-a1': (True, 'g5-surv', None),
         'g5-a2': (True, 'g5-surv', None),
         'g5-surv': (False, None, None),
     })
     out = brain.get_node([ids['g5-a1'], ids['g5-a2']])
-    assert out[ids['g5-a1']] is out[ids['g5-a2']]
-    assert sorted(out[ids['g5-a1']]['_redirected_from']) == sorted(
-        [ids['g5-a1'], ids['g5-a2']])
+    assert out[ids['g5-a1']] is not out[ids['g5-a2']]
+    assert out[ids['g5-a1']]['id'] == ids['g5-surv']
+    assert out[ids['g5-a1']]['_redirected_from'] == [ids['g5-a1']]
+    assert out[ids['g5-a2']]['_redirected_from'] == [ids['g5-a2']]
+
+
+def test_directly_requested_survivor_carries_no_banner(brain):
+    """A survivor the caller also asked for by its own live id must NOT
+    carry another request's redirect marker (the false-banner bug)."""
+    ids = _build(brain, {
+        'g7-arch': (True, 'g7-surv', None),
+        'g7-surv': (False, None, None),
+    })
+    out = brain.get_node([ids['g7-arch'], ids['g7-surv']])
+    assert '_redirected_from' not in out[ids['g7-surv']]
+    assert out[ids['g7-arch']]['_redirected_from'] == [ids['g7-arch']]
 
 
 def test_get_node_follow_absorbed_false_returns_corpse(brain):
@@ -245,6 +260,62 @@ def test_thalamus_ref_lines_mark_redirect(brain):
     assert '%s ↦ %s · ref survivor title (absorbed)' % (
         ids['t1-arch'][:8], ids['t1-surv'][:8]) in lines
     assert '%s · live ref title' % ids['t1-live'][:8] in lines
+
+
+def test_redirect_door_parity(brain):
+    """Every id-keyed read door reports the SAME redirect shape — survivor
+    identity under the requested handle, REDIRECTED_FROM_KEY naming the
+    requested id. The doors diverging silently is the class this test
+    exists to catch (the review found three hand-rolled copies)."""
+    from servers.contract import REDIRECTED_FROM_KEY
+    ids = _build(brain, {
+        'p1-arch': (True, 'p1-surv', 'parity survivor'),
+        'p1-surv': (False, None, 'parity survivor'),
+    })
+    arch, surv = ids['p1-arch'], ids['p1-surv']
+
+    via_get = brain.get_node(arch)
+    via_filter = brain.filter_nodes(field='id', include=[arch],
+                                    rich=False, limit=5)['nodes']
+    via_recall = brain.recall_node(arch)['results']
+
+    assert via_get['id'] == surv
+    assert via_get[REDIRECTED_FROM_KEY] == [arch]
+    assert len(via_filter) == 1 and via_filter[0]['id'] == surv
+    assert via_filter[0][REDIRECTED_FROM_KEY] == [arch]
+    assert len(via_recall) == 1 and via_recall[0]['id'] == surv
+    assert via_recall[0][REDIRECTED_FROM_KEY] == [arch]
+
+
+def test_canonicalize_swaps_identity_for_absorbed_row(brain):
+    """The ONE door: a result row holding an absorbed id becomes the
+    survivor wholesale — never the corpse wearing the survivor's
+    attachments (the chimera)."""
+    ids = _build(brain, {
+        'c1-arch': (True, 'c1-surv', 'corpse title'),
+        'c1-surv': (False, None, 'door survivor'),
+    })
+    row = {'id': ids['c1-arch'], 'title': 'corpse title',
+           '_source': 'test_seed'}
+    brain.canonicalize_results([row])
+    assert row['id'] == ids['c1-surv']
+    assert row['title'] == 'door survivor'
+    assert row['_redirected_from'] == [ids['c1-arch']]
+    assert row['_source'] == 'test_seed'  # scoring fields survive the swap
+
+
+def test_write_doors_share_the_refusal_contract(brain):
+    """revise / set_node_lock refuse an absorbed id with the shared message
+    AND the structured survivor_id (connect raises the same message)."""
+    ids = _build(brain, {
+        'w5-arch': (True, 'w5-surv', None),
+        'w5-surv': (False, None, None),
+    })
+    r = brain.revise(ids['w5-arch'], reason='t', updates={'situation': 'x'})
+    lock = brain.set_node_lock(ids['w5-arch'], locked=True)
+    for out in (r, lock):
+        assert 'absorbed into %s' % ids['w5-surv'][:8] in out['error']
+        assert out.get('survivor_id') == ids['w5-surv']
 
 
 def test_recall_node_follows_redirect_coherently(brain):
