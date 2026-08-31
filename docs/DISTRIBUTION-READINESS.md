@@ -32,11 +32,50 @@ Two corrections to both:
    critical path. Overrides the "ungated, therefore deferrable" reading — the
    public-repo bar (id:b99bfa36) is the standard, not the gate.
 
-Ordered: **(1)** free deletions + the relocation · **(2)** gold-data exclusion ·
-**(3)** the combined literal sweep — the long pole · **(4)** 5.5 + the 8-file
-D-8 graceful-skip · **(5)** the full 5.3 comment audit · **(6)** 5.2 rename +
-D-10 bump + the missing `0.9.0` assertion · **(7)** 5.7 · **(8)** the fleet,
-last, likely as a hand-tailored one-time install.
+Ordered: ~~**(1)** free deletions + the relocation~~ · ~~**(2)** gold-data
+exclusion~~ · **(3)** the combined literal sweep — the long pole · ~~**(4)**
+5.5 + the D-8 graceful-skip~~ · **(5)** the full 5.3 comment audit ·
+**(6)** 5.2 rename + D-10 bump + the missing `0.9.0` assertion · **(7)** 5.7 ·
+**(8)** the fleet, last, likely as a hand-tailored one-time install.
+
+### Steps 1, 2 and 4 SHIPPED 2026-08-31 (`6fb57ed`)
+
+**Gate B: 227 → 67 hits / 39 files. Gate A clean. The export tree's full suite
+is GREEN: `2983 passed, 14 skipped, 0 failed` (36m52s), collection `2990 / 0
+errors` — it previously aborted on 6.** The 14 skips are 7 eval-guarded modules
+reporting the D-8 reason plus 7 pre-existing; nothing is silenced by accident.
+
+**What remains in gate B is exactly the two future steps and nothing else:**
+**49** in `servers/` + `dashboard/` (step 3, the eval-gated sweep) and **18**
+test attribution comments (step 5). `Anchor` literals in the package: **131 /
+43 files** (was 143 — the relocation took `quality_contract.py`'s 14).
+
+Landed: both eval-only quality contracts relocated to `eval/agent_introspect/`;
+gold corpora excluded (no test needed a skip — every consumer was already a
+denylisted harness); `tests/test_deploy_contract.py` and 11 dev harnesses
+denylisted; the `Tom` → `Ada` fixture rename across 18 test files, token-aware
+so attribution comments were left for step 5; four hand-rolled resolution
+ladders routed through `resolve_db_dir`; and `tests/eval_optional.py` as the
+one door for the D-8 graceful skip (7 modules + the capture pin).
+
+**Three things found in execution that the plan did not anticipate:**
+1. **`tests/test_deploy_contract.py` had to be denylisted, not allowlisted.**
+   It self-skips outside the dev repo — but the *public repo is a git checkout
+   with `plugin.json` tracked*, so it would NOT skip there: it would run and
+   fail, because `TestPublicTreeExport` shells out to
+   `scripts/export-public-tree.sh`, which is outside the manifest. The 5.5
+   measurement missed this because the export tree had no `.git` (id:e354693e).
+2. **Three files assert ON the literal** and a rename would have silently made
+   them vacuous — `seed_pack.py`'s origin-story tributes, the test holding
+   their boundary, and `test_prompt_uses_generic_operator_label` (which asserts
+   `'Tom:'` is *absent* from a surface prompt). Allowlisted, not renamed. They
+   are D-12 allies.
+3. **The hardcoded `~/AgentsContext` path was masking a pre-existing test
+   env leak.** Four `setUpClass` sites set `$BRAIN_DB_DIR` to a temp dir and
+   never restore it — and then delete that dir. Removing the literal withdrew
+   an accidental absorber (id:dd426bd9). **Still open:** the leak itself
+   (`test_spread_activation.py` ×2, `test_remember_source_refs.py`,
+   `test_encoder_eval_probes.py`), blast radius unmeasured.
 **Where the work actually is.** Shipped and verified on main: 5.0 (`e3d9481`),
 the versioned migration runner (`b11e45d` — both DBs, one real step at v31),
 5.0a (`89e8286`) **completed 2026-08-28 by the relocation offer (`d4f4772`)**:
