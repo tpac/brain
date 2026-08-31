@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import anthropic
-from eval.scoring import score_encoding_run, score_decoding_query, score_decoding_suite, score_e2e_run
+from eval.scoring import score_encoding_run, score_decoding_suite, score_e2e_run
 from eval.corpus.loader import load_corpus
 from eval.encoding_suite import ENCODING_TOOLS, ENCODING_SYSTEM, _build_encoding_prompt
 

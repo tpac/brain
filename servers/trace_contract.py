@@ -1600,21 +1600,30 @@ def validate_trace_event(scale, event_type, ref_type=""):
 # ── TRACE RENDERING ──
 # Mirrors contract.py's node-render layer. brain.query_traces / get_trace /
 # get_traces return full rows (the data layer — S2 units read them
-# programmatically); the MCP layer renders bounded text via render_trace +
-# these configs, never a raw json.dumps. recall_episodes shares this renderer.
+# programmatically); the MCP layer renders text via render_trace + these
+# configs, never a raw json.dumps. recall_episodes shares this renderer.
 #
 # The heavy field is `metadata` — s2 K/delta rows reach ~140KB. Bounding it is
 # the lever here, exactly as the edge tail was for get_nodes. `rich=true` opts
-# into the full row.
+# into the full metadata.
+#
+# The BODY is not the lever: `metadata.content` is capped at write time
+# (daemon_hooks), so a body is at most a few KB. A point lookup names one row
+# and gets its body whole; only multi-row pulls trim it, and then they say so.
 
-TRACE_BODY_CHARS = 280          # body cap (was brain_constants.EPISODE_RENDER_BODY_CHARS)
+TRACE_BODY_CHARS = 280          # body cap for multi-row pulls
 TRACE_BULK_BODY_CHARS = 200     # tighter body cap for bulk pulls (>TRACE_BULK_MAX rows)
 TRACE_GIST_VALUE_CHARS = 80     # per-key value cap in gist metadata
 TRACE_GIST_MAX_KEYS = 8         # keys shown in gist before "+N more"
 TRACE_BULK_MAX = 20             # above this many rows, default drops to summary-only
+TRACE_BATCH_MAX_IDS = 50        # get_traces: ids served per call; overflow is flagged
 
-# Default for a focused pull (get_trace, small query): body + metadata gist
-# (key=value, big values elided to "<N chars>" so a 140KB blob can't leak).
+# Point lookup (get_trace): the whole body — you named this row — plus a
+# metadata gist (key=value, big values elided to "<N chars>" so a 140KB blob
+# can't leak). rich=true swaps the gist for full metadata.
+TRACE_POINT_FORMAT = {'body_limit': None, 'metadata_mode': 'gist',
+                      'show_scale': True}
+# Several rows (get_traces, small query): trimmed body + metadata gist.
 TRACE_COMPACT_FORMAT = {'body_limit': TRACE_BODY_CHARS, 'metadata_mode': 'gist',
                         'show_scale': True}
 # Many rows (large query_traces/get_traces): summary only, no metadata.
@@ -1654,6 +1663,25 @@ def _render_trace_metadata(meta, mode):
     return [line]
 
 
+def _trim_body(body, limit):
+    """Cap a rendered body, naming what was dropped.
+
+    A bare '…' reads as the speaker trailing off — the reader can't tell a
+    natural ending from a chopped one. The dropped-char count plus the escape
+    hatch says which it is, mirroring how a truncated windowed read names its
+    remedy rather than just its limit.
+
+    The notice costs ~40 chars, so a body barely over the limit would render
+    LONGER trimmed than whole. Trimming that costs more than it saves isn't
+    trimming — those bodies pass through intact.
+    """
+    if not limit or len(body) <= limit:
+        return body
+    kept = body[:limit - 1].rstrip()
+    notice = '… (+%d chars — get_trace for the whole body)' % (len(body) - len(kept))
+    return body if len(kept) + len(notice) >= len(body) else kept + notice
+
+
 def render_trace(row, config=None):
     """Render one trace_event row to text — the single trace renderer.
 
@@ -1663,7 +1691,6 @@ def render_trace(row, config=None):
     episodes) falls back to summary (structural traces). `metadata` is bounded
     per config.metadata_mode.
     """
-    from servers.contract import _truncate
     cfg = {**TRACE_COMPACT_FORMAT, **(config or {})}
     meta = row.get('metadata')
     if not isinstance(meta, dict):
@@ -1701,8 +1728,7 @@ def render_trace(row, config=None):
     lines = [header]
     body = (meta.get('content') or row.get('summary') or '').strip()
     if body:
-        blim = cfg.get('body_limit')
-        body = _truncate(body, blim) if blim else body
+        body = _trim_body(body, cfg.get('body_limit'))
         lines.append('  ' + body.replace('\n', '\n  '))
     if cfg.get('metadata_mode', 'gist') != 'none':
         lines.extend(_render_trace_metadata(meta, cfg['metadata_mode']))

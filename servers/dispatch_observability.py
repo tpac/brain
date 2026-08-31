@@ -6,7 +6,9 @@ Traces, logs, outcomes (the nervous system) and interactions (the K store).
 import json
 
 from .clock import iso_cutoff
+from .contract import truncation_payload_ids
 from .dispatch_common import _agent_limit
+from .trace_contract import TRACE_BATCH_MAX_IDS
 
 
 def _handle_trace_append(brain, args, graph_changes):
@@ -65,25 +67,32 @@ def _handle_get_trace(brain, args, graph_changes):
 
 def _handle_get_traces(brain, args, graph_changes):
     """Batch trace_event lookup. v29: ids are 8-char hex strings.
-    Accepts up to 50 ids; missing ids skipped. Rejects ints loudly."""
+
+    Serves TRACE_BATCH_MAX_IDS ids per call and SAYS SO when the request
+    overflows — the cap used to be a silent list slice, which returned a
+    partial set that read as complete. Ids that matched no row are named in
+    `missing_ids` for the same reason. Rejects non-string ids loudly.
+    """
     trace_ids = args.get("trace_ids", [])
     if not isinstance(trace_ids, list):
         return {"ok": False, "error": "trace_ids must be a list of 8-char hex strings"}
-    cleaned: list = []
-    bad: list = []
-    for t in trace_ids[:50]:  # cap to 50 per call
-        if isinstance(t, str) and t.strip():
-            cleaned.append(t.strip().lower())
-        else:
-            bad.append(t)
+    bad = [t for t in trace_ids if not (isinstance(t, str) and t.strip())]
     if bad:
         return {"ok": False,
                 "error": "trace_ids must be 8-char hex strings (v29); rejected: %r" % bad[:5]}
-    rows = brain.get_traces(cleaned) if cleaned else []
-    out = {"ok": True, "result": rows}
-    if bad:
-        out["invalid_trace_ids"] = bad
-    return out
+    # Dedupe BEFORE the cap. Expanding source_refs across nodes repeats shared
+    # anchors, and a repeat that spends a slot costs a unique id that would
+    # have fit — a loss invisible in the render, since missing_ids only covers
+    # what we looked up. Capping the raw list also flags truncation on a
+    # request that was fully served. dict.fromkeys keeps caller order.
+    unique = list(dict.fromkeys(t.strip().lower() for t in trace_ids))
+    served = unique[:TRACE_BATCH_MAX_IDS]
+    rows = brain.get_traces(served) if served else []
+    result = {"traces": rows,
+              "missing_ids": sorted(set(served) - {r["id"] for r in rows})}
+    if len(unique) > TRACE_BATCH_MAX_IDS:
+        result["truncated"] = truncation_payload_ids(unique, TRACE_BATCH_MAX_IDS)
+    return {"ok": True, "result": result}
 
 
 def _handle_query_traces(brain, args, graph_changes):

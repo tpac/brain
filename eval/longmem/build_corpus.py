@@ -37,6 +37,7 @@ from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
     load_manifest, save_manifest, source_token, interaction_token,
     summarize_s2_deltas, merge_s2_totals, ingest_session_id,
+    require_variant_pins, address_variants,
 )
 from tests.interaction_override import override_interaction
 
@@ -221,6 +222,48 @@ def _fetch_interaction_template(name: str, version: int) -> str:
     return tmpl
 
 
+def _seed_pack_token() -> dict:
+    """The seed pack joins the content address: it is the encoder's only
+    early catalog, so it shapes every encoded graph. Fingerprint the RESOLVED
+    module state — after any --seed-pack override — so a corpus built under
+    one pack never cache-hits a corpus built under another (the same stale-
+    default masquerade _k_fingerprints closes for prompts; brain id:5f935ada
+    for the seed flavor). One-time cache invalidation for pre-existing
+    corpora: intended — they all predate the Nursery pack anyway."""
+    import hashlib
+    import servers.seed_pack as sp
+    blob = json.dumps({"nodes": sp.SEED_NODES, "edges": sp.SEED_EDGES,
+                       "generation": sp.SEED_PACK_GENERATION},
+                      sort_keys=True, ensure_ascii=False)
+    return {"generation": sp.SEED_PACK_GENERATION,
+            "digest": hashlib.sha1(blob.encode()).hexdigest()[:12]}
+
+
+def _apply_seed_pack_override(path: str) -> None:
+    """Swap servers.seed_pack's pack DATA (nodes/edges/generation) for another
+    pack file's, before any eval Brain is created — the loader code stays
+    current, only the data changes. Pack files are data-only modules
+    (SEED_NODES/SEED_EDGES at module level, no imports required).
+
+    A pack without its own SEED_PACK_GENERATION (pre-Nursery) gets a distinct
+    eval marker: the frozen brains then carry a foreign generation, so the
+    sweep-time open's seeding pass reads them as not-born-from-the-current-pack
+    and leaves them untouched — otherwise the current pack's gap-fill would
+    inject its nodes into the frozen graph at open (id:5f935ada)."""
+    import hashlib
+    import servers.seed_pack as sp
+    src = Path(path).read_text()
+    ns: dict = {"__name__": "seed_pack_override"}
+    exec(compile(src, path, "exec"), ns)
+    sp.SEED_NODES = ns["SEED_NODES"]
+    sp.SEED_EDGES = ns["SEED_EDGES"]
+    gen = ns.get("SEED_PACK_GENERATION") or (
+        "eval_ext_" + hashlib.sha1(src.encode()).hexdigest()[:8])
+    sp.SEED_PACK_GENERATION = gen
+    print(f"[corpus] seed-pack override: {path} → {len(sp.SEED_NODES)} nodes, "
+          f"{len(sp.SEED_EDGES)} edges, generation={gen}", flush=True)
+
+
 def _k_fingerprints(override_templates: dict = None) -> dict:
     """Resolved-K fingerprints for the content address, per encoding name.
 
@@ -245,11 +288,31 @@ def _k_fingerprints(override_templates: dict = None) -> dict:
     return fps
 
 
+def _resolve_build_pins(ingest_surface: str) -> dict:
+    """Effective variant pair for this build, env applied BEFORE the hash.
+
+    A surface-override build runs the agentic loop, so the env pin is applied
+    here — the one place — and the returned pair is what the address and the
+    run both see. Guard + addressing live in corpus.py (the addressing owner).
+    """
+    pins = require_variant_pins()
+    if ingest_surface != "active":
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+        pins["surface_variant"] = "v5_agentic"
+    return pins
+
+
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
-                 interaction_overrides: dict = None, lived: bool = True) -> str:
+                 interaction_overrides: dict = None, lived: bool = True,
+                 seed_pack: str = None) -> str:
     _load_env()
+
+    # Seed-pack override must land before any eval Brain is created — the
+    # loader reads the module globals at Brain init.
+    if seed_pack:
+        _apply_seed_pack_override(seed_pack)
 
     # The lived arm (BRAIN_S1E_LIVED_SEQUENCE) changes the ENCODED GRAPH — the
     # XML lived-sequence input, widened catalog, 2-scout muster, inline scout
@@ -295,6 +358,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                   flush=True)
 
     # Content address: everything that determines the encoded graph.
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "s1e": source_token(s1e),
         "ingest_surface": source_token(ingest_surface),
@@ -302,6 +366,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    address_variants(config, variant_pins)
     # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
     # encoded graph, so they're part of the content address — a v22 corpus and a
     # v24+v7 corpus get distinct hashes. Addressed on the template CONTENT: a
@@ -320,6 +385,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     if lived:
         config["s1e_lived"] = True
     config["k_fingerprints"] = _k_fingerprints(override_templates)
+    config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
     ov_str = (" / overrides=%s" % config["interaction_overrides"]) if interaction_overrides else ""
     print(f"[corpus] config hash = {h}  ({config['s1e']} / surface={config['ingest_surface']} "
@@ -329,10 +395,6 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         print(f"[corpus] CACHE HIT — manifest exists at {manifest_path(h)}; "
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
-
-    # Surface override needs the agentic-loop env var, same as harness.
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
 
     os.makedirs(corpus_dir(h), exist_ok=True)
 
@@ -355,6 +417,9 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         ac = sum(1 for it in items_manifest if it.get("answerable"))
         m = {
             "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
+            # Build-time record of the effective variants (in the address only
+            # when non-baseline — this key is the always-present stamp).
+            "variant_pins": variant_pins,
             "config": config, "items": items_manifest,
             "answerable_count": ac,
             "unanswerable_count": len(items_manifest) - ac,
@@ -546,6 +611,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     n_user_turns = sum(sum(1 for t in e["session"] if t.get("role") == "user")
                        for e in plan)
     qid_list = sorted(it["question_id"] for it in picked)
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "pooled": True,
         # Harness generation joins the content address: a graph-changing
@@ -563,7 +629,9 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    address_variants(config, variant_pins)
     config["k_fingerprints"] = _k_fingerprints()
+    config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
     print(f"[pooled] config hash = {h}  ({len(qid_list)} items / "
           f"{len(plan)} sessions / {n_user_turns} user turns / "
@@ -573,8 +641,6 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
 
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
     os.makedirs(corpus_dir(h), exist_ok=True)
 
     pooled_path = corpus_item_dir(h, "pooled")
@@ -686,6 +752,9 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
         # Round payloads live inside the pooled brain dir (recorder layout).
         "prompts_dir": os.path.join(pooled_path, "payloads"),
+        # Build-time record of the effective variants (in the address only
+        # when non-baseline — this key is the always-present stamp).
+        "variant_pins": variant_pins,
         "config": config, "items": items_manifest,
         "answerable_count": ac,
         "unanswerable_count": len(items_manifest) - ac,
@@ -713,7 +782,7 @@ def main():
                    help="'active' (the resolved default) or a path to an s1e prompt file to encode with")
     p.add_argument("--ingest-surface", dest="ingest_surface", default="active",
                    help="'active' or a path to a surface prompt file used during ingest recall")
-    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=2,
+    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=4,
                    help="S2 fires every N encodings during ingest (default 2)")
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
@@ -724,6 +793,12 @@ def main():
                         "`## Arc` residue). Default LIVED — production's arm since v29 "
                         "activation. Joins the content address — a lived corpus never "
                         "collides with a control corpus.")
+    p.add_argument("--seed-pack", dest="seed_pack", default=None,
+                   help="Path to an alternate seed-pack module (SEED_NODES/SEED_EDGES "
+                        "at module level) to seed each eval brain with, e.g. a "
+                        "git-show of a prior generation. Part of the corpus hash; "
+                        "frozen brains carry the pack's generation marker so sweeps "
+                        "never gap-fill them with the current pack.")
     p.add_argument("--interaction-override", dest="interaction_override", default=None,
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
@@ -747,8 +822,9 @@ def main():
     if args.pooled:
         # args.lived is None unless the user pinned an arm explicitly — pooled
         # takes no arm pin (it always builds lived; there is no control pooled).
-        if args.lived is not None or overrides:
-            p.error("--pooled does not compose with --lived/--no-lived/--interaction-override")
+        if args.lived is not None or overrides or args.seed_pack:
+            p.error("--pooled does not compose with --lived/--no-lived/"
+                    "--interaction-override/--seed-pack")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
                             args.s2_every_n, args.label, force=args.force,
                             items_per_axis=args.items, seed=args.seed)
@@ -757,7 +833,8 @@ def main():
     build_corpus(args.items, args.seed, args.oracle, args.s1e, args.ingest_surface,
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,
                  interaction_overrides=overrides or None,
-                 lived=(True if args.lived is None else args.lived))
+                 lived=(True if args.lived is None else args.lived),
+                 seed_pack=args.seed_pack)
 
 
 if __name__ == "__main__":

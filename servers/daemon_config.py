@@ -230,6 +230,46 @@ def _resolve_daemon_port() -> int:
 DAEMON_PORT = _resolve_daemon_port()
 
 
+def _instance_suffix() -> str:
+    """Per-instance key for every rendezvous path below.
+
+    Empty for the production daemon (BRAIN_INSTANCE unset — every path is
+    byte-identical to the pre-instance form). An eval entity sets
+    BRAIN_INSTANCE so its PID/lock/status/recovery files never collide with
+    production's: an entity acquiring production's daemon lock exits as a
+    duplicate, and an entity touching production's maintenance lock silently
+    disables production's startup and auto-recovery.
+    """
+    inst = os.environ.get("BRAIN_INSTANCE", "").strip()
+    return "-" + inst if inst else ""
+
+
+def _validate_instance_env() -> None:
+    """Import-time, loud, once. A bad instance name would otherwise surface
+    deep in runtime at the first path call; an instance inheriting
+    production's port or DB would collide with the live daemon — those two
+    env vars must be EXPLICIT (the user env file and the uid formula both
+    resolve to production's values, so falling back to them is the failure)."""
+    inst = os.environ.get("BRAIN_INSTANCE", "").strip()
+    if not inst:
+        return
+    if not all(c.isalnum() or c in "_-" for c in inst) or len(inst) > 32:
+        raise SystemExit(
+            "[daemon-config] BRAIN_INSTANCE=%r must be 1-32 chars of "
+            "[A-Za-z0-9_-] — it names /tmp rendezvous files and the "
+            "launchd label." % inst)
+    if not (os.environ.get("BRAIN_DAEMON_PORT")
+            and os.environ.get("BRAIN_DB_DIR")):
+        raise SystemExit(
+            "[daemon-config] BRAIN_INSTANCE=%r requires explicit "
+            "BRAIN_DAEMON_PORT and BRAIN_DB_DIR in the environment — an "
+            "instance inheriting production's port or DB dir would collide "
+            "with the live daemon." % inst)
+
+
+_validate_instance_env()
+
+
 def resolve_db_dir() -> str:
     """Where the brain's data lives — the Python half of the resolution
     contract (D-13: one configurable location, every runtime resolves
@@ -284,17 +324,17 @@ def get_daemon_addr():
 
 def get_socket_path() -> str:
     """DEPRECATED: Use get_daemon_addr() for TCP. Kept for cleanup of stale sockets."""
-    return os.path.join("/tmp", "brain-daemon-{}.sock".format(os.getuid()))
+    return os.path.join("/tmp", "brain-daemon-{}{}.sock".format(os.getuid(), _instance_suffix()))
 
 
 def get_pid_path() -> str:
     """Get the daemon PID file path."""
-    return os.path.join("/tmp", "brain-daemon-{}.pid".format(os.getuid()))
+    return os.path.join("/tmp", "brain-daemon-{}{}.pid".format(os.getuid(), _instance_suffix()))
 
 
 def get_lock_path() -> str:
     """Get the daemon lock file path for startup serialization."""
-    return os.path.join("/tmp", "brain-daemon-{}.lock".format(os.getuid()))
+    return os.path.join("/tmp", "brain-daemon-{}{}.lock".format(os.getuid(), _instance_suffix()))
 
 
 def get_startup_lock_path() -> str:
@@ -308,12 +348,12 @@ def get_startup_lock_path() -> str:
     stale-code branch was dead code in production), and holding it through a
     (re)start made every respawn exit as a duplicate. One inode cannot answer
     both "who is the one daemon" and "who is the one restarter"."""
-    return os.path.join("/tmp", "brain-startup-{}.lock".format(os.getuid()))
+    return os.path.join("/tmp", "brain-startup-{}{}.lock".format(os.getuid(), _instance_suffix()))
 
 
 def get_status_path() -> str:
     """Get the daemon status file path (read by statusline script)."""
-    return os.path.join("/tmp", "brain-status-{}.json".format(os.getuid()))
+    return os.path.join("/tmp", "brain-status-{}{}.json".format(os.getuid(), _instance_suffix()))
 
 
 def get_daemon_log_path(db_path: str) -> str:
@@ -327,7 +367,7 @@ def get_daemon_log_path(db_path: str) -> str:
 
 def get_maintenance_path() -> str:
     """Get the maintenance mode lock file path."""
-    return os.path.join("/tmp", "brain-maintenance-{}.lock".format(os.getuid()))
+    return os.path.join("/tmp", "brain-maintenance-{}{}.lock".format(os.getuid(), _instance_suffix()))
 
 
 def is_maintenance_mode() -> bool:
@@ -342,4 +382,4 @@ def get_recovery_state_path() -> str:
     every recovery caller (hooks, MCP health monitor) so concurrent callers
     don't double-restart a daemon mid-respawn or loop forever on one that
     can't come back."""
-    return os.path.join("/tmp", "brain-recovery-{}.json".format(os.getuid()))
+    return os.path.join("/tmp", "brain-recovery-{}{}.json".format(os.getuid(), _instance_suffix()))

@@ -735,6 +735,11 @@ def render_corrections(corrections, mode='lean',
 # carrying 'truncated' (single chokepoint in brain_mcp._format_result's
 # caller). tests/test_truncation_contract.py pins flag-or-exempt for every
 # read tool.
+#
+# A door can saturate without a window: get_traces serves a capped slice of
+# an explicit id list. Same payload shape, same banner — truncation_payload_ids
+# carries that cause, because "covers only [t0..t1], raise limit" is the wrong
+# thing to tell a caller whose remedy is "ask for the remaining ids".
 
 def truncation_payload(limit, rows, reason=''):
     """Build the standard 'truncated' payload for a saturated bounded read.
@@ -769,6 +774,25 @@ def truncation_payload(limit, rows, reason=''):
                  'that slice were dropped. Raise limit or narrow filters '
                  'before trusting any aggregate over this result.'
                  % (cause, covered)),
+    }
+
+
+def truncation_payload_ids(requested, cap):
+    """The 'truncated' payload for a saturated ID-LIST read (get_traces).
+
+    Same dict shape and same ⚠ banner as the windowed sibling, different
+    cause: there is no window to under-cover and no +1 probe to run — the
+    caller named the ids, so the overflow is exact and so is the remedy
+    (call again with the rest). `requested` is the full id list as asked for.
+    """
+    dropped = list(requested[cap:])
+    return {
+        'limit': cap,
+        'dropped_ids': dropped,
+        'note': ('%d ids requested, %d served — this door fetches %d per '
+                 'call. The %d id(s) past the cap were not looked up; call '
+                 'again with them to complete the set.'
+                 % (len(requested), cap, cap, len(dropped))),
     }
 
 

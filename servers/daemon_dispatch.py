@@ -46,6 +46,7 @@ from .dispatch_ops import (
     _handle_promote_staged, _handle_backfill_vectors,
     _handle_diagnose, _handle_eval,
     _handle_drop_sys_revision_history,
+    _handle_s2_force, _handle_drain_embeddings,
 )
 from .dispatch_self import (
     _handle_self_presence, _handle_self_peek, _handle_self_send, _handle_self_inbox,
@@ -88,6 +89,15 @@ COMMAND_TABLE: Dict[str, CmdEntry] = {
     "remind":                   CmdEntry(_handle_remind,               is_write=False),
     "thalamus_list":            CmdEntry(_handle_thalamus_list,        is_write=False),
     "thalamus_resolve":         CmdEntry(_handle_thalamus_resolve,     is_write=False),
+
+    # ── Deterministic background-loop triggers (eval entities) — is_write=False
+    #    because both own their serialization internally (run_s2's single-flight
+    #    lock; drain batches take brain.write_lock per batch), exactly like the
+    #    daemon poll that runs them outside dispatch. Holding the dispatch
+    #    exclusive lock for a multi-minute S2 cycle would also deadlock S2's own
+    #    encoder dispatch. ──
+    "s2_force":                 CmdEntry(_handle_s2_force,             is_write=False),
+    "drain_embeddings":         CmdEntry(_handle_drain_embeddings,     is_write=False),
 
     # ── Writes (exclusive lock) ──
     "save":                CmdEntry(_handle_save,               is_write=True, marks_dirty=False),

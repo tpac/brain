@@ -621,15 +621,15 @@ def _build_tools():
          "rich": {"type": "boolean", "description": "Default false → bounded, batch-size-aware view. true → complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches — it is the firehose.", "default": False}}}},
 
     {"name": "get_trace",
-     "description": "Point-lookup a single trace_event by id. Returns the event rendered for reading — header + body + a metadata gist; rich=true for the full verbatim metadata. Common pull: expand a node's source_refs, or verify a quote's exact source (reach for rich=true if the source is a large field). For many ids use get_traces; to SEARCH by scale/type/time use query_traces.",
+     "description": "Point-lookup a single trace_event by id. You named one row, so you get it whole: the body is NEVER trimmed. Alongside it comes a metadata gist — key=value, with big values shown as `<N chars>` — and rich=true swaps that gist for the full metadata. What's worth opening depends on the row: an s0 conversation turn carries little beyond the body it already shows you (content, human_identity/agent_identity, recall_chain, tool), so rich buys nothing there; s1 `recall` carries the `query` and the whole `candidates` pool; s1 `surface_selected` carries `selected`, `activations`, `kernel_trace`, `presented_order`, `frame_sections`, `phase_timing`; and every encoder run (s1 `encoding_run`, s2 `consolidation_proposals` / `community_enriched` / `aspect_classified`) carries the run record — `actions`/`action_details`, `write_actions`, `outcomes`, `created`/`revised`/`archived`, `journal_entry`, `final_text`, `rounds`, `errors`, token counts. That last family is where rich=true pays. Common pull: expand a node's source_refs, or verify a quote's exact source. For many ids use get_traces; to SEARCH by scale/type/time use query_traces.",
      "inputSchema": {"type": "object", "required": ["trace_id"], "properties": {
          "trace_id": {"type": "string", "description": "trace_event.id — 8-char hex string (v29). Legacy integer ids are accepted for back-compat (coerced to canonical hex via printf('%08x'))."},
-         "rich": {"type": "boolean", "description": "Default false → bounded (body + metadata gist). true → the full verbatim row.", "default": False}}}},
+         "rich": {"type": "boolean", "description": "Default false → whole body + metadata gist. true → whole body + full metadata (the run record on s1/s2 rows). The body is uncut either way.", "default": False}}}},
 
     {"name": "get_traces",
-     "description": "Batch point-lookup, up to 50 ids — the natural way to expand a node's source_refs in one call. Bounded rows by default; rich=true for full metadata. Missing ids skipped.",
+     "description": "Batch point-lookup — the natural way to expand a node's source_refs in one call. Serves 50 ids per call and TELLS YOU when you asked for more (the overflow ids come back in the truncation note, ready for the next call); ids that matched no row are named rather than silently skipped. Rows render with a trimmed body that says how many chars it dropped, plus a metadata gist; rich=true for full metadata — see get_trace for what lives in it per scale. One id → get_trace, which never trims the body.",
      "inputSchema": {"type": "object", "required": ["trace_ids"], "properties": {
-         "rich": {"type": "boolean", "description": "Default false → bounded rows. true → full metadata per row.", "default": False},
+         "rich": {"type": "boolean", "description": "Default false → trimmed body + metadata gist per row. true → whole body + full metadata per row.", "default": False},
          "trace_ids": {"type": "array", "description": "Array of trace_event ids — each an 8-char hex string (v29). Legacy integer ids are accepted for back-compat.", "items": {"type": "string"}}}}},
 
     {"name": "recall_batch",
@@ -946,8 +946,11 @@ def _render_nodes(rich_nodes, config):
 def _select_trace_config(n, rich):
     """Pick the render_trace config for an n-row trace result — the trace
     analog of _select_node_config. `rich` opts into the full row; otherwise
-    a focused pull renders compact (body + metadata gist) and a bulk pull
-    (> TRACE_BULK_MAX rows) drops to summary-only to protect context."""
+    a small pull renders compact (trimmed body + metadata gist) and a bulk
+    pull (> TRACE_BULK_MAX rows) drops to summary-only to protect context.
+
+    Point lookups don't come here: get_trace names one row and renders its
+    body whole (TRACE_POINT_FORMAT), so there is no n to select on."""
     from servers.trace_contract import (
         TRACE_FULL_FORMAT, TRACE_COMPACT_FORMAT, TRACE_BULK_FORMAT, TRACE_BULK_MAX)
     if rich:
@@ -1025,14 +1028,20 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
 
     # Trace tools — render via the single trace renderer (trace_contract),
     # never raw json.dumps. brain.query_traces/get_trace/get_traces return full
-    # rows at the data layer; bounded here, rich=true for the full row.
+    # rows at the data layer; multi-row pulls are bounded here, rich=true opts
+    # into full metadata.
     if tool_name in ("get_trace", "get_traces", "query_traces") and result:
         # Truncation banner: handled generically at the _format_result call
         # site (one chokepoint for every bounded read door), not here.
+        cfg = None
         if tool_name == "get_trace":
             rows = [result] if isinstance(result, dict) else []
+            # One named row — its body renders whole; rich swaps the metadata
+            # gist for the full payload.
+            from servers.trace_contract import TRACE_FULL_FORMAT, TRACE_POINT_FORMAT
+            cfg = TRACE_FULL_FORMAT if rich else TRACE_POINT_FORMAT
         elif tool_name == "get_traces":
-            rows = result if isinstance(result, list) else []
+            rows = result.get("traces") or [] if isinstance(result, dict) else []
         elif isinstance(result, dict) and isinstance(result.get("chains"), list):
             # grouped — a chain header + its events, per chain. get_chains'
             # events carry their own id but scale/session_id are chain-level,
@@ -1058,8 +1067,15 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
             rows = (result.get("chain") or result.get("events") or []) \
                 if isinstance(result, dict) else []
         rows = [r for r in rows if isinstance(r, dict)]
+        # Ids that matched no row are part of the answer — a shorter list than
+        # you asked for must never be the only sign.
+        missing = (result.get("missing_ids") or []) if isinstance(result, dict) else []
+        tail = ("\n\n(no trace row for: %s)" % ", ".join(missing)) if missing else ""
         if rows:
-            return _render_traces(rows, _select_trace_config(len(rows), rich))
+            return _render_traces(
+                rows, cfg or _select_trace_config(len(rows), rich)) + tail
+        if tail:
+            return tail.strip()
         # else fall through → json.dumps shows the small/empty shape
 
     if tool_name == "recall_batch" and isinstance(result, list):

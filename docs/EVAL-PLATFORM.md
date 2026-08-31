@@ -32,6 +32,25 @@ docstring).
 
 ---
 
+## Time-domain contract — whose clock is each value on?
+
+Every harness that got this wrong did so silently (six documented drift
+incidents live in eval-code comments). The split, current state:
+
+| Value / mechanism | Clock | Where enforced |
+|---|---|---|
+| `event_time`, relative-date resolution, renders | **Conversation time** — `conversation_now(...)`, fed by the `[Current date: ...]` prefix replay injects per session | `tests/test_time_window_contract.py` |
+| `created_at`, `updated_at`, trace timestamps | **Wall clock (transaction time)** — `clock.iso_now()`; in a replayed corpus this is *build* time, so recency lanes measure build order, not conversation recency (arm-consistent; a known blind spot) | same contract test |
+| S2 scheduling (production) | Wall clock — 1h min-interval + 3min idle + ≥2 encode runs (`brain.run_maintenance_if_due`) | — |
+| S2 scheduling (eval replay) | **Counter, not a clock** — `S2_EVERY_N_ENCODINGS` (default 4) + per-item final flush; deliberately NOT production's policy | pinned into the corpus hash |
+| `as_of` recall masking | Wall clock over `created_at` — one-directional (does not unmask archival); no new investment, superseded by the plan below | — |
+
+**Ratified, deferred (Tom, 2026-08-31, node id:d8258cad):** eval entities will
+eventually run on an injectable conversation clock ("Plan A") — eval-only,
+never production; it subsumes `as_of` (a corpus built under an injected clock,
+snapshotted at cutoffs, is the time machine). Until then, the table above is
+the contract; a new harness that mixes domains is the recurring bug class.
+
 ## Frozen Corpus — the two-stage architecture (2026-05-29)
 
 **The problem it solves.** The single-pass harness (`harness.py:run_item`) threw the
@@ -104,6 +123,22 @@ build_corpus.py  (Stage 1, slow, ONCE)        sweep.py  (Stage 2, fast, MANY)
   template, so the arms get distinct addresses). Sweep both
   with the same recall config → delta is *pure encode*. (`--s1e <file>` still works
   for an unregistered draft prompt.)
+- **Seed-pack experiment:** `build_corpus.py --seed-pack <path>` swaps the pack
+  DATA (`SEED_NODES`/`SEED_EDGES`/generation) that each fresh eval brain is born
+  with — the loader code stays current. A pack file without its own
+  `SEED_PACK_GENERATION` gets a distinct eval marker, so the frozen brains read
+  as foreign-generation and the sweep-time open never gap-fills them with the
+  current pack (the id:5f935ada open-time contamination). The seed pack joins the
+  content address unconditionally, so arms can't cache-collide. Recover a prior
+  pack with `git show <commit>:servers/seed_pack.py`. Graph-side comparison:
+  `pack_quality.py --corpus-a/--corpus-b [--sweep-a/--sweep-b]` — field coverage,
+  register depth, type altitude, edge whys, seed crowding in recall candidates.
+  ⚠ **Read [SEED-PACK-EXEMPLAR-FINDINGS.md](SEED-PACK-EXEMPLAR-FINDINGS.md)
+  before designing one:** on a
+  topic-conversation corpus the encoder's prompt contains a seed in only ~1 of 10
+  items and the marked exemplars in none, so LongMemEval cannot measure a pack's
+  effect on encoder register. A first-session-shaped corpus is required for that
+  question.
 
 **First baseline (corpus `a300d2`, v22/v5, 20 items, 2026-05-30):** 94.4%
 recall-conditional (17/18), 85% raw. The only two clean misses were `ENCODE_MISS`
