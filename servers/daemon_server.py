@@ -59,6 +59,7 @@ from .daemon_config import (
     DAEMON_HOST, DAEMON_PORT,
     _CODE_FINGERPRINT, REPO_ROOT,
     get_daemon_addr, get_socket_path, get_pid_path, get_lock_path, get_status_path,
+    get_db_lock_path,
 )
 from .daemon_dispatch import COMMAND_TABLE, dispatch_command
 from .dispatch_common import caller_session
@@ -195,6 +196,22 @@ class BrainDaemon:
             except Exception:
                 pass
             self._log("Another daemon holds the singleton lock%s. Exiting duplicate." % pid_hint)
+            return
+
+        # Second flock, keyed on the resolved BRAIN rather than the instance
+        # label: with BRAIN_INSTANCE keying the singleton lock above, only this
+        # lock still guarantees one writer per brain.db machine-wide. A
+        # mis-enved entity whose ladder resolved onto another instance's (or
+        # production's) DB exits here, loudly, instead of corrupting an index.
+        self._db_lock_fd = open(get_db_lock_path(self.db_path), 'w')
+        try:
+            fcntl.flock(self._db_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            self._db_lock_fd.close()
+            self._lock_fd.close()
+            self._log("Another daemon already writes %s (db lock held). "
+                      "Exiting duplicate — check BRAIN_DB_DIR/BRAIN_INSTANCE." %
+                      self.db_path)
             return
 
         # Register cleanup + signal handlers (once). The PID file is NOT written
@@ -1528,6 +1545,15 @@ class BrainDaemon:
             self._log_shutdown_error('release_lock_fd', _le)
         finally:
             self._lock_fd = None
+        try:
+            # Same idempotence contract as the singleton lock above.
+            if getattr(self, '_db_lock_fd', None) and not self._db_lock_fd.closed:
+                fcntl.flock(self._db_lock_fd, fcntl.LOCK_UN)
+                self._db_lock_fd.close()
+        except Exception as _le:
+            self._log_shutdown_error('release_db_lock_fd', _le)
+        finally:
+            self._db_lock_fd = None
 
     def _log_shutdown_error(self, source, err):
         """Surface a shutdown-time error to debug_log (which the dashboard

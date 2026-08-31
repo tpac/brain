@@ -129,8 +129,19 @@ def _handle_s2_force(brain, args, graph_changes):
     over MCP/TCP and then fires S2 explicitly instead of re-implementing the
     poll's schedule (the drift class that produced the s2_every_n counter).
     Deliberate act on a live brain — multi-minute LLM run; the poll's idle
-    gates are scheduling policy and are intentionally not applied here."""
-    return {"ok": True, "result": brain.run_s2()}
+    gates are scheduling policy and are intentionally not applied here.
+
+    A completed run stamps the scheduler state the way the poll does
+    (run_maintenance_if_due stamps before delegating): without the stamp,
+    last_run_ts still reads an hour+ old after a forced cycle and the poll's
+    next tick fires a second full cycle over the graph S2 just consolidated.
+    Stamped AFTER completion — during the run the poll bails on s2_running."""
+    outcome = brain.run_s2()
+    if not outcome.get("skipped"):
+        brain._maintenance_set_last_run_ts(time.time())
+        brain.activity.consume_encode_runs(
+            brain.activity.encode_runs_since_maintenance)
+    return {"ok": True, "result": outcome}
 
 
 def _handle_drain_embeddings(brain, args, graph_changes):

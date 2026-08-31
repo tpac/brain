@@ -174,6 +174,15 @@ stay deferred.
 | 6 | S1 Scribe catalog | `scales/s1/encode.py:462-475` | `recalled_raw` surface output → ids | **no liveness** | resolve_live — encoder sees live survivors, not dead ids it then tries to revise |
 | 7 | S2 community decoder | `scales/s2/community_decoder.py:189` | own S2 traces (ref_id) | reads ids (suppression) | **deferred** (Q3) — audit only |
 | 8 | S2 consolidation decoder | `scales/s2/consolidation_decoder.py:704` | own S2 traces (selected_ids) | reads ids | **deferred** (Q3) — audit only |
+| 9 | LAF episodic lanes (pick/enc) | `recall_laf.py:role_rows` (called by `_episodic_vectors`) | `surface_selected` + encode traces → live-matrix row | ✅ **resolve_live** — absorbed id credits its survivor's row (2026-08-31) | done |
+
+Row 9 is the raw-DAL class, not a canonical-pull consumer: LAF never hydrates a
+node, it maps a harvested id onto a row of its own live-only matrix, so the
+canonical pull's redirect could not reach it. Before the walk, an absorbed id
+resolved to nothing and the moment's evidence was dropped silently — the
+survivor never inherited the activation history its content earned. A **retired**
+node (archived, no survivor) is still dropped: there is nothing live to credit.
+Measured A/B on the 24-cue gold: `eval/laf/survivor_credit_probe.py`.
 
 **Out of scope:** `source_refs` is *node → trace* provenance (node-anchored), not
 a candidate feed. Listed to avoid confusion with the above.

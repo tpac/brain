@@ -65,7 +65,7 @@ def top_distinct(results, k=3):
     return out
 
 
-def build_shuffled(sample, donors, rng, eng, role_map, trace_mat,
+def build_shuffled(sample, donors, rng, eng, brain, role_map, trace_mat,
                    trace_created, n):
     """TurnData clones with j≥1 history replaced by random OTHER-session
     donor turns; j=0 stays real; lanes recomputed fresh through production
@@ -101,8 +101,8 @@ def build_shuffled(sample, donors, rng, eng, role_map, trace_mat,
                         axis=0)
                 sit = eng._mats['_situation'][:n] @ vec
                 idf = eng._idf_asof(text, n, td.ts) if text else None
-                ep = episodic_from_sims(eng, role_map, trace_mat @ vec,
-                                        td.ts, trace_created)
+                ep = episodic_from_sims(eng, brain, role_map,
+                                        trace_mat @ vec, td.ts, trace_created)
                 pick = np.zeros(n)
                 enc = np.zeros(n)
                 for r_, (p, e) in ep.items():
@@ -160,8 +160,8 @@ def main():
         trace_mat = np.vstack(eng._tr_blocks)
         role_map = build_role_map(env.brain)
         n = eng._n
-        shuffled = build_shuffled(sample, donors, rng, eng, role_map,
-                                  trace_mat, trace_created, n)
+        shuffled = build_shuffled(sample, donors, rng, eng, env.brain,
+                                  role_map, trace_mat, trace_created, n)
 
     # same-subset AUCs: K0, real config, shuffled config
     def subset_auc(tds, cfg):

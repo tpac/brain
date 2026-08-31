@@ -46,7 +46,7 @@ REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
 
 from servers.recall_laf import (LafV1Engine, MAXSIM_VIEWS, _unit,   # noqa: E402
-                                DEFAULT_CONFIG)
+                                DEFAULT_CONFIG, role_rows)
 from servers.scales.s1.trace_links import (_stop_of, _surface_ids,  # noqa: E402
                                            _delta_ids, _candidate_outcomes,
                                            GATHER_STREAMS)
@@ -143,7 +143,7 @@ def roles_at(rec, stop, as_of):
     return picked, encoded, dropped
 
 
-def episodic_from_sims(eng, role_map, sims, as_of, trace_created):
+def episodic_from_sims(eng, brain, role_map, sims, as_of, trace_created):
     """{node_row: (pick, enc)} — the engine's _episodic_vectors semantics
     over the precomputed role map (top-K moment scan, ±WINDOW union,
     picked-wins, max score per node). `sims` is the trace-matrix matvec for
@@ -179,12 +179,16 @@ def episodic_from_sims(eng, role_map, sims, as_of, trace_created):
             encoded |= e
             dropped |= d
         dropped -= picked
+        # Survivor-credit through the PRODUCTION helper — the engine credits an
+        # absorbed id to its live survivor's row, so a bare _resolve here would
+        # diverge by a whole moment score and trip the self-check below.
+        rows, _ = role_rows(brain, picked | encoded, eng._resolve)
         for nid in picked:
-            r = eng._resolve(nid)
+            r = rows.get(nid)
             if r is not None and s > out.get(r, (0.0, 0.0))[0]:
                 out[r] = (s, out.get(r, (0.0, 0.0))[1])
         for nid in encoded:
-            r = eng._resolve(nid)
+            r = rows.get(nid)
             if r is not None and s > out.get(r, (0.0, 0.0))[1]:
                 out[r] = (out.get(r, (0.0, 0.0))[0], s)
     return out
@@ -273,7 +277,8 @@ def main():
             vals = {}                        # (j, kind) → roles dict
             for col, (j, kind, vec) in enumerate(queries):
                 vals[(j, kind)] = episodic_from_sims(
-                    eng, role_map, sims_all[:, col], ts, trace_created)
+                    eng, env.brain, role_map, sims_all[:, col], ts,
+                    trace_created)
                 check_pool.append((key, j, kind, vec, ts))
             for j in range(0, j_max + 1):
                 for nid, r in rows_idx:
@@ -307,8 +312,8 @@ def main():
             pick, enc = eng._episodic_vectors(env.brain, vec, cfg, eng._n,
                                               as_of=ts,
                                               trace_mask=trace_mask)
-            mine = episodic_from_sims(eng, role_map, trace_mat @ vec, ts,
-                                      trace_created)
+            mine = episodic_from_sims(eng, env.brain, role_map,
+                                      trace_mat @ vec, ts, trace_created)
             for r in range(eng._n):
                 m = mine.get(r, (0.0, 0.0))
                 worst = max(worst, abs(float(pick[r]) - m[0]),

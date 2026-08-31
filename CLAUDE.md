@@ -89,6 +89,8 @@ embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
 
 **In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
 
+**`as_of` replay is one-directional — it HIDES, it cannot RESTORE.** It masks nodes/traces created after the instant, but a node archived *since* stays gone: `archive_node` deletes its vectors, so no mask can put it back. A replay therefore runs on today's survivors, not the corpus as it stood — pool shrinkage ~2% at mid-2026 cutoffs, ~10% at the walker's oldest (2026-04). Historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`), which is the faithful half of a lossy mechanism; treat as_of numbers as approximate and degrading with cutoff age.
+
 ### Prompts & configs: code owns the default, the DB holds only overrides
 
 Since the Step 8 collapse (2026-08-23) the runtime resolves every interaction
