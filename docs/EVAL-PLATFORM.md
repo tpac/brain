@@ -32,6 +32,25 @@ docstring).
 
 ---
 
+## Time-domain contract — whose clock is each value on?
+
+Every harness that got this wrong did so silently (six documented drift
+incidents live in eval-code comments). The split, current state:
+
+| Value / mechanism | Clock | Where enforced |
+|---|---|---|
+| `event_time`, relative-date resolution, renders | **Conversation time** — `conversation_now(...)`, fed by the `[Current date: ...]` prefix replay injects per session | `tests/test_time_window_contract.py` |
+| `created_at`, `updated_at`, trace timestamps | **Wall clock (transaction time)** — `clock.iso_now()`; in a replayed corpus this is *build* time, so recency lanes measure build order, not conversation recency (arm-consistent; a known blind spot) | same contract test |
+| S2 scheduling (production) | Wall clock — 1h min-interval + 3min idle + ≥2 encode runs (`brain.run_maintenance_if_due`) | — |
+| S2 scheduling (eval replay) | **Counter, not a clock** — `S2_EVERY_N_ENCODINGS` (default 4) + per-item final flush; deliberately NOT production's policy | pinned into the corpus hash |
+| `as_of` recall masking | Wall clock over `created_at` — one-directional (does not unmask archival); no new investment, superseded by the plan below | — |
+
+**Ratified, deferred (Tom, 2026-08-31, node id:d8258cad):** eval entities will
+eventually run on an injectable conversation clock ("Plan A") — eval-only,
+never production; it subsumes `as_of` (a corpus built under an injected clock,
+snapshotted at cutoffs, is the time machine). Until then, the table above is
+the contract; a new harness that mixes domains is the recurring bug class.
+
 ## Frozen Corpus — the two-stage architecture (2026-05-29)
 
 **The problem it solves.** The single-pass harness (`harness.py:run_item`) threw the
