@@ -37,6 +37,59 @@ class TestCorpusConfigHash(unittest.TestCase):
                             corpus_config_hash({**base, "qids": ["a", "c"]}))
 
 
+class TestVariantAddressing(unittest.TestCase):
+    """Locks the launcher-parity guard: builds refuse to run in an unpinned
+    shell, and a non-baseline variant joins the content address (a baseline
+    build keeps every pre-fix corpus hash)."""
+
+    def setUp(self):
+        from eval.longmem.build_corpus import (
+            _effective_variant_pins, _address_variants)
+        self._pins = _effective_variant_pins
+        self._address = _address_variants
+        self._saved = {k: os.environ.get(k) for k in
+                       ("BRAIN_SURFACE_VARIANT", "BRAIN_RECALL_VARIANT")}
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def test_unpinned_shell_refuses(self):
+        os.environ.pop("BRAIN_SURFACE_VARIANT", None)
+        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
+        with self.assertRaises(SystemExit):
+            self._pins("active")
+
+    def test_baseline_pins_leave_hash_stable(self):
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
+        cfg = {"s1e": "active", "qids": ["a"]}
+        before = corpus_config_hash(cfg)
+        self._address(cfg, self._pins("active"))
+        self.assertEqual(before, corpus_config_hash(cfg),
+                         "baseline variants must not invalidate pre-fix corpora")
+
+    def test_nonbaseline_variant_changes_hash(self):
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+        os.environ["BRAIN_RECALL_VARIANT"] = "baseline"
+        cfg = {"s1e": "active", "qids": ["a"]}
+        before = corpus_config_hash(cfg)
+        self._address(cfg, self._pins("active"))
+        self.assertEqual(cfg.get("recall_variant"), "baseline")
+        self.assertNotEqual(before, corpus_config_hash(cfg))
+
+    def test_ingest_surface_override_forces_agentic(self):
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v4"
+        os.environ["BRAIN_RECALL_VARIANT"] = "laf_v1"
+        pins = self._pins("eval/surface_v12_prompt.txt")
+        self.assertEqual(pins["surface_variant"], "v5_agentic",
+                         "a surface override runs the agentic loop regardless "
+                         "of the shell pin")
+
+
 class TestSourceToken(unittest.TestCase):
     def test_active(self):
         self.assertEqual(source_token("active"), "active")
