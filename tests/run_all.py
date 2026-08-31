@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Run all brain tests — unit + integration + regression baseline.
+"""Run all brain tests — unit + integration.
 
 Usage:
     python3 tests/run_all.py              # Run everything
     python3 tests/run_all.py --unit       # Unit tests only (fast, no DB)
     python3 tests/run_all.py --integration # Integration tests (uses DB copy)
-    python3 tests/run_all.py --regression  # Decode funnel regression check
 """
 
 import sys
@@ -72,60 +71,13 @@ def run_integration_tests():
     return result.wasSuccessful()
 
 
-def run_regression():
-    """Run decode funnel and compare against stored baseline."""
-    print("\n" + "=" * 60)
-    print("REGRESSION CHECK (decode funnel)")
-    print("=" * 60)
-
-    brain_db_dir = os.environ.get('BRAIN_DB_DIR',
-                                   os.path.expanduser('~/AgentsContext/brain'))
-    os.environ['BRAIN_DB_DIR'] = brain_db_dir
-
-    try:
-        from eval.brain_eval import run_decode_eval, load_corpus, save_results
-        corpus_dir = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), 'eval', 'corpus')
-        conversations = load_corpus(corpus_dir)
-        results = run_decode_eval(brain_db_dir, conversations, verbose=True)
-
-        # Check against baseline thresholds
-        kpis = results.get('kpis', {})
-        r25 = kpis.get('recall@25', {}).get('score', 0)
-        hub8 = kpis.get('hub_concentration@8', {}).get('score', 1)
-
-        print(f"\n  R@25: {r25:.1%} (threshold: >75%)")
-        print(f"  Hub@8: {hub8:.1%} (threshold: <20%)")
-
-        passed = True
-        if r25 < 0.75:
-            print(f"  ✗ R@25 REGRESSION: {r25:.1%} < 75%")
-            passed = False
-        else:
-            print(f"  ✓ R@25 OK")
-
-        if hub8 > 0.20:
-            print(f"  ✗ Hub concentration REGRESSION: {hub8:.1%} > 20%")
-            passed = False
-        else:
-            print(f"  ✓ Hub concentration OK")
-
-        save_results(results, 'regression_check')
-        return passed
-
-    except Exception as e:
-        print(f"  REGRESSION CHECK FAILED: {e}")
-        return False
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--unit', action='store_true', help='Unit tests only')
     parser.add_argument('--integration', action='store_true', help='Integration tests only')
-    parser.add_argument('--regression', action='store_true', help='Regression check only')
     args = parser.parse_args()
 
-    run_all = not (args.unit or args.integration or args.regression)
+    run_all = not (args.unit or args.integration)
 
     t0 = time.time()
     all_passed = True
@@ -136,10 +88,6 @@ def main():
 
     if run_all or args.integration:
         if not run_integration_tests():
-            all_passed = False
-
-    if run_all or args.regression:
-        if not run_regression():
             all_passed = False
 
     elapsed = time.time() - t0

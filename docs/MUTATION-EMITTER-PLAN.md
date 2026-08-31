@@ -83,9 +83,9 @@ the handler runs. No traces change.
 4. `tests/isolated_brain.py:218` — route `dispatch` through `dispatch_command`. This is the
    dispatch surface for the eval suites; it is why the chokepoint is registry-level.
 
-**Not migrated, ruled explicitly.** 13 `eval/` scripts call `entry.handler(...)` directly
+**Not migrated, ruled explicitly.** 12 `eval/` scripts call `entry.handler(...)` directly
 (`s1s_snapshot_replay.py:187`, `s1s_full_e2e.py:82`, `interview_encoder_probe.py:114`,
-`encoding_agent_trace.py:210`, `encoding_prompt_eval.py:148`, `mcp_schema_gate.py:88`,
+`encoding_agent_trace.py:210`, `mcp_schema_gate.py:88`,
 `s1s_ab_wiring_check.py:154`, `s1_encode_eval.py:128`, `s2_consolidation_eval.py:107`,
 `s2_locked_probe.py:175`, `archive/encode_eval_v2.py:243`+`:245`, `longmem/replay.py:35`),
 and 6 test files reference `_handle_*` directly (`test_brain_batch_op_contract.py`,

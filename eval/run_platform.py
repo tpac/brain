@@ -6,7 +6,6 @@ Usage:
     python3 eval/run_platform.py
 
     # Run specific suite
-    python3 eval/run_platform.py --suite decoding
     python3 eval/run_platform.py --suite encoding
     python3 eval/run_platform.py --suite e2e
 
@@ -26,9 +25,8 @@ sys.path.insert(0, str(ROOT))
 
 def main():
     parser = argparse.ArgumentParser(description="Eval Platform Runner")
-    parser.add_argument("--suite", choices=["decoding", "encoding", "e2e", "all"], default="all")
+    parser.add_argument("--suite", choices=["encoding", "e2e", "all"], default="all")
     parser.add_argument("--model", default="claude-sonnet-4-6")
-    parser.add_argument("--db", default=os.path.expanduser("~/AgentsContext/brain/brain.db"))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--category", help="Filter conversations to category")
     parser.add_argument("--save", action="store_true")
@@ -38,14 +36,6 @@ def main():
     verbose = not args.quiet
     all_results = {}
     t0 = time.time()
-
-    # ── Decoding Suite (no LLM, fast) ──
-    if args.suite in ("decoding", "all"):
-        from eval.decoding_suite import run_suite as run_decoding, print_results as print_decoding
-        results = run_decoding(db_path=args.db, category=args.category, verbose=verbose)
-        all_results["decoding"] = results
-        if verbose:
-            print_decoding(results)
 
     # ── Encoding Suite (needs ANTHROPIC_API_KEY) ──
     if args.suite in ("encoding", "all"):

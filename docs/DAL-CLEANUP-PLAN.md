@@ -140,7 +140,7 @@ exists. Resume the migration → both disappear together.
 - **Incremental & stoppable.** Each phase ships independently, tests green, committed separately. We can stop after any phase and the tree is consistent.
 - **DAL-first.** No new raw SQL outside `dal*.py` / `schema.py`. Phase 6 adds a guardrail test.
 - **Loud by default.** No new silent `except`. De-silence as we touch.
-- **Don't break the recall hot path.** Any change to `brain_recall.py` / surface / pipeline → run the recall eval before/after. ⚠ `eval/decode_funnel.py` (cited here + in CLAUDE.md) **no longer exists** — current recall evals: `eval/brain_recall_identity_eval.py` (see `eval/README.md`), `eval/surface_funnel.py`, `eval/decoding_suite.py`. (NOTE: the recall *read* hot path is read-only at SQLite; only `recall_write_queue`'s off-path drain is a write path — a pure commit-gating change there needs no recall eval.)
+- **Don't break the recall hot path.** Any change to `brain_recall.py` / surface / pipeline → run the recall eval before/after. ⚠ `eval/decode_funnel.py` (cited here + in CLAUDE.md) **no longer exists** — current recall evals: `eval/brain_recall_identity_eval.py` (see `eval/README.md`), `eval/surface_funnel.py`. (NOTE: the recall *read* hot path is read-only at SQLite; only `recall_write_queue`'s off-path drain is a write path — a pure commit-gating change there needs no recall eval.)
 - **Backup before destructive DB ops.** This effort is mostly *code*, but any phase that touches data (none planned) → `cp brain.db brain.db.bak-{ts}` first.
 - **Test integrity.** If a test fails, STOP — report expected vs actual, don't weaken it.
 

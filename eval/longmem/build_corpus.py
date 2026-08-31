@@ -37,6 +37,7 @@ from eval.longmem.corpus import (
     corpus_config_hash, corpus_dir, corpus_item_dir, manifest_path,
     load_manifest, save_manifest, source_token, interaction_token,
     summarize_s2_deltas, merge_s2_totals, ingest_session_id,
+    require_variant_pins, address_variants,
 )
 from tests.interaction_override import override_interaction
 
@@ -287,6 +288,20 @@ def _k_fingerprints(override_templates: dict = None) -> dict:
     return fps
 
 
+def _resolve_build_pins(ingest_surface: str) -> dict:
+    """Effective variant pair for this build, env applied BEFORE the hash.
+
+    A surface-override build runs the agentic loop, so the env pin is applied
+    here — the one place — and the returned pair is what the address and the
+    run both see. Guard + addressing live in corpus.py (the addressing owner).
+    """
+    pins = require_variant_pins()
+    if ingest_surface != "active":
+        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
+        pins["surface_variant"] = "v5_agentic"
+    return pins
+
+
 def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
@@ -343,6 +358,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                   flush=True)
 
     # Content address: everything that determines the encoded graph.
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "s1e": source_token(s1e),
         "ingest_surface": source_token(ingest_surface),
@@ -350,6 +366,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    address_variants(config, variant_pins)
     # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
     # encoded graph, so they're part of the content address — a v22 corpus and a
     # v24+v7 corpus get distinct hashes. Addressed on the template CONTENT: a
@@ -379,10 +396,6 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
 
-    # Surface override needs the agentic-loop env var, same as harness.
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
-
     os.makedirs(corpus_dir(h), exist_ok=True)
 
     # Full-prompt capture (Tom, 2026-07-02): every S1E encode in a corpus build
@@ -404,6 +417,9 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         ac = sum(1 for it in items_manifest if it.get("answerable"))
         m = {
             "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
+            # Build-time record of the effective variants (in the address only
+            # when non-baseline — this key is the always-present stamp).
+            "variant_pins": variant_pins,
             "config": config, "items": items_manifest,
             "answerable_count": ac,
             "unanswerable_count": len(items_manifest) - ac,
@@ -595,6 +611,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
     n_user_turns = sum(sum(1 for t in e["session"] if t.get("role") == "user")
                        for e in plan)
     qid_list = sorted(it["question_id"] for it in picked)
+    variant_pins = _resolve_build_pins(ingest_surface)
     config = {
         "pooled": True,
         # Harness generation joins the content address: a graph-changing
@@ -612,6 +629,7 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "oracle": os.path.basename(oracle),
         "qids": qid_list,
     }
+    address_variants(config, variant_pins)
     config["k_fingerprints"] = _k_fingerprints()
     config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
@@ -623,8 +641,6 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
               f"0 re-encoding. Pass --force to rebuild.", flush=True)
         return h
 
-    if ingest_surface != "active":
-        os.environ["BRAIN_SURFACE_VARIANT"] = "v5_agentic"
     os.makedirs(corpus_dir(h), exist_ok=True)
 
     pooled_path = corpus_item_dir(h, "pooled")
@@ -736,6 +752,9 @@ def build_pooled_corpus(oracle: str, qids: str, s1e: str, ingest_surface: str,
         "corpus_hash": h, "label": label, "created_at_epoch": time.time(),
         # Round payloads live inside the pooled brain dir (recorder layout).
         "prompts_dir": os.path.join(pooled_path, "payloads"),
+        # Build-time record of the effective variants (in the address only
+        # when non-baseline — this key is the always-present stamp).
+        "variant_pins": variant_pins,
         "config": config, "items": items_manifest,
         "answerable_count": ac,
         "unanswerable_count": len(items_manifest) - ac,
@@ -763,7 +782,7 @@ def main():
                    help="'active' (the resolved default) or a path to an s1e prompt file to encode with")
     p.add_argument("--ingest-surface", dest="ingest_surface", default="active",
                    help="'active' or a path to a surface prompt file used during ingest recall")
-    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=2,
+    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=4,
                    help="S2 fires every N encodings during ingest (default 2)")
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
