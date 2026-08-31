@@ -10,7 +10,7 @@ Two use modes:
    produced by the active s1e prompt. Measures whether teaching against
    the example library produces higher-scoring output than v17 baseline.
 
-Both modes use the same contract (`servers/scales/s1/quality_contract.py`)
+Both modes use the same contract (`eval/agent_introspect/quality_contract.py`)
 and the same evaluator prompt (below). The difference is the input:
 authored example vs. live encoded node + its source conversation.
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from servers.scales.s1.quality_contract import (
+from eval.agent_introspect.quality_contract import (
     DIMENSIONS,
     CROSS_DIM_RULES,
     RECALL_GATING,

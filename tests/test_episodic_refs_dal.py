@@ -77,7 +77,7 @@ class TraceEmbeddingsDALTest(unittest.TestCase):
 
     def test_store_and_get_single(self):
         n = self.dal.store_embeddings(
-            [('00000001', b'\x01\x02', 'tom said hi')], model='nomic')
+            [('00000001', b'\x01\x02', 'ada said hi')], model='nomic')
         self.assertEqual(n, 1)
         got = self._read_embeddings(['00000001'])
         self.assertEqual(got, {'00000001': b'\x01\x02'})

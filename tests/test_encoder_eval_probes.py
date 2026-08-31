@@ -11,6 +11,9 @@ import unittest
 
 from servers.brain import Brain
 from servers.dal import SourceRefDAL
+from tests.eval_optional import require_eval  # noqa: E402
+require_eval()  # D-8: eval/ is absent from the public tree
+
 from eval.encoder_eval.quality_probes import (
     ALL_PROBES,
     run_all_probes,
@@ -41,7 +44,7 @@ class EncoderEvalProbesTest(unittest.TestCase):
 
     def setUp(self):
         # Seed a couple of trace_events so source_refs has real targets
-        for tid, summary in [('aa11bb22', 'tom: 15 days total'),
+        for tid, summary in [('aa11bb22', 'ada: 15 days total'),
                               ('cc33dd44', 'anchor: noted')]:
             self.brain.logs_conn.execute(
                 "INSERT OR REPLACE INTO trace_events "
@@ -73,7 +76,7 @@ class EncoderEvalProbesTest(unittest.TestCase):
 
     def test_brain_presence_finds_gold_atom(self):
         self._make(title='15-day total across Hawaii and NYC',
-                    content='Tom spent 15 days on the combined trip',
+                    content='Ada spent 15 days on the combined trip',
                     source_refs=['aa11bb22'])
         item = {'question': 'how many total days?',
                  'answer': '15 days', 'haystack_sessions': []}

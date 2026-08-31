@@ -18,6 +18,9 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase
+from tests.eval_optional import require_eval  # noqa: E402
+require_eval()  # D-8: eval/ is absent from the public tree
+
 from eval.longmem import classifier
 
 
@@ -108,7 +111,7 @@ class TestScanBrainForGold(BrainTestBase):
 
     def test_found_via_phrase_short(self):
         # Short answer — phrase pass should catch it even if term extraction is sparse.
-        self._add(title="Gym routine", content="Tom goes to the gym at 6 PM daily")
+        self._add(title="Gym routine", content="Ada goes to the gym at 6 PM daily")
         scan = classifier._scan_brain_for_gold(self.brain, "6 PM")
         self.assertTrue(scan["found"])
 

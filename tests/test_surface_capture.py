@@ -188,7 +188,7 @@ class TestByteTruthFidelity:
         # (differential exposure), which production always passes and the
         # capture must round-trip for byte fidelity.
         seed = 0x5eed
-        scope = {'project': 'brain', 'counterpart': 'Tom'}
+        scope = {'project': 'brain', 'counterpart': 'Ada'}
         user_content, max_tokens = build_surface_prompt(
             CANDS, INPUT_KW['user_message'],
             recent_messages=INPUT_KW['recent_messages'],

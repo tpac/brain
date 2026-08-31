@@ -16,6 +16,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from tests.brain_test_base import BrainTestBase                      # noqa: E402
+from tests.isolated_brain import _default_production_dir             # noqa: E402
 from servers.recall_laf import (                                     # noqa: E402
     DEFAULT_CONFIG, LafV1Engine, MAXSIM_VIEWS, _unit, _zscore, idf_scores,
 )
@@ -625,9 +626,7 @@ class TestSurvivorCredit(_LafEngineFixtures):
 
 
 @unittest.skipUnless(
-    os.path.exists(os.path.join(os.path.expanduser('~'),
-                                'AgentsContext', 'brain', 'brain.db'))
-    or os.environ.get('BRAIN_DB_DIR'),
+    _default_production_dir(),
     'integration smoke needs a production brain copy')
 class TestLafFlagIntegration(unittest.TestCase):
     """End-to-end: flag on → laf-scored recall; flag off → champion shape.
@@ -878,7 +877,7 @@ class TestMomentStack(BrainTestBase):
         sub = self.brain.remember(
             type='lesson', title='Submarine sonar arrays',
             content='Attack submarines mount bow sonar arrays.')['id']
-        tom = self.brain.remember(
+        ada = self.brain.remember(
             type='lesson', title='Garden tomato watering',
             content='Water tomato plants at the roots, mornings.')['id']
         self._mk_turn(0, 'tell me about attack submarines',
@@ -888,12 +887,12 @@ class TestMomentStack(BrainTestBase):
         qv = embedder.embed_query(query)
         bare = self._engine()
         bare_map, _ = bare.scores(self.brain, query, qv, session_id=self.SESS)
-        self.assertGreater(bare_map[tom], bare_map[sub])
+        self.assertGreater(bare_map[ada], bare_map[sub])
         # additive-shape table: fitted j≥1 terms only, base gains untouched
         eng = self._engine(moment_K=3, moment_gains={'maxsim_a2': 8.0})
         mom_map, mom_tel = eng.scores(self.brain, query, qv,
                                       session_id=self.SESS)
-        self.assertGreater(mom_map[sub], mom_map[tom],
+        self.assertGreater(mom_map[sub], mom_map[ada],
                            'a2 slot (submarine anchor) should lift the '
                            'submarine node past the tomato node')
         self.assertEqual(eng._last_moment_ledger['turns'], 2)

@@ -209,7 +209,7 @@
   },
   {
     "id": "conv_pos_operator",
-    "query": "what did Tom decide about the operator channel",
+    "query": "what did Ada decide about the operator channel",
     "category": "conversation_positive",
     "expected_relevant": {
       "72bbb5a760e04ddab2648babca03ff32": 2
