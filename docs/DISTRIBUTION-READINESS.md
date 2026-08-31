@@ -1,6 +1,6 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-31) — no design gates left; **next: free deletions → one combined literal sweep → 5.5 → 5.2 → 5.7**
+## §ACTIVE ARC (2026-08-31) — no design gates left; **next: free deletions → combined literal sweep → 5.5 skips → full comment audit → 5.2 → 5.7**
 
 **Sequence ruled 2026-08-31, superseding both prior orders** (the doc's
 `5.0c → 5.3 → 5.2 → 5.5 → 5.7` and id:44025fbb's `5.0c → 5.3 → 5.5 → 5.2 → 5.7`).
@@ -10,10 +10,10 @@ Two corrections to both:
   S1 prompt/rubric files they sit in the *same strings* (`quality_contract.py`
   D-dimension examples, `encode.py`, `encoder_view.py`). Those are eval-gated
   artifacts: two passes over them = two eval gates.
-- **5.2 goes late, immediately before 5.7.** It is a three-file edit whose only
-  real precondition is the fleet check. Running 5.5 before it does not protect
-  it — 5.0b's `com.N.` assertion is *dormant until the rename*, so a 5.5 run
-  before 5.2 is a 5.5 you run twice.
+- **5.2 goes late, immediately before 5.7.** It is a three-file edit, and after
+  ruling 3 below it has **no blocking precondition at all**. It still goes late,
+  for a different reason: 5.0b's `com.N.` assertion is *dormant until the
+  rename* and arms at it, so a 5.5 run before 5.2 is a 5.5 you run twice.
 
 **Tom ruled all four open questions 2026-08-31:**
 1. **Gold data → exclude + graceful-skip**, not sanitize. Denylist
