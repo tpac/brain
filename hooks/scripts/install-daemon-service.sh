@@ -30,6 +30,14 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Entities (BRAIN_INSTANCE set) never use launchd — they run daemon_server as a
+# child process. Without this guard, a session carrying an entity env would
+# render the plist from the ENTITY's BRAIN_DB_DIR, detect drift against the
+# installed copy, and bootout+re-bootstrap PRODUCTION's job pointed at the
+# eval brain — persistent across reboots.
+[ -n "${BRAIN_INSTANCE:-}" ] && exit 0
+
 LABEL="com.brain.daemon"
 TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 

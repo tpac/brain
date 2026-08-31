@@ -14,9 +14,11 @@ INPUT=$(cat)
 MODEL=$(echo "$INPUT" | jq -r '.model.display_name // "?"' 2>/dev/null)
 PCT=$(echo "$INPUT" | jq -r '.context_window.used_percentage // 0' 2>/dev/null | cut -d. -f1)
 
-# Read brain status file
+# Read brain status file. Instance-keyed like daemon_config.get_status_path():
+# in an entity session (BRAIN_INSTANCE set) show the entity's daemon, not
+# production's.
 UID_NUM=$(id -u)
-STATUS_FILE="/tmp/brain-status-${UID_NUM}.json"
+STATUS_FILE="/tmp/brain-status-${UID_NUM}${BRAIN_INSTANCE:+-$BRAIN_INSTANCE}.json"
 
 if [ ! -f "$STATUS_FILE" ]; then
     printf '%b' "[\033[33m$MODEL\033[0m] \033[31m🧠 Brain offline\033[0m | ctx ${PCT}%%"

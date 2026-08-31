@@ -54,6 +54,13 @@ fi
 # env above) wins. Python inside servers/ uses daemon_config.DAEMON_PORT.
 export BRAIN_DAEMON_PORT="${BRAIN_DAEMON_PORT:-$((47200 + $(id -u) % 100))}"
 
+# BRAIN_INSTANCE — multi-entity keying (eval entities, sandbox installs).
+# Never set here: production runs unkeyed. An entity launcher sets it together
+# with its OWN BRAIN_DAEMON_PORT and BRAIN_DB_DIR; daemon_config then suffixes
+# every /tmp rendezvous path and the launchd label, refuses production's port
+# value, and the daemon's bind-time DB lock rejects a second writer on any one
+# brain.db. install-daemon-service.sh no-ops under it (entities never launchd).
+
 # Ensure runtime is installed (idempotent, fast-path on sentinel)
 if ! "$_BRAIN_ENV_DIR/ensure-runtime.sh"; then
     echo "[brain-env] FATAL: runtime bootstrap failed — brain disabled" >&2

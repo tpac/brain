@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from eval.longmem.harness import (
     stratified_sample, _item_axis, _apply_s1e_override, _apply_surface_override,
 )
-from eval.longmem.replay import replay_item
+from eval.longmem.replay import replay_item, S2_EVERY_N_ENCODINGS
 from eval.longmem.fresh_brain import create_fresh_eval_brain, enable_round_capture
 from eval.longmem.classifier import _scan_brain_for_gold
 from eval.longmem.corpus import (
@@ -782,8 +782,10 @@ def main():
                    help="'active' (the resolved default) or a path to an s1e prompt file to encode with")
     p.add_argument("--ingest-surface", dest="ingest_surface", default="active",
                    help="'active' or a path to a surface prompt file used during ingest recall")
-    p.add_argument("--s2-every-n", dest="s2_every_n", type=int, default=4,
-                   help="S2 fires every N encodings during ingest (default 2)")
+    p.add_argument("--s2-every-n", dest="s2_every_n", type=int,
+                   default=S2_EVERY_N_ENCODINGS,
+                   help="S2 fires every N encodings during ingest (default %d)"
+                        % S2_EVERY_N_ENCODINGS)
     p.add_argument("--label", default="corpus", help="human label stored in the manifest")
     p.add_argument("--qids", default=None, help="comma-separated qids (overrides stratified sampling)")
     p.add_argument("--force", action="store_true", help="rebuild even if the corpus already exists")
