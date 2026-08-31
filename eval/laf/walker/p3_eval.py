@@ -199,7 +199,7 @@ def shuffle_on_fitted(coefs):
         trace_created = np.asarray(eng._tr_created, dtype='<U40')
         trace_mat = np.vstack(eng._tr_blocks)
         role_map = build_role_map(env.brain)
-        shuffled = build_shuffled(sample, donors, rng, eng, role_map,
+        shuffled = build_shuffled(sample, donors, rng, eng, env.brain, role_map,
                                   trace_mat, trace_created, eng._n)
 
     def arm_auc(tds, coef, j0_only=False):
