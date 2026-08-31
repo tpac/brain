@@ -168,6 +168,28 @@ def _is_shutdown_requested() -> bool:
     return _shutdown_event.is_set()
 
 
+def drain_now(brain) -> dict:
+    """One synchronous worker tick, on the caller's thread: node/edge embed
+    drain, trace-embedding pull, coverage sweep, access-mark drain — the same
+    four stages the background worker runs, in the same order.
+
+    The door for callers that must not race the worker's interval: an eval
+    entity's harness turn ("everything written is embedded before the next
+    recall"), or a deploy step that needs the queues settled. Blocks on
+    _drain_busy so it composes with a mid-flight background drain instead of
+    overlapping it. Stages raise to the caller rather than logging-and-
+    continuing — a caller invoking an explicit drain wants the failure."""
+    from servers import recall_write_queue
+    with _drain_busy:
+        _drain_once(brain)
+    _drain_trace_embeddings_once(brain)
+    _coverage_sweep(brain)
+    recall_write_queue.drain_once(brain)
+    with _lock:
+        pending = len(_queue) + len(_edge_queue)
+    return {"ok": True, "pending_after": pending}
+
+
 def join_worker(timeout: float = 3.0) -> None:
     """Block until the drain worker has exited (or `timeout` elapses). Called from
     daemon shutdown AFTER request_shutdown() so the worker settles OFF

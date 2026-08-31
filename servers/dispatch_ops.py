@@ -121,6 +121,30 @@ def _handle_backfill_vectors(brain, args, graph_changes):
         node_ids=args.get("node_ids"))}
 
 
+def _handle_s2_force(brain, args, graph_changes):
+    """Run one S2 cycle NOW through Brain.run_s2() — the one door, which owns
+    single-flight (a concurrent cycle returns skipped, never queues).
+
+    The deterministic S2 trigger for eval entities: a harness drives encodes
+    over MCP/TCP and then fires S2 explicitly instead of re-implementing the
+    poll's schedule (the drift class that produced the s2_every_n counter).
+    Deliberate act on a live brain — multi-minute LLM run; the poll's idle
+    gates are scheduling policy and are intentionally not applied here."""
+    return {"ok": True, "result": brain.run_s2()}
+
+
+def _handle_drain_embeddings(brain, args, graph_changes):
+    """Run one synchronous embed-worker tick (node/edge vectors, trace
+    embeddings, coverage sweep, access marks) via embed_queue.drain_now.
+
+    The deterministic drain for eval entities: after a remember/encode over
+    MCP/TCP, everything written is embedded before the next recall — instead
+    of the harness re-implementing the background loop (the embedding-drain
+    defect class: nodes present in node_vectors but semantically invisible)."""
+    from servers.embed_queue import drain_now
+    return {"ok": True, "result": drain_now(brain)}
+
+
 def _handle_diagnose(brain, args, graph_changes):
     """Dump per-thread stacks + vector cache stats + recent error activity.
 

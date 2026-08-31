@@ -21,14 +21,15 @@ import sys
 import time
 
 from .daemon_config import (
-    DAEMON_CPU_ENV, REPO_ROOT,
+    DAEMON_CPU_ENV, REPO_ROOT, _instance_suffix,
     get_daemon_addr, get_daemon_log_path, get_pid_path,
 )
 
 # launchd service label (macOS). The daemon runs as this launchd job
 # (KeepAlive=true), so external recovery force-restarts a hung daemon with
-# `launchctl kickstart -k` and lets launchd own the respawn.
-LAUNCHD_LABEL = "com.brain.daemon"
+# `launchctl kickstart -k` and lets launchd own the respawn. Instance-keyed:
+# an eval entity's bootout/kickstart must never target production's job.
+LAUNCHD_LABEL = "com.brain.daemon" + _instance_suffix().replace("-", ".", 1)
 
 
 def service_target() -> str:
