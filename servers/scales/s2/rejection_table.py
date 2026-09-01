@@ -183,23 +183,67 @@ def get_proposed_ids(proposal):
     return ids
 
 
-def had_empty_batch_call(action_details):
-    """True when the encoder called brain_batch with no operations at all.
+# Consecutive rejected-call runs a unit shields (retry, no fingerprints)
+# before giving up and stamping anyway. Bounds the retry loop: a persistently
+# malformed encoder otherwise pins the unit forever — no fingerprint, no
+# baseline advance, a full re-encode every cycle with zero progress.
+REJECTED_BATCH_RETRY_LIMIT = 3
 
-    Dispatch rejects the call ("operations array is required"), so nothing
-    was written — but unlike an invalid op, an empty call references NO node
-    ids, so node_ids_touched_by_invalid_ops can't shield anything from the
-    skip→rejection path. The same cluster has been observed yielding real
-    ops on a retry (schema-gate FAIL→PASS→FAIL on one cluster, 2026-09-01),
-    so an empty call is a thwarted run, not a clean SKIP: callers must not
-    stamp suppression fingerprints for proposals the run left un-acted-on.
+
+def had_rejected_batch_call(action_details):
+    """True when the run contains a brain_batch call dispatch rejected whole.
+
+    A call-level rejection (empty `operations`, a non-list, a string that
+    doesn't parse) writes NOTHING, and unlike an invalid op inside a valid
+    call it references no node ids — node_ids_touched_by_invalid_ops can't
+    shield anything from the skip→rejection path. The same cluster can yield
+    real ops on a retry, so a rejected call is a thwarted run, not a clean
+    SKIP: callers must not stamp suppression fingerprints for proposals the
+    run left un-acted-on.
+
+    Detection keys off the dispatch verdict the runner records on every
+    action (`error` is set when the handler returned ok=False); the falsy-
+    operations shape is kept as a fallback for hand-built action_details
+    that carry no error field.
     """
     for action in action_details or []:
         if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
             continue
-        if not action.get('input', {}).get('operations'):
+        if action.get('error'):
+            return True
+        if not (action.get('input') or {}).get('operations'):
             return True
     return False
+
+
+def node_ids_touched_by_valid_ops(action_details):
+    """Node IDs targeted by VALID ops in brain_batch calls dispatch accepted.
+
+    The attribution counterpart of had_rejected_batch_call: a cluster whose
+    members were touched by a real op was acted on this run — either resolved
+    (edges/archive) or judged — so the rejected-call shield must not pull it
+    into retry. Calls that errored wrote nothing and contribute no ids.
+    """
+    touched = set()
+    for action in action_details or []:
+        if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
+            continue
+        if action.get('error'):
+            continue
+        ops = (action.get('input') or {}).get('operations')
+        if not isinstance(ops, list):
+            continue
+        for op_spec in ops:
+            if not isinstance(op_spec, dict):
+                continue
+            if op_spec.get('op', '') not in VALID_BATCH_OPS:
+                continue
+            for key in ('node_id', 'source_id', 'target_id',
+                        'survivor_id', 'absorbed_id'):
+                val = op_spec.get(key)
+                if val:
+                    touched.add(val)
+    return touched
 
 
 def node_ids_touched_by_invalid_ops(action_details):
@@ -221,7 +265,7 @@ def node_ids_touched_by_invalid_ops(action_details):
     for action in action_details or []:
         if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
             continue
-        for op_spec in action.get('input', {}).get('operations', []):
+        for op_spec in (action.get('input') or {}).get('operations') or []:
             if not isinstance(op_spec, dict):
                 continue
             if op_spec.get('op', '') in VALID_BATCH_OPS:
@@ -345,10 +389,10 @@ def match_proposals_to_actions(sent_proposals, action_details):
     """
     acted_idx = set()
 
-    for action in action_details:
-        if action.get('tool') != 'brain_batch':
+    for action in action_details or []:
+        if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
             continue
-        operations = action.get('input', {}).get('operations', [])
+        operations = (action.get('input') or {}).get('operations') or []
         for op_spec in operations:
             if not isinstance(op_spec, dict):
                 continue
