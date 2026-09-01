@@ -335,6 +335,29 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
         self.assertEqual(result.get('skipped_recorded'), 1)   # real skip stamped
         self.assertEqual(self._rejection_count(), 1)
 
+    def test_empty_batch_call_is_retried_not_stamped(self):
+        # The encoder called brain_batch with NO operations (observed in
+        # production, 3x/60d): dispatch rejects the call, nothing is written,
+        # and the call names no node ids — the invalid-op shield can't
+        # attribute it to a cluster. The orchestrator must treat the
+        # un-acted-on cluster as thwarted: no fingerprint, baseline NOT
+        # advanced, so the cluster returns to the encoder next cycle.
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='left', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='right', content='c')['id']
+        u = self._unit()
+        empty_call = {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                      'action_details': [{'tool': 'brain_batch',
+                                          'input': {'operations': []}}]}
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value=empty_call):
+            result = u.run()
+        self.assertEqual(result.get('invalid_op_clusters'), 1)
+        self.assertEqual(self._rejection_count(), 0)          # no fingerprint
+        self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # retry
+
     def test_edge_resolved_cluster_also_fingerprinted(self):
         # Policy change 2026-07-27 (journal finding #4): suppression follows
         # the encoder's DECISION, not its edge vocabulary. A KEEP that draws

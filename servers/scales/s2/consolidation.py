@@ -12,7 +12,8 @@ Prompt: servers/scales/s2/consolidation_enrichment_prompt.py
 from .consolidation_decoder import ConsolidationDecoder
 from .consolidation_encoder import ConsolidationEncoder
 from .rejection_table import (
-    filter_rejected, record_rejections, node_ids_touched_by_invalid_ops)
+    filter_rejected, record_rejections, node_ids_touched_by_invalid_ops,
+    had_empty_batch_call)
 
 
 class Consolidation(ConsolidationDecoder):
@@ -137,18 +138,23 @@ class Consolidation(ConsolidationDecoder):
         #   pollute s2_rejections.
         # - Invalid-op clusters: the merge was thwarted, not decided —
         #   never stamp, force a retry next cycle.
+        # - Empty brain_batch call anywhere in the run: the call names no
+        #   node ids, so it can't be attributed to a cluster — treat every
+        #   un-acted-on cluster as thwarted (retry), not decided.
         newly_archived = _snapshot_archived(all_member_ids) - pre_archived
         invalid_touched = node_ids_touched_by_invalid_ops(
+            encode_result.get('action_details', []))
+        empty_batch = had_empty_batch_call(
             encode_result.get('action_details', []))
         processed_proposals = []
         fingerprint_members = set()
         invalid_op_clusters = 0
         for c in clusters:
             members = c.get('nodes', [])
-            if invalid_touched and (set(members) & invalid_touched):
-                invalid_op_clusters += 1
-                continue
             if set(members) & newly_archived:
+                continue
+            if empty_batch or (invalid_touched and (set(members) & invalid_touched)):
+                invalid_op_clusters += 1
                 continue
             if len(members) >= 2:
                 processed_proposals.append(c)
@@ -183,12 +189,15 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] Recorded %d cluster fingerprints' % recorded,
                   flush=True)
         if invalid_op_clusters:
+            cause = ('an empty brain_batch call' if empty_batch
+                     else 'invalid brain_batch ops')
             self.brain._log_warning(
                 's2_consolidation_invalid_op_retry',
-                '%d cluster(s) hit invalid brain_batch ops (merge thwarted) — '
-                'retrying next cycle, NOT suppressed' % invalid_op_clusters)
-            print('[s2-consolidation] %d cluster(s) hit invalid ops — retry, NOT suppressed'
-                  % invalid_op_clusters, flush=True)
+                '%d cluster(s) hit %s (merge thwarted) — '
+                'retrying next cycle, NOT suppressed'
+                % (invalid_op_clusters, cause))
+            print('[s2-consolidation] %d cluster(s) hit %s — retry, NOT suppressed'
+                  % (invalid_op_clusters, cause), flush=True)
 
         # Advance the cutoff only when EVERY cluster was resolved. The
         # encode-failure path returns above without stamping (forcing retry);

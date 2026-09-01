@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from servers.contract import VALID_BATCH_OPS
 from servers.scales.s2.rejection_table import (
     node_ids_touched_by_invalid_ops,
+    had_empty_batch_call,
     get_proposed_ids,
     match_proposals_to_actions,
 )
@@ -138,6 +139,32 @@ class TestConsolidationAbsorbIsRealMerge:
                      'absorbed_id': 'c3571f66', 'content': 'merged'})
         members = ['7463a2aa', 'c3571f66']
         assert set(members) & node_ids_touched_by_invalid_ops(ad) == set()
+
+
+class TestEmptyBatchCallDetector:
+    """An empty brain_batch call (operations: []) is rejected by dispatch and
+    names no node ids — node_ids_touched_by_invalid_ops can't shield anything.
+    had_empty_batch_call is the signal the encoders use to retry every
+    un-acted-on proposal/cluster instead of stamping it as a clean SKIP."""
+
+    def test_empty_operations_detected(self):
+        assert had_empty_batch_call(_batch()) is True
+
+    def test_missing_operations_key_detected(self):
+        ad = [{'tool': 'brain_batch', 'input': {}}]
+        assert had_empty_batch_call(ad) is True
+
+    def test_non_empty_call_not_flagged(self):
+        ad = _batch({'op': 'connect', 'source_id': 'a', 'target_id': 'b'})
+        assert had_empty_batch_call(ad) is False
+
+    def test_ignores_other_tools_and_empty_input(self):
+        assert had_empty_batch_call([{'tool': 'get_nodes', 'input': {}}]) is False
+        assert had_empty_batch_call([]) is False
+        assert had_empty_batch_call(None) is False
+
+    def test_tolerates_malformed_entries(self):
+        assert had_empty_batch_call(['garbage']) is False
 
 
 class TestContractSync:
