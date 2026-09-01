@@ -1,6 +1,6 @@
 """Dispatch handlers for the Thalamus — Anchor's MCP entrance to the door.
 
-Thin command surface over servers/scales/thalamus/thalamus.py:
+Thin command surface over servers/channels/thalamus/thalamus.py:
 - remind           → thalamus.file()  (THE producer verb: a notice, a reminder,
                      and an ask are the same call with different params)
 - thalamus_list    → the pullable view
@@ -11,7 +11,7 @@ module, so every entry registers is_write=False (the dispatch_self pattern).
 Handlers return the {"ok", "result"} envelope like every dispatch_*.py.
 """
 
-from servers.scales.thalamus import thalamus
+from servers.channels.thalamus import thalamus
 from servers.dispatch_common import caller_session
 
 

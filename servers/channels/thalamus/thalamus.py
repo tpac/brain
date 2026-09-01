@@ -29,7 +29,7 @@ import json
 import uuid
 
 from servers.clock import iso_now
-from servers.scales.thalamus import thalamus_contract as tc
+from servers.channels.thalamus import thalamus_contract as tc
 
 
 # The item's columns, declared ONCE as names. Everything else derives: the
@@ -165,7 +165,7 @@ def _file_live(brain, source, body, refs, refs_json, session_id, now):
     contract. The terminal 'sent' row is kept for observability
     (thalamus_list) and has no ledger lifecycle: the courier owns delivery and
     death (1h TTL). Phase 3's machine live-now rewrites exactly this."""
-    from servers.scales.self_channel import signal, self_contract
+    from servers.channels.self_channel import signal, self_contract
     sent = signal.send(brain, from_session=session_id,
                        address=self_contract.ADDR_BROADCAST,
                        body=body, refs=refs)

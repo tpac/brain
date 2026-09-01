@@ -13,7 +13,7 @@ step (docs/BOOT-REIGNITION.md) — build it on top of build_presence().
 
 from datetime import datetime, timezone
 
-from servers.scales.self_channel import self_contract, signal
+from servers.channels.self_channel import self_contract, signal
 
 
 def _age_min(iso_ts):

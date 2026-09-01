@@ -248,7 +248,7 @@ def test_render_marks_redirect_and_archived(brain):
 
 
 def test_thalamus_ref_lines_mark_redirect(brain):
-    from servers.scales.thalamus.thalamus import _attach_ref_lines
+    from servers.channels.thalamus.thalamus import _attach_ref_lines
     ids = _build(brain, {
         't1-arch': (True, 't1-surv', None),
         't1-surv': (False, None, 'ref survivor title'),

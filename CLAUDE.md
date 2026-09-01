@@ -54,6 +54,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Suppression (state + fingerprint) | `scales/s2/rejection_table.py` | `docs/S2-DESIGN.md` |
 | Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |
 | Corrections | `servers/brain_corrections.py` | docstring |
+| Channels (what reaches a live stream) | `servers/channels/self_channel/` (streams↔streams), `channels/thalamus/` (brain→streams) | `docs/SELF-CHANNEL-DESIGN.md`, `docs/THALAMUS-DESIGN.md` |
 | Traces | `servers/brain_traces.py`, `trace_contract.py` | `docs/TRACES-LAYER-DESIGN.md` |
 | Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_collapse.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; the one-time pointer collapse (daemon-boot, version-stamped) in the latter |
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
@@ -62,8 +63,14 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Backups (rolling, pre-destructive, clones) | `servers/db_backup.py`, `db_backends/sqlite.py` | module docstring |
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
-All `scales/` paths live under `servers/`. Two databases: `brain.db` (nodes, edges,
-embeddings) and `brain_logs.db` (traces, session state, interactions, errors).
+All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
+axis (s1, s2 + the machinery serving them) — everything there runs an
+`integrate(O, K) → Δ` loop; `channels/` is what reaches a live stream, indexed by
+correspondent, and runs no loop of its own. The split is load-bearing: the
+conversation-time contract names `servers/scales` as a prefix, so a package whose
+windows are real-elapsed wall-clock must not sit inside it. Two databases:
+`brain.db` (nodes, edges, embeddings) and `brain_logs.db` (traces, session state,
+interactions, errors).
 
 ## Conventions
 

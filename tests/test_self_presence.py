@@ -8,7 +8,7 @@ import unittest
 
 from tests.brain_test_base import BrainTestBase
 from servers.clock import iso_cutoff
-from servers.scales.self_channel import presence, self_contract, signal
+from servers.channels.self_channel import presence, self_contract, signal
 
 
 class TestSelfPresence(BrainTestBase):

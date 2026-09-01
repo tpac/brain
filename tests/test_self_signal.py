@@ -3,7 +3,7 @@ import unittest
 
 from tests.brain_test_base import BrainTestBase
 from servers.clock import iso_cutoff
-from servers.scales.self_channel import signal, self_contract
+from servers.channels.self_channel import signal, self_contract
 
 
 class TestSelfSignal(BrainTestBase):

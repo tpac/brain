@@ -2,6 +2,29 @@
 
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
+**v-next.7 candidate open (2026-09-01), UNPROMOTED.**
+`eval/candidate_prompts/s1e_vnext7_wip.md`, 113,365 chars (+2,913 over the default) — field-coverage
+redistribution across the existing revise examples, the narrow-to-residue
+closure branch (`partially_resolves`, previously prose-only), plus the new
+**A10** law and the Field-coverage matrix that would have caught the defect it
+fixes. Not registered, not deployed as an override; the production default is
+byte-unchanged at 110,452 / `3817564d21c4`. Needs Tom's ruling **and** a
+field-coverage eval instrument that does not exist yet — run-44 scores sibling
+reach, not which surfaces a revise touches. Diagnosis: §6a of
+docs/STALENESS-PROPAGATION-FINDINGS.md.
+
+⚠ **PROMOTE BY APPLYING THE DIFF, NEVER BY COPYING THE FILE.** The candidate is
+a full-file snapshot of v6, so overwriting `SYSTEM_PROMPT` with it silently
+reverts anything that landed in `encoding_prompt.py` in the meantime — and git
+sees no conflict, because the candidate is a *different file*. Promotion =
+apply v-next.7's 14 hunks to whatever `encoding_prompt.py` says at that moment.
+Flagged by stream `831149ce` (2026-09-01), who has two D-12 agent-name edits
+queued for that file: as of this writing `SYSTEM_PROMPT` still equals the v6
+base exactly, so nothing has been lost — but a file-copy promotion after their
+merge would reinstate 3 capital-`Anchor` literals with **zero signal**, since
+`test_deploy_contract.test_agent_name_only_in_config` is `xfail(strict=True)`
+while 5.0c is open. Diff-application makes the merge order irrelevant.
+
 **The arc closed.** `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py` is v6 (110,452 chars,
 was 86,833); merged as main `c9205a7`, daemon restarted, verified from the daemon itself —
 `get_interaction_effective('s1e')` → fingerprint `3817564d21c4`, `source=default`,
@@ -424,6 +447,49 @@ as a section; the Allen full-cut.
   trains that register regardless of any rule against it. (Stop-1
   reverse-pass, 2026-08-21)
 
+- **A10. Field coverage is a MEASURED distribution across the example set,
+  not a checkbox any single example can tick.** A field named in prose but
+  exercised in ~1 of N examples is taught at the rate the examples show it,
+  not the rate the prose asserts it. The distribution — not the presence —
+  is the deliverable, so it gets counted, not eyeballed.
+  **Evidence (the miss this law exists to prevent):** E2/E3 gap 5 caught
+  *"falsified claims hiding in metadata fields — the sweep runs 5 revise ops,
+  5/5 patch content only"*, the weave plan closed it by adding **one**
+  `situation` patch to **one** op, and the box was ticked. Nothing re-counted
+  the set afterwards. v-next.6 shipped with 11 revise ops: 2 multi-field,
+  8 title/content-only, `question` 0/11, edge descriptions 0/11,
+  `revise_edge` 0 occurrences in 110,452 chars — and in production on
+  2026-08-31 the encoder repaired `d827d22f`'s title and content while
+  leaving the same dead value in its `situation` and an edge description,
+  quoting the prompt's title rationale back in its own `reason` string.
+  The prose said four fields; the examples said two; the output followed
+  the examples. (§6a of docs/STALENESS-PROPAGATION-FINDINGS.md; nodes
+  450650d5, 08913f27)
+  **The test — run it whenever an example is added, split, or edited:**
+  1. Build the op × field grid for every worked op in the prompt (the
+     Field-coverage matrix below). Count, don't recall.
+  2. **No field named in prose may sit at 0 exercised ops** — that is the
+     A1 failure with a coat on, and it is invisible without the count.
+  3. **No single field may carry the set's only rationale sentence.** Count
+     where consequence clauses ("…embeds and ranks against itself") attach.
+     A field with a rationale is taught; a field in a list is mentioned.
+     Three title rationales against one situation rationale is the v-next.6
+     defect stated exactly.
+  4. **The shape spread must include the inverse case.** For revise that
+     means at least one op touching NEITHER content nor title — otherwise
+     "revise" silently means "rewrite the claim" and the aspect fields read
+     as decoration.
+  5. **Deliberate zeros are recorded as deliberate, with the reason.** An
+     absence nobody wrote down is indistinguishable from an oversight — and
+     gap 5 became a repeat defect precisely because a closed gap left no
+     standing count behind it.
+
+  **A10 is the revise-shaped instance of a wider family.** `E11`–`E16` state
+  the general forms — rationale attachment, before-state depiction,
+  graded-vs-binary checks, standing counts, numeric self-conformance, and
+  teaching economy. Point those at every example family in the prompt, not
+  just the revise ops; this defect was only *found* in revise.
+
 ## B. Placement laws (under T3)
 
 - **B1. Placement beats content.** Same idea: 30% as a buried bullet, 60% as
@@ -595,6 +661,7 @@ Author-blindness is the point — I know the intent, which is exactly what hides
 | temporal | dated event, relative→ISO, sequence, hub | perishable/expiring state |
 | domain | infra-eng (heavy), quantified personal ×2, research ×1 | everything else |
 | scale | 1-node (modal), 2-node, 5-node | selecting from many candidates |
+| **field coverage** (added 2026-09-01, A10) | **was: title, content, situation, reasoning, event_time, type** | **was: `question`, `thought`, `confidence`, `evolution_status`, edge descriptions — all 0 ops.** This axis was absent from the map entirely, which is why the E2/E3 pass could enumerate nine axes and still miss the defect that shipped. See the Field-coverage matrix below. |
 
 ### Ranked gap list (b=blind reader, m=my derivation, s=sibling stream af64db80)
 
@@ -729,6 +796,126 @@ Author-blindness is the point — I know the intent, which is exactly what hides
   asked for it once before as a one-off (8a9f5996, clean at the time); it never
   became a step, and everything above accumulated in the gap.
 
+### E11–E16 — the v-next.7 boxes (2026-09-01)
+
+Six audits generalized out of one defect: v-next.6's prose named four revise
+fields, its examples showed two, and production followed the examples
+(`450650d5`). Each is stated for the whole prompt, not for revise, and each
+names where else to point it. **A10 is the revise-shaped instance; these are
+the general forms.**
+
+- **E11. Rationale-attachment census — the emphasis is where the CONSEQUENCES
+  are, not where the mentions are.** Wherever the prompt offers a menu of N
+  options, count where the *consequence sentences* attach ("…embeds and ranks
+  against itself", "…is the failure mode"). An option with a named consequence
+  is TAUGHT; an option in a list is MENTIONED, and output follows the taught
+  one. **Conviction:** v-next.6 attached three consequence sentences to `title`
+  and one to `situation` (the dead-referent case only) — the encoder repaired
+  title+content, quoted the title rationale back verbatim in its own `reason`
+  string, and left `situation` stale. Prose that named four fields lost to a
+  3:1 rationale ratio. **Run it on:** the four correction flavors (does one
+  carry all the why?), the three closure branches, the two registers, the
+  atomization tie-breakers, voice fields vs each other, `connect` vs
+  `connect_to`, the skip-vs-encode gate, the two reads. Ratio, not presence,
+  is the output.
+
+- **E12. Before-state depiction audit — an example teaches recognition only if
+  its INPUT shows the thing to be recognized.** Every excerpt in the prompt
+  renders a SUBSET of what the assembly actually renders. Where a lesson is
+  "notice X, then act", X must be visible in the depicted input, and the
+  depiction must not be lossier than production on that surface.
+  **Conviction:** ZERO catalog excerpts rendered a `situation:` line and the
+  one excerpt edge line carried no description — while `build_node_catalog`
+  renders both (full-rich; `edge_style: 'oneline'` is the *surface* path, not
+  the encoder's). So the encoder had no template for a stale situation or a
+  stale edge `why`. **Run it on:** every catalog excerpt, the timeline sample,
+  the `<continuity>`/residue render, the `<scout_notes>` sample, the
+  `[associated]` stub render. Test per lesson: is its trigger visible in the
+  depicted input, and does the depiction match what assembly emits?
+
+- **E13. Graded-vs-binary check audit — does each self-check catch PARTIAL
+  compliance, or only total absence?** **Conviction:** the mandatory `sweep:`
+  line is the prompt's own completeness guard, and it fires only on
+  `sweep: none`. A repair reaching two of four stale surfaces wrote an honest
+  `sweep:` line, passed, and closed `DONE`. A check that can only see "did
+  nothing" cannot see "did half" — and half is the common failure, not the
+  rare one. **Run it on:** the `sweep:` line, the Review fence, the
+  atomization same-batch and edge-description tests, the two-reads gate, the
+  3-anchor bar, the skip verdict. Method: construct the half-done case for
+  each and ask whether the check's own wording rejects it.
+
+- **E14. A gap closed by an instance fix leaves a standing count, or it
+  reopens.** **Conviction:** E2/E3 gap 5 caught this exact defect
+  ("the sweep runs 5 revise ops, 5/5 patch content only"), the weave plan
+  closed it by adding ONE `situation` patch to ONE op and marked it DONE, and
+  nothing re-measured the set. v-next.6 shipped with the distribution
+  unchanged in kind. Fixing the instance was right; recording it as closed
+  without leaving a measurement is what made it recur. **Run it on:** every
+  DONE row in any weave plan — each must name either the invariant now
+  enforced (a law plus its count) or an accepted one-off with its reason.
+
+- **E15. The prompt obeys its own stated numbers.** A9 says the whole prompt
+  is an example; this is its checkable half. Census every explicit numeric
+  rule and test the prompt's OWN example payloads against it.
+  **Conviction:** the `partially_resolves` why drafted for v-next.7 landed at
+  310 chars against the prompt's stated 120–180 band — a violation sitting
+  inside the document that states the band. **Run it on:** edge-why length
+  (120–180), `source_refs` 1–3, "3+ distinct turns", title-length norms,
+  situation trigger-register form. Cheap and scriptable; belongs in E2's
+  sweep.
+
+- **E17. Correction shape — does the fix STAND ON ITS OWN, or ride along
+  beside what it corrects?** (Tom, 2026-09-01: *"sometimes there is value in
+  keeping the history but in many cases leaving the stale history within the
+  fresh node is a disaster and overloading of information."*) Census every
+  revised value in every example: is the old value inline in the new text, and
+  in WHICH field? **Inline history is legitimate only in `content`, and only
+  where it is load-bearing** — a validity interval, a measurement baseline, a
+  forensic row. Everywhere else it is a dead claim competing with the node that
+  is now right. Note the architecture: the `supersedes` edge and
+  `correction_enrich` already annotate lineage on every canonical pull
+  (`ab0ecacd`), and `event_time` carries validity — so an inline `(was X)` is a
+  THIRD copy, and the only one that pollutes the embedding.
+  **Why it is a standing bias, not an incident:** appending is cheaper than
+  re-authoring, and it satisfies "revise" without forcing a re-decision of what
+  is true — `e05a071f`'s operation-vs-disposition line. Tom caught the same
+  reflex in prompt EDITING a week earlier (`bed31596`, "why only additions and
+  not changes"); this is the same bias one level down, inside the content the
+  examples teach.
+  **Three convictions, all 2026-09-01:**
+  1. The sweep gave `a45c88f1` the title *"Rollout order (superseded …): was
+     auth-rewrite → api-gateway → cli"* — the whole dead sequence embedded,
+     sitting beside its successor *"Rollout order after auth-rewrite was
+     scrapped: api-gateway → cli"*. Shared opening words, shared tail: exactly
+     the twin-competition the prompt's own atomization rule warns about, while
+     a `supersedes` edge already carried the lineage. Fixed in v-next.7.
+  2. **The style made a real defect undetectable.** A removal-diff detector
+     over 206 encoder revises found nothing for the canonical item, because
+     production wrote `9.7.2 (was 9.6.0 …)` — nothing was removed. The detector
+     had to be reframed from removal to supersession to see its own case.
+  3. 5 of 8 `content_edits` in the shipped examples are additive — the style
+     transmits, and none of them had been audited on this axis.
+  **The test is position and tense, not presence:** is the old value in the
+  ASSERTION slot, or subordinate and past-tense? *"X (was Y)"* in a title
+  asserts both. *"Y until Z"* in an edge description narrates one.
+  **Run it on:** every `content_edits` new-string, every revised title, edge
+  descriptions, the §7.6 identity exemplars — and the temporal
+  validity-interval examples, where inline history is CORRECT and must be left
+  alone (the yoga node's *"(was twice a week from 2023-08-11)"* is the model of
+  a legitimate one).
+
+- **E16. New teaching rides an existing explanation.** A new bullet or comment
+  block is the expensive default; a clause folded into the explanation that
+  already covers that ground is the cheap one, and examples outrank the prose
+  around them anyway (`8225980e`). **Conviction:** the first v-next.7 draft
+  added +7,698 chars, of which the six largest hunks (~5,600) were new
+  explanatory prose while the behavioral levers — the added fields — were
+  100–220 char hunks. Folding every added block into an adjacent existing
+  explanation produced +2,913 with zero teaching lost; one op got THREE new
+  fields for −2 chars. **Run it at draft close:** for each added block, name
+  the existing explanation that could carry it as a clause. If one exists,
+  fold. Report the net-per-hunk table, not just the total.
+
 ## R. Recall→encode pointers (Opus scout, 2026-08-21)
 
 Full 30-row table: [challenges/recall-to-encode.md](challenges/recall-to-encode.md).
@@ -779,6 +966,80 @@ teaching surface. Columns: what it teaches now / spare capacity / risks.
 | §7.6 A6/A7/A4/A2/A3/A8 | §7.6 | Identity/hot-register encoding; anchor-voice depth; locked + trigger usage; correction at register; agent-as-other-side (A8); source_refs shape (placeholders) | **A voice-disagreement example — me holding my ground with evidence and encoding the contradiction as signal (new D3): none of the six shows it; every §7.6 example is me being corrected or seeing, never me disagreeing** | Big real estate; locked generosity needs its disclaimer kept; placeholder discipline must survive edits (A5) |
 | v-next.4 sweep example (BAD hub-only + full sweep) | candidate | Sweep discipline (D11); content_edits patch form; labeled BAD contrast (T1 ✓); first-person falsifying evidence (D3/D12); supersedes lineage; edge-visible neighbor walk | Fix the wrong error name (`connect_to_bad_id`) in the adjacent prose while landing it; differentiation beat | ~100 added lines (D2); territory overlap with ghi789 (above) |
 | MCP description examples (brain_batch, connect_to, absorb) | MCP | connect_to resolution scopes; sibling-vs-catalog forms; forward-reference example; empty-why anti-pattern; vocabulary + never-generic ban | Correct error-name semantics live here too (mechanics = MCP home, C2); absorb's content-destructive warning held — keep | Shared across ALL callers (C3) — no encoder-specific teaching; changes need the 8-step MCP eval gate |
+
+## Field-coverage matrix — revise ops (A10; rebuild on every example edit)
+
+Counted, not recalled: `./dev python3` over the assembled prompt, one row per
+worked revise op. **v-next.6 = the shipped default; v-next.7 = candidate,
+unpromoted.**
+
+| op | node | v-next.6 fields | v-next.7 fields |
+|---|---|---|---|
+| canonical | `2b8ef0c1` | title | title *(deliberate: edge-line-only, title is all the excerpt shows)* |
+| canonical | `7c1a4d93` | title, type | title, type, **evolution_status** |
+| ladder 1 | `4a9f21c7` | content_edits | content_edits *(deliberate: the one-claim patch rung)* |
+| ladder 2 | `d0e4b856` | situation | **situation, question, thought** ← the no-content/no-title op |
+| ladder 3 | `97b1f24e` | title, content_edits, situation, reasoning, event_time | unchanged + situation now visibly de-stales; question deliberately untouched (not falsified) |
+| canonical | `6ba3f17d` | **op did not exist** | **NEW op** — title, situation; keeps `type: "open"` *deliberately*, takes `partially_resolves`. The narrow-to-residue branch (Tom, 2026-09-01) |
+| BAD | `e91a6d05` | content_edits | content_edits *(deliberate: labeled BAD)* |
+| sweep | `e91a6d05` | content_edits | content_edits |
+| sweep | `7d21c4aa` | title, content_edits | title, content_edits, **evolution_status** |
+| sweep | `b8e05f92` | title, content_edits, situation | title, content_edits, situation, **question, confidence** |
+| sweep | `c37d10be` | title, content_edits | title, content_edits |
+| sweep | `a45c88f1` | title | title *(+ its edge description, via the new `connect` op)* |
+
+**Regression guard (Tom's constraint, 2026-09-01): title and content must not
+go backwards.** Verified by script over both files — `title` dropped from 0 ops,
+`content_edits` dropped from 0 ops, and every retained title/content string is
+byte-identical to v6. Title *rises* 7→8 on the new `6ba3f17d` op. (One scripted
+"content TEXT CHANGED" flag on `e91a6d05` is a false positive — that id appears
+on two ops and an id-keyed dict collides; both patches diff byte-identical.)
+
+| field | v6 ops | v7 ops | note |
+|---|---|---|---|
+| title | 7 | **8** | +1 from the narrow-to-residue op; no existing title touched |
+| content_edits | 7 | 7 | all 7 byte-identical |
+| situation | 3 | 4 | |
+| question | **0** | 2 | A1 violation in v6 — highest production weight (0.90), 94% missing |
+| reasoning | 1 | 1 | |
+| event_time | 1 | 1 | |
+| type | 1 | 1 | |
+| thought | **0** | 1 | 0/120 emitted in production; revise is its natural home (the field that is *supposed* to change) |
+| confidence | **0** | 1 | E2/E3 gap 6 — "every node asserts flatly" |
+| evolution_status | **0** | 2 | two values shown (`resolved`, `dismissed`) so the vocabulary transfers, not just the key |
+| `partially_resolves` | **0 (prose only)** | 1 | **A1 violation in v6** — the prose taught three closure branches and demonstrated one. Governs the census's 8 partially-answered-never-narrowed nodes (`644dc1e0`) |
+| edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |
+| `source_refs` | 0 | 0 | **DELIBERATE ZERO.** Prose (REPLACE semantics, "never pass `[]` as a no-op") warns about a footgun whose correct behavior is *omission* — and an omitted field cannot be shown in an example. Recorded per A10.5 rather than forced. |
+| voice fields, emotion | 0 | 0 | **DELIBERATE ZERO** — revise-time voice/emotion rewriting is not a behavior we want; they belong to the authoring moment. |
+
+**Rationale-attachment count** (A10.3) — where consequence clauses attach:
+
+| | v-next.6 | v-next.7 |
+|---|---|---|
+| title | **3** | 2 — one generalized surface clause + one title-specific line (restored on Tom's no-regression constraint) |
+| situation | 1 (dead-referent case only) | shares the generalized surface clause |
+| question / edge description | 0 | 1 each |
+
+**Closure-branch coverage** (the `open` node's three exits — prose at flavor 3
+teaches all three; A10.2 says none may sit at zero examples):
+
+| branch | v-next.6 | v-next.7 |
+|---|---|---|
+| fully answered → retype + `resolves` | `7c1a4d93` ✅ | `7c1a4d93` ✅ (+ `evolution_status: resolved`) |
+| partly answered → stays `open`, narrowed, `partially_resolves` | **0 — prose only** | `6ba3f17d` ✅ |
+| answer opened a NEW question → close-and-mint | **0 — prose only** | **still 0 — KNOWN OPEN GAP** |
+
+Close-and-mint is deliberately left for a later pass rather than bundled here:
+the two branches now shown sit in the same round, which is what makes the
+*discrimination* teachable ("is anything still unknown?"). A third branch in
+the same batch would dilute that contrast. Recorded per A10.5 so it is a
+tracked absence, not an oversight — the exact failure mode A10 exists to stop.
+
+v-next.7 replaces the three title-specific rationales with one surface-general
+clause ("a stale value survives in every surface I leave it in… whichever
+surface I habitually skip is the one that goes stale") — so the set no longer
+teaches a favourite field. **That is the change most likely to matter and the
+one the eval must isolate.**
 
 ## Coverage matrix (fills during the walk)
 

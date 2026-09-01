@@ -144,7 +144,7 @@ Resolving these is ~5 minutes of conversation at the execution session start.
 - `servers/scales/s0/conversation.py` — speaker field (if OD1=b)
 - `servers/scales/s1/surface_contract.py` — surface input rebuild for body-keyed recall
 - `servers/scales/s1/encode.py` — Scribe over cross-stream exchanges; speaker-aware prompt
-- `servers/scales/self_channel/signal.py` — delivery emits S0 turn, not side-channel marker
+- `servers/channels/self_channel/signal.py` — delivery emits S0 turn, not side-channel marker
 - `servers/daemon_hooks.py` — `hook_recall` / Stop integration; arbitration gate
 - `hooks/scripts/pre_response_recall.py` — drain-before-recall
 - `tests/test_self_delivery.py` — extend with stream-message-as-turn assertions

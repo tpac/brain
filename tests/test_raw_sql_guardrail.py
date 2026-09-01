@@ -41,8 +41,8 @@ ALLOWED = {
     'dispatch_ops.py': 1,
     'recall_write_queue.py': 1,           # exception: bg-writer connection (off foreground), batched
     'scales/s2/rejection_table.py': 2,    # exception: owns all s2_rejections SQL — record_rejections INSERT + clear_unplaceable_rejections DELETE (relocated out of community.py)
-    'scales/self_channel/signal.py': 4,   # exception: parallel-stream file (SelfChannelDAL out of this effort); writes ride logs_conn_w under write_lock (2026-08-18)
-    'scales/thalamus/thalamus.py': 9,     # exception: owns all thalamus_items/thalamus_deliveries SQL (the signal.py courier pattern); writes ride logs_conn_w under logs_write_lock. 10→9: file()'s two hand-listed INSERTs became one _insert_item shared by both routes
+    'channels/self_channel/signal.py': 4, # exception: parallel-stream file (SelfChannelDAL out of this effort); writes ride logs_conn_w under write_lock (2026-08-18)
+    'channels/thalamus/thalamus.py': 9,   # exception: owns all thalamus_items/thalamus_deliveries SQL (the signal.py courier pattern); writes ride logs_conn_w under logs_write_lock. 10→9: file()'s two hand-listed INSERTs became one _insert_item shared by both routes
     # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)
 }
 
