@@ -1,6 +1,30 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-09-01) — **5.0c phase 4 merged bar the two s1e hunks; next is the 5.3 comment audit**
+## §ACTIVE ARC (2026-09-01) — **5.3 gated half DONE and ratcheted; next is 5.2**
+
+**5.3 closed its gated half 2026-09-01. Gate B: 69 → 0, and it now STAYS
+there** — `TestPublicTreeExport::test_live_tree_exports_clean` runs the export
+over the live repo on every suite run. Verified against a 13-commit merge from
+main immediately after arming: clean.
+
+**What actually mattered was not on the worklist.** The audit's headline number
+(614 dated/removal-verb lines) is polish; the real find was that gate B scrubbed
+the employer's FORMER name and not its current one, leaking `ex.co` 20 times
+including three real project names hardcoded in a shipped migration. Gate B now
+also scans `\btpac\b` and `\bex\.co\b|\bexco\b`. Detail in the 5.3 item.
+
+**Tom's standing directive, 2026-09-01:** *"i want things that are released to
+the public repo to be opt in not opt out so we dont accidentally launch personal
+stuff."* Measured: 413 of 429 public files arrive by opt-out. New item **5.9**.
+
+**Deliberately NOT done, and this is a ruling not a gap:** the ~487
+dated/removal-verb comment lines. They carry no personal data and no broken
+reference, 95% of them are good comments, and sweeping 487 judgment calls is a
+plausible net negative. Reopen only with a sample in front of Tom.
+
+---
+
+### Prior arc head (2026-09-01) — 5.0c phase 4
 
 **Handoff node: `id:bc154094`. Phase-4 detail lives in the 5.0c item below.**
 
@@ -29,17 +53,19 @@ shrinking, the ungated comment part grows on its own.
 
 **Two corrections to what this section used to claim** — both measured, both
 were false:
-- **5.0c does NOT un-xfail gate assertion 4.** It scans a scope wider than
-  what ships and still matches 69 files / 239 occurrences. Blocker list in the
-  5.0b gate note; two of the four classes are **unowned** and neither ships.
+- **5.0c does NOT un-xfail gate assertion 4**, and neither does 5.3. It scans
+  a scope wider than what ships and still matches 216 occurrences / 63 files.
+  The class the plan assigned to the comment audit is **not a comment
+  problem** — `Anchor` there names an architectural role that is also a data
+  literal (`encoding_source='anchor'`, `anchor_touched`). Detail in the 5.3
+  ratchet note; it needs a D-12 ruling, not a sweep.
 - **The frozen-corpus harness cannot A/B a code change.** Its address omits
   the repo's code state, so a two-tree A/B silently cache-hits and reports
   clean. Detail in the 5.0c item.
 
 **Remaining, in dependency order:**
-1. **5.3 comment audit** — 614 lines / 111 files. Ungated: nothing fails if it
-   is wrong, so it needs care rather than speed. No longer conflicts with
-   5.0c — that pass is complete.
+1. ~~**5.3 comment audit**~~ — **gated half DONE + ratcheted 2026-09-01.** The
+   ungated ~487 dated/removal-verb lines are a ruling, not a gap (see 5.3).
 2. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
    wrongly claimed already existed (gate C currently reports **9.7.2** and only
    checks that the two manifests *agree*), plus the product-name sites
@@ -1005,14 +1031,36 @@ shaped a certain way already meets that bar whether or not it carries a date.
 **ARM THE RATCHET WHEN CLASS C IS CLEAN (Tom, 2026-09-01).** Both halves of
 the "no new names" gate already exist; one is disarmed and one is
 deliberately sandbox-only. Extend them — do not add a third mechanism.
-- **`Anchor`:** `test_deploy_contract.py::test_agent_name_only_in_config`
-  already scans the whole tracked tree, comments included. It is
-  `xfail(strict=True)`. ⚠ **Correction (measured 2026-09-01):** the line
-  above said 5.0c's completion un-xfails it. It does not — 5.0c phase 4 has
-  landed and the assertion still matches 69 files / 239 occurrences, because
-  it scans a scope wider than what ships. The blocker list and the two
-  unowned classes are in the 5.0b gate note above. Nothing to *write*, but it
-  is **not** already scheduled: it needs 5.3, 5.2, and a ruling on scope.
+- **`Anchor` — NOT a 5.3 item, and this is the correction that matters.**
+  `test_agent_name_only_in_config` is `xfail(strict=True)` and still matches
+  **216 occurrences / 63 files** (re-measured 2026-09-01 post-merge; it was
+  148 in class 1 before a 13-commit merge made it 154 — it drifts like gate B
+  did). The plan assigned class 1 — *comments + docstrings in `servers/` and
+  `tests/`*, 154 of the 216 — to the comment audit. **Reading them says that
+  assignment is wrong.**
+
+  In these comments `Anchor` is not a personal name the way `Tom` is. It names
+  an **architectural role** — the S0 agent holding the conversation, in
+  contrast to Haiku (surface) and Sonnet (S1E): *"Showing it to
+  Anchor/Haiku/encoders is false authority"*, *"what Anchor receives after
+  Haiku's selection"*, *"Anchor (MCP): 1-5 nodes → want full detail"*.
+
+  And the name is **in the data model**, not just the prose: `encoding_source
+  = 'anchor'` (41 sites), `anchor_touched` traces, `anchor_message_limit`,
+  `anchor_raw_quote`, `anchored_to`. CLAUDE.md states the contract — *"Only
+  `anchor*` can lock a node."* Rewriting the comments to "the entity" while
+  every literal two lines down still says `anchor` **splits the vocabulary and
+  leaves the reader worse off than the name did**.
+
+  So the un-xfail path does not run through 5.3. It runs through a D-12
+  decision nobody has taken: **does the data model rename with the product, or
+  does `anchor` stay as the role token it already is?** Until that is answered,
+  sweeping 154 comments is a rename that stops half-way through the system.
+  The other three classes: 15 are 5.2's product-name sites; 47 are the two
+  **unowned** classes (arch docs under `servers/`, and
+  `scripts/consolidation_edge_recovery/output/`) — both verified 2026-09-01 to
+  reach **neither the plugin nor the public tree**, so they are purely a
+  question of whether `SCOPE` should be narrowed to what ships.
 - **`Tom` / personal data — ARMED 2026-09-01.**
   `TestPublicTreeExport::test_live_tree_exports_clean` runs the full export
   over the LIVE repo and fails on any personal-information hit, naming the
