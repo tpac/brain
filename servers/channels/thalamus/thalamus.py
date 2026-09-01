@@ -133,6 +133,21 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
         # stay open forever and die silently at expiry.
         return _reject('thalamus.file: internal audience %r is not one of %s'
                        % (audience, tc.AUDIENCES))
+    if needs_answer and target_session:
+        # Undeliverable by construction: asks render at BOOT only, boot fires
+        # once per fresh session, and a UUID you can name has already had its
+        # boot — the item would wait out its window and dead-letter, guaranteed.
+        return _reject(
+            'thalamus.file: a directed ask cannot deliver — asks render at '
+            'boot only and the named session has already booted; use '
+            'self_send to reach a live stream, or file for_whom=\'all\'')
+    if expires_at and deliver_at and expires_at <= deliver_at:
+        # window_for anchors the DEFAULT window at deliver_at exactly to
+        # prevent expiry-before-due; an explicit `expires` must meet the same
+        # bar or the item never becomes due (a false loud dead-letter for asks).
+        return _reject(
+            'thalamus.file: expires (%s) is not after when (%s) — the item '
+            'would expire before it ever becomes due' % (expires_at, deliver_at))
 
     now = iso_now()
     refs_json = json.dumps(list(refs or []))
