@@ -13,6 +13,18 @@ field-coverage eval instrument that does not exist yet — run-44 scores sibling
 reach, not which surfaces a revise touches. Diagnosis: §6a of
 docs/STALENESS-PROPAGATION-FINDINGS.md.
 
+⚠ **PROMOTE BY APPLYING THE DIFF, NEVER BY COPYING THE FILE.** The candidate is
+a full-file snapshot of v6, so overwriting `SYSTEM_PROMPT` with it silently
+reverts anything that landed in `encoding_prompt.py` in the meantime — and git
+sees no conflict, because the candidate is a *different file*. Promotion =
+apply v-next.7's 14 hunks to whatever `encoding_prompt.py` says at that moment.
+Flagged by stream `831149ce` (2026-09-01), who has two D-12 agent-name edits
+queued for that file: as of this writing `SYSTEM_PROMPT` still equals the v6
+base exactly, so nothing has been lost — but a file-copy promotion after their
+merge would reinstate 3 capital-`Anchor` literals with **zero signal**, since
+`test_deploy_contract.test_agent_name_only_in_config` is `xfail(strict=True)`
+while 5.0c is open. Diff-application makes the merge order irrelevant.
+
 **The arc closed.** `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py` is v6 (110,452 chars,
 was 86,833); merged as main `c9205a7`, daemon restarted, verified from the daemon itself —
 `get_interaction_effective('s1e')` → fingerprint `3817564d21c4`, `source=default`,
@@ -851,6 +863,46 @@ the general forms.**
   (120–180), `source_refs` 1–3, "3+ distinct turns", title-length norms,
   situation trigger-register form. Cheap and scriptable; belongs in E2's
   sweep.
+
+- **E17. Correction shape — does the fix STAND ON ITS OWN, or ride along
+  beside what it corrects?** (Tom, 2026-09-01: *"sometimes there is value in
+  keeping the history but in many cases leaving the stale history within the
+  fresh node is a disaster and overloading of information."*) Census every
+  revised value in every example: is the old value inline in the new text, and
+  in WHICH field? **Inline history is legitimate only in `content`, and only
+  where it is load-bearing** — a validity interval, a measurement baseline, a
+  forensic row. Everywhere else it is a dead claim competing with the node that
+  is now right. Note the architecture: the `supersedes` edge and
+  `correction_enrich` already annotate lineage on every canonical pull
+  (`ab0ecacd`), and `event_time` carries validity — so an inline `(was X)` is a
+  THIRD copy, and the only one that pollutes the embedding.
+  **Why it is a standing bias, not an incident:** appending is cheaper than
+  re-authoring, and it satisfies "revise" without forcing a re-decision of what
+  is true — `e05a071f`'s operation-vs-disposition line. Tom caught the same
+  reflex in prompt EDITING a week earlier (`bed31596`, "why only additions and
+  not changes"); this is the same bias one level down, inside the content the
+  examples teach.
+  **Three convictions, all 2026-09-01:**
+  1. The sweep gave `a45c88f1` the title *"Rollout order (superseded …): was
+     auth-rewrite → api-gateway → cli"* — the whole dead sequence embedded,
+     sitting beside its successor *"Rollout order after auth-rewrite was
+     scrapped: api-gateway → cli"*. Shared opening words, shared tail: exactly
+     the twin-competition the prompt's own atomization rule warns about, while
+     a `supersedes` edge already carried the lineage. Fixed in v-next.7.
+  2. **The style made a real defect undetectable.** A removal-diff detector
+     over 206 encoder revises found nothing for the canonical item, because
+     production wrote `9.7.2 (was 9.6.0 …)` — nothing was removed. The detector
+     had to be reframed from removal to supersession to see its own case.
+  3. 5 of 8 `content_edits` in the shipped examples are additive — the style
+     transmits, and none of them had been audited on this axis.
+  **The test is position and tense, not presence:** is the old value in the
+  ASSERTION slot, or subordinate and past-tense? *"X (was Y)"* in a title
+  asserts both. *"Y until Z"* in an edge description narrates one.
+  **Run it on:** every `content_edits` new-string, every revised title, edge
+  descriptions, the §7.6 identity exemplars — and the temporal
+  validity-interval examples, where inline history is CORRECT and must be left
+  alone (the yoga node's *"(was twice a week from 2023-08-11)"* is the model of
+  a legitimate one).
 
 - **E16. New teaching rides an existing explanation.** A new bullet or comment
   block is the expensive default; a clause folded into the explanation that
