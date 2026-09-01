@@ -146,19 +146,18 @@ class TestConsolidationAbsorbIsRealMerge:
 class TestRejectedBatchCallDetector:
     """A call-level dispatch rejection (empty operations, a non-list, a
     string that doesn't parse) writes nothing and names no node ids —
-    node_ids_touched_by_invalid_ops can't shield anything. The detector keys
-    off the runner-recorded dispatch verdict (`error`), with the falsy-
-    operations shape as a fallback for hand-built action_details."""
+    node_ids_touched_by_invalid_ops can't shield anything. The detector is
+    the dispatch verdict: the runner records `error` on EVERY action whose
+    handler returned ok=False, so the verdict is always present in real
+    action_details and shape-guessing would only be less accurate."""
 
-    def test_empty_operations_detected(self):
-        assert had_rejected_batch_call(_batch()) is True
-
-    def test_missing_operations_key_detected(self):
-        ad = [{'tool': 'brain_batch', 'input': {}}]
+    def test_empty_operations_rejection_detected(self):
+        ad = [{'tool': 'brain_batch', 'input': {'operations': []},
+               'error': 'operations array is required'}]
         assert had_rejected_batch_call(ad) is True
 
     def test_error_verdict_detected_for_stringified_ops(self):
-        # `operations: "[]"` is a truthy string (the shape check can't see
+        # `operations: "[]"` is a truthy string (a shape check couldn't see
         # it) but dispatch rejects the call — the recorded error is the
         # authoritative signal.
         ad = [{'tool': 'brain_batch', 'input': {'operations': '[]'},
@@ -171,6 +170,14 @@ class TestRejectedBatchCallDetector:
                'error': 'operations must be an array, got dict'}]
         assert had_rejected_batch_call(ad) is True
 
+    def test_shape_alone_is_not_a_verdict(self):
+        # Verdict-only by design: an entry with empty/missing operations but
+        # no recorded error never occurs in runner output (error is set on
+        # every ok=False action) — the detector must not guess from shape.
+        assert had_rejected_batch_call(_batch()) is False
+        assert had_rejected_batch_call(
+            [{'tool': 'brain_batch', 'input': {}}]) is False
+
     def test_successful_call_not_flagged(self):
         ad = [{'tool': 'brain_batch',
                'input': {'operations': [{'op': 'connect', 'source_id': 'a',
@@ -179,14 +186,15 @@ class TestRejectedBatchCallDetector:
         assert had_rejected_batch_call(ad) is False
 
     def test_ignores_other_tools_and_empty_input(self):
-        assert had_rejected_batch_call([{'tool': 'get_nodes', 'input': {}}]) is False
+        assert had_rejected_batch_call([{'tool': 'get_nodes', 'input': {},
+                                         'error': 'boom'}]) is False
         assert had_rejected_batch_call([]) is False
         assert had_rejected_batch_call(None) is False
 
     def test_tolerates_malformed_entries(self):
         assert had_rejected_batch_call(['garbage']) is False
         assert had_rejected_batch_call(
-            [{'tool': 'brain_batch', 'input': None}]) is True
+            [{'tool': 'brain_batch', 'input': None}]) is False
 
 
 class TestValidOpAttribution:

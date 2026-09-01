@@ -14,7 +14,7 @@ from .consolidation_encoder import ConsolidationEncoder
 from .rejection_table import (
     filter_rejected, record_rejections, node_ids_touched_by_invalid_ops,
     node_ids_touched_by_valid_ops, had_rejected_batch_call,
-    THWARTED_RETRY_LIMIT)
+    thwart_shield, settle_thwart_streak, loud_warning)
 
 
 class Consolidation(ConsolidationDecoder):
@@ -142,25 +142,20 @@ class Consolidation(ConsolidationDecoder):
         # - ABSORBed clusters (member archived this run): the scan's
         #   archived=0 filter already suppresses them; stamping would
         #   pollute s2_rejections.
-        # - Thwarted clusters: the encoder tried to act and dispatch dropped
-        #   the attempt — an invalid concept-verb op naming a member, or a
-        #   rejected brain_batch call (empty/malformed operations, which
-        #   names no node ids, so every cluster no valid op touched counts).
-        #   Thwarted-not-decided means retry, not stamp. Checked BEFORE the
-        #   archived exclusion: a cluster can carry both a landed absorb and
-        #   a thwarted op, and treating it as resolved would advance the
-        #   baseline past the thwarted half. Bounded: after
-        #   THWARTED_RETRY_LIMIT consecutive shielded runs, stamp anyway —
-        #   a persistently thwarted encoder otherwise pins the unit forever
-        #   (no fingerprints, no baseline, full re-encode every cycle).
+        # - Thwarted clusters (while the shield is active): the encoder
+        #   tried to act and dispatch dropped the attempt — an invalid
+        #   concept-verb op naming a member, or a rejected brain_batch call
+        #   (which names no node ids, so every cluster no valid op touched
+        #   counts). Retry, not stamp — checked before the archived
+        #   exclusion so a cluster carrying both a landed absorb and a
+        #   thwarted op is retried, not resolved. The bound and its
+        #   rationale live on THWARTED_RETRY_LIMIT.
         details = encode_result.get('action_details', [])
         newly_archived = _snapshot_archived(all_member_ids) - pre_archived
         invalid_touched = node_ids_touched_by_invalid_ops(details)
         rejected_call = had_rejected_batch_call(details)
-        valid_touched = node_ids_touched_by_valid_ops(details) if rejected_call else set()
-
-        streak = int(self.brain.get_config(self.THWARTED_STREAK_KEY) or 0)
-        shield_active = streak < THWARTED_RETRY_LIMIT
+        valid_touched = node_ids_touched_by_valid_ops(details)
+        streak, shield_active = thwart_shield(self.brain, self.THWARTED_STREAK_KEY)
 
         processed_proposals = []
         fingerprint_members = set()
@@ -169,7 +164,7 @@ class Consolidation(ConsolidationDecoder):
         gaveup_clusters = 0
         for c in clusters:
             members = set(c.get('nodes', []))
-            invalid_hit = bool(invalid_touched and (members & invalid_touched))
+            invalid_hit = bool(members & invalid_touched)
             thwarted = invalid_hit or (
                 rejected_call and not (members & valid_touched))
             if thwarted and shield_active:
@@ -216,51 +211,37 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] Recorded %d cluster fingerprints' % recorded,
                   flush=True)
         if invalid_op_clusters:
-            self.brain._log_warning(
-                's2_consolidation_invalid_op_retry',
+            loud_warning(
+                self.brain, 's2_consolidation_invalid_op_retry',
+                's2-consolidation',
                 '%d cluster(s) hit invalid brain_batch ops (merge thwarted) — '
                 'retrying next cycle, NOT suppressed' % invalid_op_clusters)
-            print('[s2-consolidation] %d cluster(s) hit invalid ops — retry, NOT suppressed'
-                  % invalid_op_clusters, flush=True)
         if rejected_call_clusters:
-            self.brain._log_warning(
-                's2_consolidation_rejected_call_retry',
+            loud_warning(
+                self.brain, 's2_consolidation_rejected_call_retry',
+                's2-consolidation',
                 '%d cluster(s) left un-acted after a rejected brain_batch '
                 'call — retrying next cycle, NOT suppressed'
                 % rejected_call_clusters)
-            print('[s2-consolidation] %d cluster(s) un-acted after rejected '
-                  'brain_batch call — retry, NOT suppressed'
-                  % rejected_call_clusters, flush=True)
         if gaveup_clusters:
-            self.brain._log_warning(
-                's2_consolidation_thwarted_giveup',
+            loud_warning(
+                self.brain, 's2_consolidation_thwarted_giveup',
+                's2-consolidation',
                 'thwarted brain_batch attempts in %d shielded runs — stamped '
                 '%d cluster(s) anyway to unpin the unit'
                 % (streak, gaveup_clusters))
-            print('[s2-consolidation] retry limit hit — stamped %d cluster(s) '
-                  'despite thwarted brain_batch attempts' % gaveup_clusters,
-                  flush=True)
 
-        # The give-up bound counts shielded runs since the last clean stamp
-        # (encode-failure and early-return cycles don't advance it — they pin
-        # the unit too, so the bound trips on the Nth shielded run, however
-        # spread out); a thwarted run that pinned nothing resets it — the
-        # pin is broken, baseline advances below.
-        if shield_active and (invalid_op_clusters or rejected_call_clusters):
-            self.brain.set_config(self.THWARTED_STREAK_KEY, str(streak + 1))
-        elif streak:
-            self.brain.set_config(self.THWARTED_STREAK_KEY, '0')
+        settle_thwart_streak(
+            self.brain, self.THWARTED_STREAK_KEY, streak,
+            shielded=bool(invalid_op_clusters or rejected_call_clusters))
 
-        # Advance the cutoff only when EVERY cluster was resolved. The
-        # encode-failure path returns above without stamping (forcing retry);
-        # invalid-op and rejected-call clusters need the same treatment —
-        # they were neither edge-handled nor SKIP-stamped (thwarted), and
-        # advancing the baseline would hide them from the incremental decoder
-        # forever (their member timestamps never changed), silently losing
-        # them — the exact failure this guard prevents, just relocated from
-        # fingerprint to cutoff. Leaving the baseline forces a re-scan next
-        # cycle; clusters that WERE resolved are already suppressed
-        # (edges/fingerprints), so only the thwarted ones return.
+        # Advance the cutoff only when EVERY cluster was resolved: a thwarted
+        # cluster was neither edge-handled nor SKIP-stamped, and advancing the
+        # baseline is the SECOND place it can be lost — member timestamps
+        # never changed, so the incremental decoder would skip past it
+        # forever. Holding the baseline forces the re-scan; resolved clusters
+        # are already suppressed (edges/fingerprints), so only the thwarted
+        # ones return.
         if not invalid_op_clusters and not rejected_call_clusters:
             self._record_scan_baseline(decode_result)
 
@@ -270,6 +251,7 @@ class Consolidation(ConsolidationDecoder):
             'skipped_recorded': recorded,
             'invalid_op_clusters': invalid_op_clusters,
             'rejected_call_clusters': rejected_call_clusters,
+            'gaveup_clusters': gaveup_clusters,
             'stats': stats,
             'details': {
                 'rounds': encode_result.get('rounds', 0),

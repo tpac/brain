@@ -741,22 +741,19 @@ def _handle_brain_batch(brain, args, graph_changes):
     Args:
         operations: list of {op: "remember"|"revise"|"connect", ...fields}
     """
-    from .contract import BATCH_OP_SPECS
+    from .contract import BATCH_OP_SPECS, unwrap_operations
 
     operations = args.get("operations", [])
     # Lossless unwrap of the JSON-string serialization quirk: LLM callers
     # occasionally emit the ops array JSON-encoded as a string. Iterating
     # that string would fan out one "must be a dict" error PER CHARACTER
-    # (2× on 2026-08-10/11: 27k+ per-op errors, a 3.3MB tool result, and a
-    # wasted encoder round). The string holds the exact intended array, so
-    # recover it — loudly, so the quirk's frequency stays visible — and
-    # collapse anything unrecoverable into ONE whole-call error.
+    # (27k+ per-op errors and a 3.3MB tool result in one wasted encoder
+    # round). The string holds the exact intended array, so recover it —
+    # loudly, so the quirk's frequency stays visible — and collapse anything
+    # unrecoverable into ONE whole-call error.
     if isinstance(operations, str):
-        try:
-            parsed = json.loads(operations)
-        except ValueError:
-            parsed = None
-        if not isinstance(parsed, list):
+        parsed = unwrap_operations(operations)
+        if parsed is None:
             return {"ok": False, "error":
                     "operations must be a JSON array of op dicts; got a "
                     "string that does not parse to one. Emit the array as a "

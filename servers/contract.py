@@ -20,6 +20,7 @@ To add a new field:
   3. That's it. All layers pick it up.
 """
 
+import json
 import re
 
 
@@ -228,6 +229,20 @@ BATCH_OP_SPECS = {
 
 # Derived — kept as the cheap membership check used across dispatch + S2.
 VALID_BATCH_OPS = frozenset(BATCH_OP_SPECS)
+
+
+def unwrap_operations(operations):
+    """A brain_batch `operations` value that arrived as a JSON-encoded
+    string, unwrapped to the list it encodes — None if it isn't one.
+    The single definition of the recovery dispatch performs before
+    executing such a batch; readers of recorded action_details (S2
+    rejection_table) must interpret the same shape the same way.
+    """
+    try:
+        parsed = json.loads(operations)
+    except ValueError:
+        return None
+    return parsed if isinstance(parsed, list) else None
 
 
 # ── STRUCTURAL FIELDS ──
