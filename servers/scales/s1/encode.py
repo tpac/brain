@@ -957,7 +957,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # confound the A/B. The control arm keeps the legacy legend verbatim.
     if lived:
         # First person — matches the v-next system prompt's register (the encoder
-        # speaks as itself: "I am Anchor, and this is me encoding my own memory").
+        # speaks as itself: "This is me encoding my own memory").
         preamble = (
             "I'm encoding what I've just observed. I read everything below before "
             "calling any tools, then put all operations (remember + revise + "
@@ -1223,7 +1223,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     element; node-op/lookup tool lines provenance already shows are dropped
     from every <actions>; <provenance> renders the verbs split
     (created/revised/recalled/archived (me)) instead of the merged
-    encoded(Anchor). OFF: the pre-policy render (message text is full in both
+    encoded(me). OFF: the pre-policy render (message text is full in both
     arms — the encoded-turn trim is retired).
 
     `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
@@ -1470,9 +1470,9 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
     timeline render stamps), so provenance never says "covered, nothing to show"
     — the old `✓` marker is gone. What renders: `surfaced:` refs (per-turn, 1:1),
     the owning run's full id-list ONCE at the run's frontier turn (an edge-only
-    run has an empty id set → nothing), and Anchor's own node ops (joined by
+    run has an empty id set → nothing), and the session's own node ops (joined by
     stop; empty in replayed eval corpora) — legacy: the merged
-    `encoded(Anchor):` (link['authored'] = created ∪ revised); view policy ON:
+    `encoded(me):` (link['authored'] = created ∪ revised); view policy ON:
     the verb split (encoder_view.PROVENANCE_SPLIT — created / revised /
     recalled / archived), which is what lets the node-op action lines drop
     without losing the information. `titles` maps id→title for the «tag»
@@ -1504,7 +1504,7 @@ def _render_provenance(links, frontier, turn, idx, titles=None,
                 ids = list(dict.fromkeys(ids))
                 parts.append('%s: %s' % (label, _short_refs(ids, titles, tf)))
     elif link.get('authored'):
-        parts.append('encoded(Anchor): %s' % _short_refs(link['authored'], titles))
+        parts.append('encoded(me): %s' % _short_refs(link['authored'], titles))
     return ' | '.join(parts)
 
 

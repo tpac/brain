@@ -473,7 +473,7 @@ def _build_tools():
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Search query (semantic, not keyword)"},
          "node_id": {"type": "string", "description": "Look up a specific node by ID (skip search)"},
-         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"my_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"Anchor\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
+         "filter": {"type": "object", "description": "Dict filter on node/metadata fields. Examples: {\"type\": {\"in\": [\"moment\"]}} or {\"my_raw_quote\": {\"exists\": true}} or {\"content\": {\"contains\": \"daemon\"}}. Operators: exists, equals, in, contains, gte, lte. Node columns checked on result, other keys checked in metadata."},
          "limit": {"type": "integer", "description": "Max results (default 8)", "default": 8}}}},
     _generate_remember_schema(),
     _generate_remember_batch_schema(),

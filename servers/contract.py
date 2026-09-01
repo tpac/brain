@@ -250,8 +250,9 @@ STRUCTURAL_FIELDS = {
                                    "or inferred — recall exposes it and filters select on it. "
                                    "Don't fabricate precision.")},
     "locked":     {"store": "nodes", "type": "bool", "default": False,
-                   "description": ("Protect from non-anchor revision. Anchor-only — a non-anchor "
-                                   "caller's locked:true is demoted at the write boundary. "
+                   "description": ("Protect from casual revision. Belongs to the interactive "
+                                   "session: a write from any automated source (encoder, S2, "
+                                   "hooks) has its locked:true demoted at the write boundary. "
                                    "Locking is a rare act.")},
     # agent_writable=False: retired from the agent-facing write surface
     # (get_writable_fields) — the column and its read paths stay (recall's

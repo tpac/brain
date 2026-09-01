@@ -8,7 +8,7 @@
 #          export-public-tree.sh --denylist-only DIR (gate A alone, for tests)
 #
 # Contents = the package manifest (build-plugin.sh --list — the ONE owner of
-# "what ships") + additive extras (README, CONTRIBUTING, LICENSES/, tests/)
+# "what ships", LICENSES/ included) + additive extras (README, CONTRIBUTING, tests/)
 # − the denylist. Three hard-fail gates run on the RESULT, not the intent:
 #   A. denylist — private artifacts must not exist in the output
 #   B. scrub — personal-information patterns must not appear anywhere in the
@@ -187,9 +187,10 @@ _copy() { _denied "$1" && return 0
           mkdir -p "$OUT/$(dirname "$1")"; cp "$1" "$OUT/$1"; _count=$((_count+1)); }
 _count=0
 while IFS= read -r f; do _copy "$f"; done < <(./build-plugin.sh --list)
-# extras: the public-repo face + the test suite (D-8: runtime + tests ship)
+# extras: the public-repo face + the test suite (D-8: runtime + tests ship).
+# LICENSES/ is NOT listed here — it ships in the package manifest above, which
+# stays the one owner of "what ships". Copying it twice only inflated $_count.
 for f in README.md CONTRIBUTING.md; do _copy "$f"; done
-while IFS= read -r f; do _copy "$f"; done < <(git ls-files LICENSES)
 while IFS= read -r f; do _copy "$f"; done < <(git ls-files tests)
 say "materialized $_count files -> $OUT"
 

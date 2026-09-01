@@ -600,7 +600,9 @@ def build_surface_prompt(candidates, user_message,
     # PREVIOUS turns only — the caller excludes the current chain upstream
     # (get_session_turns exclude_trace_id); the current message renders below
     # as its own block, never inside the history window.
-    # 2026-05-03: "Operator:" is generic — prompts ship to different operators.
+    # Both labels are roles, not names — prompts ship to different operators
+    # and to differently-named agents. "Assistant" is already this prompt's own
+    # word for that side ("the assistant has not replied yet", below).
     conversation = ""
     if recent_messages:
         for msg in recent_messages[-(cfg['recent_messages']):]:
@@ -609,7 +611,7 @@ def build_surface_prompt(candidates, user_message,
                 label = "Operator"
                 content = (msg.get("content") or "")[:cfg['user_message_limit']]
             else:
-                label = "Anchor"
+                label = "Assistant"
                 content = (msg.get("content") or "")[:cfg['anchor_message_limit']]
             conversation += "%s: %s\n" % (label, content)
 
@@ -680,7 +682,7 @@ Conversation (previous turns, oldest first):
 Current message (the one to surface for — the assistant has not replied yet):
 %s
 
-Recently surfaced (OUT OF SCOPE — Anchor has already seen these in the last 5 turns; do NOT select any ID from this block):
+Recently surfaced (OUT OF SCOPE — the assistant has already seen these in the last 5 turns; do NOT select any ID from this block):
 %s
 %s
 %d candidates follow. Select 0-%d.

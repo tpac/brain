@@ -166,7 +166,7 @@ def _apply_filter(nodes: list, filter_dict: dict, conn) -> list:
     Filter format:
         {"type": {"in": ["moment", "reflection"]}}
         {"my_raw_quote": {"exists": True}}
-        {"content": {"contains": "Anchor"}}
+        {"content": {"contains": "daemon"}}
         {"confidence": {"gte": 0.9}}
         {"locked": {"equals": 1}}
 
@@ -1296,7 +1296,7 @@ class BrainRecallMixin:
             filter: Dict filter on node/metadata fields. Examples:
                 {"type": {"in": ["moment", "reflection"]}}
                 {"my_raw_quote": {"exists": True}}
-                {"content": {"contains": "Anchor"}}
+                {"content": {"contains": "daemon"}}
                 {"confidence": {"gte": 0.9}}
             limit: Max results
             offset: Pagination offset

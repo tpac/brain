@@ -324,10 +324,10 @@ def test_policy_on_provenance_verb_split():
     # 1-based already) — and it MATCHES the covered turn's displayed number
     assert 'encoded(me, turn 6): id:nodeCCCC' in t5
     assert 'encoded(S1S)' not in on
-    assert 'encoded(Anchor)' not in on          # the merged label retires
+    assert 'encoded(me):' not in on             # the merged label retires
     # control arm: merged label, no verbs, id-first «tag», no looked_up render
     off = _render(False, touched=touched, titles=titles)
-    assert 'encoded(Anchor): id:nodeAAAA «fresh insight»' in off
+    assert 'encoded(me): id:nodeAAAA «fresh insight»' in off
     assert 'encoded(S1S): id:nodeCCCC' in off
     assert 'created(me)' not in off and 'recalled(me)' not in off
     assert 'nodeFFFF' not in off

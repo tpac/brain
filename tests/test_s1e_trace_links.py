@@ -662,7 +662,7 @@ def test_short_refs_tag_when_title_known_bare_when_not():
 
 
 class _ProvBrainFull(_ProvBrain):
-    """_ProvBrain + the anchor_touched door (so encoded(Anchor) can join) + a
+    """_ProvBrain + the anchor_touched door (so encoded(me) can join) + a
     naked _nodes.get_bulk title source (so «tag» renders)."""
     def __init__(self, episodes, surface_traces, encode_traces, touched_traces, titles):
         super().__init__(episodes, surface_traces, encode_traces)
@@ -692,17 +692,19 @@ def test_provenance_renders_tag_titles_on_refs():
     assert 'surfaced: id:nodeAAAA «recall hot path is read-only» id:nodeBBBB «batch commit gate»' in t5
 
 
-def test_provenance_renders_encoded_anchor_when_authored_and_omits_when_empty():
-    # Fork 1: a turn where Anchor encoded mid-turn (anchor_touched created@8) shows
-    # `encoded(Anchor): <ids>`; turns with no authored set omit the line entirely.
+def test_provenance_renders_merged_encoded_label_when_authored_and_omits_when_empty():
+    # Fork 1: a turn the interactive session encoded mid-turn (anchor_touched
+    # created@8) shows `encoded(me): <ids>`; turns with no authored set omit the
+    # line entirely. The colon distinguishes the merged label from the view
+    # arm's `encoded(me, turn N)`.
     touched = [_touched(8, created=['nodeDDDD4444'])]
     titles = {'nodeDDDD4444': 'mid-turn insight'}
     brain = _ProvBrainFull(_EPS, _SURF, _ENC, touched, titles)
     out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
     t5, t8 = (out.split('<turn n="%d"' % n)[1].split('</turn>')[0] for n in (1, 4))
-    assert 'encoded(Anchor): id:nodeDDDD «mid-turn insight»' in t8   # filled at turn 8
-    assert 'encoded(Anchor)' not in t5                               # omitted elsewhere
-    assert out.count('encoded(Anchor)') == 1                          # exactly the one turn
+    assert 'encoded(me): id:nodeDDDD «mid-turn insight»' in t8       # filled at turn 8
+    assert 'encoded(me):' not in t5                                  # omitted elsewhere
+    assert out.count('encoded(me):') == 1                            # exactly the one turn
 
 
 # ── scout inlining: findings live on the turns they cite (Tom #5) ──

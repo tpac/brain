@@ -1,42 +1,60 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-31, session close) — **next: 5.0c phase 4, armed as chip `task_51e78e3a`**
+## §ACTIVE ARC (2026-09-01) — **5.0c phase 4 merged bar the two s1e hunks; next is the 5.3 comment audit**
 
-**Main at `0bae543`. Handoff node: `id:bc154094` — read it before acting.**
+**Handoff node: `id:bc154094`. Phase-4 detail lives in the 5.0c item below.**
 
-Shipped today: the D-1…D-13 **conformance sweep** (first ever — 8 conformant,
-2 real defects, 1 false enforcement claim), the **mechanical block**
-(`6fb57ed`, gate B 227 → 67, export suite 2983 pass / 0 fail),
-`resolve_db_dir(trust_env=False)` (`a459b43`), and **5.0c's mechanical half**
-(`0bae543`) — the agent name defaults to **Jade**, with chosen-ness tracked
-separately so a default disarms nothing.
+**5.0c phase 4 landed 2026-09-01, minus two hunks.** The mechanical half shipped
+as `0bae543` (agent name defaults to **Jade**, chosen-ness tracked separately so
+a default disarms nothing). Phase 4 merged four of six prompt-visible sites plus
+both MCP schema descriptions; the two `encoding_prompt.py` hunks went to the
+v-next.7 stream instead of main (see the 5.0c item — they were at risk of being
+silently reverted by that candidate's promotion). The answer
+at all six sites was *generalize*, never *substitute a config read*: a
+per-install name in a template body would break
+`interaction_fingerprint()`'s documented cross-install comparability. The
+identity exemplar was chosen by a re-runnable probe
+(`eval/identity_exemplar_probe.py`), not by taste. The **D-1 packaging fix**
+rode along: `LICENSES/` now ships (manifest 235 → 237) and `marketplace.json`
+carries `license`.
 
 **Every count in this doc moves with every merge — re-measure, don't trust.**
-Gate B was 67 when the mechanical block landed and is **69** hours later,
-because another stream's thalamus work added two comments. That is the whole
-character of the remaining worklist: the gated part is small and shrinking,
-the ungated comment part grows on its own.
+Gate B was 67 when the mechanical block landed and 69 hours later, from
+another stream's comments. Re-measured after phase 4: **still 69**, gate A
+clean, 428 files — and that is correct, not a miss. Gate B scans
+*personal-information* patterns; phase 4 removed `Anchor` literals, a
+different class with a different gate. Only the 5.3 audit moves this number.
+That is the character of the remaining worklist: the gated part is small and
+shrinking, the ungated comment part grows on its own.
 
-**Remaining, in dependency order** — the chip runs the first and launches the rest:
-1. **5.0c phase 4** — four prompt-visible sites (`encoding_prompt`'s "I am
-   Anchor", `surface_contract`'s conversation label, `encode.py`'s render,
-   `aspects_v1.json`'s family meaning) + two MCP tool-schema descriptions.
-   Eval-gated: override → frozen-corpus A/B → promote. Plus the **D-1
-   packaging fix** (`LICENSES/` is not in the package manifest, so the
-   installed `LICENSE`'s references dangle; `marketplace.json` has no
-   `license` field).
-2. **5.3 comment audit** — 614 lines / 111 files. Conflicts with (1) on the s1 files.
-3. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
-   wrongly claimed already existed, plus un-xfailing gate assertion 4.
-4. **5.7 release command → publish** — the one-way door. Must include an
+**Two corrections to what this section used to claim** — both measured, both
+were false:
+- **5.0c does NOT un-xfail gate assertion 4.** It scans a scope wider than
+  what ships and still matches 69 files / 239 occurrences. Blocker list in the
+  5.0b gate note; two of the four classes are **unowned** and neither ships.
+- **The frozen-corpus harness cannot A/B a code change.** Its address omits
+  the repo's code state, so a two-tree A/B silently cache-hits and reports
+  clean. Detail in the 5.0c item.
+
+**Remaining, in dependency order:**
+1. **5.3 comment audit** — 614 lines / 111 files. Ungated: nothing fails if it
+   is wrong, so it needs care rather than speed. No longer conflicts with
+   5.0c — that pass is complete.
+2. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
+   wrongly claimed already existed (gate C currently reports **9.7.2** and only
+   checks that the two manifests *agree*), plus the product-name sites
+   (`boot-brain.sh` ×11, `setup.html` ×4 — D-11's *product* namespace, they
+   become **Entity**, not a config read).
+3. **5.7 release command → publish** — the one-way door. Must include an
    **install smoke test**: the suite runs *inside* the export tree, so it
    cannot catch a file that ships, is never imported by tests, and is needed
    at first run on a stranger's machine.
 
-**Three rulings waiting on Tom** (details in `id:bc154094`): the
+**Rulings waiting on Tom** (details in `id:bc154094`): the
 `agent_is_default=False` default; whether the boot banner is product or
-entity; the `_has_brain` predicate. **The fleet is deferred to last** and is
-explicitly not a gate on 5.2.
+entity; the `_has_brain` predicate; and now **the scope of gate assertion 4** —
+narrow `SCOPE` to what ships, or clean the two unowned classes. **The fleet is
+deferred to last** and is explicitly not a gate on 5.2.
 
 **Sequence ruled 2026-08-31, superseding both prior orders** (the doc's
 `5.0c → 5.3 → 5.2 → 5.5 → 5.7` and id:44025fbb's `5.0c → 5.3 → 5.5 → 5.2 → 5.7`).
@@ -629,9 +647,24 @@ from `git ls-files`:
   4. name derivation (D-12) — capital `Anchor` appears only in the config allowlist
 *As built: the `com.N.` sub-check SKIPS while `N` = `brain` — with adapter name ==
 service name it cannot distinguish D-11-legitimate labels from leaks; it arms
-automatically at the 5.2 rename. Assertion 4 is `xfail(strict=True)` until 5.0c —
-when 5.0c completes it XPASSes and the marker must come off. Known tradeoff: while
-xfailed, a NEW `Anchor` literal produces no signal; 5.0c closes that window.
+automatically at the 5.2 rename. Assertion 4 is `xfail(strict=True)`, and
+**5.0c does NOT un-xfail it** — measured 2026-09-01, after phase 4 landed:
+the assertion scans `SCOPE` (the whole tracked tree minus `docs/`, `eval/`,
+`tests/archive/`, `tests/results/`, `CLAUDE.md`, and its own file), which is
+**wider than what ships**, and still matches **69 files / 239 occurrences**.
+Four classes stand between here and green, only two of them owned:
+  1. comments + docstrings in `servers/` and `tests/` → **5.3**
+  2. `boot-brain.sh` + `setup.html` product name → **5.2**
+  3. `servers/BOOT-ARCHITECTURE.md`, `servers/scales/s1/ARCHITECTURE.md` —
+     architecture docs living under `servers/`, so the `docs/` exclusion
+     misses them. **Unowned.** Neither is in the package manifest
+  4. `scripts/consolidation_edge_recovery/output/` — committed output of a
+     one-time 2026-04-21 recovery run (326 KB `plan.json`, 100 KB
+     `apply.log.jsonl`), zero importers. **Unowned.** Not in the manifest
+Classes 3–4 never reach a user: the manifest is 237 files and the export tree
+is *manifest + extras − denylist*, so they are a **test-scope** question, not
+a shipping one. Either narrow `SCOPE` to what ships, or clean them. Known
+tradeoff meanwhile: a NEW `Anchor` literal still produces no signal.
 The gate excludes its own file (the scanner must name the shapes it hunts) and the
 5.1 denylist (docs/, eval/, `CLAUDE.md`, `tests/archive/`, `tests/results/`).
 Found and fixed on first run: `tests/test_trace_chain_lane.py` hardcoded
@@ -681,22 +714,109 @@ descriptions reworded name-free (no name channel to the frontend needed —
 stamped event keeps its historical name while an unstamped one renders this
 install's. 131 → 122.
 
-**Remaining, in three buckets:**
-  1. **Eval-gated (phase 4).** `encoding_prompt.SYSTEM_PROMPT` opens *"I am
-     Anchor"* and is the `s1e` interaction default; `surface_contract`'s
-     conversation label (`label = "Anchor"`, paired with a generic
-     `"Operator"` — the agent side never got the generic treatment
-     `test_prompt_uses_generic_operator_label` pins for the human side);
-     `encode.py`'s `encoded(Anchor):` render; and `aspects_v1.json`'s family
-     `meaning` text. All are prompt-visible, so they move together under the
-     interaction-promotion process, not as a find-replace.
-  2. **MCP tool-schema descriptions.** `contract.py`, `brain_mcp.py` — cheap,
-     but require re-running `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py`.
-  3. **Product-name sites → 5.2**, listed above.
-  4. **seed pack — RESOLVED by D-5 (2026-08-30):** name-free by construction;
+**PHASE 4 DONE (2026-09-01) — every prompt-visible site is name-free.** The
+answer at all six was *generalize*, never *substitute a config read*. One
+architectural reason plus in-tree precedent decided it: `interaction_fingerprint()`
+is a sha256 over name + template + config and its documented property is that it
+**"stays comparable across installs"** — injecting a per-install name into a
+template body would give the same code default a different fingerprint on every
+machine, breaking cross-install K comparison and the A/B mechanism that rides on
+it. The prompts are already first-person throughout, so the pronoun was carrying
+the meaning and the name was redundant.
+
+⚠ **Two of the six are NOT on main — they were handed to the v-next.7 stream.**
+`encoding_prompt.py` was being actively worked in another worktree
+(`claude/s1e-vnext7-field-coverage`), so its two hunks stayed off main by Tom's
+call. They are **not merely deferred — they were at risk of being reverted**:
+`eval/candidate_prompts/s1e_vnext7_wip.md` on main still carries *"I am
+Anchor…"* (×1) and *"I'm Anchor. I persist."* (×2), and promoting that candidate
+into the code default would reinstate three literals. Different files, so **git
+sees no conflict and nothing would catch it** — the D-12 gate that would is
+`xfail`. The two edits were sent to that stream to carry into the candidate; the
+exact hunks live on branch `claude/zealous-grothendieck-f52f01`.
+
+| site | shipped as | why that wording |
+|---|---|---|
+| `encoding_prompt` opening ⏸ | *"This is me encoding my own memory."* — **pending v-next.7** | the next clause (*"The session ends; I don't"*) already does the work |
+| `encoding_prompt` identity exemplar ⏸ | *"My corrections travel with my convictions."* — **pending v-next.7** | probe-selected — see below |
+| `surface_contract` conversation label | `"Assistant"` (paired with `"Operator"`) | already this prompt's own word for that side (*"the assistant has not replied yet"*) |
+| `surface_contract` recently-surfaced line | *"the assistant has already seen these"* | same |
+| `encode.py` provenance | `encoded(me)` | `encoder_view.PROVENANCE_SPLIT` already ships `created(me)` / `encoded(me, turn N)` under a comment reading *"no internal names (scribe, Anchor, S1S)"* — the OFF arm never got it |
+| `aspects_v1.json` wisdom `meaning` | *"shapes how I think"* / *"my wisdom layer"* | the same string already read *"shifts how I think"*; now internally consistent |
+| `contract.py` `locked` description | *"belongs to the interactive session, not to an encode run"* | `anchor` there is the **channel category** (id:40d10386), never the agent's name. Tom fixed this identical collision in the s1e prompt; that wording is live at `encoding_prompt.py`'s `**locked**` line and this was the last holdout |
+| `brain_mcp.py` filter example | a neutral value | illustrative only. Two more copies of the same example lived in `brain_recall.py` docstrings; all three now agree |
+
+**The identity exemplar was chosen by probe, not by taste**
+(`eval/identity_exemplar_probe.py`, re-runnable). Tom's framing set the
+target: *"Persist was an aspiration, now it's reality — you don't need to be
+reminded you persist, you need to know it."* Six name-free candidates, two
+independent lenses, arms differing only in the claim (the `why` clauses were
+neutralized identically in **every** arm, including the control, so the
+surrounding prose favoured none).
+- **RANK** — blind, label order rotated per rater. `corrections` won
+  **unanimously across six raters in two runs**, from a different label slot
+  each time. The incumbent placed **last in every single rating**, and raters
+  named the reason unprompted: *"the premise the architecture already
+  guarantees — useless as curriculum."*
+- **TEACH** — the behavioural lens. Agrees directionally and weakly: the
+  incumbent taught the most truncated claim (*"The reaction isn't
+  retrieved."*), the winners taught the full mechanism plus recurrence.
+- ⚠ **The first TEACH run was a null** — the source exchange ended on a
+  quotable line and all 12 trials returned it verbatim as the title, so the
+  arms could not move the output. Fixed by removing the aphorism; the probe
+  now **self-reports a null** rather than letting one read as agreement.
+- Worth knowing: *"I'm the one who was there"* (id:c9584ff4) scored
+  second-worst as *curriculum* — *"'there' is so underspecified the encoder
+  learns vagueness is acceptable"*. The rhetorical winner is not the
+  pedagogical one, which is why TEACH exists as a separate lens.
+
+**Eval, honestly scoped.** Only site 1 is an interaction default, so only it
+is A/B-able; it ran as a **2-item smoke** (Tom's call), which proves the
+pipeline encodes under the new prompt but is too small to detect a quality
+regression — site 1 ships on probe + reasoning + smoke, not on a gated A/B.
+Site 3 needs no eval at all: `view_policy_enabled()` defaults **ON**, so
+`encoded(…)` in the `elif` is the emergency-off/control arm and **does not run
+in production**. Sites 2 and 4 are single-string changes the harness cannot
+address — see the trap below.
+
+⚠ **The MCP schema gate cannot currently verify a description change.** CLAUDE.md
+requires `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py` after any schema or
+description edit. The probe is informative (8/8 at 5/5 here). The **gate is
+blocked by a pre-existing bug**: the S2 consolidation encoder intermittently calls
+`brain_batch` with an EMPTY `operations` array, which `validate_ops` correctly
+flags — three runs on one cluster went fail → pass → fail. The gate's red is a
+real defect and its green is luck, so it yields **no signal** either way; treat a
+pass from it as unproven until that bug is fixed (chip `task_f5320a3c`). It is
+*not* caused by the `locked` description edit — that text appears in neither the
+generated `brain_batch` schema nor `BATCH_OP_SPECS`.
+
+⚠ **The frozen-corpus harness cannot A/B a code change, and fails silently.**
+`corpus_config_hash` is a sha1 over the config dict only — `s1e`,
+`ingest_surface`, `s2_every_n`, `oracle`, `qids`, variant pins. **The repo's
+code state is not in it.** Build a control from one tree and a treatment from
+another at the same config and both get the *same hash*; the second reports
+`CACHE HIT — 0 re-encoding` and the A/B compares a corpus with itself,
+reporting clean. Use `--s1e <path>` (content-hashed, `file:<sha>`) or
+`--interaction-override` (addressed on template content) — never bare
+`--s1e active`, whose token is the literal string `"active"`.
+
+**Also shipped here:** the **D-1 packaging fix** — `LICENSES/` now ships via
+`git ls-files` with a MISSING check, so a dangling license citation breaks the
+build instead of the install (manifest 235 → 237), and `marketplace.json`
+carries the `license` field, matching `plugin.json`. A false claim in
+`build-plugin.sh`'s own comment (*"plugin.json DECLARES `license`: `MIT`"* —
+it declares the PolyForm dual grant) went with it.
+
+**Still open after phase 4:**
+  0. **The two `encoding_prompt.py` hunks** — with the v-next.7 stream; verify
+     they reached the code default before calling D-12's prompt half done.
+  1. **Product-name sites → 5.2**, listed above.
+  2. **Un-xfailing gate assertion 4 is NOT unblocked by this** — see the
+     measured blocker list in the 5.0b gate note above.
+  3. **seed pack — RESOLVED by D-5 (2026-08-30):** name-free by construction;
      the three origin-story tributes (`test_names_only_in_tribute_sites` holds
      the boundary) are content, not identity assertions, and stay.
-*Was M; the mechanical half is done, phase 4 is what remains.*
+*Was M; mechanical half + phase 4 both done.*
 
 **5.1 Export script — SHIPPED 2026-08-28: `scripts/export-public-tree.sh`.**
 Materializes the public tree from `build-plugin.sh --list` (the builder grew
@@ -810,8 +930,12 @@ the "no new names" gate already exist; one is disarmed and one is
 deliberately sandbox-only. Extend them — do not add a third mechanism.
 - **`Anchor`:** `test_deploy_contract.py::test_agent_name_only_in_config`
   already scans the whole tracked tree, comments included. It is
-  `xfail(strict=True)`; 5.0c's completion is what un-xfails it. Already
-  scheduled — nothing to write.
+  `xfail(strict=True)`. ⚠ **Correction (measured 2026-09-01):** the line
+  above said 5.0c's completion un-xfails it. It does not — 5.0c phase 4 has
+  landed and the assertion still matches 69 files / 239 occurrences, because
+  it scans a scope wider than what ships. The blocker list and the two
+  unowned classes are in the 5.0b gate note above. Nothing to *write*, but it
+  is **not** already scheduled: it needs 5.3, 5.2, and a ruling on scope.
 - **`Tom` / personal data:** gate B lives in `export-public-tree.sh`, and
   `TestPublicTreeExport` pins it **in sandboxes only** — on purpose, because
   the real tree is still red and a live-tree assertion would fail today. Once

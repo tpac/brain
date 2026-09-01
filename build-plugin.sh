@@ -18,10 +18,11 @@ OUT="${1:-brain.plugin}"
 
 # Explicit file manifest — if it's not listed, it doesn't ship
 FILES=(
-  # MIT requires the notice travel with the copies. plugin.json DECLARES
-  # "license": "MIT"; without the text in the package, a zip-channel install
-  # gets the claim and not the license. (Repo-clone installs pick up the
-  # root LICENSE for free — this closes the upload path.)
+  # The notice travels with the copies. plugin.json DECLARES the dual PolyForm
+  # grant; without the text in the package, a zip-channel install gets the
+  # claim and not the license. (Repo-clone installs pick up the root LICENSE
+  # for free — this closes the upload path.) LICENSE cites LICENSES/ for the
+  # full text of both grants; that subtree ships below, or the citation dangles.
   LICENSE
   .claude-plugin/plugin.json
   # marketplace.json makes the unzipped package a self-contained marketplace:
@@ -43,6 +44,18 @@ FILES=(
 )
 
 cd "$DIR"
+
+# LICENSES/ — the full text of both grants the root LICENSE cites by path.
+# Shipped via git ls-files (not hand-listed) so the MISSING check fires if the
+# subtree is ever renamed or removed: the failure this replaces was silent, an
+# installed plugin whose LICENSE pointed at two files that were not in the
+# package. A dangling license citation must break the build, not the install.
+_lic_files="$(git ls-files LICENSES || true)"
+if [ -z "$_lic_files" ]; then
+  echo "MISSING: LICENSES/ — no tracked files found (dir renamed/removed?)"
+  exit 1
+fi
+while IFS= read -r _f; do FILES+=("$_f"); done <<< "$_lic_files"
 
 # Dashboard (read-only observer UI) — ship the git-TRACKED subtree only, via
 # `git ls-files`, so a developer's untracked scratch / DB dump / secret in
