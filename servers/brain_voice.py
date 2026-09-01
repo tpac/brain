@@ -436,8 +436,8 @@ class BrainVoice:
         # its own deliveries in the ledger. Failure-isolated like the rest
         # of boot. Asks deliver here (boot-only), notices at boot or Stop.
         try:
-            from servers.scales.thalamus import thalamus as _thalamus
-            from servers.scales.thalamus.thalamus_contract import (
+            from servers.channels.thalamus import thalamus as _thalamus
+            from servers.channels.thalamus.thalamus_contract import (
                 VIA_BOOT as _VIA_BOOT)
             th_block, _ = _thalamus.pull(brain, session_id, via=_VIA_BOOT)
         except Exception as e:

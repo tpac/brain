@@ -318,7 +318,7 @@ substrate probes `bf84b8b9` · bake-off `9cb63f73` · chaotic partitions
 `servers/brain_voice.py:311,385` (boot render, standing items) ·
 `servers/session_context.py:147` (frame) ·
 `servers/trace_contract.py:267` (run-trace `outcomes`) ·
-`servers/scales/thalamus/thalamus_contract.py:94,107` (ask semantics) ·
+`servers/channels/thalamus/thalamus_contract.py:94,107` (ask semantics) ·
 `servers/scales/s2/rejection_table.py:46,226` (fingerprint + filter) ·
 `servers/scales/s2/community_encoder.py:104-129` (quota mechanics) ·
 `servers/scales/s2/community_decoder.py:969` (merge detector) ·

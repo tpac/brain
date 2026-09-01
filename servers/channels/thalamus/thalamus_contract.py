@@ -194,7 +194,7 @@ def resolve_for_whom(for_whom, needs_answer):
         return 'live', '', ''
     if fw.lower() == FOR_WHOM_ALL:
         return 'queue', AUDIENCE_EVERY, ''
-    from servers.scales.self_channel.self_contract import is_session_id
+    from servers.channels.self_channel.self_contract import is_session_id
     if is_session_id(fw):
         # Directed: the session-keyed correction (b474ccbd) — full UUID only;
         # an 8-char short is a display convention, not a key.

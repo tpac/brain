@@ -70,6 +70,17 @@ where more than one channel is contributing meaningfully. To the errors
 table, the channel that has a reader. The `compose_block_loud` extraction is
 untouched by that ruling and stands as planned.
 
+**Both packages MOVED out of `scales/`** (operator-approved, ahead of Step 8):
+`servers/scales/{self_channel,thalamus}` → `servers/channels/`. Neither runs an
+`integrate(O, K) → Δ` loop, and both `__init__.py`s had to open by saying so.
+The load-bearing reason, not the tidy one: `test_clock_contract_sync`'s
+conversation-time zone was ENUMERATED (`scales/s1`, `scales/s2`) precisely
+because two wall-clock packages sat inside `scales/` — `presence.py` holds a
+live `datetime.now()` that the prefix form would have flagged. With them out,
+the zone is `servers/scales`, and a future s3/s4 is covered without anyone
+remembering. Step 8 therefore builds `delivery.py` into `servers/channels/`,
+not `scales/`.
+
 **Queue:** Step 8 (fresh session — new subsystem, and the biggest of the
 three), then Step 10, then what remains of Step 11 — its boot-renderer
 comment WAITS for Step 8 (what boot commits changes when the boot leg moves)
@@ -445,7 +456,7 @@ shape. Fix `_s0_trace`'s docstring ("four S0 turn events" — `thalamus_delivery
 fifth).
 
 **Files & call sites.** `servers/brain_voice.py` (boot leg), possibly
-`servers/scales/thalamus/thalamus.py` (`pull`), `servers/daemon_hooks.py`
+`servers/channels/thalamus/thalamus.py` (`pull`), `servers/daemon_hooks.py`
 (`_s0_trace` docstring), `docs/THALAMUS-DESIGN.md`.
 
 **Verification.** `./dev pytest tests/test_thalamus.py -k trace -q` (new: boot pull
@@ -504,8 +515,8 @@ cap, …)` extracted to `servers/loud_truncation.py` (which owns the loud-cap pr
 and states its below-both-domains placement rationale); both contracts call it.
 
 **Files & call sites.** `servers/daemon_hooks.py` (join cap),
-`servers/loud_truncation.py`, `servers/scales/self_channel/self_contract.py`,
-`servers/scales/thalamus/thalamus_contract.py`; tests: existing self-channel truncation
+`servers/loud_truncation.py`, `servers/channels/self_channel/self_contract.py`,
+`servers/channels/thalamus/thalamus_contract.py`; tests: existing self-channel truncation
 tests + `tests/test_thalamus.py` render cases.
 
 **Verification.** `./dev pytest tests/ -k "thalamus or self_ or truncation" -q`.
@@ -523,7 +534,7 @@ node 8178593a's standing rule).
 ## Step 11 — Docs and small placements batch
 
 **Problem.** Review nits that lie to the next reader:
-- `servers/scales/thalamus/__init__.py` is empty; `self_channel/__init__.py` carries the
+- `servers/channels/thalamus/__init__.py` is empty; `self_channel/__init__.py` carries the
   "why this package lives under scales/ and is NOT a scale" note — the Thalamus has the
   same question (and the LATERAL-SCALES "prove it's not async S0" burden) unanswered
   where a reader looks first.
@@ -537,8 +548,8 @@ node 8178593a's standing rule).
   `sqlite3.Row`/named access or a single column-map, so a mid-list column add can't
   silently shift fields (Step 5 adds a column; do this alongside or right after).
 
-**Files & call sites.** `servers/scales/thalamus/__init__.py`, `servers/brain_voice.py`,
-`servers/daemon_hooks.py`, `servers/scales/thalamus/thalamus.py`.
+**Files & call sites.** `servers/channels/thalamus/__init__.py`, `servers/brain_voice.py`,
+`servers/daemon_hooks.py`, `servers/channels/thalamus/thalamus.py`.
 
 **Verification.** `./dev pytest tests/test_thalamus.py -q` + boot renders in a live
 session after deploy.

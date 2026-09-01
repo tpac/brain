@@ -16,7 +16,7 @@ import unittest
 from tests.brain_test_base import BrainTestBase
 from servers.dispatch_self import (
     _handle_self_presence, _handle_self_peek, _handle_self_send, _handle_self_inbox)
-from servers.scales.self_channel import signal, self_contract
+from servers.channels.self_channel import signal, self_contract
 
 
 def _assert_envelope(case, result):

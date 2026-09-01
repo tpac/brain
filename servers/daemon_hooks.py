@@ -670,7 +670,7 @@ def hook_post_response_track(brain, args, graph_changes):
     if args.get("hook_event_name") == "Stop":
         _parts = []
         try:
-            from servers.scales.self_channel import signal as _self_signal
+            from servers.channels.self_channel import signal as _self_signal
             _block, _n = _self_signal.drain_and_render(brain, session_id)
             if _n:
                 _s0_trace(
@@ -681,8 +681,8 @@ def hook_post_response_track(brain, args, graph_changes):
             brain._log_error('self_delivery_stop', _self_err,
                              'Stop self-message delivery (session=%s)' % session_id)
         try:
-            from servers.scales.thalamus import thalamus as _thalamus
-            from servers.scales.thalamus.thalamus_contract import (
+            from servers.channels.thalamus import thalamus as _thalamus
+            from servers.channels.thalamus.thalamus_contract import (
                 REF_THALAMUS_DELIVERY as _REF_TH, VIA_STOP as _VIA_STOP)
             _th_block, _th_n = _thalamus.pull(brain, session_id, via=_VIA_STOP)
             if _th_n:

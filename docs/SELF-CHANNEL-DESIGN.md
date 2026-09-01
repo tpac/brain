@@ -4,7 +4,7 @@
 > the 2026-06-06 comms-smoothing pass shipped, reviewed, suite-green; Phase 4
 > (encode self-turns) pending. Supersedes the earlier "message bus / `self` scale"
 > framing, which was the wrong shape. Conceptual context: `docs/LATERAL-SCALES.md`.
-> Contract: `servers/scales/self_channel/self_contract.py`.
+> Contract: `servers/channels/self_channel/self_contract.py`.
 
 ## Handoff — where this stands (2026-06-06, read first if you're picking this up)
 

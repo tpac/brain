@@ -1799,7 +1799,7 @@ class Brain(
         if now - getattr(self, '_courier_reap_checked', 0) >= 3_600:
             self._courier_reap_checked = now
             try:
-                from .scales.self_channel import signal as _self_signal
+                from .channels.self_channel import signal as _self_signal
                 reaped = _self_signal.reap_expired(self)
                 if reaped:
                     print('[brain] self-channel: reaped %d expired message(s)'
@@ -1810,7 +1810,7 @@ class Brain(
         if now - getattr(self, '_thalamus_sweep_checked', 0) >= 3_600:
             self._thalamus_sweep_checked = now
             try:
-                from .scales.thalamus import thalamus as _thalamus
+                from .channels.thalamus import thalamus as _thalamus
                 expired = _thalamus.expire_due(self)
                 if expired:
                     print('[brain] thalamus: expired %d item(s) past their '

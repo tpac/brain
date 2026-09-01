@@ -1054,7 +1054,7 @@ real §11 follow-up id, so a marker can't rot into a lie.
 | Site | Deferred work | Ref |
 |---|---|---|
 | `servers/recall_laf.py` (beside the `proj` lane, ~:97-103) | counterpart lane, ships at gain=0; job is inhibition | F1 |
-| `servers/scales/self_channel/presence.py` | roster needs a counterpart filter or it becomes cross-counterpart noise (id:030be61c, id:81c3982b) | F2 |
+| `servers/channels/self_channel/presence.py` | roster needs a counterpart filter or it becomes cross-counterpart noise (id:030be61c, id:81c3982b) | F2 |
 | `servers/dispatch_self.py` | `self_send`/`self_peek` same-counterpart default, cross is deliberate | F2 |
 | Layer-2 participant node (wherever it is first minted) | entity **kind** (human/agent/stream) + relationship/trust live here, NOT per-event (§2) | §2 |
 | `servers/brain.py` `speaker_for()` counterpart branch | **the primary seam** — return `ctx.counterpart` instead of the install default; this is the one-line switch the whole deferral rests on (§3.2) | F4 |

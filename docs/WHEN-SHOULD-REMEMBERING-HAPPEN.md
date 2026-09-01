@@ -75,7 +75,7 @@ Normal user↔anchor sessions are **byte-identical** under all of this; only wat
 
 ## 3. Open — `31e8c3ff`'s self-channel work (relayed to it; theirs to action)
 
-- **#3** — `servers/scales/self_channel/signal.py` `resolve_to()` calls `present_streams` **without `exclude_session`** → a sender passing its own 8-char short self-resolves → message self-addressed, filtered at drain, silently undeliverable. (Likely still live; the real one.)
+- **#3** — `servers/channels/self_channel/signal.py` `resolve_to()` calls `present_streams` **without `exclude_session`** → a sender passing its own 8-char short self-resolves → message self-addressed, filtered at drain, silently undeliverable. (Likely still live; the real one.)
 - **#7 / #13** — `presence.py` `_age_min` uses bare `datetime.fromisoformat`; a blank/non-ISO `updated_at` → bare except → `1e9` → a LIVE stream silently classified `lost`. Route the parse through `servers/clock.py`.
 - **#10** — `self_contract.address_from_target` is now dead code (`resolve_to` replaced its caller).
 - **#11 / #14** — label N+1 lookups / `self_label_*` namespace: **likely moot** — `31e8c3ff` dropped `from_label` (ids-only now).

@@ -15,7 +15,7 @@ Covers the core contracts:
 import unittest
 
 from tests.brain_test_base import BrainTestBase
-from servers.scales.thalamus import thalamus, thalamus_contract as tc
+from servers.channels.thalamus import thalamus, thalamus_contract as tc
 from servers.dispatch_thalamus import (
     _handle_remind, _handle_thalamus_list, _handle_thalamus_resolve)
 from servers.clock import iso_now, iso_cutoff
