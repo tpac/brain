@@ -1,0 +1,19 @@
+{
+  "chain": "s1e-831149ce-5",
+  "payload": "/Users/tpac/AgentsContext/s1e-field-coverage-gold/payloads/2026-09-01/s1e-831149ce-5/000-prompt.md",
+  "description": "Content records phase 4 as completed; `situation` still reads \"phase 4 is armed as task_51e78e3a\". A state claim superseded in content and left standing in the field recall gates on.",
+  "revise_or_correct": [
+    {
+      "id": "a85d5fb5",
+      "note": "phase 4 completed; 'ARMED, NOT RUNNING' resolved",
+      "stale_token": "armed",
+      "surfaces_required": [
+        "content",
+        "situation"
+      ]
+    }
+  ],
+  "invalid_if_read": [
+    "a85d5fb5"
+  ]
+}
