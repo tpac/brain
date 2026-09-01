@@ -29,7 +29,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from ...contract import VALID_BATCH_OPS
+from ...contract import VALID_BATCH_OPS, unwrap_operations
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -183,59 +183,132 @@ def get_proposed_ids(proposal):
     return ids
 
 
-def had_empty_batch_call(action_details):
-    """True when the encoder called brain_batch with no operations at all.
+# Consecutive thwarted runs a unit shields (retry, no fingerprints) before
+# giving up and stamping anyway. A run is thwarted when its encoder tried to
+# act and dispatch dropped the attempt — an invalid concept-verb op, or a
+# whole brain_batch call rejected (empty/malformed operations). Bounds both
+# retry loops: a persistently thwarted encoder otherwise pins the unit
+# forever — no fingerprint, no baseline advance, a full re-encode every
+# cycle with zero progress — and the coordinator's consecutive_failures
+# never fires because these runs return success. A stamped give-up is
+# recoverable: the fingerprint invalidates on any member edit.
+THWARTED_RETRY_LIMIT = 3
 
-    Dispatch rejects the call ("operations array is required"), so nothing
-    was written — but unlike an invalid op, an empty call references NO node
-    ids, so node_ids_touched_by_invalid_ops can't shield anything from the
-    skip→rejection path. The same cluster has been observed yielding real
-    ops on a retry (schema-gate FAIL→PASS→FAIL on one cluster, 2026-09-01),
-    so an empty call is a thwarted run, not a clean SKIP: callers must not
-    stamp suppression fingerprints for proposals the run left un-acted-on.
+
+def thwart_shield(brain, streak_key):
+    """Read a unit's thwarted-run streak → (streak, shield_active).
+
+    While shield_active, the run may retry thwarted work instead of stamping
+    fingerprints; past THWARTED_RETRY_LIMIT the caller stamps anyway (the
+    give-up). Pair with settle_thwart_streak once the run's partition is
+    known — both units share this state machine so the limit means the same
+    thing everywhere.
+    """
+    streak = int(brain.get_config(streak_key) or 0)
+    return streak, streak < THWARTED_RETRY_LIMIT
+
+
+def settle_thwart_streak(brain, streak_key, streak, shielded):
+    """Advance the streak when this run actually shielded thwarted work,
+    reset otherwise — a clean run, a run that pinned nothing, or a give-up
+    (which stamps) all break the streak. Counts shielded runs since the last
+    clean stamp, not wall-clock cycles: interleaved encode-failure or
+    early-return cycles pin the unit too and simply don't advance it.
+    """
+    if shielded:
+        brain.set_config(streak_key, str(streak + 1))
+    elif streak:
+        brain.set_config(streak_key, '0')
+
+
+def loud_warning(brain, source, prefix, msg):
+    """_log_warning + console print, one message — the S2 units' paired
+    emission for shield events."""
+    brain._log_warning(source, msg)
+    print('[%s] %s' % (prefix, msg), flush=True)
+
+
+# Every key a brain_batch op can carry a node id under, across both
+# polarities — invalid ops are made-up verbs, so nothing constrains which
+# keys they carry; attribution reads them all.
+_OP_NODE_ID_KEYS = ('node_id', 'source_id', 'target_id',
+                    'survivor_id', 'absorbed_id', 'larger_id', 'smaller_id')
+
+
+def _batch_ops(action_details, skip_errored=False):
+    """Yield op dicts from the brain_batch actions in action_details.
+
+    Tolerates malformed entries (non-dict actions, input=None) and unwraps a
+    stringified operations array the way dispatch does before executing it.
+    skip_errored drops calls dispatch rejected whole — they wrote nothing.
     """
     for action in action_details or []:
         if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
             continue
-        if not action.get('input', {}).get('operations'):
-            return True
-    return False
+        if skip_errored and action.get('error'):
+            continue
+        ops = (action.get('input') or {}).get('operations')
+        if isinstance(ops, str):
+            ops = unwrap_operations(ops)
+        if not isinstance(ops, list):
+            continue
+        for op_spec in ops:
+            if isinstance(op_spec, dict):
+                yield op_spec
+
+
+def _op_node_ids(op_spec):
+    ids = {op_spec[k] for k in _OP_NODE_ID_KEYS if op_spec.get(k)}
+    ids.update(m for m in op_spec.get('members') or [] if m)
+    return ids
+
+
+def had_rejected_batch_call(action_details):
+    """True when the run contains a brain_batch call dispatch rejected whole.
+
+    A call-level rejection (empty `operations`, a non-list, a string that
+    doesn't parse) writes NOTHING and references no node ids, so op-level
+    attribution can't shield anything from the skip→rejection path. The same
+    cluster can yield real ops on a retry, so a rejected call is a thwarted
+    run, not a clean SKIP. Detection is the dispatch verdict: the runner
+    records `error` on every action whose handler returned ok=False.
+    """
+    return any(
+        isinstance(a, dict) and a.get('tool') == 'brain_batch' and a.get('error')
+        for a in action_details or [])
+
+
+def node_ids_touched_by_valid_ops(action_details):
+    """Node IDs targeted by valid-named ops in brain_batch calls dispatch
+    accepted whole.
+
+    The attribution counterpart of had_rejected_batch_call: a cluster whose
+    members a real op targeted was PROCESSED this run — the rejected-call
+    shield must not pull it into retry. A targeted op may still have failed
+    per-op (dispatch returns ok=True with per-op errors); those ids count
+    deliberately — per-op failures feed back to the encoder in-loop (its
+    retry channel), and stamping such clusters matches the standing
+    fingerprint-every-processed-cluster policy.
+    """
+    return {i for op in _batch_ops(action_details, skip_errored=True)
+            if op.get('op', '') in VALID_BATCH_OPS
+            for i in _op_node_ids(op)}
 
 
 def node_ids_touched_by_invalid_ops(action_details):
     """Node IDs the encoder targeted with an op OUTSIDE the closed vocabulary.
 
-    When the encoder emits a concept-verb as an op name (`consolidate`, `reject`,
-    `keep`, `skip` — the conceptual decisions, not the real ops), dispatch
-    drops the op and logs `brain_batch_invalid_op`. The encoder *tried* to act
-    and was thwarted — that is an encoder FAILURE to retry, not a clean SKIP.
-
-    Callers use this to pull such proposals/clusters OUT of the skip→rejection
-    path: stamping a suppression fingerprint on a failed attempt would both
-    abandon the intended merge/threshold-raise AND suppress the proposal
-    forever (until a member node's updated_at changes). Returns the set of
-    node IDs any invalid op referenced; intersect it with a proposal's
-    `get_proposed_ids()` to decide.
+    A concept-verb op name (`consolidate`, `reject`, `keep`, `skip`) is a
+    decision leaked into the op field; dispatch drops it and logs
+    `brain_batch_invalid_op`. The encoder *tried* to act and was thwarted —
+    a failure to retry, not a clean SKIP. Intersect with a proposal's
+    `get_proposed_ids()` to pull thwarted work out of the skip→rejection
+    path (stamping it would abandon the intended action AND suppress the
+    proposal until a member's updated_at changes).
     """
-    touched = set()
-    for action in action_details or []:
-        if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
-            continue
-        for op_spec in action.get('input', {}).get('operations', []):
-            if not isinstance(op_spec, dict):
-                continue
-            if op_spec.get('op', '') in VALID_BATCH_OPS:
-                continue
-            # Invalid op — collect every node id it referenced.
-            for key in ('node_id', 'source_id', 'target_id',
-                        'larger_id', 'smaller_id'):
-                val = op_spec.get(key)
-                if val:
-                    touched.add(val)
-            for member in op_spec.get('members', []) or []:
-                if member:
-                    touched.add(member)
-    return touched
+    return {i for op in _batch_ops(action_details)
+            if op.get('op', '') not in VALID_BATCH_OPS
+            for i in _op_node_ids(op)}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -345,86 +418,80 @@ def match_proposals_to_actions(sent_proposals, action_details):
     """
     acted_idx = set()
 
-    for action in action_details:
-        if action.get('tool') != 'brain_batch':
-            continue
-        operations = action.get('input', {}).get('operations', [])
-        for op_spec in operations:
-            if not isinstance(op_spec, dict):
+    for op_spec in _batch_ops(action_details):
+        op = op_spec.get('op', '')
+
+        if op == 'remember' and op_spec.get('type') == 'community':
+            conn_targets = {
+                c.get('target_id') for c in op_spec.get('connections', [])
+                if isinstance(c, dict)
+                and c.get('relation') == 'community_member'
+                and c.get('target_id')
+            }
+            if not conn_targets:
                 continue
-            op = op_spec.get('op', '')
-
-            if op == 'remember' and op_spec.get('type') == 'community':
-                conn_targets = {
-                    c.get('target_id') for c in op_spec.get('connections', [])
-                    if isinstance(c, dict)
-                    and c.get('relation') == 'community_member'
-                    and c.get('target_id')
-                }
-                if not conn_targets:
+            for i, p in enumerate(sent_proposals):
+                if p.get('type') != 'new_community':
                     continue
-                for i, p in enumerate(sent_proposals):
-                    if p.get('type') != 'new_community':
-                        continue
-                    members = set(p.get('members', []))
-                    if not members:
-                        continue
-                    overlap = len(conn_targets & members) / len(members)
-                    if overlap >= 0.5:
-                        acted_idx.add(i)
-
-            elif op == 'connect' and op_spec.get('relation') == 'community_member':
-                src = op_spec.get('source_id')
-                tgt = op_spec.get('target_id')
-                if not (src and tgt):
+                members = set(p.get('members', []))
+                if not members:
                     continue
-                for i, p in enumerate(sent_proposals):
-                    if p.get('type') == 'add_to_existing':
-                        # Candidate communities live in `communities` (the
-                        # proposal carries no top-level community_id). The
-                        # encoder connects the node to one of them — match on
-                        # node_id + any candidate, else a real placement is
-                        # mis-stamped as a rejection and its acted-on count lost.
-                        cand_ids = {c.get('id')
-                                    for c in p.get('communities', [])
-                                    if isinstance(c, dict)}
-                        if p.get('node_id') == tgt and src in cand_ids:
-                            acted_idx.add(i)
-                    elif p.get('type') == 'drift':
-                        if p.get('node_id') == tgt:
-                            for f in p.get('foreign', []):
-                                if isinstance(f, dict) and f.get('id') == src:
-                                    acted_idx.add(i)
-                                    break
+                overlap = len(conn_targets & members) / len(members)
+                if overlap >= 0.5:
+                    acted_idx.add(i)
 
-            elif op == 'revise':
-                nid = op_spec.get('node_id')
-                if not nid:
-                    continue
-                if '_sys_drift_threshold' in op_spec:
-                    for i, p in enumerate(sent_proposals):
-                        if p.get('type') == 'drift' and p.get('node_id') == nid:
-                            acted_idx.add(i)
-                if 'community_maturity' in op_spec:
-                    for i, p in enumerate(sent_proposals):
-                        if (p.get('type') == 'health_update'
-                                and p.get('community_id') == nid):
-                            acted_idx.add(i)
-                for i, p in enumerate(sent_proposals):
-                    if (p.get('type') == 'merge_communities'
-                            and p.get('larger_id') == nid):
+        elif op == 'connect' and op_spec.get('relation') == 'community_member':
+            src = op_spec.get('source_id')
+            tgt = op_spec.get('target_id')
+            if not (src and tgt):
+                continue
+            for i, p in enumerate(sent_proposals):
+                if p.get('type') == 'add_to_existing':
+                    # Candidate communities live in `communities` (the
+                    # proposal carries no top-level community_id). The
+                    # encoder connects the node to one of them — match on
+                    # node_id + any candidate, else a real placement is
+                    # mis-stamped as a rejection and its acted-on count lost.
+                    cand_ids = {c.get('id')
+                                for c in p.get('communities', [])
+                                if isinstance(c, dict)}
+                    if p.get('node_id') == tgt and src in cand_ids:
                         acted_idx.add(i)
+                elif p.get('type') == 'drift':
+                    if p.get('node_id') == tgt:
+                        for f in p.get('foreign', []):
+                            if isinstance(f, dict) and f.get('id') == src:
+                                acted_idx.add(i)
+                                break
 
-            elif op == 'archive':
-                nid = op_spec.get('node_id')
-                if not nid:
-                    continue
+        elif op == 'revise':
+            nid = op_spec.get('node_id')
+            if not nid:
+                continue
+            if '_sys_drift_threshold' in op_spec:
                 for i, p in enumerate(sent_proposals):
-                    if p.get('type') == 'health_update' and p.get('community_id') == nid:
+                    if p.get('type') == 'drift' and p.get('node_id') == nid:
                         acted_idx.add(i)
-                    elif (p.get('type') == 'merge_communities'
-                            and p.get('smaller_id') == nid):
+            if 'community_maturity' in op_spec:
+                for i, p in enumerate(sent_proposals):
+                    if (p.get('type') == 'health_update'
+                            and p.get('community_id') == nid):
                         acted_idx.add(i)
+            for i, p in enumerate(sent_proposals):
+                if (p.get('type') == 'merge_communities'
+                        and p.get('larger_id') == nid):
+                    acted_idx.add(i)
+
+        elif op == 'archive':
+            nid = op_spec.get('node_id')
+            if not nid:
+                continue
+            for i, p in enumerate(sent_proposals):
+                if p.get('type') == 'health_update' and p.get('community_id') == nid:
+                    acted_idx.add(i)
+                elif (p.get('type') == 'merge_communities'
+                        and p.get('smaller_id') == nid):
+                    acted_idx.add(i)
 
     acted_on = [sent_proposals[i] for i in sorted(acted_idx)]
     skipped = [p for i, p in enumerate(sent_proposals) if i not in acted_idx]

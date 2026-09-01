@@ -46,10 +46,11 @@
   nothing could validate against — a column added mid-list shifted every
   field after it into the wrong key. Position is now irrelevant, and the
   SELECT cannot diverge from the mapping by construction. The package
-  `__init__.py` answers "why under `scales/` when it isn't a scale" where its
-  neighbour answers the same question: no integrate loop, and a delivery is
+  `__init__.py` states what the package IS — no integrate loop; a delivery is
   traced as an s0 K event beside `self_message`, so it rides the S0 loop as
-  an incoming correspondent. NOTE the plan's earlier framing was wrong — the
+  an incoming correspondent. (Its "why not under `scales/`" half was retired
+  when the package moved — that argument now lives one level up, in
+  `servers/channels/__init__.py`.) NOTE the plan's earlier framing was wrong — the
   LATERAL-SCALES "prove it's not just async S0" burden belongs to the
   `operator` channel (async Anchor↔Tom, deprioritized), not to this package,
   whose recipient is Anchor.
@@ -72,14 +73,23 @@ untouched by that ruling and stands as planned.
 
 **Both packages MOVED out of `scales/`** (operator-approved, ahead of Step 8):
 `servers/scales/{self_channel,thalamus}` → `servers/channels/`. Neither runs an
-`integrate(O, K) → Δ` loop, and both `__init__.py`s had to open by saying so.
-The load-bearing reason, not the tidy one: `test_clock_contract_sync`'s
-conversation-time zone was ENUMERATED (`scales/s1`, `scales/s2`) precisely
-because two wall-clock packages sat inside `scales/` — `presence.py` holds a
-live `datetime.now()` that the prefix form would have flagged. With them out,
-the zone is `servers/scales`, and a future s3/s4 is covered without anyone
-remembering. Step 8 therefore builds `delivery.py` into `servers/channels/`,
-not `scales/`.
+`integrate(O, K) → Δ` loop — `thalamus/__init__.py` opened by saying so;
+`self_channel/__init__.py` makes the adjacent claim that there is no `self`
+trace scale.
+
+The load-bearing reason, stated correctly (an earlier draft of this paragraph
+asserted a causality git disproves): `test_clock_contract_sync`'s zone was
+ENUMERATED (`scales/s1`, `scales/s2`) simply because that was its original
+scope — the list landed 2026-05-13, sixteen days before `self_channel` and
+three months before `thalamus`, and was never revisited when they arrived. So
+the two packages were not carved out deliberately; they sat in the guardrail's
+BLIND SPOT, and `presence.py`'s live `datetime.now()` went unscanned for three
+months. The move closed that hole rather than working around an accommodation.
+With them out the zone can be the prefix `servers/scales`, so a future s3/s4 is
+covered by this contract automatically — **and by its twin only because
+`test_time_window_contract`'s `CTX_PROTECTED_DIRS` was collapsed to the same
+prefix alongside it.** Step 8 therefore builds `delivery.py` into
+`servers/channels/`, not `scales/`.
 
 **Queue:** Step 8 (fresh session — new subsystem, and the biggest of the
 three), then Step 10, then what remains of Step 11 — its boot-renderer
@@ -534,10 +544,9 @@ node 8178593a's standing rule).
 ## Step 11 — Docs and small placements batch
 
 **Problem.** Review nits that lie to the next reader:
-- `servers/channels/thalamus/__init__.py` is empty; `self_channel/__init__.py` carries the
-  "why this package lives under scales/ and is NOT a scale" note — the Thalamus has the
-  same question (and the LATERAL-SCALES "prove it's not async S0" burden) unanswered
-  where a reader looks first.
+- ~~`thalamus/__init__.py` is empty~~ — DONE (e0f1ea8, corrected in cabef0e).
+  Both package docstrings and `servers/channels/__init__.py` now carry the
+  placement rationale; nothing here remains.
 - `render_boot_v2`'s comment still claims "rendering is read-only"; boot now commits
   ledger rows (and health auto-fix already wrote before that). State what boot commits.
   Collapse the three identical try/except sections (Frame / standing / thalamus) into a

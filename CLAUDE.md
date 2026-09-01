@@ -54,7 +54,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Suppression (state + fingerprint) | `scales/s2/rejection_table.py` | `docs/S2-DESIGN.md` |
 | Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |
 | Corrections | `servers/brain_corrections.py` | docstring |
-| Channels (what reaches a live stream) | `servers/channels/self_channel/` (streams↔streams), `channels/thalamus/` (brain→streams) | `docs/SELF-CHANNEL-DESIGN.md`, `docs/THALAMUS-DESIGN.md` |
+| Channels (who ADDRESSES a live stream) | `servers/channels/self_channel/` (streams↔streams), `channels/thalamus/` (brain→streams) | `docs/SELF-CHANNEL-DESIGN.md`, `docs/THALAMUS-DESIGN.md` |
 | Traces | `servers/brain_traces.py`, `trace_contract.py` | `docs/TRACES-LAYER-DESIGN.md` |
 | Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_collapse.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; the one-time pointer collapse (daemon-boot, version-stamped) in the latter |
 | Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
@@ -64,11 +64,12 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
 All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
-axis (s1, s2 + the machinery serving them) — everything there runs an
-`integrate(O, K) → Δ` loop; `channels/` is what reaches a live stream, indexed by
-correspondent, and runs no loop of its own. The split is load-bearing: the
-conversation-time contract names `servers/scales` as a prefix, so a package whose
-windows are real-elapsed wall-clock must not sit inside it. Two databases:
+axis (s1, s2 + shared machinery); `channels/` is indexed by CORRESPONDENT and
+holds the packages that ADDRESS a live stream — `self_channel` (another stream)
+and `thalamus` (the brain itself). Which side a new package belongs on is a real
+decision with a guardrail behind it: **`servers/scales/__init__.py` states the
+rule** — don't re-derive it. Note this is a different sense of "channel" than the
+`additionalContext` injection channel in Conventions below. Two databases:
 `brain.db` (nodes, edges, embeddings) and `brain_logs.db` (traces, session state,
 interactions, errors).
 
@@ -94,7 +95,7 @@ interactions, errors).
 
 **Use `iso_now()` for any new-row timestamp** (`created_at`, `updated_at`, `last_accessed`). `Brain.now()` and TraceDAL inserts route through it. Single source of truth for the write-side format (`'…+00:00'`).
 
-**In S1/S2 code, pass `at=conversation_now(...)` explicitly.** S1/S2 reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
+**On the grain axis (anywhere under `servers/scales`), pass `at=conversation_now(...)` explicitly.** Grain-axis reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
 
 **`as_of` replay is one-directional — it HIDES, it cannot RESTORE.** It masks nodes/traces created after the instant, but a node archived *since* stays gone: `archive_node` deletes its vectors, so no mask can put it back. A replay therefore runs on today's survivors, not the corpus as it stood — pool shrinkage ~2% at mid-2026 cutoffs, ~10% at the walker's oldest (2026-04). Historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`), which is the faithful half of a lossy mechanism; treat as_of numbers as approximate and degrading with cutoff age.
 

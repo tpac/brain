@@ -1,0 +1,19 @@
+{
+  "chain": "s1e-5076cdc2-17",
+  "payload": "/Users/tpac/AgentsContext/s1e-field-coverage-gold/payloads/2026-08-31/s1e-5076cdc2-17/000-prompt.md",
+  "description": "Content corrects the 47-absent figure; `situation` still asserts \"47 ids are genuinely absent\". NOTE: the miner found this item via unrelated tokens \u2014 \"47\" is excluded by its bare-2-digit filter \u2014 so the item is real but the detector reached it by luck. Recorded because that is a detector gap, not an item defect.",
+  "revise_or_correct": [
+    {
+      "id": "bb5b1ef4",
+      "note": "the 47 'absent' figure was corrected as partially wrong",
+      "stale_token": "47",
+      "surfaces_required": [
+        "content",
+        "situation"
+      ]
+    }
+  ],
+  "invalid_if_read": [
+    "bb5b1ef4"
+  ]
+}

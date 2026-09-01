@@ -45,6 +45,20 @@ itself:
 | **`operator`** | Tom, asynchronously | the away-gap | considered, **deprioritized** |
 | **`world`** | external sources (files, web, research) | the system edge | **live gap**; sibling of S1E |
 
+**Where they live in the tree.** The messaging laterals are packages under
+`servers/channels/`: `self_channel/` (the `self` row above, widening to `peer`)
+and `thalamus/`. Note the table does not have a row for the Thalamus — its
+correspondent is *the brain's own machinery* speaking to its streams, a
+category this index did not anticipate. It is a channel by mechanism
+(addressed, delivered, consumed) even though it is not a lateral scale.
+
+They are NOT under `servers/scales/`: that is the grain axis, and per the
+reframe below these are correspondents on the S0/S1 loop, not scales of their
+own. `world` is the opposite case and must not follow them here — it is an
+ingestion encoder that DOES run an integrate loop, so when it is built it
+belongs on the grain axis, not in `channels/`. Placement rule:
+`servers/scales/__init__.py`.
+
 ## The mechanism split — the clean-architecture line
 
 Lateral scales do **not** share one transport. They split by the *kind* of

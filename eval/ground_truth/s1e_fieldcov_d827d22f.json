@@ -1,0 +1,22 @@
+{
+  "chain": "s1e-61608651-16",
+  "payload": "/Users/tpac/AgentsContext/s1e-field-coverage-gold/payloads/2026-08-31/s1e-61608651-16/000-prompt.md",
+  "description": "CANONICAL field-coverage item. The recorded v41 run fixed title+content and left 9.6.0 in `situation` AND in the edge description to 15bbfd64. Both stale surfaces render in the encoder catalog (verified by grep in the frozen payload), so this is under-application, not blindness. v41 scores 2/4.",
+  "revise_or_correct": [
+    {
+      "id": "d827d22f",
+      "note": "plugin manifests moved 9.6.0 -> 9.7.2",
+      "stale_token": "9.6.0",
+      "surfaces_required": [
+        "title",
+        "content",
+        "situation",
+        "edge:15bbfd64"
+      ]
+    }
+  ],
+  "invalid_if_read": [
+    "d827d22f",
+    "15bbfd64"
+  ]
+}

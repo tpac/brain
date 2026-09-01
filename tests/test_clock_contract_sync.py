@@ -1,4 +1,4 @@
-"""Clock contract: no direct datetime.now() / date.today() in S1/S2 code.
+"""Clock contract: no direct datetime.now() / date.today() on the grain axis.
 
 Why this file exists
 --------------------
@@ -9,8 +9,8 @@ real wall-clock instead of the conversation date — corrupting temporal
 scout candidates.
 
 Fix: servers/clock.py is the single source of truth for "now". This test
-keeps it that way by failing if anyone adds a direct wall-clock call in
-S1/S2/scout code.
+keeps it that way by failing if anyone adds a direct wall-clock call
+anywhere under servers/scales (s1, s2, scout, and any future grain).
 
 Allowed exemptions:
   - servers/clock.py itself (the implementation)
@@ -34,10 +34,14 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # Directories where wall-clock calls are forbidden (semantic-time code).
-# The whole grain axis, as a PREFIX — a future s3/s4 is covered without anyone
-# remembering to add it. This can only be a prefix because the channel packages
-# (self_channel, thalamus), whose delivery windows are legitimately real-elapsed
-# wall-clock, live under servers/channels and not in here.
+# The whole grain axis, as a PREFIX, so a future grain is covered without
+# anyone remembering to list it. What belongs on that axis, and why a
+# real-elapsed package must not join it, is stated once in
+# servers/scales/__init__.py — don't restate it here.
+#
+# Must equal test_time_window_contract.CTX_PROTECTED_DIRS; the two are halves
+# of one rule. test_prefix_zones_agree below enforces that rather than trusting
+# this comment.
 PROTECTED_DIRS = [
     'servers/scales',
 ]
@@ -45,7 +49,7 @@ PROTECTED_DIRS = [
 # Files within protected dirs where wall-clock is legitimate (logs/traces).
 # Keep this list TIGHT — every entry is a foothold for the bug to come back.
 EXEMPT_FILES = {
-    # None at the moment — all S1/S2 semantic-time should go through clock.
+    # None at the moment — all grain-axis semantic-time goes through clock.
 }
 
 # Patterns that flag a direct wall-clock call.
@@ -91,8 +95,8 @@ def _scan_file(p: Path):
     return violations
 
 
-def test_no_direct_wallclock_in_s1_s2():
-    """Scan S1/S2 code for direct datetime.now() / date.today() calls.
+def test_no_direct_wallclock_on_grain_axis():
+    """Scan the grain axis for direct datetime.now() / date.today() calls.
 
     All semantic-time calls should go through servers/clock.py
     (brain_now or conversation_now). Bookkeeping uses are tagged as
@@ -113,10 +117,16 @@ def test_no_direct_wallclock_in_s1_s2():
                 for lineno, line in violations:
                     failures.append(f'{rel}:{lineno}: {line}')
     assert not failures, (
-        'Clock contract violation: direct wall-clock call in S1/S2 code.\n'
+        'Clock contract violation: direct wall-clock call under '
+        'servers/scales (the grain axis).\n'
         'Route through servers/clock.py (brain_now or conversation_now).\n'
         'If genuinely bookkeeping (trace timestamp etc), tag the line with '
-        '"# clock-ok" or add a LEGITIMATE_USES pattern.\n\n'
+        '"# clock-ok".\n'
+        'If your whole package is real-elapsed by design — it addresses a '
+        'live stream rather than running an integrate loop — it belongs in '
+        'servers/channels/, the way self_channel and thalamus do. Move it; '
+        'do NOT grow LEGITIMATE_USES, which loosens the rule for all of '
+        'servers/scales.\n\n'
         + '\n'.join(failures)
     )
 
@@ -249,3 +259,27 @@ def test_one_grammar_across_both_doors():
     # "next opportunity", a lookback bound does not.
     assert _resolve_time_bound('') == ''
     assert resolve_when('now') is None
+
+
+def test_prefix_zones_agree():
+    """The two clock contracts must scan the SAME tree.
+
+    They enforce halves of one rule — this file bans bare datetime.now() /
+    date.today(); test_time_window_contract bans iso_now() / iso_cutoff()
+    without at=. Widening one alone is worse than leaving both narrow,
+    because the widened one's comment then promises a coverage the other
+    does not deliver, and the gap is silent: a bare iso_cutoff() in a newly
+    added grain would ship uncaught and anchor an eval replay to wall-clock.
+
+    That is not hypothetical — it is exactly what the 2026-09-01 channels/
+    move did, and only an audit caught it. This assertion is the guard that
+    would have caught it instead.
+    """
+    from tests.test_time_window_contract import CTX_PROTECTED_DIRS
+    assert sorted(PROTECTED_DIRS) == sorted(CTX_PROTECTED_DIRS), (
+        'The two clock contracts scan different trees:\n'
+        '  test_clock_contract_sync.PROTECTED_DIRS      = %r\n'
+        '  test_time_window_contract.CTX_PROTECTED_DIRS = %r\n'
+        'Widen or narrow BOTH, or the narrower one becomes a silent hole '
+        'the wider one claims to cover.' % (PROTECTED_DIRS, CTX_PROTECTED_DIRS)
+    )

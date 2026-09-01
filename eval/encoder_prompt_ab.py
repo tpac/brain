@@ -500,6 +500,47 @@ def _revise_text(op):
     return ' '.join(parts)
 
 
+def _revise_surfaces(op):
+    """Which node SURFACES a revise op actually WROTE — not what it says.
+
+    `_revise_text` flattens an op into prose to check whether a fact is
+    carried; this is the orthogonal question the field-coverage class needs
+    (id:450650d5): a stale value lives in several separately-embedded
+    surfaces, and a revise that fixes title+content while leaving the same
+    value in `situation` reads as a pass under any text-only check. Content
+    counts whether it arrived whole or as a patch.
+    """
+    out = {k: str(op.get(k)) for k in
+           ('title', 'situation', 'question', 'reasoning', 'thought',
+            'type', 'evolution_status') if op.get(k)}
+    body = [str(op.get('content') or '')]
+    body += [str((e or {}).get('new') or '')
+             for e in (op.get('content_edits') or []) if isinstance(e, dict)]
+    body = ' '.join(x for x in body if x)
+    if body:
+        out['content'] = body
+    return out
+
+
+def _edge_pairs(op):
+    """Unordered {source8, target8} pairs an op writes an edge BETWEEN.
+
+    Source-aware on purpose: an `edge:X` surface on node N means the edge
+    N–X, and counting any edge that merely lands on X would score a
+    different node's edge as N's repair. connect_to on a `remember` has no
+    source id yet (the node is being created) and is skipped rather than
+    guessed."""
+    pairs, src = {}, str(op.get('node_id') or op.get('source_id') or '')[:8]
+    if src:
+        for c in (op.get('connect_to') or []):
+            for h in _hex_ids(str(c.get('title') or '')):
+                pairs[frozenset((src, h))] = str(c.get('why') or '')
+        tgt = str(op.get('target_id') or '')[:8]
+        if tgt:
+            pairs[frozenset((src, tgt))] = str(op.get('description') or '')
+    return pairs
+
+
 def _hex_ids(v):
     """Every exactly-8-char hex token reachable in a tool-args value. The
     trailing guard keeps the head of a longer hex string (a full git SHA in a
@@ -560,15 +601,19 @@ def score_gold(gold, log, corr_rels):
     """
     import re
     revised, edges, creates = {}, [], []
+    surfaces, pairs = {}, {}
     for w in log['writes']:
         for op in _ops_of(w):
             kind = op.get('op') or ('revise' if 'node_id' in op else 'remember')
             if kind in ('revise', 'absorb'):
                 nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
                 revised[nid] = revised.get(nid, '') + ' ' + _revise_text(op)
+                for _k, _v in _revise_surfaces(op).items():
+                    surfaces.setdefault(nid, {})[_k] = _v
             elif kind == 'remember':
                 creates.append(op)
             edges.extend(_edge_asserts(op))
+            pairs.update(_edge_pairs(op))
 
     targets = []
     for t in gold.get('revise_or_correct', []):
@@ -585,9 +630,38 @@ def score_gold(gold, log, corr_rels):
         if via and t.get('content_any'):
             low = text.lower()
             content_ok = any(k.lower() in low for k in t['content_any'])
+        # surfaces_required: WHICH surfaces the repair reached. Graded, because
+        # the failure this scores is graded — a two-of-four repair is the
+        # defect, and every text-only check calls it a pass.
+        req = list(t.get('surfaces_required') or [])
+        reached = None
+        if req:
+            got = surfaces.get(tid, {})
+            tok = (t.get('stale_token') or '').lower()
+            reached = {}
+            for sname in req:
+                if sname.startswith('edge:'):
+                    key = frozenset((tid, sname.split(':', 1)[1][:8]))
+                    written, txt = key in pairs, pairs.get(key, '')
+                else:
+                    written, txt = sname in got, got.get(sname, '')
+                # A retrieval surface that was rewritten and STILL asserts the
+                # stale value is not repaired — writing it is not fixing it.
+                # `content` is exempt by E17: history may legitimately ride
+                # there ("9.7.2 (was 9.6.0)"), and only there.
+                if written and tok and sname != 'content' \
+                        and tok in str(txt).lower():
+                    written = False
+                reached[sname] = written
         targets.append({'id': tid, 'note': t.get('note', ''), 'via': via,
                         'content_ok': content_ok,
-                        'pass': bool(via) and content_ok is not False})
+                        'surfaces': reached,
+                        'surface_score': (None if reached is None else
+                                          '%d/%d' % (sum(reached.values()),
+                                                     len(reached))),
+                        'stale_token': t.get('stale_token'),
+                        'pass': (bool(via) and content_ok is not False
+                                 and (reached is None or all(reached.values())))})
 
     twin_hits = []
     spec = gold.get('no_new_node_matching') or {}
@@ -623,6 +697,11 @@ def print_gold(g, run):
         detail = t['via'] or 'untouched'
         if t['content_ok'] is not None:
             detail += ', fact %s' % ('carried' if t['content_ok'] else 'MISSING')
+        if t.get('surface_score'):
+            miss = [k for k, v in t['surfaces'].items() if not v]
+            detail += ', surfaces %s' % t['surface_score']
+            if miss:
+                detail += ' (missed %s)' % ','.join(miss)
         print('         %s %s  %s (%s)'
               % ('✓' if t['pass'] else '✗', t['id'], detail, t['note']))
     for h in g['twins']:
@@ -715,9 +794,21 @@ def main():
             # whole behavior pass and shrug out an unscored one-liner.
             if not any(parse_chain(c)[0] == gold.get('chain')
                        for c in args.captures):
-                raise SystemExit('--gold spec is for chain %r; no such '
-                                 'capture on the command line'
-                                 % gold.get('chain'))
+                # The spec names its own capture. Fall back to it rather than
+                # refusing: the live payload store prunes at retention_days,
+                # so the path an operator has to hand is the one that rots,
+                # and `payload` was decorative until this read it.
+                own = gold.get('payload') or ''
+                if own and os.path.exists(own):
+                    print('[gold] no capture for chain %s on the command line '
+                          '— using the spec\'s own payload: %s'
+                          % (gold.get('chain'), own))
+                    args.captures = list(args.captures) + [own]
+                else:
+                    raise SystemExit(
+                        '--gold spec is for chain %r; no such capture on the '
+                        'command line, and its `payload` (%r) does not exist'
+                        % (gold.get('chain'), own or '(unset)'))
             if 'F' not in want:
                 raise SystemExit('--gold items score the VERBATIM capture — '
                                  'add F to --arms')

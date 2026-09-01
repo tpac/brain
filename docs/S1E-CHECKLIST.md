@@ -2,6 +2,25 @@
 
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
+## v-next.7 — INSTRUMENT BUILT, NOTHING MEASURED (2026-09-01) ◀ HEAD
+
+Steps 1–3 of the measurement chain are committed (`979aaf8`); the A/B has not
+been run. **Handoff: brain `b64d3e14`. Runbook:
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/RUNBOOK.md`.**
+
+- `surfaces_required` in `score_gold` — scores WHICH surfaces a repair reached,
+  not merely that the node was revised. `tests/test_gold_surfaces.py`, 10 tests
+  on the real v41 ops (trace `703e70a5`): **v41 scores 2/4**, and the same run
+  **passes** a text-only check — the criterion is necessary, proven not asserted.
+- Four hand-confirmed gold specs (`eval/ground_truth/s1e_fieldcov_*.json`);
+  run-44 repointed at the frozen copy.
+- Code review found two live defects in it: `stale_token` was dead metadata
+  (an op rewriting `situation` to "9.6.0 is still the version" scored 3/3 PASS)
+  and the spec's `payload` key was read by nothing. Both fixed; `content` is
+  exempt from the stale-value gate per E17.
+- **s1e is NOT registered** — max_version 41, active_version null, production
+  still v6 / `3817564d21c4`.
+
 **v-next.7 candidate open (2026-09-01), UNPROMOTED.**
 `eval/candidate_prompts/s1e_vnext7_wip.md`, 113,365 chars (+2,913 over the default) — field-coverage
 redistribution across the existing revise examples, the narrow-to-residue
@@ -1012,8 +1031,8 @@ on two ops and an id-keyed dict collides; both patches diff byte-identical.)
 | reasoning | 1 | 1 | |
 | event_time | 1 | 1 | |
 | type | 1 | 1 | |
-| thought | **0** | 1 | 0/120 emitted in production; revise is its natural home (the field that is *supposed* to change) |
-| confidence | **0** | 1 | E2/E3 gap 6 — "every node asserts flatly" |
+| thought | **0** | **5** | 0/120 emitted in production. Four SHAPES, deliberately (Tom, 2026-09-01): a question left open, an idea it suggests, a warning for next time, a read/curiosity worth following. One example would have defined the whole register with no catalog ratchet to correct it (E9) |
+| confidence | **0** | **0** | **DELIBERATE ZERO** (Tom, 2026-09-01): *"i dont know what to do with confidence and whether it should even be a number and not text (not now)."* A modelled value transfers as a default (A4), so seeding one ahead of that ruling would decide the question by example. E2/E3 gap 6 stays open and is now recorded rather than half-answered |
 | evolution_status | **0** | 2 | two values shown (`resolved`, `dismissed`) so the vocabulary transfers, not just the key |
 | `partially_resolves` | **0 (prose only)** | 1 | **A1 violation in v6** — the prose taught three closure branches and demonstrated one. Governs the census's 8 partially-answered-never-narrowed nodes (`644dc1e0`) |
 | edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |

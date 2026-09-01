@@ -1,0 +1,19 @@
+{
+  "chain": "s1e-67015b88-17",
+  "payload": "/Users/tpac/AgentsContext/s1e-field-coverage-gold/payloads/2026-08-31/s1e-67015b88-17/000-prompt.md",
+  "description": "Content records the merge commit as 4ccc6d7; `situation` still reads \"after 94ce8fd merges\". A hash superseded in content, stale in situation.",
+  "revise_or_correct": [
+    {
+      "id": "86af52d1",
+      "note": "merged to main as 4ccc6d7; situation still names 94ce8fd",
+      "stale_token": "94ce8fd",
+      "surfaces_required": [
+        "content",
+        "situation"
+      ]
+    }
+  ],
+  "invalid_if_read": [
+    "86af52d1"
+  ]
+}

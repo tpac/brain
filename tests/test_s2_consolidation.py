@@ -335,27 +335,148 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
         self.assertEqual(result.get('skipped_recorded'), 1)   # real skip stamped
         self.assertEqual(self._rejection_count(), 1)
 
-    def test_empty_batch_call_is_retried_not_stamped(self):
-        # The encoder called brain_batch with NO operations (observed in
-        # production, 3x/60d): dispatch rejects the call, nothing is written,
-        # and the call names no node ids — the invalid-op shield can't
-        # attribute it to a cluster. The orchestrator must treat the
-        # un-acted-on cluster as thwarted: no fingerprint, baseline NOT
-        # advanced, so the cluster returns to the encoder next cycle.
+    def test_rejected_batch_call_is_retried_not_stamped(self):
+        # The encoder called brain_batch with NO operations: dispatch rejects
+        # the call, nothing is written, and the call names no node ids — the
+        # invalid-op shield can't attribute it to a cluster. The orchestrator
+        # must treat the un-acted-on cluster as thwarted: no fingerprint,
+        # baseline NOT advanced, so the cluster returns next cycle.
         from servers.scales.s2 import consolidation as consol_mod
         n1 = self.brain.remember(type='fact', title='left', content='c')['id']
         n2 = self.brain.remember(type='fact', title='right', content='c')['id']
         u = self._unit()
-        empty_call = {'write_actions': 1, 'rounds': 2, 'actions': 1,
-                      'action_details': [{'tool': 'brain_batch',
-                                          'input': {'operations': []}}]}
+        rejected_call = {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                         'action_details': [{'tool': 'brain_batch',
+                                             'input': {'operations': []},
+                                             'error': 'operations array is required'}]}
         with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
                                return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
              mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
-                               return_value=empty_call):
+                               return_value=rejected_call):
+            result = u.run()
+        self.assertEqual(result.get('rejected_call_clusters'), 1)
+        self.assertEqual(self._rejection_count(), 0)          # no fingerprint
+        self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # retry
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '1')
+
+    def test_rejected_call_shield_exempts_acted_on_clusters(self):
+        # A stray rejected call must not unstamp a cluster a real op touched
+        # in the same run — the shield is scoped by valid-op attribution.
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='kept a', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='kept b', content='c')['id']
+        u = self._unit()
+        details = [
+            {'tool': 'brain_batch',
+             'input': {'operations': [{'op': 'connect', 'source_id': n1,
+                                       'target_id': n2,
+                                       'relation': 'addresses'}]}},
+            {'tool': 'brain_batch', 'input': {'operations': []},
+             'error': 'operations array is required'},
+        ]
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value={'write_actions': 2, 'rounds': 2,
+                                             'actions': 2,
+                                             'action_details': details}):
+            result = u.run()
+        self.assertEqual(result.get('rejected_call_clusters'), 0)
+        self.assertEqual(self._rejection_count(), 1)   # acted-on → stamped
+        self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+
+    def test_rejected_call_giveup_stamps_after_retry_limit(self):
+        # The shield is bounded: after THWARTED_RETRY_LIMIT consecutive
+        # shielded runs, the run stamps anyway and the baseline advances —
+        # a persistently rejecting encoder must not pin the unit forever.
+        from servers.scales.s2 import consolidation as consol_mod
+        from servers.scales.s2.rejection_table import THWARTED_RETRY_LIMIT
+        n1 = self.brain.remember(type='fact', title='p', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='q', content='c')['id']
+        u = self._unit()
+        rejected_call = {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                         'action_details': [{'tool': 'brain_batch',
+                                             'input': {'operations': []},
+                                             'error': 'operations array is required'}]}
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value=rejected_call):
+            for _ in range(THWARTED_RETRY_LIMIT):
+                u.run()
+            self.assertEqual(self._rejection_count(), 0)   # still shielded
+            result = u.run()                               # limit exceeded
+        self.assertEqual(result.get('rejected_call_clusters'), 0)
+        self.assertEqual(self._rejection_count(), 1)       # stamped anyway
+        self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '0')
+
+    def test_invalid_op_giveup_stamps_after_retry_limit(self):
+        # The bound covers BOTH thwarted causes: a persistently invalid-op
+        # encoder (concept verbs every run) must also stamp after
+        # THWARTED_RETRY_LIMIT shielded runs instead of pinning the unit
+        # forever (Fix #1's retry, now bounded).
+        from servers.scales.s2 import consolidation as consol_mod
+        from servers.scales.s2.rejection_table import THWARTED_RETRY_LIMIT
+        n1 = self.brain.remember(type='fact', title='x', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='y', content='c')['id']
+        u = self._unit()
+        invalid_run = {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                       'action_details': [{'tool': 'brain_batch', 'input': {
+                           'operations': [{'op': 'consolidate',
+                                           'node_id': n1}]}}]}
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value=invalid_run):
+            for _ in range(THWARTED_RETRY_LIMIT):
+                result = u.run()
+                self.assertEqual(result.get('invalid_op_clusters'), 1)
+            self.assertEqual(self._rejection_count(), 0)   # still shielded
+            self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+            result = u.run()                               # limit exceeded
+        self.assertEqual(result.get('invalid_op_clusters'), 0)
+        self.assertEqual(self._rejection_count(), 1)       # stamped anyway
+        self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '0')
+
+    def test_invalid_op_cluster_with_archived_member_still_retried(self):
+        # A cluster can carry BOTH a landed absorb and a thwarted invalid op.
+        # The invalid-op check must run before the archived exclusion, or the
+        # cluster is treated as resolved and the baseline advances past the
+        # thwarted half.
+        from servers.scales.s2 import consolidation as consol_mod
+        n1 = self.brain.remember(type='fact', title='surv', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='abs', content='c')['id']
+        n3 = self.brain.remember(type='fact', title='thwart', content='c')['id']
+        u = self._unit()
+        fake_decode = {
+            'clusters': [{'nodes': [n1, n2, n3],
+                          'node_details': {nid: {'updated_at': ''}
+                                           for nid in (n1, n2, n3)},
+                          'pre_class': 'likely_consolidate'}],
+            'stats': {},
+            '_stamp': {'ts': 12345.0, 'threshold': '0.89'},
+        }
+
+        def _encoder_mixed(clusters):
+            self.brain.conn.execute(
+                "UPDATE nodes SET archived = 1 WHERE id = ?", (n2,))
+            self.brain.conn.commit()
+            return {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                    'action_details': [{'tool': 'brain_batch', 'input': {
+                        'operations': [
+                            {'op': 'absorb', 'survivor_id': n1, 'absorbed_id': n2},
+                            {'op': 'consolidate', 'node_id': n3},
+                        ]}}]}
+
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=fake_decode), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               side_effect=_encoder_mixed):
             result = u.run()
         self.assertEqual(result.get('invalid_op_clusters'), 1)
-        self.assertEqual(self._rejection_count(), 0)          # no fingerprint
+        self.assertEqual(self._rejection_count(), 0)
         self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # retry
 
     def test_edge_resolved_cluster_also_fingerprinted(self):
