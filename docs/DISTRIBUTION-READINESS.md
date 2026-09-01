@@ -805,6 +805,25 @@ should be public, it should be up to the standard of public repos"* (id:b99bfa36
 Two long poles now: **5.0c class 2** (the prompt/rubric rewrite, the only
 eval-gated item) and this.
 
+**ARM THE RATCHET WHEN CLASS C IS CLEAN (Tom, 2026-09-01).** Both halves of
+the "no new names" gate already exist; one is disarmed and one is
+deliberately sandbox-only. Extend them — do not add a third mechanism.
+- **`Anchor`:** `test_deploy_contract.py::test_agent_name_only_in_config`
+  already scans the whole tracked tree, comments included. It is
+  `xfail(strict=True)`; 5.0c's completion is what un-xfails it. Already
+  scheduled — nothing to write.
+- **`Tom` / personal data:** gate B lives in `export-public-tree.sh`, and
+  `TestPublicTreeExport` pins it **in sandboxes only** — on purpose, because
+  the real tree is still red and a live-tree assertion would fail today. Once
+  class C is clean, add that live-tree assertion to `TestPublicTreeExport`
+  (the gate's own test class — it already owns this concern). That is what
+  makes cleanliness a ratchet instead of a one-time sweep.
+- **Why it matters, measured:** gate B went **67 → 69** on 2026-08-31 within
+  hours, from another stream's thalamus work adding two comments. The gated
+  classes shrink; the ungated comment class grows with every merge. Without a
+  live-tree assertion the audit is a snapshot that starts rotting the moment
+  it lands.
+
 **Class B — the open ruling (Tom's call, blocks the sweep).** 47 of the 163 test
 hits are gold data: `golden_dataset_v2.json` (32), `golden_canary.json` (10),
 `corpus/precision_corpus.json` (5 — one carries a real birthday). Sanitizing
