@@ -1693,7 +1693,7 @@ LOG_TABLES = {
         )""",
     },
 
-    # Thalamus — the brain speaking to its streams (servers/scales/thalamus/).
+    # Thalamus — the brain speaking to its streams (servers/channels/thalamus/).
     # One item is a STANDING INTENT that can deliver to N sessions over its
     # window; the courier above stays one-shot. `deliver_at` NULL = next
     # opportunity; `dedup_key` is producer-owned or '' (never derived from

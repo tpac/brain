@@ -1,6 +1,6 @@
 """Dispatch handlers for the self channel — presence (pull) + signal (reach).
 
-Thin command surface over servers/scales/self_channel/{presence,signal}.py.
+Thin command surface over servers/channels/self_channel/{presence,signal}.py.
 - presence (self_presence / self_peek): read-only look at other streams.
 - signal   (self_send / self_inbox):    directed message + consume-once drain.
 Signal's brain_logs.db writes go through brain.write_lock inside signal.py;
