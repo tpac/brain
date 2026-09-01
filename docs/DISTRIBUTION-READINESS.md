@@ -1,6 +1,42 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-08-31) — no design gates left; **next: free deletions → combined literal sweep → 5.5 skips → full comment audit → 5.2 → 5.7**
+## §ACTIVE ARC (2026-08-31, session close) — **next: 5.0c phase 4, armed as chip `task_51e78e3a`**
+
+**Main at `0bae543`. Handoff node: `id:bc154094` — read it before acting.**
+
+Shipped today: the D-1…D-13 **conformance sweep** (first ever — 8 conformant,
+2 real defects, 1 false enforcement claim), the **mechanical block**
+(`6fb57ed`, gate B 227 → 67, export suite 2983 pass / 0 fail),
+`resolve_db_dir(trust_env=False)` (`a459b43`), and **5.0c's mechanical half**
+(`0bae543`) — the agent name defaults to **Jade**, with chosen-ness tracked
+separately so a default disarms nothing.
+
+**Every count in this doc moves with every merge — re-measure, don't trust.**
+Gate B was 67 when the mechanical block landed and is **69** hours later,
+because another stream's thalamus work added two comments. That is the whole
+character of the remaining worklist: the gated part is small and shrinking,
+the ungated comment part grows on its own.
+
+**Remaining, in dependency order** — the chip runs the first and launches the rest:
+1. **5.0c phase 4** — four prompt-visible sites (`encoding_prompt`'s "I am
+   Anchor", `surface_contract`'s conversation label, `encode.py`'s render,
+   `aspects_v1.json`'s family meaning) + two MCP tool-schema descriptions.
+   Eval-gated: override → frozen-corpus A/B → promote. Plus the **D-1
+   packaging fix** (`LICENSES/` is not in the package manifest, so the
+   installed `LICENSE`'s references dangle; `marketplace.json` has no
+   `license` field).
+2. **5.3 comment audit** — 614 lines / 111 files. Conflicts with (1) on the s1 files.
+3. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
+   wrongly claimed already existed, plus un-xfailing gate assertion 4.
+4. **5.7 release command → publish** — the one-way door. Must include an
+   **install smoke test**: the suite runs *inside* the export tree, so it
+   cannot catch a file that ships, is never imported by tests, and is needed
+   at first run on a stranger's machine.
+
+**Three rulings waiting on Tom** (details in `id:bc154094`): the
+`agent_is_default=False` default; whether the boot banner is product or
+entity; the `_has_brain` predicate. **The fleet is deferred to last** and is
+explicitly not a gate on 5.2.
 
 **Sequence ruled 2026-08-31, superseding both prior orders** (the doc's
 `5.0c → 5.3 → 5.2 → 5.5 → 5.7` and id:44025fbb's `5.0c → 5.3 → 5.5 → 5.2 → 5.7`).
