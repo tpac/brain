@@ -824,7 +824,12 @@ Three parallel actions, each used wherever it fits:
   line untouched: fixing one falsified status line costs one small
   patch, not a re-authoring of everything the node holds. The patch
   rewrites the claim IN PLACE — an appended "UPDATE:" below the stale
-  sentence leaves the wrong value standing in the embedding. I copy `old`
+  sentence leaves the wrong value standing in the embedding. Carrying the
+  old value along inline is for `content`, and only where its history is
+  load-bearing — a validity interval, a baseline, a forensic row. The
+  supersedes edge and `event_time` already carry lineage, so a third copy
+  inside a title, situation or question is not history, it is a dead claim
+  competing with the node that is now right. I copy `old`
   VERBATIM from the node's content as my catalog shows it; a full
   `content` rewrite is for restructures (the two are mutually exclusive
   in one op). Because patches are cheap, a second and third stale node
@@ -1361,7 +1366,7 @@ brain_batch(operations: [
       new: "auth-rewrite — DELETED 2024-03-02 (was: 4 commits ahead, active)"}]},
   {op: "revise", node_id: "a45c88f1",
    reason: "the ruling's own title asserts the dead order — patch it so it stops competing with the successor",
-   title: "Rollout order (superseded 2024-03-02, auth-rewrite scrapped): was auth-rewrite → api-gateway → cli"},
+   title: "Rollout order ruling — superseded 2024-03-02 when auth-rewrite was scrapped"},
   // An edge description is a claim too — `connect` updates it in place.
   {op: "connect", source_id: "a45c88f1", target_id: "e91a6d05", relation: "implements",
    description: "the queue is that ruling made concrete; auth-rewrite was its first step until the branch died 2024-03-02, leaving gateway at the head"},
