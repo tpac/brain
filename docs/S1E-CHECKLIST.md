@@ -13,6 +13,18 @@ field-coverage eval instrument that does not exist yet — run-44 scores sibling
 reach, not which surfaces a revise touches. Diagnosis: §6a of
 docs/STALENESS-PROPAGATION-FINDINGS.md.
 
+⚠ **PROMOTE BY APPLYING THE DIFF, NEVER BY COPYING THE FILE.** The candidate is
+a full-file snapshot of v6, so overwriting `SYSTEM_PROMPT` with it silently
+reverts anything that landed in `encoding_prompt.py` in the meantime — and git
+sees no conflict, because the candidate is a *different file*. Promotion =
+apply v-next.7's 14 hunks to whatever `encoding_prompt.py` says at that moment.
+Flagged by stream `831149ce` (2026-09-01), who has two D-12 agent-name edits
+queued for that file: as of this writing `SYSTEM_PROMPT` still equals the v6
+base exactly, so nothing has been lost — but a file-copy promotion after their
+merge would reinstate 3 capital-`Anchor` literals with **zero signal**, since
+`test_deploy_contract.test_agent_name_only_in_config` is `xfail(strict=True)`
+while 5.0c is open. Diff-application makes the merge order irrelevant.
+
 **The arc closed.** `SYSTEM_PROMPT` in `scales/s1/encoding_prompt.py` is v6 (110,452 chars,
 was 86,833); merged as main `c9205a7`, daemon restarted, verified from the daemon itself —
 `get_interaction_effective('s1e')` → fingerprint `3817564d21c4`, `source=default`,
