@@ -22,6 +22,54 @@ import tempfile
 import pytest
 
 
+# Environment isolation. os.environ is process-global and pytest runs the whole
+# suite in one process, so a test that sets a variable and doesn't put it back
+# hands that value to every test after it. The bite that motivated this: four
+# classes set $BRAIN_DB_DIR in setUpClass and rmtree'd the directory in
+# tearDownClass, so the rest of the suite inherited a pointer to a directory
+# that no longer existed — and resolve_db_dir() trusts that variable
+# unconditionally (D-13's top rung, on the premise that the hook wrappers
+# validated it).
+#
+# Two fixtures because test setup nests two deep, and they nest the same way:
+# the class-scoped one wraps unittest's setUpClass/tearDownClass, the
+# function-scoped one wraps each test. So a variable set in setUpClass survives
+# that class's tests and dies with the class; one set inside a test dies with
+# the test. Broader-scoped fixtures are unaffected — pytest orders a test's
+# fixture closure by scope, so a module-scoped IsolatedBrain is entered before
+# either guard snapshots and its env is inside the snapshot, not stripped by it.
+#
+# This is the chokepoint, not a fifth convention: callers keep using whatever
+# they already use — monkeypatch, patch.dict, explicit save/restore — and none
+# of them can leak past its own scope even when the restore is missing or a
+# tearDown raises before reaching it.
+#
+# pytest owns PYTEST_CURRENT_TEST and rewrites it per test; leave it alone.
+_ENV_NOT_OURS = frozenset({'PYTEST_CURRENT_TEST'})
+
+
+def _restore_env(saved):
+    for key in [k for k in os.environ if k not in saved and k not in _ENV_NOT_OURS]:
+        del os.environ[key]
+    for key, value in saved.items():
+        if key not in _ENV_NOT_OURS and os.environ.get(key) != value:
+            os.environ[key] = value
+
+
+@pytest.fixture(autouse=True, scope='class')
+def _env_isolation_class():
+    saved = dict(os.environ)
+    yield
+    _restore_env(saved)
+
+
+@pytest.fixture(autouse=True)
+def _env_isolation_function():
+    saved = dict(os.environ)
+    yield
+    _restore_env(saved)
+
+
 # Live-brain aspects file guard. aspects_json_path() resolves from env at
 # CALL time and falls back to the OPERATOR'S LIVE $BRAIN_DB_DIR/
 # aspects_v1.json — and AspectRegistry (constructed by every Brain.__init__)
@@ -31,19 +79,15 @@ import pytest
 # (observed 2026-07-28: a worktree suite run stamped unmerged schema fields
 # into the live file via test_prompt_sync / test_daemon).
 #
-# Function-scoped + self-healing on purpose: it fills the var only when
-# ABSENT, so deliberate overrides (BrainTestBase, IsolatedBrain,
-# run_aspect_cycles_on_clone) always win, and a test that pops the var
-# doesn't strip protection from the tests after it.
-_ASPECTS_GUARD_PATH = os.path.join(
-    tempfile.mkdtemp(prefix='pytest_aspects_guard_'), 'aspects_v1.json')
-
-
-@pytest.fixture(autouse=True)
-def _aspects_live_file_guard():
-    if not os.environ.get('ASPECTS_JSON_PATH'):
-        os.environ['ASPECTS_JSON_PATH'] = _ASPECTS_GUARD_PATH
-    yield
+# Pinned at import — before collection — rather than from a fixture, because
+# setUpClass runs inside the class fixture and a function-scoped guard is too
+# late to cover the raw Brain(db_path=tmp) that a setUpClass builds. Fills only
+# when ABSENT, so deliberate overrides (BrainTestBase, IsolatedBrain,
+# run_aspect_cycles_on_clone) still win; _env_isolation restores this baseline
+# after each of them, which is what makes the pin self-healing.
+if not os.environ.get('ASPECTS_JSON_PATH'):
+    os.environ['ASPECTS_JSON_PATH'] = os.path.join(
+        tempfile.mkdtemp(prefix='pytest_aspects_guard_'), 'aspects_v1.json')
 
 
 # Hermetic key: brain.llm_available gates surface/encode/S2/warms on a
