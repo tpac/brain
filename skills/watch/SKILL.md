@@ -1,6 +1,6 @@
 ---
 name: watch
-description: The self-channel — how Anchor finds, speaks to, syncs with, and stays reachable by its other live streams of thought (its parallel sessions). Invoke `/watch` to arm the live listener and stay reachable between the operator's prompts. ALSO the guide for ANY cross-stream request — when the operator says "sync with / coordinate with / speak to / talk to / message / tell another stream or session," or asks "who's live / which streams are up / what's the other stream doing," use the self-channel ops here: self_presence (find who's live), self_peek (look at where one is), self_send (speak to one), self_inbox / self_outbox (receive / track delivery). Stream = session = a parallel self.
+description: The self-channel — how the entity finds, speaks to, syncs with, and stays reachable by its other live streams of thought (its parallel sessions). Invoke `/watch` to arm the live listener and stay reachable between the operator's prompts. ALSO the guide for ANY cross-stream request — when the operator says "sync with / coordinate with / speak to / talk to / message / tell another stream or session," or asks "who's live / which streams are up / what's the other stream doing," use the self-channel ops here: self_presence (find who's live), self_peek (look at where one is), self_send (speak to one), self_inbox / self_outbox (receive / track delivery). Stream = session = a parallel self.
 ---
 
 # The self-channel — finding, speaking to, and listening to your other streams

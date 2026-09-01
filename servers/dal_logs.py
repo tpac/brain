@@ -672,13 +672,18 @@ class TraceDAL(_LogsWriteBase):
         # set_identity() from daemon_config env vars.
         self._human_identity: str = ''
         self._agent_identity: str = ''
+        # Whether the agent name was CHOSEN. The agent name always has a
+        # value now (it falls back to a shipped default), so its presence no
+        # longer tells us anything — this does.
+        self._agent_identity_is_default: bool = False
         # One-shot guard for the "identity unset on write" warning.
         # The gap doesn't change per-write, only per-restart — logging
         # every write would flood; logging once per TraceDAL lifetime
         # surfaces the gap without noise.
         self._identity_missing_logged: bool = False
 
-    def set_identity(self, human_identity: str, agent_identity: str) -> None:
+    def set_identity(self, human_identity: str, agent_identity: str,
+                     agent_is_default: bool = False) -> None:
         """Configure the identity tokens stamped onto every trace event.
 
         Source values come from BRAIN_OPERATOR_NAME / BRAIN_AGENT_NAME env
@@ -686,9 +691,17 @@ class TraceDAL(_LogsWriteBase):
         substrate — each trace_event records the speakers present when it
         was written. Per-event override is possible by passing
         human_identity / agent_identity directly in `metadata`.
+
+        `agent_is_default` says the agent name was issued rather than chosen.
+        It is stamped all the same — an entity running under its shipped name
+        genuinely IS that name, and a rename later leaves earlier events
+        honestly recording who was speaking then — but it keeps the
+        unconfigured-identity warning alive, which a non-empty default would
+        otherwise silence forever.
         """
         self._human_identity = (human_identity or '').strip()
         self._agent_identity = (agent_identity or '').strip()
+        self._agent_identity_is_default = bool(agent_is_default)
 
     def _maybe_warn_identity_unset(self, scale: str, ref_type: str) -> None:
         """Loud-by-default at the scale-write boundary: when a trace
@@ -706,7 +719,8 @@ class TraceDAL(_LogsWriteBase):
         StandardErrorPath). TraceDAL has no Brain reference, so we
         don't route through brain._log_error here.
         """
-        if self._human_identity and self._agent_identity:
+        unchosen_agent = not self._agent_identity or self._agent_identity_is_default
+        if self._human_identity and not unchosen_agent:
             return
         if self._identity_missing_logged:
             return
@@ -714,14 +728,25 @@ class TraceDAL(_LogsWriteBase):
         missing = []
         if not self._human_identity:
             missing.append('BRAIN_OPERATOR_NAME')
-        if not self._agent_identity:
+        if unchosen_agent:
             missing.append('BRAIN_AGENT_NAME')
-        print('[trace_dal] identity unset on first scale-%s write '
-              '(ref_type=%s) — %s missing in env. Trace events will '
-              'be written without identity metadata until '
+        # Mirror what the writer actually does (see _stamp below): it skips
+        # entirely only when BOTH names are empty, and otherwise stamps
+        # whichever it has. Saying "no identity metadata" for a partial stamp
+        # sends the operator hunting for a bug that isn't there.
+        if not self._agent_identity and not self._human_identity:
+            effect = 'Trace events will be written without identity metadata'
+        elif not self._human_identity:
+            effect = 'Trace events are stamped with the agent name only'
+        elif not self._agent_identity:
+            effect = 'Trace events are stamped with the operator name only'
+        else:
+            effect = 'Trace events are stamped with the default agent name'
+        print('[trace_dal] identity unconfigured on first scale-%s write '
+              '(ref_type=%s) — %s not set in env. %s until '
               '~/.config/brain/env is configured and the daemon '
               'restarts.' %
-              (scale, ref_type or '?', ', '.join(missing)),
+              (scale, ref_type or '?', ', '.join(missing), effect),
               file=_sys.stderr, flush=True)
         self._identity_missing_logged = True
 
