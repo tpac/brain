@@ -149,7 +149,7 @@ def run_muster(
             the standard 'disabled' stub via the SCOUT_NAMES padding, so every
             downstream consumer stays shape-safe. The lived arm passes
             ('quote',) — episodes recall preserves verbatim substrate, so the
-            dedicated quote scout is retired there (Tom, 2026-07-02); the
+            dedicated quote scout is disabled there; the
             control arm runs the full set (production-faithful baseline).
 
     Returns:

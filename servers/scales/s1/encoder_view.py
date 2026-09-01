@@ -14,8 +14,8 @@ the encoder's prompt view. Every filter marks itself in place (a stubbed
 absence can never be misread as "nothing happened" — which is why no prompt
 version registration rides this change: there are zero new how-to-read lines.
 
-Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 —
-Tom's gate). Set to 0 for the emergency off-switch and the A/B control arm
+Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 on an
+operator gate). Set to 0 for the emergency off-switch and the A/B control arm
 (eval/encoder_prompt_ab.py renders both arms per capture). Off is the
 pre-policy render minus the retired encoded-turn trim.
 
@@ -38,7 +38,7 @@ def view_policy_enabled():
     return os.environ.get('BRAIN_S1E_VIEW_POLICY', '1') in ('1', 'true', 'True')
 
 
-# ── Associated stubs (the encoder's subconscious — Tom's ruling 2026-08-21) ──
+# ── Associated stubs (the encoder's subconscious) ──
 
 def associated_stubs_enabled():
     """BRAIN_S1E_ASSOCIATED_STUBS: render the subconscious — nodes production
@@ -93,7 +93,7 @@ AGED_NODE_CONFIG = {
     'show_encoding_source': False,
 }
 
-# No tag on aged entries (Tom, 2026-08-18): with the body whole, everything an
+# No tag on aged entries: with the body whole, everything an
 # aged entry withholds announces itself in place — render_rich_node's
 # "Edges (N, not shown — get_nodes for them):" line — so a marker would add
 # nothing the encoder can't see.
@@ -164,7 +164,7 @@ def catalog_view(ids, stops, run_stops, protected=(), cutoff=None):
 
 # ── Actions (the <actions> block inside timeline turns) ──
 
-# Brain node-op tools whose lines leave <actions> (Tom's ruling, id:27db2472),
+# Brain node-op tools whose lines leave <actions>,
 # split by what the drop would lose:
 #   DROPPED — the turn's <provenance> already carries everything actionable
 #     (verb + ids + titles for writes; for get_node[s]/enrich the arguments ARE
@@ -268,7 +268,7 @@ def action_stub(summary):
 def actions_stub_line(n_actions):
     """The <actions> body for an already-encoded turn. The element renders with
     this stub rather than disappearing — absence would read as "nothing
-    happened this turn"; the stub states the filter (Tom's design). First
+    happened this turn"; the stub states the filter. First
     person — the prompt speaks as the encoder, and the reader of this line IS
     the one who read them last run."""
     return ('trimmed — %d action(s) recorded on this turn; I already read '
@@ -279,7 +279,7 @@ def actions_stub_line(n_actions):
 
 # Node-op categories rendered per turn when the policy is on, replacing the
 # merged `encoded(Anchor)` (= created∪revised) with the verbs, plus the
-# categories the merged form dropped (Tom's ruling, id:27db2472). Labels use
+# categories the merged form dropped. Labels use
 # the timeline's identity vocabulary — (me), matching <me>/<other>. Each entry
 # is (label, link-keys): recalled(me) merges the by-id reads (`recalled`,
 # catalog-folded) with the search-tool results (`looked_up`, provenance-only)

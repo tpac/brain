@@ -3,7 +3,7 @@
 The "Zero quotes preserved this week" insight must key on the canonical quote
 storage (their_raw_quote / my_raw_quote in node_metadata_kv, plus
 quote-typed nodes). Operator/agent names are per-install, so content LIKE
-'%Tom said%'-style heuristics are dead — pinned here.
+'%<name> said%'-style heuristics cannot be used — pinned here.
 """
 import sqlite3
 
@@ -64,8 +64,8 @@ def test_quote_typed_node_suppresses(tmp_path, monkeypatch):
 
 
 def test_operator_name_in_content_does_not_count(tmp_path, monkeypatch):
-    # The old heuristic matched content LIKE '%Tom said%' — install-specific
-    # and wrong on any brain whose operator isn't named Tom. Name mentions in
+    # A content LIKE '%<name> said%' heuristic is install-specific and wrong
+    # on any brain whose operator has a different name. Name mentions in
     # content are NOT quote capture; only the structured fields count.
     nodes = _plain_nodes(6)
     nodes[0] = ("n0", "node 0", "fact", "Ada said this. Claude: replied. " + "x" * 200)

@@ -234,7 +234,7 @@ class BrainVoice:
         lines.append("[/BRAIN]")
         return "\n".join(lines)
 
-    # ── Operator channel (Brain → Tom) ──
+    # ── Operator channel (Brain → operator) ──
 
     @staticmethod
     def format_for_operator(items: List[str]) -> Optional[str]:

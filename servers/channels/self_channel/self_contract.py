@@ -103,7 +103,7 @@ def is_session_id(s):
 # ═══════════════════════════════════════════════════════════════
 # TRUNCATION CONTRACT  —  one truncation point, always loud
 # ═══════════════════════════════════════════════════════════════
-# Tom's standing rule (node 8178593a): every truncation point must have an
+# Standing rule: every truncation point must have an
 # EXPLICIT, documented contract — never a bare magic number doing a silent
 # slice. This section IS that contract for the self-channel.
 #

@@ -380,7 +380,7 @@ class TestWriteDoorGate(unittest.TestCase):
                       data['correction_improvement']['edge_relations'])
 
     def test_add_members_accepts_noise_overlap_and_noise_then_vetoes(self):
-        """Noise vetoes rather than being exclusive (Tom, 2026-08-23), so the
+        """Noise vetoes rather than being exclusive, so the
         door no longer refuses a semantic verb being filed as machinery. The
         veto is what makes this safe: the string keeps its semantic membership
         but resolves to noise and lands in the exclusion sets."""

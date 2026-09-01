@@ -10,8 +10,7 @@
 //   journalRows(notes)     — the note rows, for inline use inside a run card
 //   journalChip(notes, …)  — the 📓 header button: count + open-item warning
 //   openJournalPeek(…)     — the popover: read the residue WITHOUT expanding
-//                            the run (Tom: "look at journals without opening
-//                            the encode")
+//                            the run
 //
 // The peek exists because the two are different questions. Expanding a run
 // asks "what did this run DO"; the journal asks "what did it THINK". You

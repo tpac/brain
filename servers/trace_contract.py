@@ -711,7 +711,7 @@ JOURNAL_ESCALATION_TYPE = 'journals-escalation'
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
 # alone, so a host-prompt edit can't silently shift the journal, and the block
-# is testable in isolation. EAGER by intent (2026-06-23, Tom): no value-filter
+# is testable in isolation. EAGER by intent: no value-filter
 # gate — capture residue freely; dedupe/mine later. The earlier "two tests"
 # (reconstruction/successor) were removed as over-correction against the OLD
 # journal's restatement disease, not an evidenced need. Iterate from LIVE
@@ -1085,7 +1085,7 @@ def salvage_review_fence(text):
 # prompt. Bounds the READ, never storage — notes are append-only and retained
 # (§2.7); a 9th run simply doesn't read the 1st's note, which still exists for
 # the operator + future miner. A contract constant, NOT interaction-tunable
-# (Tom's call): continuity depth is a structural property of each encoder's
+# by design: continuity depth is a structural property of each encoder's
 # cadence, not a knob S2 should self-tune. Keys are the encoder identity used by
 # notes() (S1 chain prefix `s1e`; S2 unit NAME). Unlisted encoders use DEFAULT.
 JOURNAL_CONTINUITY_RUNS = {
@@ -1475,9 +1475,9 @@ def build_node_deleted_metadata(*, node_id, type='', title='', deleted_by='',
                                 encoding_source='', reason='', tables_hit=None):
     """Build trace metadata for a HARD delete (delete_node_cascade).
 
-    Ruled by Tom 2026-08-04: hard deletes ARE recorded. The node itself is
-    erased — that decision stands (node:ca66f5bd) — but the operation is
-    observable, one row per node, carrying enough to say what went.
+    Hard deletes ARE recorded. The node itself is erased — that decision
+    stands — but the operation is observable, one row per node, carrying
+    enough to say what went.
 
     `title` matters more here than anywhere else: the only production hard-delete
     path is the junk-vocabulary purge, which targets single-word vocabulary nodes

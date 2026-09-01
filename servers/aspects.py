@@ -527,7 +527,7 @@ class AspectRegistry:
         # Load-time derived policies — computed once per adopt, never per
         # read (the writer owns the cache, so these can never go stale).
         #
-        # Two policies, one deliberate difference (Tom, 2026-07-28):
+        # Two policies, one deliberate difference:
         # · structural_exclusions — the FULL noise set. For flat READS
         #   (connection lists on node pulls): noise carries no semantic
         #   claim, and per the standing decision (id:49d734ad) that hides
@@ -566,7 +566,7 @@ class AspectRegistry:
         # weak enriched-text cosine. Replaces surface_contract's deleted
         # LINEAGE_FAMILIES literal, whose hardcoded names drifted dead once
         # already (five stale aspect names, silent until 2026-06-08).
-        # Noise wins here too (Tom, 2026-08-23). The union is "rides along if
+        # Noise wins here too. The union is "rides along if
         # ANY lineage aspect declares it", which is a veto pointing the other
         # way: without the subtraction a string in noise + a lineage aspect
         # would sit in traversal_exclusions AND in the ride-along set —

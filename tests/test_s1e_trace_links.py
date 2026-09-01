@@ -572,7 +572,7 @@ _FOUR_MSGS = [{'role': 'user'} for _ in range(4)]  # window = 4 user turns
 
 def test_turns_carry_encoded_attr_and_frontier_ids():
     # Coverage lives on the turn (encoded="true|false"); provenance carries only
-    # REAL refs — the ✓ marker is gone (Tom's 3.3). The frontier turn still shows
+    # REAL refs — no ✓ marker. The frontier turn still shows
     # the owning run's full id-list, once.
     brain = _ProvBrain(_EPS, _SURF, _ENC)
     out = _render_lived_sequence_timeline(brain, 'sess', _FOUR_MSGS)
@@ -707,7 +707,7 @@ def test_provenance_renders_merged_encoded_label_when_authored_and_omits_when_em
     assert out.count('encoded(me):') == 1                            # exactly the one turn
 
 
-# ── scout inlining: findings live on the turns they cite (Tom #5) ──
+# ── scout inlining: findings live on the turns they cite ──
 
 def _scout_env(name, cands, category='what this scout surfaces'):
     return {'scout': name, 'category_statement': category,
@@ -746,7 +746,7 @@ def test_scout_note_line_carries_decision_fields():
     assert bare == 'facts: X = Y'
     # Haiku emits id fields loosely — a dict, a title string, 'null'. Only
     # hex-id-shaped values render; garbage is DROPPED, never leaked as repr
-    # (found live: `catalog: id:{'node_i` — Tom, dry-run 3).
+    # (found live: `catalog: id:{'node_i`).
     g = _scout_note_line('facts', {'handle': 'X = Y',
                                    'catalog_match': {'node_id': 'dd44ee55', 'title': 'T'}})
     assert 'catalog: id:dd44ee55' in g                  # dict → id extracted

@@ -218,7 +218,7 @@ class TestSpreadingActivationCoverageMoved(BrainTestBase):
 class TestEmbedderDownNoFallback(BrainTestBase):
     """Recall's no-embedding exits: empty results, consistent shape, loud report.
 
-    Guards the no-fallback contract (Tom: 'I don't want a fallback') — a future
+    Guards the no-fallback contract — a future
     edit that re-introduces a silent keyword substitute, drops the _log_error
     report, or diverges the empty-result shape fails here."""
 

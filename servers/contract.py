@@ -1070,7 +1070,7 @@ def render_rich_node(node, config=None):
     # Edges — direction as natural language for contextless LLM understanding.
     # Title gets 100 chars (was 60) — the "why" description is the load-bearing
     # signal, and a 60-char title truncation often dropped the meaningful tail
-    # ("Always used together: 'Tom correction: don't mak..." vs full).
+    # ("Always used together: 'operator correction: don't..." vs full).
     edge_limit = cfg.get('edge_limit', 5)
     all_conns = node.get('connections', [])
     connections = all_conns[:edge_limit]

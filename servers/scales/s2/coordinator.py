@@ -48,7 +48,7 @@ def run_s2(brain):
     # tests/test_aspect_decoder.py. Downstream gating concern (#2 in the
     # backlog) was already moot — none of the other decoders read
     # aspect_scan traces; they gate on their own internal state.
-    # Consolidation runs LAST (2026-07-28, Tom): every earlier unit's writes
+    # Consolidation runs LAST: every earlier unit's writes
     # (healer field-fills, community placements, aspect classifications) land
     # BEFORE consolidation reads the graph and stamps its cluster
     # fingerprints — so nothing later in the same cycle bumps a member's

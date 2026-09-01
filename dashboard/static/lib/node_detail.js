@@ -38,7 +38,7 @@ const NODE_FIELDS_HIDDEN_IN_LIST = new Set([
 ]);
 
 // Pretty labels for known keys. Anything not listed renders with the raw
-// snake_case key — never silently drops, because Tom asked for ALL fields.
+// snake_case key — never silently drops. Every field renders.
 const FIELD_LABELS = {
   emotion:            'emotion',
   personal:           'personal',

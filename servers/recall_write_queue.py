@@ -18,7 +18,7 @@ One signal rides on this queue:
     drain window collapse to a single +1. Cross-session accesses to the
     same node still produce one increment per session.
 
-Design constraints (operator: Tom):
+Design constraints:
   - No silent errors. Every except logs via brain._log_error.
   - No read-modify-write where SQL can do +1 atomically.
   - Hot path is pure enqueue — no DB I/O.

@@ -17,9 +17,8 @@ import time
 # Recall result cache (2026-05-08) — short-TTL dedup on top of the
 # single-flight gate. 10s window covers multi-hook bursts (pre_edit +
 # pre_bash_safety + hook_recall fire on every tool call) without
-# letting suggestions go stale on natural pauses. Tom: "let's increase
-# pre_edit and bash cache to 10 seconds" — both go through this single
-# recall layer now, so one TTL knob covers both.
+# letting suggestions go stale on natural pauses. Both paths go through
+# this single recall layer, so one TTL knob covers both.
 _RECALL_CACHE_TTL_S = 10.0
 _RECALL_CACHE_MAX_ENTRIES = 100
 
@@ -1322,7 +1321,7 @@ class BrainRecallMixin:
         (pre_edit, pre_bash_safety, hook_recall, MCP) now benefits.
         """
         # Resolve session_id from ctx when caller passed an object; ctx wins
-        # over session_id if both supplied (Tom's convention: pass the object).
+        # over session_id if both supplied (the convention is to pass the object).
         if ctx is not None and not session_id:
             session_id = ctx.session_id
 

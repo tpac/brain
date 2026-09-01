@@ -480,9 +480,8 @@
 
 /* ── Recall card pin affordance + graph pin chip ────────────────────
  * Recall cards in #feed-decoding are clickable to pin their highlight
- * set onto the 3D graph. The previous design had a dedicated 🎯 button
- * tucked into the hook-header — Tom wanted the card itself to feel
- * selectable. Two visual cues:
+ * set onto the 3D graph. The card itself is the affordance rather than a
+ * dedicated button, so it reads as selectable. Two visual cues:
  *   1. Hover: translateX shift signals clickability (button-like).
  *   2. Pinned: a left-accent background + accented border-left so the
  *      active card is clearly "the one currently driving the graph."

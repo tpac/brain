@@ -1,4 +1,4 @@
-"""Loud truncation — Tom's standing truncation contract (node 8178593a).
+"""Loud truncation — the standing truncation contract.
 
 Every truncation point in the brain must be LOUD: never a silent slice, always a
 marker naming what was dropped. These are the shared primitives. Callers pass a

@@ -112,7 +112,7 @@ CONTEXT_BOOT_RECENT_LIMIT = 10
 # Zero-Memory boot block (the Nursery's spoken half, rendered by brain_voice).
 # Fires while the brain is young; retires only when BOTH thresholds are
 # exceeded — at least this old AND at least this many lived (non-seed)
-# memories (Tom, 2026-08-30).
+# memories.
 ZERO_MEMORY_MIN_DAYS = 10
 ZERO_MEMORY_MIN_LIVED = 100
 

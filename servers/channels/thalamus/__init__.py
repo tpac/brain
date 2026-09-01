@@ -8,10 +8,10 @@ correspondent rather than introducing a grain of its own. What it adds is
 storage and policy, not a cycle. Why that puts it under `channels/`, and what
 the split buys: the package docstring one level up.
 
-Not the `operator` lateral either — that one is the async Anchor↔Tom channel
-considered and deprioritized in docs/LATERAL-SCALES.md, and it is the one
-carrying the "prove it's not just async S0" burden. Here the recipient is
-ANCHOR; Tom sees an item only when Anchor surfaces it.
+Not the `operator` lateral either — that one is the async entity↔operator
+channel considered and deprioritized in docs/LATERAL-SCALES.md, and it is the
+one carrying the "prove it's not just async S0" burden. Here the recipient is
+the ENTITY; the operator sees an item only when the entity surfaces it.
 
 Sibling, not parent, to the self-channel: msgs are streams speaking to EACH
 OTHER (ephemeral, consume-once, TTL); the Thalamus is the brain speaking to its

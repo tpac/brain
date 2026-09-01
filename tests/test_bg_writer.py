@@ -138,7 +138,7 @@ class TestDrainProcessesAccess(BrainTestBase):
         after = self.brain.conn.execute(
             'SELECT access_count, last_accessed FROM nodes WHERE id = ?',
             (nid,)).fetchone()
-        # Dedup collapses 3 enqueues to 1 increment (Tom's design)
+        # Dedup collapses 3 enqueues to 1 increment (by design)
         self.assertEqual(after[0], before + 1)
         self.assertEqual(after[1], '2026-05-18T12:00:02')
 

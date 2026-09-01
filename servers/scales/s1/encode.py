@@ -125,9 +125,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
 
     # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
     # the s1e chain. Architectural default: ON. The lived arm runs WITHOUT the
-    # quote scout (episodes recall preserves verbatim substrate — Tom 2026-07-02)
-    # NOR the temporal scout (the encoder resolves and sets event_time itself;
-    # the scout was net-noise — Tom 2026-07-03), leaving facts as the only lived
+    # quote scout (episodes recall preserves verbatim substrate) NOR the
+    # temporal scout (the encoder resolves and sets event_time itself, so the
+    # scout is net noise), leaving facts as the only lived
     # scout, consumed as per-turn timeline annotations; the control arm runs the
     # full set and appends the classic `## Scout reports` block.
     if muster_enabled is None:
@@ -577,7 +577,7 @@ def _build_catalog(brain, messages, session_id, lived, view_policy=False,
     head = (window_first_turn(brain, session_id, messages, turns=turns)
             if view_policy else None)
 
-    # Associated stubs (the subconscious — Tom's ruling 2026-08-21): production
+    # Associated stubs (the subconscious): production
     # recall over the window's unencoded messages, catalog excluded, rendered
     # as the catalog's LAST entries tagged [associated]. Lived arm only (the
     # tag grammar lives on the widened catalog), flag-gated for the A/B.
@@ -649,17 +649,16 @@ def _conversation_now_safe(brain, session_id, messages):
 def _associated_stub_ids(brain, messages, session_id, exclude_ids,
                          streams=None, turns=None):
     """The subconscious: ids of the K nodes production recall ranks nearest
-    this window that the catalog does NOT already show (Tom's ruling
-    2026-08-21 — the encoder should receive not just the conscious catalog
-    but the associative penumbra recall ranked below the surface cut).
+    this window that the catalog does NOT already show: the encoder receives
+    not just the conscious catalog but the associative penumbra recall ranked
+    below the surface cut.
 
     Measured shape (eval/encode_moment_recall_probe.py, [thread:encoder-
     staleness]): one recall per UNENCODED window message, both voices — never
     a whole-window blob (needle absent from its top-200); turnmax aggregation
     (a node's score is its best single-message match — turnsum buried the
-    needle at rank 18-20). Production recall is deliberate (Tom's 'nerfed
-    recall' reframe, id:400594da): LAF, edge walks, correction chains and the
-    scope veil all apply — no parallel ranker.
+    needle at rank 18-20). Production recall is deliberate: LAF, edge walks,
+    correction chains and the scope veil all apply — no parallel ranker.
 
     Time: NO `as_of`, deliberately. Every candidate value breaks something
     (code-review verified, 2026-08-21): a live conversation_now is
@@ -796,8 +795,8 @@ def _id_ish(v):
 
 
 def _map_scout_notes(scout_outputs, messages):
-    """Join scout candidates to the timeline's turns (Tom #5 — findings live
-    where they happened, not in a trailing report).
+    """Join scout candidates to the timeline's turns: findings live where
+    they happened, not in a trailing report.
 
     The join: candidates cite muster turn ids (`messages[i]['id']`, mirroring
     build_muster_context's `m.get('id') or 'turn-{i}'`); each cited message maps
@@ -819,9 +818,9 @@ def _map_scout_notes(scout_outputs, messages):
 
     per_turn, unmapped, legend = {}, [], []
     # Generic mapper: inline whatever non-stub scout envelopes it's handed.
-    # WHICH scouts run is muster's call (exclude_scouts) — the temporal-scout
-    # retirement (Tom 2026-07-03) is enforced there, so temporal arrives here
-    # only as a disabled stub (skipped below), never as candidates.
+    # WHICH scouts run is muster's call (exclude_scouts) — temporal is
+    # disabled there, so it arrives here only as a disabled stub (skipped
+    # below), never as candidates.
     for name in ('temporal', 'facts'):
         env = (scout_outputs or {}).get(name) or {}
         if env.get('_errors'):
@@ -848,7 +847,7 @@ def _map_scout_notes(scout_outputs, messages):
 
 
 def _render_scout_legend(legend_lines, unmapped):
-    """The <scout_legend> block (Tom's spec): explains that the inline
+    """The <scout_legend> block: explains that the inline
     `scout:` notes came from OUTSIDE this read — what the scouts are and how
     their findings got into the timeline — plus each scout's category statement
     and any window-level findings no single turn owns."""
@@ -1292,10 +1291,9 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         except Exception:
             titles = {}
 
-    # Covered turns keep their FULL message text — the encoded-turn trim is
-    # retired (Tom, 2026-08-15: "trimming defeats the purpose"); what a covered
-    # turn drops is its <actions>, stubbed below. The `encoded` attr states
-    # coverage on the turn itself — it replaces the old provenance `✓` marker.
+    # Covered turns keep their FULL message text — trimming an encoded turn
+    # would defeat the purpose; what a covered turn drops is its <actions>,
+    # stubbed below. The `encoded` attr states coverage on the turn itself.
     # No attr when the trace-link join is unavailable (degraded piece-1 path —
     # coverage unknown).
     if view_policy:
@@ -1333,7 +1331,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             if age:
                 age_attr = ' age="%s"' % age
         out += '<turn n="%d"%s%s>\n' % (n_disp, age_attr, enc_attr)
-        # Tag vocabulary is identity-native, not role-native (Tom 2026-07-02):
+        # Tag vocabulary is identity-native, not role-native:
         # <me> = my side of the exchange; <other> = whoever is on the other side
         # this session (usually the operator, sometimes an agent — an identity
         # attr comes later). Presentation-layer only: the substrate keeps
@@ -1342,7 +1340,7 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
             out += '  <other trace="%s">%s</other>\n' % (
                 t['user'].get('id', ''), _text(t['user']))
         # <provenance> sits right after <other>: chronologically, recall/surface
-        # fires on the user prompt — before my reply exists (Tom 2026-07-28).
+        # fires on the user prompt — before my reply exists.
         prov = _render_provenance(links, frontier, t, n - 1, titles,
                                   view_policy=view_policy)
         if prov:

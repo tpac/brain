@@ -1904,7 +1904,7 @@ def select_edges(connections, query_vec, limit=3, prior_vecs=None,
 #
 # No SURFACE_FORMAT whitelist. No hardcoded "show content but not reasoning."
 # Fields with high activation surface; fields with low activation don't.
-# Tom's framing: "fading means less and less data surfaced."
+# The framing: fading means less and less data surfaced.
 # ═══════════════════════════════════════════════════════════════
 
 # Minimum per-node budget — below this, we stop rendering further nodes
@@ -1940,7 +1940,7 @@ def _event_time_line(node):
     Returns '' when no event_time is present, so callers can unconditionally
     prepend without guarding.
 
-    Future generalization (per Tom): query-aware kv field promotion. A query
+    Future generalization: query-aware kv field promotion. A query
     asking 'what did X say' should promote their_raw_quote / my_raw_quote
     similarly; 'when' queries promote event_time/created_at. Current scope:
     event_time only — surgical change to test L4-fix in isolation.

@@ -8,9 +8,8 @@ Two invariants this test locks in:
    class, or a hook helper, "passive observer" stops being true — code in
    the dashboard can now reach into the brain process state, mutate it,
    or accidentally depend on internal contracts that are free to change
-   under it. Tom's principle: "Dashboard must reflect reality — not be
-   its own separate data funnel" (node id:0695bafa, 1mo ago); reflection
-   is one-way.
+   under it. The standing principle: "Dashboard must reflect reality — not
+   be its own separate data funnel"; reflection is one-way.
 
 2. **No non-read-only SQLite connections in dashboard/.**
    Every connection opens with ``mode=ro``. Writes go through the daemon

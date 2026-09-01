@@ -185,7 +185,7 @@ class Test03_CoAccessedRetired(unittest.TestCase):
                         "recall() should not create co_accessed edges")
 
     def test_exclusion_policies_derive_from_noise_aspect(self):
-        """Two load-time policies, one deliberate difference (Tom, 2026-07-28):
+        """Two load-time policies, one deliberate difference:
         structural_exclusions is the FULL noise set (flat reads — hide
         decision id:49d734ad includes community_member); traversal_exclusions
         is noise MINUS community_member (graph dynamics keep conducting

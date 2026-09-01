@@ -48,7 +48,7 @@ NODE_EXTENDED_FIELDS = NODE_CORE_FIELDS | {
 #
 # Why both: legacy vectors capture whole-node semantics well for retrieval
 # ranking. Field vectors capture per-field signal so activation can fade per
-# field (query about "what did Tom say" → their_raw_quote field lights up;
+# field (query about "what did they say" → their_raw_quote field lights up;
 # query about "when does this apply" → situation field lights up). Blending
 # them together in legacy `high_meta` made each query score muddled.
 #
@@ -253,7 +253,7 @@ NODE_TYPE_EXCLUSIONS = {
     'health_check': {'community'},
 
     # Recall: community nodes are S2 navigation/consolidation structure,
-    # not surfaceable memories (Tom, 2026-07-20) — excluded from the recall
+    # not surfaceable memories — excluded from the recall
     # pool. Explicit dict filters on type bypass this (deliberate community
     # queries — dashboard, S2, direct asks — still work).
     'recall': {'community'},

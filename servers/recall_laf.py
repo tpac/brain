@@ -17,7 +17,7 @@ registry entry + a 'gain_<name>' config key. v1 fields:
              they become fitted columns at P3, see eval/laf/maxsim_decomp.md)
     pick   — nodes Haiku surfaced AND selected at past moments similar to the query
              (uncapped full-history trace scan — the newest-500 recall_episodes cap is
-             deliberately NOT inherited; Tom 2026-07-02: structurally wrong for a field)
+             deliberately NOT inherited — structurally wrong for a field)
     enc    — nodes created/revised at similar past moments
     idf    — production's idf2 rare-token title boost re-expressed as a lane
     sit    — cosine(query, node _situation vector) as its own lane (NOT folded into

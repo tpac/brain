@@ -373,7 +373,7 @@ class TestMultiMembershipShape(unittest.TestCase):
 
 
 class TestNoiseVetoes(unittest.TestCase):
-    """Noise is a VETO, not an exclusive category (Tom, 2026-08-23).
+    """Noise is a VETO, not an exclusive category.
 
     A string in noise is machinery whatever else claims it. This replaced the
     noise ∩ semantic = ∅ invariant, which forbade the dual state instead of

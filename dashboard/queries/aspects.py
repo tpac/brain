@@ -43,13 +43,13 @@ def _repo_seed_path():
 
     Why it's allowed:
       * The dashboard reads ONLY — it never writes the file.
-      * Tom's principle: "Dashboard inspects existing data — never changes
-        core behavior to serve display" (memory id:818febd7). The aspect
+      * The standing principle: "Dashboard inspects existing data — never
+        changes core behavior to serve display." The aspect
         taxonomy IS existing data: the brain already reads this exact JSON
         as its config. The dashboard reading the same JSON is consuming
         the SAME single source of truth, not creating a parallel funnel.
       * The alternative — adding a `get_aspects` daemon TCP command — WOULD
-        be a core change, exactly the pattern Tom's principle forbids.
+        be a core change, exactly the pattern that principle forbids.
 
     Disposition:
       * On a healthy brain the user-dir copy exists and this path is

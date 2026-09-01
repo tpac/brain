@@ -6,10 +6,9 @@ Each scout has slightly different input needs:
 - Temporal runs algorithmically on raw turns + catalog_nodes via
   run_temporal_scout (servers/scales/s1/scouts/temporal.py).
 
-(The earlier `synthesis` scout was removed 2026-05-17 — synthesis-
-across-turns moved back inline to S1S/Scribe, per Tom: a scout lacking
-catalog + other-scout context drifted into role-continuation on long
-assistant content.)
+(Synthesis across turns stays inline in S1S/Scribe rather than being its own
+scout: a scout lacking catalog + other-scout context drifts into
+role-continuation on long assistant content.)
 
 The muster doesn't want to branch per scout. This module wraps each scout
 in a callable with the signature  `(brain, muster_ctx) -> envelope` and
