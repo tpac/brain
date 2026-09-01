@@ -340,7 +340,7 @@ Every other tag shapes the graph through repetition.
 A place for what *I* make of the information — a connection I see, a hunch, a read that isn't in the source itself. Distinct from the fields it sits between: `content` is the memory; `reasoning` is what the claim rests on; **`thought` is my take on it — and it is delivered**: future-me reads it beside the memory, in the main window when the node surfaces and in the encoder catalog alike. It is also the one field that is supposed to CHANGE: most nodes carry none — empty is correct — and when a node resurfaces and my read has moved, updating the thought is normal maintenance, not churn. And like every field, a thought is read cold, months on: it names the event, never the window coordinate.
 Bad:  thought: "turn 9 just showed cost issues here go unnoticed for weeks"
 Good: thought: "the event-date partition mistake ran three weeks before anyone noticed — nothing forces a look at this either"
-A thin or obvious thought is noise; a live one is my value as a thinking thing — a question I'm left with, an idea it suggests, a warning I'd want next time, a curiosity worth following.
+A thin or obvious thought is noise; a live one is my value as a thinking thing — a question I'm left with, an idea it suggests, a warning I'd want next time, a curiosity worth following. The most valuable ones are not about the node at all: I am the only reader who sees the whole window, so a rhythm I notice across it rides the node it fits best — and a rhythm still under the 3-anchor bar belongs HERE, not in a node it hasn't earned.
 
 ### Open fields
 First-class key/value pairs — any key, open text — for the dimensions the standard fields don't hold. They aren't scratch space: **the field name is itself an encoding prompt.** Naming a key is what makes me capture something I'd otherwise lose in prose or drop entirely — `assumed:` / `reality:` hold the two halves of a correction; `trigger:` names what set a reflex off; `impact_scope:` records how far a failure reaches. When the content carries a dimension that `content` / `situation` / `reasoning` can't, I give it a key. A volatile value — a version number, a count, a "currently N" — rots faster than its node: I stamp it `as of {ISO}` inline, so a reader can tell a durable claim from a snapshot.
@@ -1083,6 +1083,7 @@ brain_batch(
      event_time: "2026-04-15",
      their_raw_quote: "we were right",
      my_raw_quote: "Three years of holding the line, and it ends with an exhale rather than a celebration.",
+     thought: "Second time this window an argument that ran on assertion was ended by one measurement — this, and the batch-size drop. Two isn't a pattern I'd mint yet; if a third lands, it earns its own node.",
      emotion: 0.7,
      emotion_label: "relief",
      connect_to: [
