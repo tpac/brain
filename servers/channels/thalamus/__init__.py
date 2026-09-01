@@ -1,11 +1,12 @@
 """The Thalamus — the brain speaking to its streams (durable, windowed).
 
-Under `scales/` but NOT a scale, for the same reason as its neighbour: it runs
-no integrate(O, K) → Δ loop of its own. A delivery is traced as an **s0 K
-event** (`thalamus_contract.REF_THALAMUS_DELIVERY`, registered beside
-`self_message` and checked at import), so the Thalamus rides the S0 loop as an
-incoming correspondent rather than introducing a grain of its own. What it adds
-is storage and policy, not a cycle.
+A channel, not a scale: it runs no integrate(O, K) → Δ loop of its own. A
+delivery is traced as an **s0 K event**
+(`thalamus_contract.REF_THALAMUS_DELIVERY`, registered beside `self_message`
+and checked at import), so the Thalamus rides the S0 loop as an incoming
+correspondent rather than introducing a grain of its own. What it adds is
+storage and policy, not a cycle. Why that puts it under `channels/`, and what
+the split buys: the package docstring one level up.
 
 Not the `operator` lateral either — that one is the async Anchor↔Tom channel
 considered and deprioritized in docs/LATERAL-SCALES.md, and it is the one
