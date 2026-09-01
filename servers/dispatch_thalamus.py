@@ -11,7 +11,7 @@ module, so every entry registers is_write=False (the dispatch_self pattern).
 Handlers return the {"ok", "result"} envelope like every dispatch_*.py.
 """
 
-from servers.scales.thalamus import thalamus
+from servers.channels.thalamus import thalamus
 from servers.dispatch_common import caller_session
 
 

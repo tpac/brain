@@ -66,16 +66,16 @@ const TIPS = {
   'K id':       'Interaction row id in this install\'s interactions table — install-local and unenforced (no FK); historic ids can dangle',
   // selection / recall
   'candidates': 'Memories scored as recall candidates before selection',
-  'selected':   'Memories chosen to surface to Anchor this turn — the actual recall',
+  'selected':   'Memories chosen to surface this turn — the actual recall',
   'dropped':    'Candidates considered but not surfaced',
-  'outcome':    'Did this recall serve context to Anchor (served) or surface nothing (empty)',
+  'outcome':    'Did this recall serve context (served) or surface nothing (empty)',
   'truncated':  'Rounds whose response was cut at max_tokens',
   // section headers
   'cost & provenance': 'What this run cost and which prompt version produced it',
   'phase timing': 'Per-phase wall-clock breakdown of the recall (the queryable form of hook_phase_timing)',
   'graph Δ':    'Nodes this run created / revised / archived — the change to memory (edges are their own edge events)',
   'outcomes':   'Unit-specific tally of what the run decided (e.g. merged, kept, consolidated)',
-  'output (what Anchor saw)': 'The exact additionalContext block this recall injected into Anchor',
+  'output (what was seen)': 'The exact additionalContext block this recall injected',
   'field deltas': 'Per-field old → new values changed by this revise',
 };
 
@@ -320,7 +320,7 @@ function _renderSelection(ev, m) {
     h += _section('outcomes per candidate',
       _code(JSON.stringify(m.outcomes_per_candidate, null, 2), 180));
   }
-  if (m.content) h += _section('output (what Anchor saw)', _code(m.content, 360));
+  if (m.content) h += _section('output (what was seen)', _code(m.content, 360));
   return h;
 }
 

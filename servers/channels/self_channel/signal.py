@@ -25,7 +25,7 @@ import json
 import uuid
 
 from servers.clock import iso_now, iso_after
-from servers.scales.self_channel import self_contract
+from servers.channels.self_channel import self_contract
 
 
 def _resolve_ttl_hours(brain, address):
@@ -280,7 +280,7 @@ def drain_and_render(brain, to_session):
     # signal at module load, so importing presence here (call time, not load time)
     # keeps the enrichment in the delivery layer without a top-level import cycle.
     if any(m.get('first_contact') for m in pending):
-        from servers.scales.self_channel import presence
+        from servers.channels.self_channel import presence
         for m in pending:
             if m.get('first_contact') and m.get('from_full'):
                 m['sender_peek'] = presence.peek(brain, m['from_full'])

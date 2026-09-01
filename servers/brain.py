@@ -322,10 +322,13 @@ class Brain(
         # (TraceDAL._maybe_warn_identity_unset), not here — boot is one
         # moment; trace writes are continuous, and that's where the gap
         # actually manifests.
-        from .daemon_config import get_operator_name, get_agent_name
+        from .daemon_config import (
+            get_operator_name, get_agent_name, agent_name_is_default)
         self.operator_name = get_operator_name()
         self.agent_name = get_agent_name()
-        self._trace_dal.set_identity(self.operator_name, self.agent_name)
+        self.agent_name_is_default = agent_name_is_default()
+        self._trace_dal.set_identity(self.operator_name, self.agent_name,
+                                     agent_is_default=self.agent_name_is_default)
 
         # Shared vector DAL — cache-backed by default. Set env
         # BRAIN_DISABLE_VECTOR_CACHE=1 to fall back to raw VectorDAL for
@@ -1799,7 +1802,7 @@ class Brain(
         if now - getattr(self, '_courier_reap_checked', 0) >= 3_600:
             self._courier_reap_checked = now
             try:
-                from .scales.self_channel import signal as _self_signal
+                from .channels.self_channel import signal as _self_signal
                 reaped = _self_signal.reap_expired(self)
                 if reaped:
                     print('[brain] self-channel: reaped %d expired message(s)'
@@ -1810,7 +1813,7 @@ class Brain(
         if now - getattr(self, '_thalamus_sweep_checked', 0) >= 3_600:
             self._thalamus_sweep_checked = now
             try:
-                from .scales.thalamus import thalamus as _thalamus
+                from .channels.thalamus import thalamus as _thalamus
                 expired = _thalamus.expire_due(self)
                 if expired:
                     print('[brain] thalamus: expired %d item(s) past their '

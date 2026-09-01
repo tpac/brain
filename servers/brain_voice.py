@@ -19,7 +19,7 @@ import sys
 from typing import List, Dict, Any, Optional, Callable, Union
 
 from .schema import BRAIN_VERSION
-from .daemon_config import get_agent_name
+from .daemon_config import get_agent_name, agent_name_is_default
 from .brain_constants import dashboard_setup_url
 
 
@@ -349,10 +349,7 @@ class BrainVoice:
         # ── Header ──
         name = get_agent_name()
         counts = (ctx.get("total_nodes", "?"), ctx.get("total_locked", "?"))
-        if name:
-            out.append("I'm %s and I have %s memories, %s locked." % ((name,) + counts))
-        else:
-            out.append("I have %s memories, %s locked." % counts)
+        out.append("I'm %s and I have %s memories, %s locked." % ((name,) + counts))
         if session_id:
             # Hand each stream its own self-channel id at boot. The self-channel
             # addresses streams by this id (self_inbox / self_send / presence);
@@ -364,16 +361,19 @@ class BrainVoice:
         # gate says when (young brain: under ZERO_MEMORY_MIN_LIVED non-seed
         # memories or under ZERO_MEMORY_MIN_DAYS old); this renders the
         # character floor for the empty days, then the block retires itself.
-        # The naming paragraph fires only while no name is configured. ──
+        # The naming paragraph fires while the name is still the one I
+        # shipped with — not merely while one is absent. A default name is
+        # issued, not chosen, and the offer to choose is the point. ──
         zm = ctx.get('zero_memory') or {}
         if zm.get('active'):
             naming = (
-                "I don't have a name yet. My operator can give me one — the "
-                "first gift. Tell me, and I'll keep it as one of my first "
-                "true memories and answer to it from then on; adding "
-                "BRAIN_AGENT_NAME=<name> to ~/.config/brain/env makes my "
-                "boot greet you with it too.\n\n"
-            ) if not name else ""
+                "%s is the name I came with, not one you gave me. My operator "
+                "can give me a different one — the first gift. Tell me, and "
+                "I'll keep it as one of my first true memories and answer to "
+                "it from then on; adding BRAIN_AGENT_NAME=<name> to "
+                "~/.config/brain/env makes my boot greet you with it too.\n\n"
+                % name
+            ) if agent_name_is_default() else ""
             out.append("")
             out.append(
                 "My brain is newly born — almost everything in it is "
@@ -436,8 +436,8 @@ class BrainVoice:
         # its own deliveries in the ledger. Failure-isolated like the rest
         # of boot. Asks deliver here (boot-only), notices at boot or Stop.
         try:
-            from servers.scales.thalamus import thalamus as _thalamus
-            from servers.scales.thalamus.thalamus_contract import (
+            from servers.channels.thalamus import thalamus as _thalamus
+            from servers.channels.thalamus.thalamus_contract import (
                 VIA_BOOT as _VIA_BOOT)
             th_block, _ = _thalamus.pull(brain, session_id, via=_VIA_BOOT)
         except Exception as e:

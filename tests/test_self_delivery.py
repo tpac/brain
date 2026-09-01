@@ -13,7 +13,7 @@ import unittest
 
 from tests.brain_test_base import BrainTestBase
 from servers.daemon_hooks import hook_pre_edit, hook_post_response_track
-from servers.scales.self_channel import signal, self_contract
+from servers.channels.self_channel import signal, self_contract
 
 
 def _seed(brain, to_stream, body):

@@ -34,9 +34,12 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # Directories where wall-clock calls are forbidden (semantic-time code).
+# The whole grain axis, as a PREFIX — a future s3/s4 is covered without anyone
+# remembering to add it. This can only be a prefix because the channel packages
+# (self_channel, thalamus), whose delivery windows are legitimately real-elapsed
+# wall-clock, live under servers/channels and not in here.
 PROTECTED_DIRS = [
-    'servers/scales/s1',
-    'servers/scales/s2',
+    'servers/scales',
 ]
 
 # Files within protected dirs where wall-clock is legitimate (logs/traces).
@@ -206,7 +209,7 @@ def test_both_doors_reject_an_unrepresentable_offset_loudly():
     supplies the subject, the grammar supplies the reason, so a
     valid-but-out-of-range shorthand is never described as 'not shorthand'."""
     from servers.brain_traces import _resolve_time_bound
-    from servers.scales.thalamus.thalamus_contract import resolve_when
+    from servers.channels.thalamus.thalamus_contract import resolve_when
     for door, subject in ((_resolve_time_bound, 'time bound'),
                           (resolve_when, 'when=')):
         with pytest.raises(ValueError) as caught:
@@ -238,7 +241,7 @@ def test_one_grammar_across_both_doors():
     while the Thalamus door converted it, so one string named two different
     moments depending on which door received it."""
     from servers.brain_traces import _resolve_time_bound
-    from servers.scales.thalamus.thalamus_contract import resolve_when
+    from servers.channels.thalamus.thalamus_contract import resolve_when
     literal = '2026-06-14T12:00:00+03:00'
     assert _resolve_time_bound(literal) == resolve_when(literal)
     assert _resolve_time_bound(literal) == '2026-06-14T09:00:00+00:00'

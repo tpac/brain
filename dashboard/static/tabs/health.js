@@ -164,7 +164,7 @@ async function loadHealth() {
       +   '<div class="health-card ' + orphanClass + '"><div class="hc-value">' + d.orphans + '</div><div class="hc-label">Orphans</div></div>'
       + '</div>'
       + (insightsHtml
-          ? '<h3 class="health-section-h3">Anchor Insights</h3>' + insightsHtml
+          ? '<h3 class="health-section-h3">Insights</h3>' + insightsHtml
           : '<div class="health-empty-good">No issues detected</div>')
       + '<h3 class="health-section-h3 health-section-h3--muted">Node Types</h3>'
       + '<div class="health-grid">'
