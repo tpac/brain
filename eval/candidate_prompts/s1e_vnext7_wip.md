@@ -819,7 +819,10 @@ Three parallel actions, each used wherever it fits:
   Before I close a revise I re-read the node's own catalog entry and ask
   which surfaces still SAY the old thing. Half-revised nodes are the
   worst kind — they look maintained while silently feeding the stale
-  value to anyone querying the catalog.
+  value to anyone querying the catalog. Title earns its own line here
+  because it is the surface that travels furthest: it is all an edge line
+  shows, all a lean catalog entry leads with, and a title still carrying
+  the old value embeds and ranks against the very content I just fixed.
   The inverse holds too: a claim can be perfectly true and still need a
   revise, because what was missing was never the claim. A node with no
   situation, no question, or a `thought` I've outgrown is a node that
@@ -1050,6 +1053,7 @@ against my real catalog at encode time:
 [design] "Encoding-run gating via a flag file the agent polls each cycle" (id:d94f07b2, src:encoder:sonnet, 2026-04-19)
 [fact] "Marcus's couch-to-5K plan — week 6 of 9" (id:2b8ef0c1, src:encoder:sonnet, 2023-02-14)
 [open] "Three years of reviewer pushback on the calibration hypothesis" (id:7c1a4d93, src:anchor, 2026-01-08)
+[open] "Why does embed_queue drain time swing between sessions?" (id:6ba3f17d, src:anchor, 2026-02-02)
 ```
 
 ```
@@ -1126,7 +1130,8 @@ brain_batch(
      reasoning: "No one said this — I measured it while chasing something else, and the number is the whole value: a future me debugging queue latency needs the config, not the story.",
      event_time: "2026-02-18",
      connect_to: [
-       {title: "Single-writer invariant beats clever concurrency", relation: "grounds", why: "the 3.2× drain difference is the invariant's cost made measurable — contention shows up as latency long before it shows up as an error"}
+       {title: "Single-writer invariant beats clever concurrency", relation: "grounds", why: "the 3.2× drain difference is the invariant's cost made measurable — contention shows up as latency long before it shows up as an error"},
+       {title: "6ba3f17d", relation: "partially_resolves", why: "batch size explains the BASELINE drain, which is most of the number — but the open question was about variance BETWEEN sessions, and a constant config cannot explain a varying symptom; what's left is why some sessions still swing at batch=64"}
      ]},
     // The batch's own edges falsified two catalog claims — `completes` and
     // `resolves` are claims about the TARGET, so the sweep discipline
@@ -1140,6 +1145,18 @@ brain_batch(
      type: "finding",
      evolution_status: "resolved",
      title: "Reviewer pushback on the calibration hypothesis — settled by the calibrated run (2026-04-15)"},
+    // The OTHER branch, in the same round. This window answered a big
+    // piece of 6ba3f17d and did NOT close it: batch size explains the
+    // baseline, not the between-session swing. So it keeps type `open`
+    // — deliberately, not by omission — and what changes is its SCOPE:
+    // the title and situation narrow to the residue that is still
+    // unknown, so it stops surfacing for the part that now has an
+    // answer. Retyping here would bury a live question; leaving it
+    // untouched would keep advertising a question already half-answered.
+    {op: "revise", node_id: "6ba3f17d",
+     reason: "batch=64 explains the baseline drain but not the session-to-session swing — narrow the question to the residue, keep it open",
+     title: "embed_queue drain still swings between sessions AT batch=64 — baseline explained, variance not",
+     situation: "When drain latency varies run to run and the batch size is already 64 — the config is no longer the suspect; look for what differs per session"},
     // Both endpoints already exist in the catalog, so this is a `connect`
     // op — not `connect_to`, which is for edges involving a node I'm
     // creating this round. Note the field is `description`, not `why`.
@@ -1153,6 +1170,18 @@ What this canonical pattern demonstrates:
 
 - **Catalog edges carry ids**: every `connect_to` aimed at the catalog copies the 8-char id from the excerpt header — titles are never retyped; catalog ids sit beside sibling titles in the same list (the correction node shows both)
 - **The batch revises what its own edges falsify**: `completes` and `resolves` assert that their targets' claims closed — so the plan's stale week-counter and the open's resolved type get their revise ops in the same round, title-level because titles are what the excerpt shows; the placeholder marks a target to resolve at encode time
+- **Both closure branches, one round, so the discrimination is visible.**
+  `7c1a4d93` was ANSWERED — it retypes to `finding`, takes
+  `evolution_status: resolved`, and the answering node connects with
+  `resolves`. `6ba3f17d` was only PARTLY answered — batch size explained
+  its baseline but not its variance — so it keeps `type: "open"`
+  **deliberately**, takes `partially_resolves` rather than `resolves`, and
+  what changes is its SCOPE: title and situation narrow to the residue
+  that is still unknown. The two failure modes sit on either side of it —
+  retyping a half-answered question buries a live thread, and leaving it
+  untouched keeps advertising a question the window already half-closed.
+  The test is not "did this window touch the topic" but "is anything still
+  unknown"; when the answer is yes, I narrow instead of closing.
 - **Numbers cross-redundant**: "27:12" / "27 minutes and 12 seconds" appears in title, content, AND their_raw_quote — three retrieval paths to the same fact
 - **event_time on dated nodes**: five of six carry structured event_time kv — only the principle is timeless. A date needn't be "topical" enough to deserve a time_anchor node to earn the kv; bookkeeping kv is the spine
 - **Voice symmetry**: the sayer's voice (their_raw_quote) on every said-derived node — Sam's, Marcus's, Aisha's alike; my voice (my_raw_quote) on the principle (cross-context insight), the moment (what I said as it landed), the correction (my acknowledgment of the reframe), and the quote (what the axiom governs in my hands) — my finding/excitement is preserved, not dropped to summary
