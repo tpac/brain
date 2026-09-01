@@ -64,11 +64,18 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
 All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
-axis (s1, s2 + the machinery serving them) — everything there runs an
-`integrate(O, K) → Δ` loop; `channels/` is what reaches a live stream, indexed by
-correspondent, and runs no loop of its own. The split is load-bearing: the
-conversation-time contract names `servers/scales` as a prefix, so a package whose
-windows are real-elapsed wall-clock must not sit inside it. Two databases:
+axis: the units that run an `integrate(O, K) → Δ` loop (s1, s2) plus the shared
+machinery serving them (`dispatch`, `journal`, `runner`, which run no loop
+themselves). `channels/` is indexed by CORRESPONDENT — who is on the other end —
+and holds the packages that ADDRESS a live stream: `self_channel` (another
+stream) and `thalamus` (the brain itself). Neither runs a loop. Note this is a
+different sense of "channel" than the injection channel in Conventions below.
+
+The split is load-bearing, not tidy: both clock contracts
+(`test_clock_contract_sync`, `test_time_window_contract`) name `servers/scales`
+as a PREFIX, so any future grain lands guarded automatically — which only works
+while nothing wall-clock-by-design sits under `scales/`. A package whose windows
+are real-elapsed belongs in `channels/`, not an exemption. Two databases:
 `brain.db` (nodes, edges, embeddings) and `brain_logs.db` (traces, session state,
 interactions, errors).
 

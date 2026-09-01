@@ -1,4 +1,4 @@
-"""Clock contract: no direct datetime.now() / date.today() in S1/S2 code.
+"""Clock contract: no direct datetime.now() / date.today() on the grain axis.
 
 Why this file exists
 --------------------
@@ -9,8 +9,8 @@ real wall-clock instead of the conversation date — corrupting temporal
 scout candidates.
 
 Fix: servers/clock.py is the single source of truth for "now". This test
-keeps it that way by failing if anyone adds a direct wall-clock call in
-S1/S2/scout code.
+keeps it that way by failing if anyone adds a direct wall-clock call
+anywhere under servers/scales (s1, s2, scout, and any future grain).
 
 Allowed exemptions:
   - servers/clock.py itself (the implementation)
@@ -35,9 +35,16 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Directories where wall-clock calls are forbidden (semantic-time code).
 # The whole grain axis, as a PREFIX — a future s3/s4 is covered without anyone
-# remembering to add it. This can only be a prefix because the channel packages
-# (self_channel, thalamus), whose delivery windows are legitimately real-elapsed
-# wall-clock, live under servers/channels and not in here.
+# remembering to add it. Keep test_time_window_contract.CTX_PROTECTED_DIRS on
+# the same prefix; they are two halves of one rule and a reader who sees this
+# one generalize will assume the other did too.
+#
+# The prefix is only safe while nothing wall-clock-by-design lives under
+# scales/. What made it unsafe before was one line, not a whole package:
+# self_channel/presence.py's datetime.now() for ROSTER STALENESS (delivery
+# windows go through servers.clock and this scan never sees them). That
+# package now lives under servers/channels/, which is the fix for that class
+# — not an EXEMPT_FILES entry.
 PROTECTED_DIRS = [
     'servers/scales',
 ]
@@ -45,7 +52,7 @@ PROTECTED_DIRS = [
 # Files within protected dirs where wall-clock is legitimate (logs/traces).
 # Keep this list TIGHT — every entry is a foothold for the bug to come back.
 EXEMPT_FILES = {
-    # None at the moment — all S1/S2 semantic-time should go through clock.
+    # None at the moment — all grain-axis semantic-time goes through clock.
 }
 
 # Patterns that flag a direct wall-clock call.
@@ -91,8 +98,8 @@ def _scan_file(p: Path):
     return violations
 
 
-def test_no_direct_wallclock_in_s1_s2():
-    """Scan S1/S2 code for direct datetime.now() / date.today() calls.
+def test_no_direct_wallclock_on_grain_axis():
+    """Scan the grain axis for direct datetime.now() / date.today() calls.
 
     All semantic-time calls should go through servers/clock.py
     (brain_now or conversation_now). Bookkeeping uses are tagged as
@@ -113,10 +120,16 @@ def test_no_direct_wallclock_in_s1_s2():
                 for lineno, line in violations:
                     failures.append(f'{rel}:{lineno}: {line}')
     assert not failures, (
-        'Clock contract violation: direct wall-clock call in S1/S2 code.\n'
+        'Clock contract violation: direct wall-clock call under '
+        'servers/scales (the grain axis).\n'
         'Route through servers/clock.py (brain_now or conversation_now).\n'
         'If genuinely bookkeeping (trace timestamp etc), tag the line with '
-        '"# clock-ok" or add a LEGITIMATE_USES pattern.\n\n'
+        '"# clock-ok".\n'
+        'If your whole package is real-elapsed by design — it addresses a '
+        'live stream rather than running an integrate loop — it belongs in '
+        'servers/channels/, the way self_channel and thalamus do. Move it; '
+        'do NOT grow LEGITIMATE_USES, which loosens the rule for all of '
+        'servers/scales.\n\n'
         + '\n'.join(failures)
     )
 

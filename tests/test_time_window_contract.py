@@ -139,12 +139,15 @@ def test_no_sqlite_datetime_now_in_sql_strings():
 
 # ─── Scan 2: S1/S2 calls without explicit at= ───────────────────────────
 
-# Conversation-time directories. S1/S2 code anchors to the conversation,
+# Conversation-time directories. Grain-axis code anchors to the conversation,
 # not the host wall-clock — passing at=conversation_now(...) keeps eval
-# replays honest. Same idea as test_clock_contract_sync.py.
+# replays honest. Same PREFIX as test_clock_contract_sync.PROTECTED_DIRS, and
+# it must stay the same: these are two halves of one rule (that file bans bare
+# datetime.now(); this one bans iso_now()/iso_cutoff() without at=). Widening
+# one alone is worse than leaving both enumerated, because the other's comment
+# then promises a coverage this one doesn't give.
 CTX_PROTECTED_DIRS = [
-    'servers/scales/s1',
-    'servers/scales/s2',
+    'servers/scales',
 ]
 
 # Match iso_now( / iso_cutoff( and look at the args.

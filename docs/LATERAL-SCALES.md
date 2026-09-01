@@ -45,6 +45,13 @@ itself:
 | **`operator`** | Tom, asynchronously | the away-gap | considered, **deprioritized** |
 | **`world`** | external sources (files, web, research) | the system edge | **live gap**; sibling of S1E |
 
+**Where they live in the tree.** The messaging laterals are packages under
+`servers/channels/`, indexed by exactly the correspondent column above —
+`self_channel/` and `thalamus/` today. They are deliberately NOT under
+`servers/scales/`: that is the grain axis, and per the reframe below these are
+correspondents on the S0/S1 loop, not scales of their own. `world`, being
+ingestion rather than correspondence, does not go there either.
+
 ## The mechanism split — the clean-architecture line
 
 Lateral scales do **not** share one transport. They split by the *kind* of
