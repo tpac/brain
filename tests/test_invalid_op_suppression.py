@@ -19,7 +19,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from servers.contract import VALID_BATCH_OPS
 from servers.scales.s2.rejection_table import (
     node_ids_touched_by_invalid_ops,
-    had_empty_batch_call,
+    node_ids_touched_by_valid_ops,
+    had_rejected_batch_call,
     get_proposed_ids,
     match_proposals_to_actions,
 )
@@ -76,6 +77,7 @@ class TestDetector:
         ad = [
             'garbage',
             {'tool': 'brain_batch', 'input': {'operations': ['not-a-dict', {}]}},
+            {'tool': 'brain_batch', 'input': None},
         ]
         assert node_ids_touched_by_invalid_ops(ad) == set()
 
@@ -141,30 +143,79 @@ class TestConsolidationAbsorbIsRealMerge:
         assert set(members) & node_ids_touched_by_invalid_ops(ad) == set()
 
 
-class TestEmptyBatchCallDetector:
-    """An empty brain_batch call (operations: []) is rejected by dispatch and
-    names no node ids — node_ids_touched_by_invalid_ops can't shield anything.
-    had_empty_batch_call is the signal the encoders use to retry every
-    un-acted-on proposal/cluster instead of stamping it as a clean SKIP."""
+class TestRejectedBatchCallDetector:
+    """A call-level dispatch rejection (empty operations, a non-list, a
+    string that doesn't parse) writes nothing and names no node ids —
+    node_ids_touched_by_invalid_ops can't shield anything. The detector keys
+    off the runner-recorded dispatch verdict (`error`), with the falsy-
+    operations shape as a fallback for hand-built action_details."""
 
     def test_empty_operations_detected(self):
-        assert had_empty_batch_call(_batch()) is True
+        assert had_rejected_batch_call(_batch()) is True
 
     def test_missing_operations_key_detected(self):
         ad = [{'tool': 'brain_batch', 'input': {}}]
-        assert had_empty_batch_call(ad) is True
+        assert had_rejected_batch_call(ad) is True
 
-    def test_non_empty_call_not_flagged(self):
-        ad = _batch({'op': 'connect', 'source_id': 'a', 'target_id': 'b'})
-        assert had_empty_batch_call(ad) is False
+    def test_error_verdict_detected_for_stringified_ops(self):
+        # `operations: "[]"` is a truthy string (the shape check can't see
+        # it) but dispatch rejects the call — the recorded error is the
+        # authoritative signal.
+        ad = [{'tool': 'brain_batch', 'input': {'operations': '[]'},
+               'error': 'operations array is required — ...'}]
+        assert had_rejected_batch_call(ad) is True
+
+    def test_error_verdict_detected_for_dict_ops(self):
+        ad = [{'tool': 'brain_batch',
+               'input': {'operations': {'0': {'op': 'absorb'}}},
+               'error': 'operations must be an array, got dict'}]
+        assert had_rejected_batch_call(ad) is True
+
+    def test_successful_call_not_flagged(self):
+        ad = [{'tool': 'brain_batch',
+               'input': {'operations': [{'op': 'connect', 'source_id': 'a',
+                                         'target_id': 'b'}]},
+               'error': None}]
+        assert had_rejected_batch_call(ad) is False
 
     def test_ignores_other_tools_and_empty_input(self):
-        assert had_empty_batch_call([{'tool': 'get_nodes', 'input': {}}]) is False
-        assert had_empty_batch_call([]) is False
-        assert had_empty_batch_call(None) is False
+        assert had_rejected_batch_call([{'tool': 'get_nodes', 'input': {}}]) is False
+        assert had_rejected_batch_call([]) is False
+        assert had_rejected_batch_call(None) is False
 
     def test_tolerates_malformed_entries(self):
-        assert had_empty_batch_call(['garbage']) is False
+        assert had_rejected_batch_call(['garbage']) is False
+        assert had_rejected_batch_call(
+            [{'tool': 'brain_batch', 'input': None}]) is True
+
+
+class TestValidOpAttribution:
+    """node_ids_touched_by_valid_ops scopes the rejected-call shield: a
+    cluster a real op touched was acted on and must not be pulled into
+    retry when a stray rejected call appears in the same run."""
+
+    def test_collects_ids_from_valid_ops(self):
+        ad = _batch(
+            {'op': 'absorb', 'survivor_id': 's1', 'absorbed_id': 'a1'},
+            {'op': 'connect', 'source_id': 'x1', 'target_id': 'y1',
+             'relation': 'similar_to'},
+        )
+        assert node_ids_touched_by_valid_ops(ad) == {'s1', 'a1', 'x1', 'y1'}
+
+    def test_invalid_ops_and_errored_calls_contribute_nothing(self):
+        ad = _batch({'op': 'keep', 'source_id': 'x1', 'target_id': 'y1'})
+        assert node_ids_touched_by_valid_ops(ad) == set()
+        errored = [{'tool': 'brain_batch',
+                    'input': {'operations': [{'op': 'archive', 'node_id': 'n1'}]},
+                    'error': 'something rejected the whole call'}]
+        assert node_ids_touched_by_valid_ops(errored) == set()
+
+    def test_tolerates_malformed_entries(self):
+        assert node_ids_touched_by_valid_ops(None) == set()
+        assert node_ids_touched_by_valid_ops(
+            [{'tool': 'brain_batch', 'input': None}]) == set()
+        assert node_ids_touched_by_valid_ops(
+            [{'tool': 'brain_batch', 'input': {'operations': '[]'}}]) == set()
 
 
 class TestContractSync:
