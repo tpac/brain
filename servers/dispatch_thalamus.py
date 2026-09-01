@@ -1,6 +1,6 @@
 """Dispatch handlers for the Thalamus — Anchor's MCP entrance to the door.
 
-Thin command surface over servers/scales/thalamus/thalamus.py:
+Thin command surface over servers/channels/thalamus/thalamus.py:
 - remind           → thalamus.file()  (THE producer verb: a notice, a reminder,
                      and an ask are the same call with different params)
 - thalamus_list    → the pullable view
