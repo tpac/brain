@@ -139,6 +139,8 @@ A **SKIP emits nothing** — no edge, no op. Every cluster you process is finger
 
 One `brain_batch` call per cluster batch. Each ABSORB is a **single `absorb` op**; each KEEP/SUPERSESSION/CONTRADICTION is one `connect` with its settlement edge (`similar_to` / `supersedes` / `corrects`); a SKIP emits no op. Include ALL operations for ALL clusters in the same call. Use `get_nodes` if you need to inspect a node more deeply than the cluster data shows.
 
+**If EVERY cluster is a SKIP, do NOT call `brain_batch` at all.** There is nothing to emit — state each SKIP and its reason in plain text and stop. Never call `brain_batch` with an empty `operations` array: dispatch rejects it, the round is wasted, and no decision is recorded.
+
 ## Locked Nodes — Hard Rules (override every other signal)
 
 Locked / critical nodes are operator-sacred. These rules OVERRIDE every signal

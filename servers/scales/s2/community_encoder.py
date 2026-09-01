@@ -22,6 +22,7 @@ from .rejection_table import (
     record_rejections,
     sort_proposals_by_priority,
     node_ids_touched_by_invalid_ops,
+    had_empty_batch_call,
     get_proposed_ids,
 )
 
@@ -182,6 +183,20 @@ class CommunityEncoder(IntegrationUnit):
                         'retrying next cycle, NOT suppressed' % invalid_op_failures)
                     print('[s2ce] %d proposal(s) hit invalid ops — retry, NOT suppressed'
                           % invalid_op_failures, flush=True)
+            # An empty brain_batch call names no node ids, so the shield
+            # above can't attribute it — treat every un-acted-on proposal
+            # as thwarted (retry next cycle), not a clean rejection.
+            if skipped_proposals and had_empty_batch_call(action_details):
+                invalid_op_failures += len(skipped_proposals)
+                self.brain._log_warning(
+                    's2_community_invalid_op_retry',
+                    '%d proposal(s) left un-acted after an empty brain_batch '
+                    'call — retrying next cycle, NOT suppressed'
+                    % len(skipped_proposals))
+                print('[s2ce] %d proposal(s) un-acted after empty brain_batch '
+                      'call — retry, NOT suppressed'
+                      % len(skipped_proposals), flush=True)
+                skipped_proposals = []
             if skipped_proposals:
                 record_rejections(self.brain, skipped_proposals)
                 print('[s2ce] Stamped %d rejected proposals (fingerprints)' % len(skipped_proposals),
