@@ -15,7 +15,9 @@ To bypass (rare — e.g. quick smoke test on a machine without the venv):
 To run with the right Python without thinking about it:
     ./dev pytest ...
 """
+import atexit
 import os
+import shutil
 import sys
 import tempfile
 
@@ -35,39 +37,97 @@ import pytest
 # the class-scoped one wraps unittest's setUpClass/tearDownClass, the
 # function-scoped one wraps each test. So a variable set in setUpClass survives
 # that class's tests and dies with the class; one set inside a test dies with
-# the test. Broader-scoped fixtures are unaffected — pytest orders a test's
-# fixture closure by scope, so a module-scoped IsolatedBrain is entered before
-# either guard snapshots and its env is inside the snapshot, not stripped by it.
+# the test.
 #
 # This is the chokepoint, not a fifth convention: callers keep using whatever
 # they already use — monkeypatch, patch.dict, explicit save/restore — and none
 # of them can leak past its own scope even when the restore is missing or a
 # tearDown raises before reaching it.
 #
+# LIMIT, and it is a real one. A guard can only restore what its own scope
+# opened, so anything that outlives the scope but is first created INSIDE it
+# gets clobbered. Two shapes to keep out of the suite:
+#   - a module/session-scoped fixture that writes env and is first requested by
+#     a LATER test of a class rather than its first (the class guard snapshotted
+#     before the fixture existed, so its restore deletes env the fixture still
+#     owns). IsolatedBrain as a module-scoped fixture is exactly this shape, and
+#     every file using it is safe only because its class requests it from the
+#     FIRST test — verified by watching BRAIN_DB_DIR across test_fetch_tools.py.
+#     Nothing enforces that: it is a real, unguarded limit, because the only
+#     check available is textual and a grep for this shape matches its own
+#     description.
+#   - a module whose IMPORT writes env, first imported inside a test: the write
+#     is reverted and sys.modules caching means it never happens again. That is
+#     why daemon_config is imported below rather than left to whichever test
+#     file happens to pull it in first.
+#
+# REPAIRING SILENTLY IS ITS OWN DRIFT. A guard that quietly absorbs an
+# unrestored write means the next sloppy setUpClass is invisible forever, so
+# every repair is recorded and the session FAILS on any of them. The suite sits
+# at zero — the four sites that motivated this turned out to be writing
+# $BRAIN_DB_DIR that nothing read, and were deleted rather than annotated — so
+# a non-empty report means someone just introduced a leak, named with the test
+# and the keys. Set BRAIN_TEST_ENV_LEAKS_OK=1 to downgrade it to a report while
+# mid-refactor.
+#
 # pytest owns PYTEST_CURRENT_TEST and rewrites it per test; leave it alone.
 _ENV_NOT_OURS = frozenset({'PYTEST_CURRENT_TEST'})
+_ENV_LEAKS = []
+# The one file whose job is to leak: its probes exist to prove the guard puts
+# things back, so reporting them would make the report permanently non-empty
+# and train everyone to ignore it.
+_ENV_LEAK_EXEMPT = 'test_env_isolation.py'
 
 
-def _restore_env(saved):
-    for key in [k for k in os.environ if k not in saved and k not in _ENV_NOT_OURS]:
-        del os.environ[key]
+def _restore_env(saved, where=''):
+    # Re-add before delete: a restore that dies half-done must not leave a
+    # deliberately-popped baseline (the ASPECTS_JSON_PATH pin) missing, and
+    # pop-with-default cannot raise on a key another thread already removed.
+    leaked = []
     for key, value in saved.items():
         if key not in _ENV_NOT_OURS and os.environ.get(key) != value:
+            leaked.append('%s: %r -> %r' % (key, value, os.environ.get(key)))
             os.environ[key] = value
+    for key in [k for k in os.environ if k not in saved and k not in _ENV_NOT_OURS]:
+        leaked.append('%s: unset -> %r' % (key, os.environ.get(key)))
+        os.environ.pop(key, None)
+    if leaked and where and _ENV_LEAK_EXEMPT not in where:
+        _ENV_LEAKS.append((where, leaked))
 
 
 @pytest.fixture(autouse=True, scope='class')
-def _env_isolation_class():
+def _env_isolation_class(request):
     saved = dict(os.environ)
     yield
-    _restore_env(saved)
+    _restore_env(saved, 'setUpClass of %s' % request.node.nodeid)
 
 
 @pytest.fixture(autouse=True)
-def _env_isolation_function():
+def _env_isolation_function(request):
     saved = dict(os.environ)
     yield
-    _restore_env(saved)
+    _restore_env(saved, request.node.nodeid)
+
+
+def pytest_terminal_summary(terminalreporter):
+    if not _ENV_LEAKS:
+        return
+    terminalreporter.section('environment leaks', red=True)
+    for where, leaked in _ENV_LEAKS:
+        terminalreporter.write_line('%s' % where)
+        for change in leaked:
+            terminalreporter.write_line('    %s' % change)
+    terminalreporter.write_line(
+        '%d scope(s) mutated os.environ without restoring it. The guard put it '
+        'back, so nothing downstream broke — but restore it at the source '
+        '(monkeypatch, patch.dict, or setUp/tearDown). '
+        'BRAIN_TEST_ENV_LEAKS_OK=1 downgrades this to a report.'
+        % len(_ENV_LEAKS))
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if _ENV_LEAKS and not os.environ.get('BRAIN_TEST_ENV_LEAKS_OK'):
+        session.exitstatus = 1
 
 
 # Live-brain aspects file guard. aspects_json_path() resolves from env at
@@ -85,9 +145,31 @@ def _env_isolation_function():
 # when ABSENT, so deliberate overrides (BrainTestBase, IsolatedBrain,
 # run_aspect_cycles_on_clone) still win; _env_isolation restores this baseline
 # after each of them, which is what makes the pin self-healing.
+# The pin is also ANNOUNCED, in BRAIN_TEST_ASPECTS_DEFAULT_PIN. IsolatedBrain
+# honors a pre-set ASPECTS_JSON_PATH as "the caller owns the aspects location"
+# and otherwise pins its own seeded copy — a safety default it cannot
+# distinguish from a deliberate override would silently disable that, leaving
+# every IsolatedBrain in the process sharing this one file. Publishing the
+# value lets it tell the two apart; absent (no conftest, e.g. an eval script),
+# it falls back to the is-None test.
 if not os.environ.get('ASPECTS_JSON_PATH'):
-    os.environ['ASPECTS_JSON_PATH'] = os.path.join(
-        tempfile.mkdtemp(prefix='pytest_aspects_guard_'), 'aspects_v1.json')
+    _guard_dir = tempfile.mkdtemp(prefix='pytest_aspects_guard_')
+    # Swept at exit: one dir per pytest invocation adds up silently — the
+    # unconditional version of this line had left 1131 of them behind.
+    atexit.register(shutil.rmtree, _guard_dir, True)
+    os.environ['ASPECTS_JSON_PATH'] = os.path.join(_guard_dir, 'aspects_v1.json')
+    os.environ['BRAIN_TEST_ASPECTS_DEFAULT_PIN'] = os.environ['ASPECTS_JSON_PATH']
+
+
+# CPU-only pin. daemon_config is the one module under servers/ that writes
+# os.environ at IMPORT (DAEMON_CPU_ENV — ORT_DISABLE_ALL_ACCELERATORS is the
+# load-bearing SIGABRT guard on Apple Silicon), and most test files reach it
+# through a lazy in-function import. A process-wide invariant established
+# inside a test is one _env_isolation restore away from being deleted for good,
+# because sys.modules caching means the module body never runs twice — so
+# import it here, before anything can snapshot, and the invariant is part of
+# every baseline instead of a side effect of which files got collected.
+import servers.daemon_config  # noqa: E402,F401
 
 
 # Hermetic key: brain.llm_available gates surface/encode/S2/warms on a

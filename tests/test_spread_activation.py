@@ -205,7 +205,6 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix='test_spread_')
         for f in os.listdir(R3_BRAIN):
             shutil.copy2(os.path.join(R3_BRAIN, f), cls.tmp)
-        os.environ['BRAIN_DB_DIR'] = cls.tmp
         from servers.brain import Brain
         cls.brain = Brain(db_path=os.path.join(cls.tmp, 'brain.db'))
         cls.brain.backfill_vectors(batch_size=50)
@@ -310,7 +309,6 @@ class TestActivationRenderingOnR3(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix='test_render_')
         for f in os.listdir(R3_BRAIN):
             shutil.copy2(os.path.join(R3_BRAIN, f), cls.tmp)
-        os.environ['BRAIN_DB_DIR'] = cls.tmp
         from servers.brain import Brain
         cls.brain = Brain(db_path=os.path.join(cls.tmp, 'brain.db'))
         cls.brain.backfill_vectors(batch_size=50)

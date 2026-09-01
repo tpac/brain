@@ -25,7 +25,6 @@ class RememberSourceRefsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmpdir = tempfile.mkdtemp(prefix='brain_source_refs_test_')
-        os.environ['BRAIN_DB_DIR'] = cls.tmpdir + '/'
         cls.brain = Brain(db_path=os.path.join(cls.tmpdir, 'brain.db'))
 
     @classmethod

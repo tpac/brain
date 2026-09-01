@@ -141,10 +141,16 @@ class IsolatedBrain:
         # leak heals into the live file, and seed it from the operator's grown
         # aspects (not a fresh repo seed) for production-faithful fidelity.
         #
+        # conftest's session-wide safety pin is NOT such a caller — it is a
+        # default, and treating it as one would make this branch dead for every
+        # test in the process and quietly hand them all one shared aspects file.
+        # It publishes its value so the two can be told apart.
+        #
         # The failure-prone copy runs BEFORE any os.environ mutation: if it
         # raises, __enter__ propagates and Python never calls __exit__, so a
         # half-set environment would leak. Env assignments (below) can't raise.
-        pin_aspects = self._orig_aspects_json_path is None
+        pin_aspects = self._orig_aspects_json_path in (
+            None, os.environ.get('BRAIN_TEST_ASPECTS_DEFAULT_PIN'))
         if pin_aspects:
             src_aspects = os.path.join(self.production_dir, 'aspects_v1.json')
             if os.path.exists(src_aspects):
