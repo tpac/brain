@@ -202,6 +202,16 @@ class TestValidOpAttribution:
         )
         assert node_ids_touched_by_valid_ops(ad) == {'s1', 'a1', 'x1', 'y1'}
 
+    def test_stringified_executed_ops_are_attributed(self):
+        # Dispatch unwraps a parseable stringified array and EXECUTES it
+        # (ok=True, no error) — attribution must unwrap the same way, or the
+        # acted-on cluster is pulled back into retry by a stray rejected call.
+        ad = [{'tool': 'brain_batch',
+               'input': {'operations':
+                         '[{"op": "absorb", "survivor_id": "s1", '
+                         '"absorbed_id": "a1"}]'}}]
+        assert node_ids_touched_by_valid_ops(ad) == {'s1', 'a1'}
+
     def test_invalid_ops_and_errored_calls_contribute_nothing(self):
         ad = _batch({'op': 'keep', 'source_id': 'x1', 'target_id': 'y1'})
         assert node_ids_touched_by_valid_ops(ad) == set()

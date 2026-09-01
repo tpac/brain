@@ -161,16 +161,12 @@ class Consolidation(ConsolidationDecoder):
 
         streak = int(self.brain.get_config(self.REJECTED_STREAK_KEY) or 0)
         shield_active = rejected_call and streak < REJECTED_BATCH_RETRY_LIMIT
-        if rejected_call and not shield_active:
-            self.brain._log_warning(
-                's2_consolidation_rejected_call_giveup',
-                'rejected brain_batch call in %d consecutive runs — '
-                'stamping fingerprints anyway to unpin the unit' % (streak + 1))
 
         processed_proposals = []
         fingerprint_members = set()
         invalid_op_clusters = 0
         rejected_call_clusters = 0
+        gaveup_clusters = 0
         for c in clusters:
             members = c.get('nodes', [])
             if invalid_touched and (set(members) & invalid_touched):
@@ -178,9 +174,12 @@ class Consolidation(ConsolidationDecoder):
                 continue
             if set(members) & newly_archived:
                 continue
-            if shield_active and not (set(members) & valid_touched):
-                rejected_call_clusters += 1
-                continue
+            if rejected_call and not (set(members) & valid_touched):
+                if shield_active:
+                    rejected_call_clusters += 1
+                    continue
+                # Past the retry limit — fall through and stamp anyway.
+                gaveup_clusters += 1
             if len(members) >= 2:
                 processed_proposals.append(c)
                 fingerprint_members.update(members)
@@ -229,9 +228,21 @@ class Consolidation(ConsolidationDecoder):
             print('[s2-consolidation] %d cluster(s) un-acted after rejected '
                   'brain_batch call — retry, NOT suppressed'
                   % rejected_call_clusters, flush=True)
+        if gaveup_clusters:
+            self.brain._log_warning(
+                's2_consolidation_rejected_call_giveup',
+                'rejected brain_batch call in %d shielded runs — stamped '
+                '%d cluster(s) anyway to unpin the unit'
+                % (streak + 1, gaveup_clusters))
+            print('[s2-consolidation] retry limit hit — stamped %d cluster(s) '
+                  'despite rejected brain_batch call' % gaveup_clusters,
+                  flush=True)
 
-        # The give-up bound counts consecutive runs that actually shielded
-        # clusters; a rejected call that pinned nothing doesn't advance it.
+        # The give-up bound counts shielded runs since the last clean stamp
+        # (encode-failure and early-return cycles don't advance it — they pin
+        # the unit too, so the bound trips on the Nth shielded run, however
+        # spread out); a rejected call that pinned nothing resets it — the
+        # pin is broken, baseline advances below.
         if shield_active and rejected_call_clusters:
             self.brain.set_config(self.REJECTED_STREAK_KEY, str(streak + 1))
         elif streak:
