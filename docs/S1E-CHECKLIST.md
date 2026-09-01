@@ -3,8 +3,9 @@
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
 **v-next.7 candidate open (2026-09-01), UNPROMOTED.**
-`eval/candidate_prompts/s1e_vnext7_wip.md`, 115,626 chars — field-coverage
-redistribution across the existing revise examples (no new assets), plus the new
+`eval/candidate_prompts/s1e_vnext7_wip.md`, 118,150 chars — field-coverage
+redistribution across the existing revise examples, the narrow-to-residue
+closure branch (`partially_resolves`, previously prose-only), plus the new
 **A10** law and the Field-coverage matrix that would have caught the defect it
 fixes. Not registered, not deployed as an override; the production default is
 byte-unchanged at 110,452 / `3817564d21c4`. Needs Tom's ruling **and** a
@@ -841,6 +842,7 @@ unpromoted.**
 | ladder 1 | `4a9f21c7` | content_edits | content_edits *(deliberate: the one-claim patch rung)* |
 | ladder 2 | `d0e4b856` | situation | **situation, question, thought** ← the no-content/no-title op |
 | ladder 3 | `97b1f24e` | title, content_edits, situation, reasoning, event_time | unchanged + situation now visibly de-stales; question deliberately untouched (not falsified) |
+| canonical | `6ba3f17d` | **op did not exist** | **NEW op** — title, situation; keeps `type: "open"` *deliberately*, takes `partially_resolves`. The narrow-to-residue branch (Tom, 2026-09-01) |
 | BAD | `e91a6d05` | content_edits | content_edits *(deliberate: labeled BAD)* |
 | sweep | `e91a6d05` | content_edits | content_edits |
 | sweep | `7d21c4aa` | title, content_edits | title, content_edits, **evolution_status** |
@@ -848,11 +850,18 @@ unpromoted.**
 | sweep | `c37d10be` | title, content_edits | title, content_edits |
 | sweep | `a45c88f1` | title | title *(+ its edge description, via the new `connect` op)* |
 
+**Regression guard (Tom's constraint, 2026-09-01): title and content must not
+go backwards.** Verified by script over both files — `title` dropped from 0 ops,
+`content_edits` dropped from 0 ops, and every retained title/content string is
+byte-identical to v6. Title *rises* 7→8 on the new `6ba3f17d` op. (One scripted
+"content TEXT CHANGED" flag on `e91a6d05` is a false positive — that id appears
+on two ops and an id-keyed dict collides; both patches diff byte-identical.)
+
 | field | v6 ops | v7 ops | note |
 |---|---|---|---|
-| title | 7 | 7 | |
-| content_edits | 7 | 7 | |
-| situation | 3 | 3 | |
+| title | 7 | **8** | +1 from the narrow-to-residue op; no existing title touched |
+| content_edits | 7 | 7 | all 7 byte-identical |
+| situation | 3 | 4 | |
 | question | **0** | 2 | A1 violation in v6 — highest production weight (0.90), 94% missing |
 | reasoning | 1 | 1 | |
 | event_time | 1 | 1 | |
@@ -860,6 +869,7 @@ unpromoted.**
 | thought | **0** | 1 | 0/120 emitted in production; revise is its natural home (the field that is *supposed* to change) |
 | confidence | **0** | 1 | E2/E3 gap 6 — "every node asserts flatly" |
 | evolution_status | **0** | 2 | two values shown (`resolved`, `dismissed`) so the vocabulary transfers, not just the key |
+| `partially_resolves` | **0 (prose only)** | 1 | **A1 violation in v6** — the prose taught three closure branches and demonstrated one. Governs the census's 8 partially-answered-never-narrowed nodes (`644dc1e0`) |
 | edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |
 | `source_refs` | 0 | 0 | **DELIBERATE ZERO.** Prose (REPLACE semantics, "never pass `[]` as a no-op") warns about a footgun whose correct behavior is *omission* — and an omitted field cannot be shown in an example. Recorded per A10.5 rather than forced. |
 | voice fields, emotion | 0 | 0 | **DELIBERATE ZERO** — revise-time voice/emotion rewriting is not a behavior we want; they belong to the authoring moment. |
@@ -868,9 +878,24 @@ unpromoted.**
 
 | | v-next.6 | v-next.7 |
 |---|---|---|
-| title | **3** | 1 (generalized) |
+| title | **3** | 2 — one generalized surface clause + one title-specific line (restored on Tom's no-regression constraint) |
 | situation | 1 (dead-referent case only) | shares the generalized surface clause |
 | question / edge description | 0 | 1 each |
+
+**Closure-branch coverage** (the `open` node's three exits — prose at flavor 3
+teaches all three; A10.2 says none may sit at zero examples):
+
+| branch | v-next.6 | v-next.7 |
+|---|---|---|
+| fully answered → retype + `resolves` | `7c1a4d93` ✅ | `7c1a4d93` ✅ (+ `evolution_status: resolved`) |
+| partly answered → stays `open`, narrowed, `partially_resolves` | **0 — prose only** | `6ba3f17d` ✅ |
+| answer opened a NEW question → close-and-mint | **0 — prose only** | **still 0 — KNOWN OPEN GAP** |
+
+Close-and-mint is deliberately left for a later pass rather than bundled here:
+the two branches now shown sit in the same round, which is what makes the
+*discrimination* teachable ("is anything still unknown?"). A third branch in
+the same batch would dilute that contrast. Recorded per A10.5 so it is a
+tracked absence, not an oversight — the exact failure mode A10 exists to stop.
 
 v-next.7 replaces the three title-specific rationales with one surface-general
 clause ("a stale value survives in every surface I leave it in… whichever
