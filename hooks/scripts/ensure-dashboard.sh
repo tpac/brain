@@ -10,7 +10,7 @@
 #                        from then on — "install once, then it just works".
 #   down, installed    → launchctl kickstart it
 #   non-macOS          → detached fallback (per-session, no boot persistence;
-#                        systemd deferred — docs/DISTRIBUTION-READINESS.md D-3)
+#                        systemd deferred)
 #
 # NOTE: no `set -u` — resolve-brain-db.sh (sourced below) is not nounset-safe.
 set -o pipefail

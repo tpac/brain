@@ -17,9 +17,8 @@ recency-by-type pulls that filled with engineering nodes and polluted Haiku's
 per-turn prior; the wisdom section ("What I've learned") was removed
 2026-07-16/2026-08-05 — un-measured selection ("organized priming" is the
 recorded return-intent, behind the identity-prior redesign). Seed-brain
-operator/identity scaffolding lives in the conditional Zero-Memory boot block
-(docs/DISTRIBUTION-READINESS.md §7); everything else is recoverable via
-recall() on demand.
+operator/identity scaffolding lives in the conditional Zero-Memory boot
+block; everything else is recoverable via recall() on demand.
 """
 
 import datetime as _dt

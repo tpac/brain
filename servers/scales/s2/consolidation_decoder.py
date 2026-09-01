@@ -962,8 +962,8 @@ class ConsolidationDecoder(IntegrationUnit):
         # cross-type clusters as likely_keep flipped the encoder's burden of proof
         # ("why override the keep?") and was the dominant under-merge cause — corpus
         # targets 5,6,7,8,12,13 were all type_mismatch + likely_keep. needs_judgment
-        # hands the call to the claim test, backed by the cross-type-duplicate example
-        # in the prompt. See docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md §8.1.
+        # hands the call to the claim test, backed by the cross-type-duplicate
+        # example in the prompt.
         types = set()
         for nid in cluster['nodes']:
             t = cluster.get('node_details', {}).get(nid, {}).get('type', '')

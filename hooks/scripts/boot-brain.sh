@@ -34,7 +34,6 @@ BRAIN_HOOK_SOURCE=$(echo "$HOOK_STDIN" | python3 -c "import sys,json; print(json
 # ANTHROPIC_API_KEY from this hook's env on the direct-spawn path. A
 # launchd-spawned daemon sees neither CLAUDE_PLUGIN_OPTION_* nor this export,
 # so a userConfig-only key needs the env file there (hence the mirror below).
-# See docs/DISTRIBUTION-READINESS.md (§2 onboarding).
 source "$(dirname "$0")/api-key-env.sh"
 BRAIN_ENV_FILE="$(brain_user_env_file)"
 if [ -z "${ANTHROPIC_API_KEY:-}" ]; then

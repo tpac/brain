@@ -434,19 +434,22 @@ class TestMechanismContainment:
 
 
 class TestPublicTreeExport:
-    """5.1: the export script's three gates, exercised in sandboxes so they
-    are pinned independently of the repo's current cleanliness (the real
-    tree stays red until 5.3 clears the scrub worklist — that redness is
-    the gate working, not a signal to weaken here)."""
+    """5.1: the export script's three gates.
+
+    Two kinds of test live here and they check different things. The sandbox
+    tests plant a leak in a temp dir and assert the gate fires — they pin the
+    gate's MECHANICS. `test_live_tree_exports_clean` runs the real export over
+    the real repo — it pins the TREE. Both are needed: a green mechanics test
+    on a red tree proves only that the alarm works while the house burns."""
 
     SCRIPT = os.path.join(os.path.dirname(__file__), '..',
                           'scripts', 'export-public-tree.sh')
     BUILDER = os.path.join(os.path.dirname(__file__), '..',
                            'build-plugin.sh')
 
-    def _run(self, *args):
+    def _run(self, *args, timeout=60):
         return subprocess.run(['bash', self.SCRIPT, *args],
-                              capture_output=True, text=True, timeout=60)
+                              capture_output=True, text=True, timeout=timeout)
 
     def test_manifest_list_mode_is_sane(self):
         out = subprocess.run(['bash', self.BUILDER, '--list'],
@@ -496,6 +499,28 @@ class TestPublicTreeExport:
             'Copyright (c) 2026 Tom Pachys, /Users/tpac/secret\n')
         r = self._run('--scrub-only', str(tmp_path))
         assert r.returncode != 0, 'co-located leak masked by attribution'
+
+    def test_live_tree_exports_clean(self, tmp_path):
+        """THE RATCHET: the LIVE repo must export clean, not just sandboxes.
+
+        Gate B drifted 67 → 69 within hours of being cleared, from another
+        stream merging two comments nobody reviewed. Nothing stops any stream
+        from writing a name into a comment, so a one-time sweep starts rotting
+        the moment it lands. This is what makes cleanliness hold.
+
+        A failure names the file and line. Fix the LINE — reword the comment,
+        drop the attribution, rename the fixture. Do NOT add it to the export
+        script's ALLOWLIST unless the string is genuinely shipped behaviour
+        (the legacy `AgentsContext` rung), deliberate attribution (LICENSE),
+        or a test that asserts ON the literal and would assert nothing without
+        it. Widening the allowlist to get green defeats the gate.
+        """
+        out = tmp_path / 'public-tree'
+        r = self._run(str(out), timeout=300)
+        assert r.returncode == 0, (
+            'the live tree no longer exports clean — a tracked file grew a '
+            'personal-information hit (see the file:line list below).\n'
+            f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
 
     def test_export_refuses_to_clobber_foreign_dir(self, tmp_path):
         (tmp_path / 'precious.txt').write_text('mine')

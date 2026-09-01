@@ -974,6 +974,23 @@ employer *was* considered, and the entry went stale when the company renamed.
 Gate B's pattern set needs re-reading whenever a name in the operator's life
 changes, or it silently protects against the past.
 
+**Dangling internal references: 122, and they are NOT one class.** `docs/` and
+`eval/` are absent from the public tree entirely (not by denylist — they were
+never in the manifest or the extras), so shipped code points into a void 68 +
+54 times across 40+ files. Tom ruled 2026-09-01 that the docs themselves do
+**not** ship: *"i dont know if they are relevant nor do i want to expose all of
+our thinking publicaly until vetted."* Splitting what remains by what the
+reference actually reveals:
+
+| | Count | Disposition |
+|---|---|---|
+| refs naming the two artifacts denylisted **for privacy** — `docs/DISTRIBUTION-READINESS.md`, `docs/archive/session-handoffs/…` | 6 | **STRIPPED 2026-09-01** — these advertise the existence of the internal plan doc and the session-log archive |
+| refs naming `eval/` probes and harnesses | 54 | **open** — D-8 keeps the harness out because *"a published harness is a claim"*; naming `eval/longmem/replay.py` in a comment half-makes that claim |
+| refs naming `docs/*-DESIGN.md` architecture docs | ~62 | **left alone** — topic names only, no privacy content, and genuinely useful breadcrumbs in the dev tree |
+
+The 6 were the only ones with a privacy dimension. The remaining two rows are
+a judgment call about how a partial export should read, not a leak.
+
 **The ~487 dated/removal-verb lines are deliberately NOT swept.** The earlier
 scan of this same class concluded 95% of these comments are good and that *"the
 best ones are exactly the kind a 'make it professional' pass would delete"*
@@ -996,12 +1013,18 @@ deliberately sandbox-only. Extend them — do not add a third mechanism.
   it scans a scope wider than what ships. The blocker list and the two
   unowned classes are in the 5.0b gate note above. Nothing to *write*, but it
   is **not** already scheduled: it needs 5.3, 5.2, and a ruling on scope.
-- **`Tom` / personal data:** gate B lives in `export-public-tree.sh`, and
-  `TestPublicTreeExport` pins it **in sandboxes only** — on purpose, because
-  the real tree is still red and a live-tree assertion would fail today. Once
-  class C is clean, add that live-tree assertion to `TestPublicTreeExport`
-  (the gate's own test class — it already owns this concern). That is what
-  makes cleanliness a ratchet instead of a one-time sweep.
+- **`Tom` / personal data — ARMED 2026-09-01.**
+  `TestPublicTreeExport::test_live_tree_exports_clean` runs the full export
+  over the LIVE repo and fails on any personal-information hit, naming the
+  file and line. The sandbox tests around it pin the gate's *mechanics*; this
+  one pins the *tree* — a green mechanics test on a red tree proves only that
+  the alarm works while the house burns. Negative-tested both ways: planting
+  `Tom` + `/Users/tpac` in a tracked file fails it with the exact line;
+  reverting passes. The test lives in a denylisted file, so it never runs in
+  the public repo (where it would shell out to `scripts/`, outside the
+  manifest). **When it fails, fix the LINE, never widen the ALLOWLIST** —
+  allowlist entries are for shipped behaviour (`AgentsContext`), deliberate
+  attribution (LICENSE), or a test that asserts ON the literal.
 - **Why it matters, measured:** gate B went **67 → 69** on 2026-08-31 within
   hours, from another stream's thalamus work adding two comments. The gated
   classes shrink; the ungated comment class grows with every merge. Without a
