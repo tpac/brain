@@ -777,7 +777,10 @@ def _handle_brain_batch(brain, args, graph_changes):
         return {"ok": False, "error": "operations must be an array, got %s"
                 % type(operations).__name__}
     if not operations:
-        return {"ok": False, "error": "operations array is required"}
+        return {"ok": False, "error":
+                "operations array is required — if you have no operations "
+                "to perform, do not call brain_batch at all; state your "
+                "decision in plain text instead"}
 
     # Deterministic project provenance at the BATCH boundary. The remember/
     # revise sub-ops would be covered by their leaf handlers anyway, but ops

@@ -183,6 +183,25 @@ def get_proposed_ids(proposal):
     return ids
 
 
+def had_empty_batch_call(action_details):
+    """True when the encoder called brain_batch with no operations at all.
+
+    Dispatch rejects the call ("operations array is required"), so nothing
+    was written — but unlike an invalid op, an empty call references NO node
+    ids, so node_ids_touched_by_invalid_ops can't shield anything from the
+    skip→rejection path. The same cluster has been observed yielding real
+    ops on a retry (schema-gate FAIL→PASS→FAIL on one cluster, 2026-09-01),
+    so an empty call is a thwarted run, not a clean SKIP: callers must not
+    stamp suppression fingerprints for proposals the run left un-acted-on.
+    """
+    for action in action_details or []:
+        if not isinstance(action, dict) or action.get('tool') != 'brain_batch':
+            continue
+        if not action.get('input', {}).get('operations'):
+            return True
+    return False
+
+
 def node_ids_touched_by_invalid_ops(action_details):
     """Node IDs the encoder targeted with an op OUTSIDE the closed vocabulary.
 
