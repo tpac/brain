@@ -493,19 +493,7 @@ def _load_embeddings_for_nodes(conn, node_ids):
     import numpy as np
     if not node_ids:
         return {}
-    # Resolve short IDs
-    full_ids = []
-    short_to_full = {}
-    for nid in node_ids:
-        if len(nid) < 16:
-            row = conn.execute('SELECT node_id FROM node_embeddings WHERE node_id LIKE ?',
-                               (nid + '%',)).fetchone()
-            if row:
-                full_ids.append(row[0])
-                short_to_full[nid] = row[0]
-        else:
-            full_ids.append(nid)
-            short_to_full[nid] = nid
+    full_ids = [nid for nid in node_ids if nid]
 
     if not full_ids:
         return {}
@@ -520,8 +508,6 @@ def _load_embeddings_for_nodes(conn, node_ids):
     for nid, blob in rows:
         vec = np.frombuffer(blob, dtype=np.float32)
         result[nid] = vec
-        # Also store by short ID
-        result[nid[:8]] = vec
     return result
 
 

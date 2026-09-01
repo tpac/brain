@@ -33,18 +33,18 @@ def _row(ref_type, summary='', content=None, tool=None,
 class IdentityPresentTest(unittest.TestCase):
     def test_user_message_uses_human_identity_and_content(self):
         row = _row('user_message', content='Hello there',
-                   human='Tom', agent='Anchor')
-        self.assertEqual(_render_trace_for_embedding(row), 'Tom: Hello there')
+                   human='Ada', agent='Anchor')
+        self.assertEqual(_render_trace_for_embedding(row), 'Ada: Hello there')
 
     def test_assistant_message_uses_agent_identity_and_content(self):
         row = _row('assistant_message', content='Hello back',
-                   human='Tom', agent='Anchor')
+                   human='Ada', agent='Anchor')
         self.assertEqual(_render_trace_for_embedding(row),
                          'Anchor: Hello back')
 
     def test_tool_result_uses_agent_identity_and_tool(self):
         row = _row('tool_result', summary='Bash: ls -la',
-                   tool='Bash', human='Tom', agent='Anchor')
+                   tool='Bash', human='Ada', agent='Anchor')
         self.assertEqual(_render_trace_for_embedding(row),
                          'Anchor via Bash: Bash: ls -la')
 
@@ -78,21 +78,21 @@ class ContentVsSummaryPreferenceTest(unittest.TestCase):
         row = _row('user_message',
                    summary='short summary',
                    content='full longer content',
-                   human='Tom', agent='Anchor')
+                   human='Ada', agent='Anchor')
         self.assertEqual(_render_trace_for_embedding(row),
-                         'Tom: full longer content')
+                         'Ada: full longer content')
 
     def test_summary_used_when_content_missing(self):
         row = _row('user_message', summary='only summary',
-                   human='Tom', agent='Anchor')
+                   human='Ada', agent='Anchor')
         self.assertEqual(_render_trace_for_embedding(row),
-                         'Tom: only summary')
+                         'Ada: only summary')
 
     def test_empty_content_falls_back_to_summary(self):
         row = _row('user_message', summary='fallback', content='',
-                   human='Tom', agent='Anchor')
+                   human='Ada', agent='Anchor')
         self.assertEqual(_render_trace_for_embedding(row),
-                         'Tom: fallback')
+                         'Ada: fallback')
 
 
 class EdgeCasesTest(unittest.TestCase):

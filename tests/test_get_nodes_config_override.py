@@ -239,14 +239,29 @@ class TestGetNodesConfigOverride(unittest.TestCase):
         self.assertNotIn("ANCHOR_QUOTE_SENTINEL", out)       # balanced, not heavy
         self.assertEqual(out.count("Hub member"), 12)
 
-    def test_error_entries_filtered_not_rendered(self):
-        """{"id","error"} entries from unresolved ids must not be rendered as
-        nodes (they lack node fields) — render the real nodes, skip errors."""
+    def test_error_entries_render_as_miss_line(self):
+        """{"id","error"} entries from unresolved ids must not render as
+        nodes (they lack node fields) — but they must not vanish either:
+        the real nodes render, misses land on a trailing ⚠ line (the
+        id-resolution unification's loud-miss contract)."""
         result = _dispatch_list(2, with_error=True)
         out = _format_result("get_nodes", result,
                              get_nodes_config=S2CE_NODE_FORMAT)
         self.assertEqual(out.count("Hub member"), 2)         # both real nodes
-        self.assertNotIn("missing1", out)                    # error entry skipped
+        self.assertIn("not found", out)                      # miss reported
+        self.assertIn("missing1", out)                       # ...with its id
+
+    def test_all_miss_renders_miss_line_not_raw_json(self):
+        """All ids unknown → the ⚠ line alone, same shape as the partial-miss
+        case — never a raw JSON dump."""
+        result = [{"id": "missing1", "error": "not found"},
+                  {"id": "missing2", "error": "not found"}]
+        out = _format_result("get_nodes", result,
+                             get_nodes_config=S2CE_NODE_FORMAT)
+        self.assertIn("not found", out)
+        self.assertIn("missing1", out)
+        self.assertIn("missing2", out)
+        self.assertFalse(_is_raw_json(out))
 
     # ── dict shape (brain.get_node(ids) direct) still works ──────────
 

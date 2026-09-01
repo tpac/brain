@@ -33,13 +33,13 @@ class TestWriteApiKey(unittest.TestCase):
     def test_replaces_existing_key_preserves_other_vars(self):
         os.makedirs(os.path.dirname(self.env))
         with open(self.env, 'w') as f:
-            f.write('BRAIN_OPERATOR_NAME=Tom\n'
+            f.write('BRAIN_OPERATOR_NAME=Ada\n'
                     'ANTHROPIC_API_KEY=sk-ant-OLD\n'
                     'DASHBOARD_PORT=47303\n')
         ok, _ = write_api_key(self.env, 'sk-ant-NEW-key-value')
         self.assertTrue(ok)
         content = open(self.env).read()
-        self.assertIn('BRAIN_OPERATOR_NAME=Tom\n', content)
+        self.assertIn('BRAIN_OPERATOR_NAME=Ada\n', content)
         self.assertIn('DASHBOARD_PORT=47303\n', content)
         self.assertIn('ANTHROPIC_API_KEY=sk-ant-NEW-key-value\n', content)
         self.assertNotIn('sk-ant-OLD', content)

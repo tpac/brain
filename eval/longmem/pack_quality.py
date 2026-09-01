@@ -63,8 +63,8 @@ def item_stats(brain_dir: str, gold_match_ids=()) -> dict:
         gold_seed_hits = 0
         for mid in gold_match_ids:
             row = con.execute(
-                "SELECT encoding_source FROM nodes WHERE id LIKE ? LIMIT 1",
-                (str(mid) + "%",)).fetchone()
+                "SELECT encoding_source FROM nodes WHERE id = ? LIMIT 1",
+                (str(mid),)).fetchone()
             if row and row[0] == "anchor:seed":
                 gold_seed_hits += 1
         # The S1E scribe's writes land as encoding_source='anchor' in this

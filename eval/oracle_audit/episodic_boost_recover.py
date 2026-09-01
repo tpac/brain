@@ -80,8 +80,8 @@ with IsolatedBrain() as env:
         trace_to_nodes.setdefault(tid, set()).add(nid)
 
     def resolve(prefix):
-        r = bc.execute("SELECT id, type, archived FROM nodes WHERE id LIKE ?",
-                       (prefix + '%',)).fetchone()
+        r = bc.execute("SELECT id, type, archived FROM nodes WHERE id = ?",
+                       (prefix,)).fetchone()
         return r  # (id, type, archived) or None
 
     def episodic_boost(query, idf_norm):

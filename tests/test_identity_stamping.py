@@ -72,7 +72,7 @@ class StampingEnabledTest(unittest.TestCase):
     def setUp(self):
         self.conn = _open_logs()
         self.dal = TraceDAL(self.conn)
-        self.dal.set_identity('Tom', 'Anchor')
+        self.dal.set_identity('Ada', 'Anchor')
 
     def tearDown(self):
         self.conn.close()
@@ -83,7 +83,7 @@ class StampingEnabledTest(unittest.TestCase):
             ref_type='user_message', metadata={'content': 'hi'})
         meta = _read_metadata(self.conn, eid)
         self.assertEqual(meta['content'], 'hi')
-        self.assertEqual(meta['human_identity'], 'Tom')
+        self.assertEqual(meta['human_identity'], 'Ada')
         self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_stamp_when_metadata_none(self):
@@ -91,7 +91,7 @@ class StampingEnabledTest(unittest.TestCase):
             chain_id='c1', scale='s0', event_type='K',
             ref_type='user_message', metadata=None)
         meta = _read_metadata(self.conn, eid)
-        self.assertEqual(meta, {'human_identity': 'Tom',
+        self.assertEqual(meta, {'human_identity': 'Ada',
                                 'agent_identity': 'Anchor'})
 
     def test_caller_override_preserved(self):
@@ -106,16 +106,16 @@ class StampingEnabledTest(unittest.TestCase):
         self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_partial_identity_human_only(self):
-        self.dal.set_identity('Tom', '')
+        self.dal.set_identity('Ada', '')
         eid = self.dal.append(
             chain_id='c1', scale='s0', event_type='K',
             ref_type='user_message', metadata={})
         meta = _read_metadata(self.conn, eid)
-        self.assertEqual(meta, {'human_identity': 'Tom'})
+        self.assertEqual(meta, {'human_identity': 'Ada'})
 
     def test_set_identity_strips_whitespace(self):
-        self.dal.set_identity('  Tom  ', '  Anchor  ')
-        self.assertEqual(self.dal._human_identity, 'Tom')
+        self.dal.set_identity('  Ada  ', '  Anchor  ')
+        self.assertEqual(self.dal._human_identity, 'Ada')
         self.assertEqual(self.dal._agent_identity, 'Anchor')
 
     def test_stamp_in_append_batch(self):
@@ -128,7 +128,7 @@ class StampingEnabledTest(unittest.TestCase):
         ids = self.dal.append_batch(events)
         for eid in ids:
             meta = _read_metadata(self.conn, eid)
-            self.assertEqual(meta['human_identity'], 'Tom')
+            self.assertEqual(meta['human_identity'], 'Ada')
             self.assertEqual(meta['agent_identity'], 'Anchor')
 
     def test_stamp_skips_non_dict_metadata(self):
@@ -157,14 +157,18 @@ class StampingEnabledTest(unittest.TestCase):
                 chain_id='c1', scale=scale, event_type=event_type,
                 ref_type=ref_type, metadata=None)
             meta = _read_metadata(self.conn, eid)
-            self.assertEqual(meta['human_identity'], 'Tom', scale)
+            self.assertEqual(meta['human_identity'], 'Ada', scale)
             self.assertEqual(meta['agent_identity'], 'Anchor', scale)
 
 
 class WritePathWarningTest(unittest.TestCase):
-    """The 'identity unset on scale write' loud signal fires at the
+    """The 'identity unconfigured on scale write' loud signal fires at the
     write site (not at boot) — one-shot per TraceDAL lifetime so the
-    operator sees the gap without log spam."""
+    operator sees the gap without log spam.
+
+    It gates on identity being UNCHOSEN, not merely absent: the agent name
+    now falls back to a shipped default, so a non-empty name no longer proves
+    anyone picked it, and keying on emptiness would silence this forever."""
 
     def setUp(self):
         self.conn = _open_logs()
@@ -190,7 +194,7 @@ class WritePathWarningTest(unittest.TestCase):
             self.dal.append(chain_id='c', scale='s0', event_type='K',
                             ref_type='user_message', metadata=None)
         out = self._capture_stderr(do_write)
-        self.assertIn('identity unset on first scale-s0 write', out)
+        self.assertIn('identity unconfigured on first scale-s0 write', out)
         self.assertIn('BRAIN_OPERATOR_NAME', out)
         self.assertIn('BRAIN_AGENT_NAME', out)
 
@@ -201,10 +205,10 @@ class WritePathWarningTest(unittest.TestCase):
                                 ref_type='user_message', metadata=None)
         out = self._capture_stderr(do_writes)
         # Only one occurrence regardless of how many writes happened
-        self.assertEqual(out.count('identity unset'), 1)
+        self.assertEqual(out.count('identity unconfigured'), 1)
 
     def test_silent_when_identity_configured(self):
-        self.dal.set_identity('Tom', 'Anchor')
+        self.dal.set_identity('Ada', 'Anchor')
 
         def do_write():
             self.dal.append(chain_id='c', scale='s0', event_type='K',
@@ -219,17 +223,37 @@ class WritePathWarningTest(unittest.TestCase):
                  'ref_type': 'user_message', 'metadata': None},
             ])
         out = self._capture_stderr(do_batch)
-        self.assertIn('identity unset', out)
+        self.assertIn('identity unconfigured', out)
 
-    def test_partial_identity_still_fires(self):
-        # Only one side set — still missing the other
-        self.dal.set_identity('Tom', '')
+    def test_default_agent_name_still_fires(self):
+        """A shipped default is a name, not a choice.
+
+        This is the case a non-empty default would otherwise silence forever:
+        both identity slots are populated, so an emptiness check would go
+        quiet, but nobody has actually named this entity. The message must
+        also stop claiming nothing is recorded — the default IS stamped.
+        """
+        from servers.daemon_config import DEFAULT_AGENT_NAME
+        self.dal.set_identity('Ada', DEFAULT_AGENT_NAME, agent_is_default=True)
 
         def do_write():
             self.dal.append(chain_id='c', scale='s0', event_type='K',
                             ref_type='user_message', metadata=None)
         out = self._capture_stderr(do_write)
-        self.assertIn('identity unset', out)
+        self.assertIn('identity unconfigured', out)
+        self.assertIn('BRAIN_AGENT_NAME', out)
+        self.assertNotIn('BRAIN_OPERATOR_NAME', out)
+        self.assertIn('stamped with the default agent name', out)
+
+    def test_partial_identity_still_fires(self):
+        # Only one side set — still missing the other
+        self.dal.set_identity('Ada', '')
+
+        def do_write():
+            self.dal.append(chain_id='c', scale='s0', event_type='K',
+                            ref_type='user_message', metadata=None)
+        out = self._capture_stderr(do_write)
+        self.assertIn('identity unconfigured', out)
         self.assertNotIn('BRAIN_OPERATOR_NAME', out)
         self.assertIn('BRAIN_AGENT_NAME', out)
 
@@ -257,13 +281,32 @@ class ConfigReaderTest(unittest.TestCase):
             else:
                 os.environ.pop('BRAIN_AGENT_NAME', None)
 
-    def test_empty_when_unset(self):
+    def test_unset_agent_falls_back_to_default_operator_stays_empty(self):
+        """The two names have deliberately different unset semantics.
+
+        An entity with no name at all forces every render into awkward
+        name-free prose, so the agent name falls back to a shipped default.
+        A human's name cannot be invented, so the operator's stays empty and
+        the DAL skips stamping it.
+        """
         prior_op = os.environ.pop('BRAIN_OPERATOR_NAME', None)
         prior_ag = os.environ.pop('BRAIN_AGENT_NAME', None)
         try:
-            from servers.daemon_config import get_operator_name, get_agent_name
+            from servers.daemon_config import (
+                get_operator_name, get_agent_name, agent_name_is_default,
+                DEFAULT_AGENT_NAME)
             self.assertEqual(get_operator_name(), '')
-            self.assertEqual(get_agent_name(), '')
+            self.assertEqual(get_agent_name(), DEFAULT_AGENT_NAME)
+            self.assertTrue(agent_name_is_default())
+            # Whitespace is not a choice either.
+            os.environ['BRAIN_AGENT_NAME'] = '   '
+            self.assertEqual(get_agent_name(), DEFAULT_AGENT_NAME)
+            self.assertTrue(agent_name_is_default())
+            # A real name is a choice — and the pairing is the whole
+            # mechanism: what the name IS vs whether anyone picked it.
+            os.environ['BRAIN_AGENT_NAME'] = 'Anchor'
+            self.assertEqual(get_agent_name(), 'Anchor')
+            self.assertFalse(agent_name_is_default())
         finally:
             if prior_op is not None:
                 os.environ['BRAIN_OPERATOR_NAME'] = prior_op

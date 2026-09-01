@@ -44,7 +44,7 @@ class RememberSourceRefsTest(unittest.TestCase):
             "(id, chain_id, scale, event_type, ref_type, summary, session_id, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             ('a3f5e2b1', 'chain-test', 's0', 'K', 'user_message',
-             'tom probe', 'sess-test', '2026-05-25T00:00:00Z'))
+             'ada probe', 'sess-test', '2026-05-25T00:00:00Z'))
         self.brain.logs_conn.execute(
             "INSERT OR REPLACE INTO trace_events "
             "(id, chain_id, scale, event_type, ref_type, summary, session_id, created_at) "

@@ -11,7 +11,7 @@ import json
 import re
 import sys
 
-from .dispatch_common import _resolve_id, _pop_session_ctx, caller_session, CALLER_SESSION_KEY
+from .dispatch_common import _pop_session_ctx, caller_session, CALLER_SESSION_KEY
 from .scales.dispatch import stamp_scope_provenance
 
 
@@ -425,7 +425,7 @@ def _handle_revise(brain, args, graph_changes):
     """Update any field(s) on an existing node via revise()."""
     from .contract import validate_field
 
-    node_id = _resolve_id(brain, args.get("node_id", ""))
+    node_id = args.get("node_id", "")
     reason = args.get("reason", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
@@ -531,11 +531,9 @@ def _handle_revise_batch(brain, args, graph_changes):
                 if not ok:
                     return {"ok": False, "error": "revisions[%d].%s: %s" % (i, field, err)}
 
-    # Resolve short IDs
     resolved = []
     for spec in revisions:
         r = dict(spec)
-        r['node_id'] = _resolve_id(brain, r['node_id'])
         if top_encoding_source and 'encoding_source' not in r:
             r['encoding_source'] = top_encoding_source
         resolved.append(r)
@@ -580,12 +578,10 @@ def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
     # existence check (trusted-caller contract), so a garbage survivor from
     # the agent-facing schema would otherwise yield ok=True with a dead
     # lineage pointer: resolve_live drops the node as a permanent orphan
-    # (review 2026-08-07). Mirrors absorb's up-front survivor validation
-    # and _op_disconnect's short-id resolution.
+    # (review 2026-08-07). Mirrors absorb's up-front survivor validation.
     survivor_id = op_spec.get('survivor_id') or None
     if survivor_id:
-        survivor_id = _resolve_id(brain, survivor_id)
-        if survivor_id == _resolve_id(brain, node_id):
+        if survivor_id == node_id:
             return {"ok": False, "node_id": node_id,
                     "error": "survivor_id must be a different node"}
         alive = brain.conn.execute(
@@ -710,11 +706,8 @@ def _op_disconnect(brain, op_spec, top_encoding_source, args, graph_changes):
     The manifest row carries remove_relation's OBSERVED deltas: a disconnect
     of an already-archived or nonexistent relation has empty deltas and the
     emitter stays silent, where the legacy emit fabricated a 0→1 flip."""
-    # Resolve endpoints — mirrors _handle_connect/_handle_connect_batch. Without
-    # this, short/title ids passed by an encoder miss get_edge_id (silent no-op)
-    # and the edge trace records unresolved ids inconsistent with other edges.
-    source_id = _resolve_id(brain, op_spec.get("source_id", ""))
-    target_id = _resolve_id(brain, op_spec.get("target_id", ""))
+    source_id = op_spec.get("source_id", "")
+    target_id = op_spec.get("target_id", "")
     relation = op_spec.get("relation")
     archived_by = _resolve_archived_by(op_spec, top_encoding_source)
     # remove_relation gates its own commit on conn.in_batch (True here) →
@@ -722,13 +715,19 @@ def _op_disconnect(brain, op_spec, top_encoding_source, args, graph_changes):
     # separate get_edge_id lookup.
     r = brain._graph.remove_relation(
         source_id, target_id, relation, archived_by=archived_by)
+    if not r.get('edge_id'):
+        # No edge between these ids at all — a miscopied id or stale pointer.
+        # Loud, matching connect (add_relation raises) and revise (error dict);
+        # an already-archived relation on an EXISTING edge stays a quiet no-op
+        # (edge_id present, empty deltas — idempotent by design).
+        return {"ok": False,
+                "error": "disconnect: no edge between %r and %r"
+                         % (source_id[:12], target_id[:12])}
     graph_changes.append("DISCONNECT: %s -[%s]-> %s" % (
         source_id[:8], relation, target_id[:8]))
-    mutations = None
-    if r.get('edge_id'):
-        mutations = {"edges": [_edge_row(
-            r, relation, op_spec.get('reason', '') or args.get('reason', ''),
-            archived_by, source_id, target_id)]}
+    mutations = {"edges": [_edge_row(
+        r, relation, op_spec.get('reason', '') or args.get('reason', ''),
+        archived_by, source_id, target_id)]}
     return {"ok": True, "mutations": mutations}
 
 
@@ -1167,8 +1166,8 @@ def _handle_connect(brain, args, graph_changes):
                 "error": "relation is required — a specific verb; nothing "
                          "defaults to related_to any more"}
     encoding_source = args.get("encoding_source") or 'anchor'
-    src_id = _resolve_id(brain, args.get("source_id", ""))
-    tgt_id = _resolve_id(brain, args.get("target_id", ""))
+    src_id = args.get("source_id", "")
+    tgt_id = args.get("target_id", "")
     result = brain.connect_typed(
         source_id=src_id,
         target_id=tgt_id,
@@ -1197,8 +1196,8 @@ def _handle_revise_edge(brain, args, graph_changes):
     description/weight. Identify by (source_id, target_id, relation); omitted
     fields preserve (mirrors revise()). Routes the rename to the in-place
     GraphDAL.rename_relation primitive, not a connect+disconnect pair."""
-    source_id = _resolve_id(brain, args.get("source_id", ""))
-    target_id = _resolve_id(brain, args.get("target_id", ""))
+    source_id = args.get("source_id", "")
+    target_id = args.get("target_id", "")
     relation = args.get("relation")
     if not (source_id and target_id and relation):
         return {"ok": False, "error": "source_id, target_id, relation are required"}
@@ -1284,11 +1283,9 @@ def _handle_connect_batch(brain, args, graph_changes):
             # never relabels an existing edge.
             encoding_source = (c.get("encoding_source")
                                or top_encoding_source or 'anchor')
-            src_id = _resolve_id(brain, src_raw)
-            tgt_id = _resolve_id(brain, tgt_raw)
             result = brain.connect_typed(
-                source_id=src_id,
-                target_id=tgt_id,
+                source_id=src_raw,
+                target_id=tgt_raw,
                 relation=relation,
                 weight=c.get("weight", 0.5),
                 description=c.get("description"),
@@ -1300,7 +1297,7 @@ def _handle_connect_batch(brain, args, graph_changes):
                 edge_rows.append(_edge_row(
                     result, relation,
                     c.get('reason', '') or args.get('reason', ''),
-                    encoding_source, src_id, tgt_id))
+                    encoding_source, src_raw, tgt_raw))
         except Exception as e:
             # No silent drops: a failed edge in a batch must surface, not vanish
             # — and now with its REASON in the response, not just the dashboard.
@@ -1324,7 +1321,7 @@ def _handle_set_node_lock(brain, args, graph_changes):
     """Flip a node's locked flag via the two-phase confirm door
     (brain.set_node_lock). Operator-channel only — the encoder dispatch
     closure refuses this command; it is deliberately NOT a brain_batch op."""
-    node_id = _resolve_id(brain, args.get("node_id", ""))
+    node_id = args.get("node_id", "")
     reason = args.get("reason", "")
     if not node_id:
         return {"ok": False, "error": "node_id is required"}
@@ -1370,7 +1367,7 @@ def _handle_set_node_lock(brain, args, graph_changes):
 
 def _handle_enrich(brain, args, graph_changes):
     result = brain.store_enrichments(
-        node_id=_resolve_id(brain, args.get("node_id", "")),
+        node_id=args.get("node_id", ""),
         question=args.get("question"),
         anchor=args.get("anchor"),
         bridge=args.get("bridge"),

@@ -2384,10 +2384,10 @@ class TestApiKeyEnvHelper(unittest.TestCase):
     def test_source_exports_every_var_not_just_the_key(self):
         # brain-env.sh depends on this: identity tokens in the file must reach
         # the daemon, so the source is `set -a`, not a key-only read.
-        self._write_env_file("BRAIN_OPERATOR_NAME=tom\n")
+        self._write_env_file("BRAIN_OPERATOR_NAME=ada\n")
         r = self._run('brain_source_user_env\n'
                       'bash -c \'printf %s "$BRAIN_OPERATOR_NAME"\'')
-        self.assertEqual(r.stdout, "tom", r.stderr)
+        self.assertEqual(r.stdout, "ada", r.stderr)
 
     def test_missing_env_file_is_not_an_error(self):
         r = self._run('brain_source_user_env; printf %s "$?"')
@@ -2890,9 +2890,9 @@ class TestBrainEnvCallsTheApiKeyOwner(unittest.TestCase):
 
     def test_brain_env_sources_the_user_config_file(self):
         with open(os.path.join(self._xdg, "brain", "env"), "w") as f:
-            f.write("BRAIN_OPERATOR_NAME=tom\nANTHROPIC_API_KEY=sk-from-file\n")
+            f.write("BRAIN_OPERATOR_NAME=ada\nANTHROPIC_API_KEY=sk-from-file\n")
         out = self._source({}, "$BRAIN_OPERATOR_NAME:$ANTHROPIC_API_KEY")
-        self.assertEqual(out, "tom:sk-from-file",
+        self.assertEqual(out, "ada:sk-from-file",
                          "every var in the user config must reach the daemon, "
                          "not just the key")
 

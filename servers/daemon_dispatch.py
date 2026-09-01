@@ -14,7 +14,7 @@ from typing import Dict
 
 from .dispatch_common import (
     CmdEntry, check_unknown_keys, log_failed_batch_ops,
-    _resolve_id, _pop_session_ctx, caller_session,
+    _pop_session_ctx, caller_session,
 )
 from .mutation_emitter import emit_mutation_traces
 from .dispatch_write import (

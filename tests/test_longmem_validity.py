@@ -15,6 +15,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from tests.eval_optional import require_eval  # noqa: E402
+require_eval()  # D-8: eval/ is absent from the public tree
+
 from eval.longmem.validity import suspect_reasons, RECALL_FAILURE_MODES
 from eval.longmem.analyzer import (_gold_scan_basis, _gold_scan_terms,
                                    _find_gold_bearing_nodes)

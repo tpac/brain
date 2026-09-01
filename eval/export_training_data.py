@@ -45,8 +45,8 @@ def load_graph(brain):
 
     for cid_short in COMMUNITY_IDS:
         row = brain.conn.execute(
-            'SELECT id, title, content FROM nodes WHERE id LIKE ?',
-            (cid_short + '%',)).fetchone()
+            'SELECT id, title, content FROM nodes WHERE id = ?',
+            (cid_short,)).fetchone()
         if not row:
             print('WARNING: community %s not found' % cid_short)
             continue

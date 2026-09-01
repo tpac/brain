@@ -28,15 +28,33 @@ import tempfile
 import sqlite3
 
 
+def _has_brain(d):
+    return bool(d) and os.path.isfile(os.path.join(d, 'brain.db'))
+
+
 def _default_production_dir():
-    """Resolve production brain DB directory."""
-    env_dir = os.environ.get('BRAIN_DB_DIR', '')
-    if env_dir and os.path.exists(os.path.join(env_dir, 'brain.db')):
-        return env_dir
-    default = os.path.join(os.path.expanduser('~'), 'AgentsContext', 'brain')
-    if os.path.exists(os.path.join(default, 'brain.db')):
-        return default
-    return None
+    """Where a production brain actually lives, or None.
+
+    D-13: `resolve_db_dir` is the single Python authority for brain location,
+    so route through it rather than re-walking the knob / resolved.env / XDG /
+    legacy ladder here.
+
+    One rung needs different treatment, though, because the two callers are
+    asking different questions. The resolver answers *where should the brain
+    be* and therefore TRUSTS `$BRAIN_DB_DIR` unconditionally — the hook
+    wrappers validate it, and a dir with no brain.db yet is a legitimate
+    birthplace. We need *where is there a brain to copy*, so an env var
+    pointing somewhere brain-less has to fall through to the rest of the
+    ladder instead of ending the search. Test classes set `$BRAIN_DB_DIR` to
+    their own temp dirs (some without restoring it), so this is the common
+    case in a batch run, not a corner one.
+    """
+    from servers.daemon_config import resolve_db_dir
+    env = os.environ.get('BRAIN_DB_DIR', '')
+    if _has_brain(env):
+        return env
+    d = resolve_db_dir(trust_env=False)
+    return d if _has_brain(d) else None
 
 
 class IsolatedBrain:

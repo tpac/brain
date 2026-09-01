@@ -211,13 +211,22 @@ class TestHostNeutrality:
 class TestNameDerivation:
     """D-12: instance names derive from config; no shipped `Anchor` literal.
 
-    xfail(strict) until 5.0c consolidates the ~45 shipped files into
-    BRAIN_AGENT_NAME — the day 5.0c completes, this XPASSes and the marker
-    must come off, making the gate permanent.
+    xfail(strict) until 5.0c consolidates the literals into BRAIN_AGENT_NAME
+    (143 across 43 shipped files, measured 2026-08-31) — the day 5.0c
+    completes, this XPASSes and the marker must come off, making the gate
+    permanent.
+
+    ⚠ WHAT IS NOT BEING CAUGHT WHILE THIS IS DISARMED. A strict-xfail gate is
+    worse than an absent one, because a green suite reads as coverage: a
+    reader concludes the literal check ran. It did not. Until the marker comes
+    off, **a newly added `Anchor` literal in any shipped file produces no
+    signal from this suite** — not a failure, not a warning. New code is on
+    the honour system, and the cost lands as a bigger 5.0c sweep later.
     """
 
-    # Where the name may live as CONFIG: the manifests (displayName ruling is
-    # the open D-12 gate) and the userConfig description text.
+    # Where the name may live as CONFIG: the manifests and the userConfig
+    # description text. (`displayName` is `Entity`, not the instance name —
+    # D-12: the manifest names the product, config names the instance.)
     ALLOWED = {'.claude-plugin/plugin.json', '.claude-plugin/marketplace.json'}
 
     @pytest.mark.xfail(

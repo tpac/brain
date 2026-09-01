@@ -221,13 +221,13 @@ class TestFormatNode(BrainTestBase):
         scope_marks path — adding a dimension re-threads nothing."""
         nid = self._make_node(title='Other-speaker fact', counterpart='Dana')
         out = self._render(nid, {'scope': {'project': 'brain',
-                                           'counterpart': 'Tom'}})
+                                           'counterpart': 'Ada'}})
         self.assertIn('⚠ Learned with another counterpart: Dana', out)
         self.assertNotIn('Counterpart: Dana', out)
 
     def test_differential_counterpart_silent_on_match(self):
-        nid = self._make_node(title='Same-speaker fact', counterpart='Tom')
-        out = self._render(nid, {'scope': {'counterpart': 'Tom'}})
+        nid = self._make_node(title='Same-speaker fact', counterpart='Ada')
+        out = self._render(nid, {'scope': {'counterpart': 'Ada'}})
         self.assertNotIn('another counterpart', out)
         self.assertNotIn('Counterpart:', out)
 
@@ -235,7 +235,7 @@ class TestFormatNode(BrainTestBase):
         """Callers that don't declare a scope keep the pre-existing generic
         KV render — no information loss for unwired consumers."""
         nid = self._make_node(title='Legacy view', project='exco',
-                              counterpart='Tom')
+                              counterpart='Ada')
         out = self._render(nid)
         self.assertIn('Project: exco', out)
         self.assertNotIn('From another project', out)

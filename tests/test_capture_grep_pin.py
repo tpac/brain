@@ -89,9 +89,16 @@ class TestCaptureGrepPin(unittest.TestCase):
 
     def test_allowlist_entries_still_exist(self):
         """A stale allowlist entry means the legacy branch died — delete the
-        entry (and this reminder keeps the allowlist honest)."""
+        entry (and this reminder keeps the allowlist honest).
+
+        An entry whose whole top-level directory is absent is not stale: D-8
+        keeps `eval/` out of the public tree, so there the eval entry names a
+        branch that still exists upstream. Only check what this tree carries.
+        """
         for rel, pat in ALLOWLIST:
             path = os.path.join(REPO, rel)
+            if not os.path.isdir(os.path.join(REPO, rel.split("/")[0])):
+                continue
             self.assertTrue(os.path.exists(path),
                             "allowlisted file gone: %s — drop the entry" % rel)
             with open(path, encoding="utf-8", errors="replace") as f:

@@ -698,13 +698,7 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
                 'lineage' in raw_variant))
         _VARIANT_FIRST_CALL_LOGGED = True
 
-    # Resolve to full IDs (the kernel reads vectors keyed on full id)
-    ndal = brain._nodes
-    resolved = []
-    for sid in selected_ids:
-        full = ndal.resolve_id(sid) if len(str(sid)) < 16 else sid
-        if full:
-            resolved.append(full)
+    resolved = [sid for sid in selected_ids if sid]
 
     if not resolved:
         return {'node_activation': {}, 'field_activation': {},
@@ -784,8 +778,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     for _sid in selected_ids:
         if _sid and _sid not in _in_menu:
             try:
-                _full = brain._nodes.resolve_id(_sid)
-                _title = (brain._nodes.get_title(_full) or '') if _full else ''
+                _title = brain._nodes.get_title(_sid) or ''
             except Exception:
                 _title = ''
             sel_detail.append('%s|%s' % (_sid, _title))
@@ -1096,24 +1089,28 @@ def run_surface(brain, ctx, candidates_data, user_message,
             selected_mode[full_id] = mode
         else:
             # Haiku returned an ID not in its candidate menu — either a
-            # hallucination or a typo. Try to resolve it directly against
-            # the brain (the ID might happen to match a real node from
-            # session context). If found, use it; if not, log loudly so
-            # the failure isn't silent.
+            # hallucination or a typo. Check it against the brain by exact
+            # id (the ID might be a real node from session context). If
+            # found, use it; if not, log loudly so the failure isn't silent.
             try:
+                # get_title as a 1-column existence probe (title is NOT NULL;
+                # `is not None` so an empty-string title still counts as found)
                 ndal = brain._nodes
-                resolved = ndal.resolve_id(short_id)
+                resolved = (short_id
+                            if ndal.get_title(short_id) is not None else None)
                 # 2026-05-02: Haiku occasionally drops a leading '0' from
                 # 8-char IDs, producing a 7-char output (e.g. '95c2b96'
                 # instead of '095c2b96'). Verified via brain error logs:
                 # 2 of 4 'unresolvable' cases were leading-0 drops to real
                 # nodes. When the short_id is 7 chars and doesn't resolve,
-                # retry with '0' prepended. If THAT resolves, recover the
+                # retry with '0' prepended — that reconstructs a full 8-char
+                # id, still an exact match. If THAT resolves, recover the
                 # selection and log it as a leading-zero recovery (distinct
                 # from real hallucinations).
                 if not resolved and len(short_id) == 7:
-                    resolved = ndal.resolve_id('0' + short_id)
-                    if resolved:
+                    _padded = '0' + short_id
+                    if ndal.get_title(_padded) is not None:
+                        resolved = _padded
                         try:
                             brain._log_error(
                                 'haiku_id_leading_zero_recovered',
@@ -1131,7 +1128,7 @@ def run_surface(brain, ctx, candidates_data, user_message,
                 try:
                     brain._log_error(
                         'haiku_id_resolve_failed', _re,
-                        'resolve_id raised for short_id=%s — treating as unresolvable but real cause logged'
+                        'exact-id lookup raised for short_id=%s — treating as unresolvable but real cause logged'
                         % short_id)
                 except Exception:
                     pass

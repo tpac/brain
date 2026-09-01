@@ -784,9 +784,14 @@ def expand_node(brain, node_ref: str = '', hops: int = 1, **_) -> List[Dict[str,
         if not node_id:
             return []
         traversed = traverse(brain, [node_id], depth=int(hops), limit_per_seed=20)
+        # traverse() returns {'neighbors': [...], 'corrections': {...},
+        # 'metadata': {...}} — only neighbors matter here: execute_tool's
+        # boundary enrichment re-attaches _corrections + metadata via a
+        # batched get_node pass on every tool result.
+        neighbors = (traversed or {}).get('neighbors') or []
         out = []
         seen = set()
-        for n in (traversed or []):
+        for n in neighbors:
             nid = n.get('id') if isinstance(n, dict) else None
             if not nid or nid == node_id or nid in seen:
                 continue

@@ -52,7 +52,7 @@ The 3-way A/B (v22 vs v21 vs v19) runs each conversation through all three
 encoder versions, then:
 
 - **Contract eval**: scores each version's output against the 36-dim
-  quality contract (`servers/scales/s1/quality_contract.py`)
+  quality contract (`eval/agent_introspect/quality_contract.py`)
 - **Ground-truth eval**: scores each version's output against THIS file's
   ideal encoding — per-node match on type, source_refs choice, edges chosen,
   voice fields populated

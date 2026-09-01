@@ -1,6 +1,6 @@
 """Consolidation Decision Quality Contract — 10-dimension measurement instrument.
 
-The S2 analogue of servers/scales/s1/quality_contract.py. Where the S1 contract
+The S2 analogue of eval/agent_introspect/quality_contract.py. Where the S1 contract
 scores an ENCODED NODE, this scores a consolidation DECISION: the action an arm
 chose for a cluster (ABSORB / EVOLVE / KEEP / SKIP) and how it executed it.
 

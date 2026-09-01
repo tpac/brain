@@ -10,38 +10,31 @@ equivalents") and the deferral `eaf63b60` ("land and migrate formatters as
 follow-up").
 
 > **The rule, one line:** turning node id(s) into text for an LLM is ONE
-> operation with four ordered stages — **resolve-id → resolve-live → fetch →
-> render**. Every LLM-facing consumer composes the *same* stages via one door,
+> operation with three ordered stages — **resolve-live → fetch → render**.
+> Every LLM-facing consumer composes the *same* stages via one door,
 > differing only by a format config and a fetch mode. No bespoke per-site
 > resolve/fetch/render.
 
 ---
 
-## 1. The problem — one semantic operation, four fragmented concerns
+## 1. The problem — one semantic operation, fragmented concerns
 
 "Show these node ids to an LLM" is implemented ad-hoc at ~a dozen sites. Each
-site re-derives some subset of: normalize the id (short→full), make it live
-(archived→survivor), fetch its data, format it. Where a site skips a stage, that
+site re-derives some subset of: make the id live (archived→survivor), fetch
+its data, format it. Where a site skips a stage, that
 stage's bug class appears there — which is exactly why the archived-id leak shows
 up at *some* sites and not others. The leak is a symptom; the disease is that
-the four stages aren't a single pipeline.
+the stages aren't a single pipeline.
 
-The four concerns, each with a canonical form AND scattered/bespoke instances:
+The concerns, each with a canonical form AND scattered/bespoke instances:
 
-### Concern 1 — ID resolution (short 8-char → full)
-Canonical: `NodeDAL.resolve_id` (`dal.py:1707`).
-**Copy-pasted idiom** `resolve_id(x) if len(str(x)) < 16 else x`:
-
-| Site | file:line |
-|---|---|
-| graph-expand seeds | `surface.py:434` |
-| recall id resolution | `brain_recall.py:373` |
-| correction enrich | `brain_corrections.py:82` |
-| traverse | `pipeline_contract.py:418` |
-| hebbian drain | `daemon_hooks.py:494` |
-| healer encoder | `healer_encoder.py:283` |
-| outside-candidate recovery (+`'0'+short` retry) | `surface.py:731,741` |
-| dispatch wrapper `_resolve_id` | `dispatch_common.py:12` → used by `dispatch_read` ×5, `dispatch_write` ×9 |
+### Concern 1 — ID resolution
+Node ids are exact 8-char hex everywhere; there is no short→full resolution
+step (the id-resolution unification, 2026-08-31 — brain node id:10a535fd).
+The only tolerated recovery is surface's menu-scoped `_unique_prefix_match`
+(uniqueness-required, logged) plus the leading-zero retry — both reconstruct
+an exact id and announce themselves. A miss is the owning brain method's to
+report; nothing pre-resolves ids at the dispatch layer.
 
 ### Concern 2 — Liveness (archived → survivor, or drop)
 | Mechanism | Sites |
@@ -95,7 +88,7 @@ Recall is the **producer** of node ids; the presentation pipeline is the
    (cosine + FTS, archived=0 at SQL)         │
  fetch tools (topical/by_time/verbatim) ────┤
    results, execute_tool tripwire            ├──►  PRESENTATION PIPELINE
-                                             │      resolve-id → resolve-live
+                                             │      resolve-live
  trace reads (surface_selected) ────────────┤        → fetch → render
    dedup / discussed / encoder timeline      │
    (HISTORY-sourced, STALE — no SQL filter) ─┘
@@ -117,25 +110,24 @@ producer/door owns the policy.)
 
 ---
 
-## 3. The design — one door, four composable stages
+## 3. The design — one door, three composable stages
 
 ```
 brain.present(ids, *, fmt, mode='rich', on_orphan='drop') -> List[str] | Dict[id,str]
-    full = resolve_ids(ids)            # stage 1: short→full (folds the len<16 idiom)
-    live = resolve_live(full,          # stage 2: history→survivor, drop orphans
+    live = resolve_live(ids,           # stage 1: history→survivor, drop orphans
                         on_orphan)     #          (no-op for already-live recall ids)
-    data = (get_node(live) if mode == 'rich'      # stage 3: fetch
+    data = (get_node(live) if mode == 'rich'      # stage 2: fetch
             else get_titles_bulk(live))           #          lean = title-only
-    return render(data, fmt)           # stage 4: render_rich_node per config
+    return render(data, fmt)           # stage 3: render_rich_node per config
 ```
 
 - **One entry point** for LLM-facing "show these ids." Callers choose `fmt`
   (existing configs) + `mode` (`rich` = full `get_node`; `lean` = a new batched
   `get_titles_bulk`, for {id,title} cases like the dedup block).
-- **Stages stay individually public** (`resolve_id`, `resolve_live`,
-  `get_node`, `render_rich_node`) for partial needs — e.g. dispatch write paths
-  resolve ids but never render. The door *composes* them for the common case;
-  it does not replace the primitives.
+- **Stages stay individually public** (`resolve_live`, `get_node`,
+  `render_rich_node`) for partial needs. The door *composes* them for the
+  common case; it does not replace the primitives. (There is no short→full
+  stage: node ids are exact 8-char hex — the id-resolution unification.)
 - **`get_node` stays archived-inclusive** (explicit-id lookups / provenance
   unchanged). Liveness lives in the door's stage 2, not the fetch primitive.
 - **`get_title` (per-id) is retired** as an LLM-facing fetch; lean mode uses
@@ -152,22 +144,21 @@ resolve/fetch/render. That is what stops the next formatter from re-leaking.
 
 | Phase | Work | Value | Risk |
 |---|---|---|---|
-| **1** | Build `present()` + `get_titles_bulk` (lean) + tests. `resolve_live` already shipped (stage 2); `resolve_id`/`get_node`/`render_rich_node` already exist. | foundation | low (additive) |
+| **1** | Build `present()` + `get_titles_bulk` (lean) + tests. `resolve_live` already shipped; `get_node`/`render_rich_node` already exist. | foundation | low (additive) |
 | **2** | Migrate the two leak sites — dedup block (`surface.py`) and encoder timeline (`encode.py`) — onto `present(..., mode='lean')`. **Closes the every-turn `surface_selected_archived` leak.** | **high** | low |
 | **3** | Migrate `recall_by_time` edge tier to the door (kills the `src[:8]→tgt[:8]` inline render + the archived-endpoint-prefix residue). | med | med (edge shape) |
 | **4** | Route already-canonical sites (fetch-tool results, surface candidates, S2 encoders) through `present()` for symmetry — they already render correctly, so this is consolidation not bugfix. | low | low |
-| **5** (separable) | Fold the `resolve_id(x) if len<16 else x` idiom (Concern 1) into one helper; migrate the ~6 inline sites + the dispatch wrapper. Bigger blast radius (dispatch) — likely its own task. | med | med |
-
 Phases 1–2 are the leak fix done *right* (one door instead of N patches).
-Phases 3–5 are pure de-fragmentation and can land incrementally.
+Phases 3–4 are pure de-fragmentation and can land incrementally. (A former
+Phase 5 — unifying the short→full idiom — was resolved by subtraction: the
+id-resolution unification deleted the idiom and its resolver outright.)
 
 ---
 
 ## 5. Open decisions (need Tom)
 
-1. **Door granularity** — one `present()` composing all four stages (recommended), vs. mandating the sequence with separate calls at each site. Recommend: `present()` for LLM-facing; primitives stay public for partial use.
+1. **Door granularity** — one `present()` composing all three stages (recommended), vs. mandating the sequence with separate calls at each site. Recommend: `present()` for LLM-facing; primitives stay public for partial use.
 2. **Lean mode** — add `get_titles_bulk` for {id,title} cases (recommended, avoids paying `get_node` enrichment on a 20-id/turn dedup hint), vs. always-rich `get_node` (simpler, wasteful).
-3. **Concern 1 scope** — include the `resolve_id` idiom unification in this task, or split it out (Phase 5, recommended — dispatch blast radius).
 4. **`present()` home** — `Brain` method (alongside `get_node`) vs. `contract.py`/`pipeline_contract.py`. Recommend `Brain` (it orchestrates DAL stages, like `get_node` does).
 5. **Eval gate** — recall quality is downstream; run `eval/surface_funnel.py` / frame replay before/after Phase 2 to confirm no regression (the dedup block feeds Haiku every turn).
 
@@ -176,7 +167,7 @@ Phases 3–5 are pure de-fragmentation and can land incrementally.
 ## 6. Relationship to existing docs
 
 - `TRACE-NODE-RESOLUTION.md` — defines stage 2 (`resolve_live`) and the
-  history-id contract. This doc generalizes it: stage 2 is one of four, and the
+  history-id contract. This doc generalizes it: resolve-live is one stage of three, and the
   "8 sites" there are a subset of the consumers that route through `present()`.
 - The format-config vocabulary (Concern 4) and `render_rich_node` are the
   `get_rich_node`/`format_node` unification (`3c3a3046`, `a18b7abf`). This

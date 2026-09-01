@@ -73,16 +73,7 @@ class BrainCorrectionsMixin:
         """Body of correction_enrich — separated so the public method can wrap
         it in a single try/except without indentation pyramid.
         """
-        ndal = self._nodes
-        full_to_short = {}
-        full_ids = []
-        for nid in node_ids:
-            if not nid:
-                continue
-            full = ndal.resolve_id(nid) if len(str(nid)) < 16 else nid
-            if full and full not in full_to_short:
-                full_to_short[full] = full[:8]
-                full_ids.append(full)
+        full_ids = list(dict.fromkeys(nid for nid in node_ids if nid))
         if not full_ids:
             return {}
 
@@ -107,7 +98,7 @@ class BrainCorrectionsMixin:
 
         # Keys must mirror render_corrections's heavy-mode render list, otherwise
         # the renderer reads a key the data layer never fetched.
-        naked_by_id = ndal.get_bulk(list(neighbor_ids))
+        naked_by_id = self._nodes.get_bulk(list(neighbor_ids))
         meta_dal = self._meta_kv
         meta_by_id = meta_dal.get_fields_bulk(
             list(neighbor_ids),
@@ -115,7 +106,6 @@ class BrainCorrectionsMixin:
 
         corrections = {}
         for owner_full, conns in connections.items():
-            owner_short = full_to_short[owner_full]
             bucket = []
             for c in conns:
                 neighbor_id = c['id']
@@ -157,7 +147,6 @@ class BrainCorrectionsMixin:
                     continue
                 seen.add(key)
                 deduped.append(item)
-            corrections[owner_short] = deduped
             corrections[owner_full] = deduped
 
         return corrections

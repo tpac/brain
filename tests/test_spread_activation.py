@@ -30,9 +30,26 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-R3_BRAIN = os.path.expanduser(
-    '~/AgentsContext/brain-eval-n5_full_parallel/edced276-r3')
-HAS_R3 = os.path.isdir(R3_BRAIN)
+def _r3_corpus():
+    """The r3 eval corpus, if this machine has one.
+
+    Explicit knob first; otherwise a sibling of wherever the brain actually
+    resolves to. No hardcoded home path — these tests already skip on any
+    machine that lacks the corpus.
+    """
+    env = os.environ.get('BRAIN_R3_CORPUS')
+    if env:
+        return os.path.expanduser(env)
+    from tests.isolated_brain import _default_production_dir
+    prod = _default_production_dir()
+    if not prod:
+        return ''
+    return os.path.join(os.path.dirname(prod.rstrip(os.sep)),
+                        'brain-eval-n5_full_parallel', 'edced276-r3')
+
+
+R3_BRAIN = _r3_corpus()
+HAS_R3 = bool(R3_BRAIN) and os.path.isdir(R3_BRAIN)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -207,9 +224,9 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         nyc = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '4e8acb7a%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '4e8acb7a'").fetchone()[0]
 
         query = ("How many days did I spend in total traveling "
                  "in Hawaii and in New York City?")
@@ -231,9 +248,9 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         community = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '3d25ca4c%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '3d25ca4c'").fetchone()[0]
 
         query = "What's my travel style?"
         qv = np.frombuffer(embed_query(query), dtype=np.float32)
@@ -250,7 +267,7 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("Hawaii trip"), dtype=np.float32)
 
         result = spread_activation([hawaii], qv, self.brain)
@@ -266,7 +283,7 @@ class TestSpreadActivationOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("travel"), dtype=np.float32)
 
         result = spread_activation([hawaii], qv, self.brain)
@@ -314,9 +331,9 @@ class TestActivationRenderingOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         nyc = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '4e8acb7a%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '4e8acb7a'").fetchone()[0]
 
         query = ("How many days did I spend in total traveling in "
                  "Hawaii and in New York City?")
@@ -353,7 +370,7 @@ class TestActivationRenderingOnR3(unittest.TestCase):
         import numpy as np
 
         hawaii = self.brain.conn.execute(
-            "SELECT id FROM nodes WHERE id LIKE '62f666c0%'").fetchone()[0]
+            "SELECT id FROM nodes WHERE id = '62f666c0'").fetchone()[0]
         qv = np.frombuffer(embed_query("travel"), dtype=np.float32)
 
         act = spread_activation([hawaii], qv, self.brain)

@@ -322,10 +322,13 @@ class Brain(
         # (TraceDAL._maybe_warn_identity_unset), not here — boot is one
         # moment; trace writes are continuous, and that's where the gap
         # actually manifests.
-        from .daemon_config import get_operator_name, get_agent_name
+        from .daemon_config import (
+            get_operator_name, get_agent_name, agent_name_is_default)
         self.operator_name = get_operator_name()
         self.agent_name = get_agent_name()
-        self._trace_dal.set_identity(self.operator_name, self.agent_name)
+        self.agent_name_is_default = agent_name_is_default()
+        self._trace_dal.set_identity(self.operator_name, self.agent_name,
+                                     agent_is_default=self.agent_name_is_default)
 
         # Shared vector DAL — cache-backed by default. Set env
         # BRAIN_DISABLE_VECTOR_CACHE=1 to fall back to raw VectorDAL for

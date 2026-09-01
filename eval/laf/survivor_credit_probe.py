@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 from servers import embedder                                          # noqa: E402
 from servers.recall_laf import DEFAULT_CONFIG, role_rows              # noqa: E402
-from episodic_ops import episodic_roles, _resolve, _short_to_full     # noqa: E402
+from episodic_ops import episodic_roles                               # noqa: E402
 from operators import (                                               # noqa: E402
     MAXSIM_GROUPS, query_vec, build_field_matrices, maxsim_field,
 )
@@ -76,11 +76,11 @@ def lane(records, role, rows, n):
     return vec
 
 
-def plain_rows(ids, idx, s2f):
+def plain_rows(ids, idx):
     """The PRE-fix id→row map: live-matrix lookup only, dead ids simply absent."""
     out = {}
     for nid in set(ids):
-        i = _resolve(nid, idx, s2f)
+        i = idx.get(nid)
         if i is not None:
             out[nid] = i
     return out
@@ -121,7 +121,6 @@ def main():
         ca = np.array([ca_rows.get(nid, "") or "" for nid in master])
         title_tok = build_title_tokens(brain, idx)
         sit_M, _ = build_situation_matrix(brain, idx, n, model)
-        s2f, _ = _short_to_full(idx)
         rev = survivor_map(brain)
         print("master %d · archived-with-survivor %d" % (n, sum(len(v) for v in rev.values())))
 
@@ -139,9 +138,8 @@ def main():
                 continue
             records = episodic_roles(brain, c["query"], c["cutoff"], window=EPI_WINDOW)
             harvested = {nid for r in records for nid in r["picked"] + r["encoded"]}
-            off = plain_rows(harvested, idx, s2f)
-            on, _ = role_rows(brain, harvested,
-                              lambda nid: _resolve(nid, idx, s2f))
+            off = plain_rows(harvested, idx)
+            on, _ = role_rows(brain, harvested, idx.get)
             n_harvest += len(harvested)
             n_dead += len(harvested) - len(off)
             n_credited += len(on) - len(off)

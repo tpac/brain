@@ -18,6 +18,9 @@ import unittest
 from pathlib import Path
 
 from tests.brain_test_base import BrainTestBase
+from tests.eval_optional import require_eval
+
+require_eval()  # D-8: this module reaches into eval/ inside its test bodies
 
 
 def _remember_args(title, content, connect_to=None):

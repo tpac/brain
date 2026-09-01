@@ -583,8 +583,11 @@ class CapabilityTest:
         # Check target node
         if "target" in expected or "target_node" in expected:
             target = expected.get("target") or expected.get("target_node")
-            node_id = action.args.get("node_id", "")
-            if target and not (node_id.startswith(target) or target.startswith(node_id)):
+            node_id = action.args.get("node_id") or ""
+            # Spec targets may be a prefix of the acted-on id; the reverse
+            # direction is never checked — an empty/short node_id matching
+            # any target made this comparison unfalsifiable.
+            if target and not node_id.startswith(target):
                 return False
 
         # Check content contains required strings

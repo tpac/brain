@@ -51,8 +51,8 @@ with IsolatedBrain() as env:
     print("=== target nodes (exist? archived?) ===")
     for t in TARGETS:
         row = b.conn.execute(
-            "SELECT id, type, COALESCE(archived,0), substr(title,1,55) FROM nodes WHERE id LIKE ?",
-            (t[:8] + '%',)).fetchone()
+            "SELECT id, type, COALESCE(archived,0), substr(title,1,55) FROM nodes WHERE id = ?",
+            (t,)).fetchone()
         print("  %s  %s" % (t, (("[%s arch=%s] %s" % (row[1], row[2], row[3])) if row else "NOT FOUND")))
 
     for timed in (True, False):
