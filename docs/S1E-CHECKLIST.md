@@ -2,6 +2,25 @@
 
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
+## v-next.7 — INSTRUMENT BUILT, NOTHING MEASURED (2026-09-01) ◀ HEAD
+
+Steps 1–3 of the measurement chain are committed (`979aaf8`); the A/B has not
+been run. **Handoff: brain `b64d3e14`. Runbook:
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/RUNBOOK.md`.**
+
+- `surfaces_required` in `score_gold` — scores WHICH surfaces a repair reached,
+  not merely that the node was revised. `tests/test_gold_surfaces.py`, 10 tests
+  on the real v41 ops (trace `703e70a5`): **v41 scores 2/4**, and the same run
+  **passes** a text-only check — the criterion is necessary, proven not asserted.
+- Four hand-confirmed gold specs (`eval/ground_truth/s1e_fieldcov_*.json`);
+  run-44 repointed at the frozen copy.
+- Code review found two live defects in it: `stale_token` was dead metadata
+  (an op rewriting `situation` to "9.6.0 is still the version" scored 3/3 PASS)
+  and the spec's `payload` key was read by nothing. Both fixed; `content` is
+  exempt from the stale-value gate per E17.
+- **s1e is NOT registered** — max_version 41, active_version null, production
+  still v6 / `3817564d21c4`.
+
 **v-next.7 candidate open (2026-09-01), UNPROMOTED.**
 `eval/candidate_prompts/s1e_vnext7_wip.md`, 113,365 chars (+2,913 over the default) — field-coverage
 redistribution across the existing revise examples, the narrow-to-residue
