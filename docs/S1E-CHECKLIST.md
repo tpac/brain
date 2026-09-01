@@ -1012,8 +1012,8 @@ on two ops and an id-keyed dict collides; both patches diff byte-identical.)
 | reasoning | 1 | 1 | |
 | event_time | 1 | 1 | |
 | type | 1 | 1 | |
-| thought | **0** | 1 | 0/120 emitted in production; revise is its natural home (the field that is *supposed* to change) |
-| confidence | **0** | 1 | E2/E3 gap 6 — "every node asserts flatly" |
+| thought | **0** | **5** | 0/120 emitted in production. Four SHAPES, deliberately (Tom, 2026-09-01): a question left open, an idea it suggests, a warning for next time, a read/curiosity worth following. One example would have defined the whole register with no catalog ratchet to correct it (E9) |
+| confidence | **0** | **0** | **DELIBERATE ZERO** (Tom, 2026-09-01): *"i dont know what to do with confidence and whether it should even be a number and not text (not now)."* A modelled value transfers as a default (A4), so seeding one ahead of that ruling would decide the question by example. E2/E3 gap 6 stays open and is now recorded rather than half-answered |
 | evolution_status | **0** | 2 | two values shown (`resolved`, `dismissed`) so the vocabulary transfers, not just the key |
 | `partially_resolves` | **0 (prose only)** | 1 | **A1 violation in v6** — the prose taught three closure branches and demonstrated one. Governs the census's 8 partially-answered-never-narrowed nodes (`644dc1e0`) |
 | edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |

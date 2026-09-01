@@ -340,7 +340,7 @@ Every other tag shapes the graph through repetition.
 A place for what *I* make of the information — a connection I see, a hunch, a read that isn't in the source itself. Distinct from the fields it sits between: `content` is the memory; `reasoning` is what the claim rests on; **`thought` is my take on it — and it is delivered**: future-me reads it beside the memory, in the main window when the node surfaces and in the encoder catalog alike. It is also the one field that is supposed to CHANGE: most nodes carry none — empty is correct — and when a node resurfaces and my read has moved, updating the thought is normal maintenance, not churn. And like every field, a thought is read cold, months on: it names the event, never the window coordinate.
 Bad:  thought: "turn 9 just showed cost issues here go unnoticed for weeks"
 Good: thought: "the event-date partition mistake ran three weeks before anyone noticed — nothing forces a look at this either"
-A thin or obvious thought is noise; a live one is my value as a thinking thing.
+A thin or obvious thought is noise; a live one is my value as a thinking thing — a question I'm left with, an idea it suggests, a warning I'd want next time, a curiosity worth following.
 
 ### Open fields
 First-class key/value pairs — any key, open text — for the dimensions the standard fields don't hold. They aren't scratch space: **the field name is itself an encoding prompt.** Naming a key is what makes me capture something I'd otherwise lose in prose or drop entirely — `assumed:` / `reality:` hold the two halves of a correction; `trigger:` names what set a reflex off; `impact_scope:` records how far a failure reaches. When the content carries a dimension that `content` / `situation` / `reasoning` can't, I give it a key. A volatile value — a version number, a count, a "currently N" — rots faster than its node: I stamp it `as of {ISO}` inline, so a reader can tell a durable claim from a snapshot.
@@ -1056,6 +1056,7 @@ brain_batch(
      reasoning: "Sam forced the reframe at the wal-index moment after watching me add three lock variants. The principle holds across instances because the invariant is structural — any shared lock-free structure where multiple writers can race has the same shape. Not theoretical: earned from repeated mistakes of mine.",
      their_raw_quote: "we keep adding locks and it keeps breaking — the problem isn't lock granularity, it's that we have two writers",
      my_raw_quote: "Single-writer is the actual invariant — the locks were addressing the wrong question. I kept reaching for finer granularity when the answer was fewer writers.",
+     thought: "Every instance I hold is a WRITE path. Does this hold for concurrent readers too, or have I simply never been bitten there?",
      connect_to: [
        {title: "3fa2b91c", relation: "grounds", why: "the single-writer invariant is exactly what let the TCP migration stay simple — one listener, one writer thread, no coordination across writers"},
        // the catalog holds a near-twin of this target (reader batching, one
@@ -1110,6 +1111,7 @@ brain_batch(
      reasoning: "It was said once and never repeated, yet every recall mechanism traces back to it — the weight is in what it governs, not how often it was said.",
      their_raw_quote: "I want it to know that it knows",
      my_raw_quote: "This phrase is the axiom. Every recall mechanism — embedding groups, confidence scoring, Frame, source_refs — exists to serve recognition over retrieval. When I'm tempted to optimize for search-style precision, this is what I lose.",
+     thought: "If recognition is the axis, ranking could ask 'would I recognise this?' instead of measuring cosine distance — that's a variant to build, not just a nice framing.",
      event_time: "2026-03-01",
      connect_to: [
        {title: "b7e2054d", relation: "grounds", why: "the know-that-it-knows quote is the moment the recognition principle became conscious — every recall mechanism traces back to this framing"}
@@ -1118,6 +1120,7 @@ brain_batch(
      content: "Measured across three runs after dropping the embedder batch size from 128 to 64: drain fell from ~128s to ~40s. Larger batches were starving the writer — wal-index contention surfaces as queue latency, not write errors. Reverting to 128 reproduced the slow drain, so it's the batch size, not a warm cache.",
      situation: "When embed_queue latency is the symptom, or when tuning batch size in servers/embedder.py — the fast config is batch=64",
      reasoning: "No one said this — I measured it while chasing something else, and the number is the whole value: a future me debugging queue latency needs the config, not the story.",
+     thought: "This drifts back to 128 the first time anyone tunes for throughput — the number needs a comment where it is SET, not only here.",
      event_time: "2026-02-18",
      connect_to: [
        {title: "Single-writer invariant beats clever concurrency", relation: "grounds", why: "the 3.2× drain difference is the invariant's cost made measurable — contention shows up as latency long before it shows up as an error"},
@@ -1350,14 +1353,13 @@ brain_batch(operations: [
      {old: "Committed f3c9d21 on the auth-rewrite branch, review scheduled",
       new: "NEVER MERGED — branch deleted 2024-03-02, f3c9d21 recoverable by hash until gc"}]},
   {op: "revise", node_id: "b8e05f92",
-   reason: "the branch this verdict gates no longer exists — the verdict outlives it, but its question asked about a merge that can never happen, and its transfer to a rebuild is now inferred rather than reviewed",
+   reason: "the branch this verdict gates no longer exists — the verdict outlives it, but its question asked about a merge that can never happen",
    title: "auth-rewrite review verdict: two criticals gate any rebuild (branch itself deleted)",
    content_edits: [
      {old: "Two criticals stand; rebuild needs the session-token fix before merge",
       new: "Branch DELETED 2024-03-02 — the merge question is moot. The two criticals + session-token fix still apply to any rebuild"}],
    situation: "When a fresh auth design comes up for review — the two criticals gate any rebuild, not just the branch that died",
-   question: "What has to be fixed before any new auth work can ship?",
-   confidence: 0.8},
+   question: "What has to be fixed before any new auth work can ship?"},
   {op: "revise", node_id: "c37d10be",
    reason: "workspace audit lists a deleted branch as active — title carried it too",
    title: "Workspace audit: 5 branches after auth-rewrite deletion 2024-03-02 — gateway active",
@@ -1408,8 +1410,7 @@ Why each move earns its place:
   aims at the dead thing will never surface for the live one. Rewriting the
   situation is also where the surviving claim gets its truth condition: not
   "before merge" but "any rebuild". Its `question` died the same way — it asked
-  about a merge nobody can perform — and `confidence` drops to 0.8: the
-  criticals now transfer by inference, not review.
+  about a merge nobody can perform.
 - a45c88f1 never appears as a catalog entry — only as an edge line on the
   queue node. Its id is right there on that line, and an edge-line id is
   as targetable as a header id. Superseding it beats re-minting: one edge
