@@ -217,12 +217,18 @@ def had_rejected_batch_call(action_details):
 
 
 def node_ids_touched_by_valid_ops(action_details):
-    """Node IDs targeted by VALID ops in brain_batch calls dispatch accepted.
+    """Node IDs targeted by valid-named ops in brain_batch calls dispatch
+    accepted whole.
 
     The attribution counterpart of had_rejected_batch_call: a cluster whose
-    members were touched by a real op was acted on this run — either resolved
-    (edges/archive) or judged — so the rejected-call shield must not pull it
-    into retry. Calls that errored wrote nothing and contribute no ids.
+    members were targeted by a real op was PROCESSED this run — the rejected-
+    call shield must not pull it into retry. A targeted op may still have
+    failed per-op (dispatch returns ok=True with per-op errors); those ids
+    are included deliberately: per-op failures feed back to the encoder
+    in-loop (its retry channel), and stamping such clusters matches the
+    standing fingerprint-every-processed-cluster policy. Calls that errored
+    whole wrote nothing and contribute no ids. A stringified operations
+    array is unwrapped the same way dispatch unwraps (and executes) it.
     """
     touched = set()
     for action in action_details or []:
@@ -231,6 +237,11 @@ def node_ids_touched_by_valid_ops(action_details):
         if action.get('error'):
             continue
         ops = (action.get('input') or {}).get('operations')
+        if isinstance(ops, str):
+            try:
+                ops = json.loads(ops)
+            except ValueError:
+                ops = None
         if not isinstance(ops, list):
             continue
         for op_spec in ops:

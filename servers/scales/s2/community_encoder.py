@@ -214,10 +214,10 @@ class CommunityEncoder(IntegrationUnit):
                     self.brain.set_config(self.REJECTED_STREAK_KEY, '0')
                     self.brain._log_warning(
                         's2_community_rejected_call_giveup',
-                        'rejected brain_batch call in %d consecutive runs — '
+                        'rejected brain_batch call in %d shielded runs — '
                         'stamping %d proposal(s) anyway to unpin the unit'
                         % (streak + 1, len(skipped_proposals)))
-            elif self.brain.get_config(self.REJECTED_STREAK_KEY):
+            elif int(self.brain.get_config(self.REJECTED_STREAK_KEY) or 0):
                 self.brain.set_config(self.REJECTED_STREAK_KEY, '0')
             if skipped_proposals:
                 record_rejections(self.brain, skipped_proposals)
