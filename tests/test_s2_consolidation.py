@@ -357,7 +357,7 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
         self.assertEqual(result.get('rejected_call_clusters'), 1)
         self.assertEqual(self._rejection_count(), 0)          # no fingerprint
         self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))  # retry
-        self.assertEqual(self.brain.get_config(u.REJECTED_STREAK_KEY), '1')
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '1')
 
     def test_rejected_call_shield_exempts_acted_on_clusters(self):
         # A stray rejected call must not unstamp a cluster a real op touched
@@ -386,11 +386,11 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
         self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
 
     def test_rejected_call_giveup_stamps_after_retry_limit(self):
-        # The shield is bounded: after REJECTED_BATCH_RETRY_LIMIT consecutive
+        # The shield is bounded: after THWARTED_RETRY_LIMIT consecutive
         # shielded runs, the run stamps anyway and the baseline advances —
         # a persistently rejecting encoder must not pin the unit forever.
         from servers.scales.s2 import consolidation as consol_mod
-        from servers.scales.s2.rejection_table import REJECTED_BATCH_RETRY_LIMIT
+        from servers.scales.s2.rejection_table import THWARTED_RETRY_LIMIT
         n1 = self.brain.remember(type='fact', title='p', content='c')['id']
         n2 = self.brain.remember(type='fact', title='q', content='c')['id']
         u = self._unit()
@@ -402,14 +402,43 @@ class TestConsolidationAbsorbDetection(BrainTestBase):
                                return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
              mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
                                return_value=rejected_call):
-            for _ in range(REJECTED_BATCH_RETRY_LIMIT):
+            for _ in range(THWARTED_RETRY_LIMIT):
                 u.run()
             self.assertEqual(self._rejection_count(), 0)   # still shielded
             result = u.run()                               # limit exceeded
         self.assertEqual(result.get('rejected_call_clusters'), 0)
         self.assertEqual(self._rejection_count(), 1)       # stamped anyway
         self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
-        self.assertEqual(self.brain.get_config(u.REJECTED_STREAK_KEY), '0')
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '0')
+
+    def test_invalid_op_giveup_stamps_after_retry_limit(self):
+        # The bound covers BOTH thwarted causes: a persistently invalid-op
+        # encoder (concept verbs every run) must also stamp after
+        # THWARTED_RETRY_LIMIT shielded runs instead of pinning the unit
+        # forever (Fix #1's retry, now bounded).
+        from servers.scales.s2 import consolidation as consol_mod
+        from servers.scales.s2.rejection_table import THWARTED_RETRY_LIMIT
+        n1 = self.brain.remember(type='fact', title='x', content='c')['id']
+        n2 = self.brain.remember(type='fact', title='y', content='c')['id']
+        u = self._unit()
+        invalid_run = {'write_actions': 1, 'rounds': 2, 'actions': 1,
+                       'action_details': [{'tool': 'brain_batch', 'input': {
+                           'operations': [{'op': 'consolidate',
+                                           'node_id': n1}]}}]}
+        with mock.patch.object(consol_mod.ConsolidationDecoder, 'run',
+                               return_value=self._fake_decode(n1, n2, 'needs_judgment')), \
+             mock.patch.object(consol_mod.ConsolidationEncoder, 'run',
+                               return_value=invalid_run):
+            for _ in range(THWARTED_RETRY_LIMIT):
+                result = u.run()
+                self.assertEqual(result.get('invalid_op_clusters'), 1)
+            self.assertEqual(self._rejection_count(), 0)   # still shielded
+            self.assertIsNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+            result = u.run()                               # limit exceeded
+        self.assertEqual(result.get('invalid_op_clusters'), 0)
+        self.assertEqual(self._rejection_count(), 1)       # stamped anyway
+        self.assertIsNotNone(self.brain.get_config(u.LAST_RUN_TS_KEY))
+        self.assertEqual(self.brain.get_config(u.THWARTED_STREAK_KEY), '0')
 
     def test_invalid_op_cluster_with_archived_member_still_retried(self):
         # A cluster can carry BOTH a landed absorb and a thwarted invalid op.

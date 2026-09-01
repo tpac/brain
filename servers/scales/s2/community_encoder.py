@@ -24,7 +24,7 @@ from .rejection_table import (
     node_ids_touched_by_invalid_ops,
     had_rejected_batch_call,
     get_proposed_ids,
-    REJECTED_BATCH_RETRY_LIMIT,
+    THWARTED_RETRY_LIMIT,
 )
 
 
@@ -36,9 +36,10 @@ class CommunityEncoder(IntegrationUnit):
     O_SOURCES = ['community_proposals']
     K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Consecutive runs whose rejected brain_batch call shielded proposals
-    # from fingerprinting — the give-up bound reads/resets it across cycles.
-    REJECTED_STREAK_KEY = 's2_community_rejected_call_streak'
+    # Consecutive runs whose thwarted brain_batch attempts (invalid ops or a
+    # rejected call) shielded proposals from fingerprinting — the give-up
+    # bound reads/resets it across cycles.
+    THWARTED_STREAK_KEY = 's2_community_thwarted_streak'
 
     # Residue flows to journal_note trace rows via brain.write_journal_notes,
     # read back via the journal binding's continuity() (the note contract). The old
@@ -165,60 +166,48 @@ class CommunityEncoder(IntegrationUnit):
         else:
             acted_on, skipped_proposals = match_proposals_to_actions(
                 encoder_proposals, action_details)
-            # A proposal the encoder TRIED to act on with an invalid op (e.g.
-            # `op: reject` instead of `revise`+_sys_drift_threshold) lands in
-            # skipped because the matcher sees no valid action — but it's an
-            # encoder FAILURE, not a clean SKIP. Pull it out so we don't stamp
-            # a fingerprint that abandons the drift-rejection forever; it
-            # retries next cycle.
+            # Thwarted proposals: the encoder TRIED to act and dispatch
+            # dropped the attempt — an invalid op naming the proposal's nodes
+            # (e.g. `op: reject` instead of `revise`+_sys_drift_threshold),
+            # or a rejected brain_batch call (empty/malformed operations),
+            # which names no node ids and so taints every un-acted-on
+            # proposal. Thwarted-not-decided means retry, not stamp. Bounded:
+            # after THWARTED_RETRY_LIMIT consecutive shielded runs, stamp
+            # anyway — fingerprints are community's only suppression, so a
+            # persistently thwarted encoder would otherwise re-feed the same
+            # proposals forever.
             invalid_touched = node_ids_touched_by_invalid_ops(action_details)
+            rejected_call = had_rejected_batch_call(action_details)
             invalid_op_failures = 0
-            if invalid_touched and skipped_proposals:
-                retry, kept = [], []
-                for p in skipped_proposals:
-                    bucket = (retry if set(get_proposed_ids(p)) & invalid_touched
-                              else kept)
-                    bucket.append(p)
-                if retry:
-                    invalid_op_failures = len(retry)
-                    skipped_proposals = kept
-                    self.brain._log_warning(
-                        's2_community_invalid_op_retry',
-                        '%d proposal(s) hit invalid brain_batch ops — '
-                        'retrying next cycle, NOT suppressed' % invalid_op_failures)
-                    print('[s2ce] %d proposal(s) hit invalid ops — retry, NOT suppressed'
-                          % invalid_op_failures, flush=True)
-            # A rejected brain_batch call (empty/malformed operations) names
-            # no node ids, so the shield above can't attribute it — treat
-            # every un-acted-on proposal as thwarted (retry next cycle), not
-            # a clean rejection. Bounded: after REJECTED_BATCH_RETRY_LIMIT
-            # consecutive shielded runs, stamp anyway — fingerprints are
-            # community's only suppression, so an encoder that persistently
-            # rejects would otherwise re-feed the same proposals forever.
-            if skipped_proposals and had_rejected_batch_call(action_details):
-                streak = int(self.brain.get_config(self.REJECTED_STREAK_KEY) or 0)
-                if streak < REJECTED_BATCH_RETRY_LIMIT:
-                    self.brain.set_config(self.REJECTED_STREAK_KEY,
-                                          str(streak + 1))
-                    invalid_op_failures += len(skipped_proposals)
-                    self.brain._log_warning(
-                        's2_community_rejected_call_retry',
-                        '%d proposal(s) left un-acted after a rejected '
-                        'brain_batch call — retrying next cycle, NOT suppressed'
-                        % len(skipped_proposals))
-                    print('[s2ce] %d proposal(s) un-acted after rejected '
-                          'brain_batch call — retry, NOT suppressed'
-                          % len(skipped_proposals), flush=True)
-                    skipped_proposals = []
+            retry, kept = [], []
+            for p in skipped_proposals:
+                if rejected_call or (invalid_touched
+                                     and set(get_proposed_ids(p)) & invalid_touched):
+                    retry.append(p)
                 else:
-                    self.brain.set_config(self.REJECTED_STREAK_KEY, '0')
-                    self.brain._log_warning(
-                        's2_community_rejected_call_giveup',
-                        'rejected brain_batch call in %d shielded runs — '
-                        'stamping %d proposal(s) anyway to unpin the unit'
-                        % (streak + 1, len(skipped_proposals)))
-            elif int(self.brain.get_config(self.REJECTED_STREAK_KEY) or 0):
-                self.brain.set_config(self.REJECTED_STREAK_KEY, '0')
+                    kept.append(p)
+            streak = int(self.brain.get_config(self.THWARTED_STREAK_KEY) or 0)
+            if retry and streak < THWARTED_RETRY_LIMIT:
+                invalid_op_failures = len(retry)
+                skipped_proposals = kept
+                self.brain.set_config(self.THWARTED_STREAK_KEY, str(streak + 1))
+                cause = ('a rejected brain_batch call' if rejected_call
+                         else 'invalid brain_batch ops')
+                self.brain._log_warning(
+                    's2_community_thwarted_retry',
+                    '%d proposal(s) thwarted by %s — retrying next cycle, '
+                    'NOT suppressed' % (invalid_op_failures, cause))
+                print('[s2ce] %d proposal(s) thwarted by %s — retry, NOT suppressed'
+                      % (invalid_op_failures, cause), flush=True)
+            elif retry:
+                self.brain.set_config(self.THWARTED_STREAK_KEY, '0')
+                self.brain._log_warning(
+                    's2_community_thwarted_giveup',
+                    'thwarted brain_batch attempts in %d shielded runs — '
+                    'stamping %d proposal(s) anyway to unpin the unit'
+                    % (streak, len(retry)))
+            elif int(self.brain.get_config(self.THWARTED_STREAK_KEY) or 0):
+                self.brain.set_config(self.THWARTED_STREAK_KEY, '0')
             if skipped_proposals:
                 record_rejections(self.brain, skipped_proposals)
                 print('[s2ce] Stamped %d rejected proposals (fingerprints)' % len(skipped_proposals),

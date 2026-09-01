@@ -183,11 +183,16 @@ def get_proposed_ids(proposal):
     return ids
 
 
-# Consecutive rejected-call runs a unit shields (retry, no fingerprints)
-# before giving up and stamping anyway. Bounds the retry loop: a persistently
-# malformed encoder otherwise pins the unit forever — no fingerprint, no
-# baseline advance, a full re-encode every cycle with zero progress.
-REJECTED_BATCH_RETRY_LIMIT = 3
+# Consecutive thwarted runs a unit shields (retry, no fingerprints) before
+# giving up and stamping anyway. A run is thwarted when its encoder tried to
+# act and dispatch dropped the attempt — an invalid concept-verb op, or a
+# whole brain_batch call rejected (empty/malformed operations). Bounds both
+# retry loops: a persistently thwarted encoder otherwise pins the unit
+# forever — no fingerprint, no baseline advance, a full re-encode every
+# cycle with zero progress — and the coordinator's consecutive_failures
+# never fires because these runs return success. A stamped give-up is
+# recoverable: the fingerprint invalidates on any member edit.
+THWARTED_RETRY_LIMIT = 3
 
 
 def had_rejected_batch_call(action_details):
