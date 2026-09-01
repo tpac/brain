@@ -898,6 +898,14 @@ the general forms.**
   **The test is position and tense, not presence:** is the old value in the
   ASSERTION slot, or subordinate and past-tense? *"X (was Y)"* in a title
   asserts both. *"Y until Z"* in an edge description narrates one.
+  **And the boundary, or this rule gets over-applied** (found by running the
+  census, 2026-09-01): a retrieval surface that names a dead thing *because the
+  deadness is the node's SUBJECT* is not a violation. The sweep's successor
+  node carries `situation: "When picking up the rollout queue — auth-rewrite no
+  longer exists as a step"` — correct, and rewriting it would lose the warning
+  a future asker needs. The violation is a surface still ASSERTING a value that
+  has been replaced, competing with the node that now holds the live one. Dead
+  subject: keep. Dead claim: cut.
   **Run it on:** every `content_edits` new-string, every revised title, edge
   descriptions, the §7.6 identity exemplars — and the temporal
   validity-interval examples, where inline history is CORRECT and must be left
