@@ -30,7 +30,7 @@ WHY IT CAN VERIFY WITHOUT COMPARING TEMPLATES
 (overlaid) template+config, so one comparison covers both halves. An arm
 compares arms on that; it never string-compares a multi-KB prompt to decide
 whether its own override took. A fingerprint that does not MOVE across the
-override is the silent-arm-collapse signal (id:a6dfcfe3): both arms would
+override is the silent-arm-collapse signal: both arms would
 measure the same K and the A/B would report a difference of zero as a result.
 
 Comparing arms is a CROSS-arm assertion, and no single run can make it: each

@@ -26,7 +26,7 @@ Design principles (ratified 2026-08-30, D-5)
   (BRAIN_AGENT_NAME) and the spoken boot. No interpolation happens here.
 - Register matters, but the pack is not how it reaches the encoder: the S1E
   prompt teaches encoding shape, and a relevance-ranked catalog rarely
-  surfaces a craft node over topic content (id:af3401fb). What the pack sets
+  surfaces a craft node over topic content. What the pack sets
   is what a young brain REACHES for — its nodes are most of early recall, so
   being findable at the right moment is the job. Every node is still written
   in the shape it teaches: that is what makes it readable cold, and the shape

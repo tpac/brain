@@ -128,7 +128,7 @@ class Consolidation(ConsolidationDecoder):
         # text (`addresses` ×240, `reframes` ×101 live edges, plus the
         # prompt's own "link survivors with a REAL relation"), so
         # verb-mismatched resolutions re-proposed every cycle (journal
-        # finding #4, id:2ace76f3).
+        # finding #4).
         # A fingerprint invalidates when a member's updated_at changes —
         # a real write, now that access marks no longer touch it — so
         # legitimate re-review after content change is preserved.

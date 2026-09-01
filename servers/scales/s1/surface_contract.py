@@ -933,7 +933,7 @@ SPREAD_NEIGHBOR_LIMIT_DEFAULT = 50
 # strength of LongMemEval iter_M (14/15) but the eval is N=15 with ~20pp
 # variance, and scrutiny was never A/B'd in isolation against baseline.
 # Real-world conversational use (where ambient context lives 2-3 hops out)
-# regressed — see the ex.co class of failure: the brain held rich operator
+# regressed — see the buried-topic class of failure: the brain held rich operator
 # context but it lived past the scrutiny cut and stopped surfacing.
 # Override BRAIN_SPREAD_HOP_SCRUTINY=on to re-enable for benchmarking.
 HOP_SCRUTINY_DEFAULT = False

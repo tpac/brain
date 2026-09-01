@@ -20,7 +20,7 @@ Read/write connection split (2026-08-18): brain_logs.db writes were silently
 dropped by SQLITE_BUSY_SNAPSHOT — the shared connection held read snapshots
 (concurrent read dispatch + embed-drain cursors) while writing, and a
 read->write upgrade from a stale snapshot fails INSTANTLY, bypassing
-busy_timeout entirely (brain id:371895a8). The invariant that kills the
+busy_timeout entirely. The invariant that kills the
 mechanism: `wconn` is touched ONLY inside `_wlock` (the daemon passes
 brain.logs_write_lock — a leaf lock, separate from the graph write_lock so
 log writes never queue behind graph batches), and every statement on it is

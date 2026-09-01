@@ -8,7 +8,7 @@
 //
 // Which is the point. A journal note tagged `open` and re-flagged across a
 // dozen runs is the encoder asking a question with nowhere to send it
-// (finding id:5732d11c: the S2 consolidation journal is a closed loop —
+// (the S2 consolidation journal is a closed loop —
 // "operator confirmation still needed", written over and over, read by nobody).
 // This view is the route out. Standing items lead; everything else follows.
 //

@@ -15,9 +15,9 @@ from ..log import warn
 
 def query_node_list(limit: int = 50, node_type: str = None, search: str = None):
     """Filtered node listing for the Explorer tab."""
-    # nodes.keywords was dropped in schema v28 (commit 8d41c8c) — the
-    # auto-extractor produced more noise than signal. FTS search now goes
-    # through title + content via porter stemming.
+    # There is no nodes.keywords column: the auto-extractor it fed produced
+    # more noise than signal. FTS search goes through title + content via
+    # porter stemming.
     sql = (
         "SELECT id, type, title, content, locked, emotion, "
         "access_count, created_at, confidence, encoding_source "

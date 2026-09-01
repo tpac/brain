@@ -19,14 +19,14 @@ operator gate). Set to 0 for the emergency off-switch and the A/B control arm
 (eval/encoder_prompt_ab.py renders both arms per capture). Off is the
 pre-policy render minus the retired encoded-turn trim.
 
-Measured basis (id:155ddb64, re-measured 2026-08-16 at 80-89% catalog share):
+Measured basis (re-measured 2026-08-16 at 80-89% catalog share):
 a catalog node renders at ~4-5K chars of which content is only ~22% — edges
 and heavy corrections dominate. So aging drops edges + heavy corrections and
 keeps the content WHOLE; cutting content saves almost nothing and a truncated
 body is what let the encoder rewrite nodes from fragments — 6/36 runs revised
 an aged entry from its visible head, destroying the tail, even under a prompt
-that said to expand first (id:8aa7e7d7). Body-whole makes that failure
-structurally impossible (id:ffb0f7a4).
+that said to expand first. Body-whole makes that failure
+structurally impossible.
 """
 import os
 
@@ -70,11 +70,11 @@ ASSOCIATED_QUERY_CAP = 1500
 ASSOCIATED_SEED_CAP = 20
 
 
-# ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──
+# ── Catalog aging (the ~80-89% lever) ──
 
 # Newest N encode rounds render full depth: the encoder keeps seeing complete
-# bodies for what it wrote most recently (the quality-bar feedback loop,
-# id:3e245ff7). Everything older trims to a stub.
+# bodies for what it wrote most recently (the quality-bar feedback loop).
+# Everything older trims to a stub.
 CATALOG_FULL_ROUNDS = 2
 
 # The aged entry: id + type + title (recognition + dedup key), situation (the
@@ -137,7 +137,7 @@ def catalog_view(ids, stops, run_stops, protected=(), cutoff=None):
     """Order + tier the catalog: returns (ordered_ids, aged_id_set).
 
     ordered_ids — oldest→newest by each id's last-touched stop, so the most
-    recent encodes sit last, adjacent to the timeline (id:f3302000). Ids with
+    recent encodes sit last, adjacent to the timeline. Ids with
     no known stop are the CURRENT window's surfaced nodes — they sort last and
     never age. Ties break on id for a deterministic render.
 

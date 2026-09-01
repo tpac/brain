@@ -324,7 +324,7 @@ class ConsolidationEncoder(IntegrationUnit):
             # every edge render twice, once per direction.
             # CAVEAT: the stored direction can be inverted — add_relation
             # hangs relations on the pair's existing physical row in either
-            # orientation (brain node id:c3f37710). The arrow is evidence,
+            # orientation. The arrow is evidence,
             # not ground truth; created dates render per node alongside it.
             intra_lines = []
             all_details = cluster.get('edge_details', {})

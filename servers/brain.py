@@ -260,7 +260,7 @@ class Brain(
         # snapshots; writing on that same connection is a read->write upgrade
         # that fails INSTANTLY with 'database is locked' whenever an external
         # process (hooks, MCP monitor) committed since the snapshot —
-        # busy_timeout never applies to snapshot upgrades (brain id:371895a8).
+        # busy_timeout never applies to snapshot upgrades.
         # This connection is used only inside the DAL write methods under
         # write_lock, so it never holds a read cursor and every write
         # transaction begins at the WAL head.
@@ -1270,9 +1270,9 @@ class Brain(
             if cwd:
                 ctx.set_env(cwd=cwd, branch=branch, worktree=worktree,
                             project=project)
-            # XXX deprecated singleton fallback for un-threaded callers (see
-            # brain.session_id property + _log_error/_log_warning). C-refactor
-            # threads session_id through every call site and drops this write.
+            # Singleton fallback for callers that carry no SessionContext (see
+            # brain.session_id property + _log_error/_log_warning). Drops out
+            # once session_id is threaded through every call site.
             self._meta.set('session_id', sid)
             ctx.save(self._session_state)
             self._session_contexts[sid] = ctx

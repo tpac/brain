@@ -198,7 +198,7 @@ WINDOW_TURNS_FALLBACK = 20
 # encoder time (+8.1% vs lean, vs balanced's +11.4%) AND answerer tokens
 # (+1.0% vs balanced's +17.5%) at equal pass rate. Correction context is
 # targeted signal, not noise — heavy lets the encoder converge faster, not
-# flood it. The locked principle (id:eaf833c5) "more signal ≠ better
+# flood it. The locked principle "more signal ≠ better
 # encoding" still holds for ARBITRARY signal flooding; correction-aspect
 # context is the structured exception that demonstrably helps.
 # Healer also uses 'heavy' (set in HealerEncoder._format_batch).

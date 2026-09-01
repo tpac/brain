@@ -729,7 +729,7 @@ def recall_by_aspect(brain, aspect: str = '', recent_first: bool = True,
 
     NOTE: removed from TOOL_DEFINITIONS (Haiku's tool set) 2026-06-08 —
     query-blind/session-blind, redundant with the Frame's Active-threads
-    section (finding id:59debf4e). Function + dispatch kept so it stays
+    section. Function + dispatch kept so it stays
     callable and testable if re-surfaced; just not offered to Haiku."""
     try:
         if not aspect:

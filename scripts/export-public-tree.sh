@@ -72,13 +72,21 @@ DENYLIST=(
 
 # ── Gate B: personal-information patterns (grep -E, case-insensitive) and the
 # attribution allowlist — the ONLY file:pattern pairs permitted to match.
-SCRUB_PATTERNS='/Users/tpac|\btom\b|Pachys|playbuzz|AgentsContext'
+# The author's handle is matched BARE (`tpac`), not just as a path — the
+# `/Users/tpac` form missed "never left tpac's laptop" in a comment. Both the
+# employer's current name (`ex.co`) and its former one (`playbuzz`) are here:
+# scrubbing only the old name is how 20 hits of the current one survived.
+SCRUB_PATTERNS='\btpac\b|\btom\b|Pachys|playbuzz|\bex\.co\b|\bexco\b|AgentsContext'
 ALLOWLIST=(
   # deliberate author attribution
   "LICENSE:Tom Pachys"
   "README.md:Tom Pachys"
   ".claude-plugin/plugin.json:Tom Pachys"
   ".claude-plugin/marketplace.json:Tom Pachys"
+  # the publish target itself — the GitHub org the plugin is installed from
+  "README.md:tpac/entity"
+  ".claude-plugin/plugin.json:github.com/tpac"
+  ".claude-plugin/marketplace.json:github.com/tpac"
   # the legacy adoption rung (~/AgentsContext/brain) is shipped behavior:
   # existing brains at the pre-plugin default must stay reachable
   "hooks/scripts/resolve-brain-db.sh:AgentsContext"

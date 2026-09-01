@@ -172,7 +172,7 @@ class TestStringifiedOperationsUnwrap(BrainTestBase):
 
     def test_string_element_parsing_to_dict_unwraps(self):
         """A string ELEMENT that parses to a dict is the intended op
-        (S2 community precedent, id:ce8d9aef)."""
+        (S2 community precedent)."""
         from servers.daemon_dispatch import _handle_brain_batch
 
         r = _handle_brain_batch(self.brain, {'operations': [

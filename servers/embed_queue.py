@@ -61,8 +61,8 @@ EAGER_TRACE_REF_TYPES = SAID_AND_DID_REF_TYPES
 # window (full history). The window's original architectural reason —
 # pre-identity-stamping traces would render OPERATOR/ANCHOR sentinels,
 # which Decision 19 rules out — is extinct: the historical identity
-# backfill (commit 5cff407) stamped all 57,672 traces, and as of
-# 2026-07-14 zero unembedded dialogue rows lack human_identity. The
+# backfill stamped every trace, and no unembedded dialogue row lacks
+# human_identity. The
 # render's sentinel fallback remains for fresh installs only.
 TRACE_EMBED_WINDOW_DAYS = 30
 

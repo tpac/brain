@@ -910,20 +910,80 @@ for gating by shape-scan rather than by list (5.0b). *S.*
 Conflating them is what made 5.3 look like a single M-sized blocker. Split
 2026-08-31; each has a different gate, size, and decision-maker:
 
-| Class | Size (2026-08-31) | Gated? | Where it goes |
+| Class | Size | Gated? | Status |
 |---|---|---|---|
-| **A — runtime scrub** (`Tom` in shipped `servers/`+`dashboard/`) | **59 hits / 26 files** | **hard-fails gate B** | merges into the 5.0c sweep — same files, same eval gate |
-| **B — test-data scrub** (`Tom`/paths in `tests/`) | **163 hits** | **hard-fails gate B** | needs the gold-data ruling below; the rest is free deletions |
-| **C — comment audit** (dated / removal-verb / dead pointers) | **614 lines / 111 files** | **no gate at all** | **Tom ruled 2026-08-31: full audit BEFORE publish** — on the critical path |
+| **A — runtime scrub** (`Tom` in shipped `servers/`+`dashboard/`) | 59 → **0** | hard-fails gate B | **DONE** — 51 comment/docstring lines cleared 2026-09-01 |
+| **B — test-data scrub** (`Tom`/paths in `tests/`) | 163 → **0** | hard-fails gate B | **DONE** — gold data excluded + fixture rename (`6fb57ed`), last 18 attribution comments 2026-09-01 |
+| **C — comment audit** (dated / removal-verb / dead pointers) | 614 → **525** | **no gate at all** | split below — the defect half is done, the polish half is deliberately not |
 
-**Class C, re-measured 2026-08-31** across 13,148 comment lines in the 237-file
-manifest: 327 removal-verb · 307 dated · **33 naming the operator (20 files)** ·
-21 dead `docs/` pointers · 14 brain-node ids · 4 TODO/FIXME. Up from 472/88 —
-it grows on its own, because nothing gates it. Against Tom's own bar — *"if code
-should be public, it should be up to the standard of public repos"* (id:b99bfa36)
-— and Tom ruled it **in**, before publish: no gate, but the bar is the standard.
-Two long poles now: **5.0c class 2** (the prompt/rubric rewrite, the only
-eval-gated item) and this.
+**Class A + B CLEARED 2026-09-01. Gate B: 69 → 0, export tree clean on all
+three gates.** 69 lines across 40 files, every one an attribution comment. Two
+moves chosen per line: **drop the attribution** where the surrounding prose
+already carries the reason (most of them), **generalize to the role** where "a
+human ruled this deliberately" is the load-bearing signal that stops a future
+reader filing it as a bug. Dates survive where they are provenance for a live
+default (`encoder_view`'s arm-D gate); they go where they only record when
+someone decided. Verified by AST diff: every changed `.py` is identical after
+stripping docstrings, so **no code and no runtime string moved** — the
+eval-gated S1 prompt artifacts are untouched in substance and this needed no
+eval gate.
+
+**Class C splits — and the split is the finding (2026-09-01).** Re-measured
+with a token-aware scanner (`tokenize` + `ast`, so a COMMENT token is never
+confused with a docstring or a string literal) over 13,935 comment lines in the
+238-file manifest. The doc's 614 came from a removal-verb list between the
+narrow and wide sets; both are reported here so the number stops drifting:
+
+| | Count | Class |
+|---|---|---|
+| dated (`20xx-xx-xx`) | 278 | polish |
+| removal-verb (removed/retired/deprecated/no longer) | 215 | polish |
+| ↳ wider verbs (previously/formerly/obsolete/superseded/…) | 127 | polish |
+| **dead `docs/` pointers** | **22** | **defect** — `docs/` is denylisted, so these point at nothing in the public repo |
+| **brain-node ids** (`id:27db2472`) | **12** | **defect** — resolve only on this install |
+| **TODO/FIXME** | **4** | **defect** |
+| commit SHAs | 2 | defect |
+| naming the operator | 0 | cleared above |
+
+**THE EMPLOYER'S NAME WAS LEAKING AND GATE B COULD NOT SEE IT (2026-09-01).**
+Found while auditing the defect class, not by any gate: `SCRUB_PATTERNS` carried
+`playbuzz` — the employer's **former** name — and not `ex.co`, the current one.
+**20 hits** in the public tree. Worse, `servers/schema.py`'s v30 migration
+hardcoded three real project names (`{'EX.CO CTV kit', 'ex.co',
+'CTVOnboarding'}`) as a slug map, shipping in every install.
+
+Resolved: comments generalized (a real recall failure used as a worked example
+became "buried topical nodes"), six test fixtures renamed `exco` → `acme-site`
+with their assertions in lockstep, and the v30 slug map collapsed to *every
+legacy value → 'brain'*. That last one is a **no-op in practice** — the three
+names only ever existed on the author's own brain, whose `nodes.project` column
+is already dropped, so the migration's guard returns before the map is reached;
+any brain that could still run it would take the `else` branch anyway. The
+index-drop and column-drop steps are untouched: deleting the whole migration
+would have lost real structural work.
+
+**Gate B widened in the same pass** (this is the ratchet, not the cleanup):
+`\btpac\b` (bare, not just `/Users/tpac` — the path form missed *"never left
+tpac's laptop"* in a comment), `\bex\.co\b`, `\bexco\b`. Three allowlist entries
+cover the deliberate `github.com/tpac` publish target. Negative-tested: planted
+lines for all three patterns fail the gate.
+
+**The lesson worth keeping:** a scrub pattern list is a record of what someone
+once thought of. `playbuzz`-without-`ex.co` is that failure exactly — the
+employer *was* considered, and the entry went stale when the company renamed.
+Gate B's pattern set needs re-reading whenever a name in the operator's life
+changes, or it silently protects against the past.
+
+**The ~487 dated/removal-verb lines are deliberately NOT swept.** The earlier
+scan of this same class concluded 95% of these comments are good and that *"the
+best ones are exactly the kind a 'make it professional' pass would delete"*
+(id:091f8fd6). They carry no personal data and no broken reference; they are
+readability polish with real downside risk, since each is a judgment call and a
+wrong call deletes a load-bearing *why*. Sweeping 487 of them is a plausible
+net negative. **Reopen this only with a sample in front of the operator** —
+against Tom's own bar (*"if code should be public, it should be up to the
+standard of public repos"*, id:b99bfa36), a comment that explains why code is
+shaped a certain way already meets that bar whether or not it carries a date.
 
 **ARM THE RATCHET WHEN CLASS C IS CLEAN (Tom, 2026-09-01).** Both halves of
 the "no new names" gate already exist; one is disarmed and one is
@@ -1106,6 +1166,41 @@ worry was the wrong worry, and "the official directory" is not submittable.**
 - **Do first regardless:** add the `license` field to `marketplace.json` (D-1
   conformance defect) so the grant is legible wherever the entry is rendered.
 Only once the self-hosted marketplace has real installs. Mechanics in §10.1. *S.*
+
+**5.9 The public tree is OPT-OUT. Tom ruled 2026-09-01 that it must be OPT-IN.**
+*"I want things that are released to the public repo to be opt in not opt out so
+we don't accidentally launch personal stuff."* Measured 2026-09-01: **413 of the
+429 public files arrive without anything having said yes to them.**
+
+| Path | How files are chosen | |
+|---|---|---|
+| `servers/ hooks/ skills/ dashboard/ bin/` | `git ls-files <dir>` minus a few `grep -v` filters | **opt-out** |
+| `tests/` | `git ls-files tests` (224) minus a 15-entry denylist → 189 land | **opt-out** |
+| root | hand-listed (`README.md`, `CONTRIBUTING.md`) | opt-in |
+
+Committing a tracked file into `servers/` or `tests/` ships it on the next
+release with nothing asking. The only thing between that and a leak is gate B,
+which knows five patterns. **This is the mechanism behind the 67→69 drift** —
+not a fluke, the design working as built.
+
+Note the tension `build-plugin.sh` already records: `git ls-files` was chosen
+*deliberately* so an untracked scratch DB or secret can never ship. That
+argument holds for untracked files and says nothing about tracked ones. The
+opt-in question is only about the tracked set.
+
+Scoping notes for whoever takes this:
+- A literal 429-entry manifest rots — but it fails SAFE (a forgotten entry
+  means a missing file, which breaks loudly at install, not a silent leak).
+- The cheaper shape is per-directory opt-in: each shipped directory names an
+  explicit include-list or an include-pattern, so adding a file is a
+  one-line manifest edit rather than an automatic consequence of `git add`.
+- `tests/` is the highest-risk directory (189 files by subtraction, and the
+  denylist there is 15 entries of remembered exceptions).
+- Whatever lands needs its own test: a new tracked file under a shipped
+  directory must NOT appear in the export until something names it.
+Not a publish blocker on its own — gate B still catches the known patterns —
+but it is the reason the ratchets below exist, and it should land before the
+repo takes outside contributors. *M.*
 
 ---
 

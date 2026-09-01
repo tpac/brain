@@ -674,7 +674,7 @@ def render_corrections(corrections, mode='lean',
 
     Single rendering path — both render_rich_node and consumer-specific
     formatters (HealerEncoder._format_batch) call this. Per the data/format
-    separation contract (decision id:3c3a3046): one formatter, configs drive
+    separation contract: one formatter, configs drive
     verbosity.
 
     Args:

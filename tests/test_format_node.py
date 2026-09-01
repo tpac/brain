@@ -196,10 +196,10 @@ class TestFormatNode(BrainTestBase):
     def test_differential_project_mark_on_mismatch(self):
         """cfg['scope']: foreign project renders the ⚠ mark, the generic
         'Project:' KV line is suppressed."""
-        nid = self._make_node(title='Foreign fact', project='exco')
+        nid = self._make_node(title='Foreign fact', project='acme-site')
         out = self._render(nid, {'scope': {'project': 'brain'}})
-        self.assertIn('⚠ From another project: exco', out)
-        self.assertNotIn('Project: exco', out)
+        self.assertIn('⚠ From another project: acme-site', out)
+        self.assertNotIn('Project: acme-site', out)
 
     def test_differential_project_silent_on_match(self):
         """Same-project node renders NO project line at all in differential
@@ -234,10 +234,10 @@ class TestFormatNode(BrainTestBase):
     def test_legacy_render_keeps_generic_project_line(self):
         """Callers that don't declare a scope keep the pre-existing generic
         KV render — no information loss for unwired consumers."""
-        nid = self._make_node(title='Legacy view', project='exco',
+        nid = self._make_node(title='Legacy view', project='acme-site',
                               counterpart='Ada')
         out = self._render(nid)
-        self.assertIn('Project: exco', out)
+        self.assertIn('Project: acme-site', out)
         self.assertNotIn('From another project', out)
         # counterpart is differential-ONLY: its value is the install default
         # (identical on every node), so the generic KV line is pure noise

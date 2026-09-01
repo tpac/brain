@@ -11,7 +11,7 @@ conftest closes it with a snapshot/restore pair — one class-scoped (wraps
 setUpClass/tearDownClass), one function-scoped (wraps each test). These tests
 assert the guard's BEHAVIOUR, so deleting either fixture from conftest fails
 them: a gate that goes green when the mechanism it watches disappears is not a
-gate (id:89ba43e8).
+gate.
 
 Ordering: each leak source is followed by the item that checks it escaped
 nothing, and pytest runs items in collection (file) order — requirements-test

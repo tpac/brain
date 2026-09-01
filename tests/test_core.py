@@ -180,7 +180,7 @@ class TestDAL(unittest.TestCase):
 
     # test_meta_session_activity removed 2026-05-23: targeted
     # BrainMetaDAL.get_session_activity() which was deliberately deleted in
-    # commit 95b2887 (parallel-session refactor — single-counter
+    # a parallel-session refactor (single-counter
     # approach replaced by per-session SessionContext). Activity
     # counters live on SessionContext now, not BrainMetaDAL.
 

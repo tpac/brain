@@ -62,7 +62,7 @@ def _scan():
 # A SELECT cursor BOUND to a name on the logs write connection holds a read
 # snapshot; the next write on that connection fails INSTANTLY with 'database
 # is locked' the moment another process commits in between (SQLITE_BUSY_
-# SNAPSHOT — busy_timeout does not apply; brain id:371895a8). The rule:
+# SNAPSHOT — busy_timeout does not apply). The rule:
 # statements on logs_conn_w are fully consumed — `conn.execute(...).fetchone()`
 # / `.fetchall()`, never `cur = conn.execute('SELECT ...')`. DML bindings are
 # fine (the statement completes inside execute(); rowcount is immediate).

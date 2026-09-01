@@ -683,7 +683,7 @@ class TestMCPRoundTrip(BrainTestBase):
         trace — the row that closes the partial-run catalog gap; zero of
         these existed before the emitter went live. (b) remember-path
         connect_to edge traces carry the caller session — the pop-then-read
-        bug (id:89262c96: _pop_session_ctx mutates args, the legacy emit read
+        bug (_pop_session_ctx mutates args, the legacy emit read
         them after) shipped session_id='' on EVERY such trace; the chokepoint
         captures identity pre-handler, killing the bug structurally."""
         from servers.dispatch_common import CALLER_SESSION_KEY

@@ -36,7 +36,7 @@ from datetime import datetime, timezone
 
 BRAIN_VERSION = 32  # v32: drop dead edges columns — relation/edge_type/description/stability/decay_rate (v22 leftovers: constant or NULL on every row, zero readers; live relation data incl. decay_rate is edge_relations) plus index idx_edges_type. _migrate_v32_drop_dead_edge_columns converges drifted installs to the declared 7-column edges shape. See v31 note below for prior version.
 # v31: voice-quote fields renamed — user_raw_quote → their_raw_quote, anchor_raw_quote → my_raw_quote. _migrate_v31_voice_fields relabels both node_metadata_kv.key and node_enrichments.vector_type (the per-field embedding lane); no re-embed, field names never enter the embedded text.
-# v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: everything→brain except the EX.CO trio→ex.co) then DROP COLUMN. See v29 note below for prior version.
+# v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: every legacy value → brain) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
 
 # brain_logs.db structural version. v1 is the baseline stamp: the table shapes
@@ -714,9 +714,9 @@ def _backfill_data(conn, from_version):
         # clean columns (no deprecated relation/edge_type/description/stability).
         _migrate_edges_v22(conn)
 
-    # v23 / v24 migrations removed — this codebase never left tpac's laptop,
-    # so no external database ever needed the v23→v24 upgrade path. New DBs
-    # are created directly at BRAIN_VERSION. Historical note: v23 consolidated
+    # v23 / v24 have no migration step: no database outside the original
+    # development install ever existed at those versions, so no upgrade path
+    # was needed. New DBs are created directly at BRAIN_VERSION. v23 consolidated
     # node_embeddings into node_enrichments; v24 promoted situation text
     # from node_enrichments.text to node_metadata_kv. Both are the current
     # state of any fresh brain.
@@ -965,10 +965,9 @@ def _migrate_v30_project_to_kv(conn):
     nodes.project column is legacy. Mirrors _migrate_v28_drop_keywords —
     index before column. Idempotent: re-run finds the column already gone.
 
-    Slug map (operator-approved 2026-07-03): every legacy value → 'brain'
-    except the EX.CO trio → 'ex.co'. The old column carried topical costume
-    names ('S1Scribe', 'aspects_refactor', 'dashboard', ...) that were all
-    brain-repo work; the 24-cue inventory was reviewed before approval.
+    Slug map: every legacy value → 'brain'. The old column carried topical
+    costume names ('S1Scribe', 'aspects_refactor', 'dashboard', ...) for what
+    was all one repo's work, so the slug is the repo, not the costume.
     """
     # Column already gone (fresh v30 brain, or a re-run) → nothing to do.
     cols = {row[1] for row in conn.execute("PRAGMA table_info(nodes)").fetchall()}
@@ -977,16 +976,14 @@ def _migrate_v30_project_to_kv(conn):
         return
 
     # 1. Move values → kv. INSERT OR REPLACE on PK (node_id, key) is idempotent.
-    #    Total mapping (no unmapped value possible): exco trio → ex.co, else brain.
-    exco = {'EX.CO CTV kit', 'ex.co', 'CTVOnboarding'}
+    #    Total mapping (no unmapped value possible): every legacy value → brain.
     rows = conn.execute(
-        "SELECT id, project FROM nodes "
+        "SELECT id FROM nodes "
         "WHERE project IS NOT NULL AND project != ''").fetchall()
-    for nid, legacy in rows:
-        slug = 'ex.co' if legacy in exco else 'brain'
+    for (nid,) in rows:
         conn.execute(
             "INSERT OR REPLACE INTO node_metadata_kv (node_id, key, value) "
-            "VALUES (?, 'project', ?)", (nid, slug))
+            "VALUES (?, 'project', 'brain')", (nid,))
     print(f"[brain] v30: moved {len(rows)} nodes.project values → kv")
 
     # 2. Drop the index before the column (SQLite refuses to drop an

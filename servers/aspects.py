@@ -530,7 +530,7 @@ class AspectRegistry:
         # Two policies, one deliberate difference:
         # · structural_exclusions — the FULL noise set. For flat READS
         #   (connection lists on node pulls): noise carries no semantic
-        #   claim, and per the standing decision (id:49d734ad) that hides
+        #   claim, and per the standing decision that hides
         #   community_member too.
         # · traversal_exclusions — noise MINUS community_member. For graph
         #   DYNAMICS (traverse, spread activation, Anchor's graph_expand):

@@ -297,8 +297,8 @@ def _handle_remember(brain, args, graph_changes):
     # Manifest for the emitter: the node's birth row + connect_to edge rows
     # (made-entries are src-tagged with edge_id/deltas via _apply_connect_to).
     # Session/chain attribution comes from the chokepoint's PRE-handler capture
-    # — the pop-then-read bug (session_id='' on every remember-path edge trace,
-    # id:89262c96) dies here, structurally.
+    # — the pop-then-read bug (session_id='' on every remember-path edge
+    # trace) dies here, structurally.
     enc_src = args.get('encoding_source', '')
     edge_rows = _connect_to_rows(
         result.get('connect_to_result') if isinstance(result, dict) else None,
@@ -393,7 +393,7 @@ def _handle_remember_batch(brain, args, graph_changes):
     # `connect_to_made` is the brain method's edge record — popped into the
     # manifest so it doesn't bloat the agent-facing payload. Attribution comes
     # from the chokepoint's pre-handler capture (kills the pop-then-read
-    # session_id='' bug, id:89262c96).
+    # session_id='' bug).
     made = result.pop('connect_to_made', None) if isinstance(result, dict) else None
     edge_rows = _connect_to_rows({'created': made or []}, enc_src)
     # co_anchored edges fire inside each per-node remember(); popped for
@@ -906,7 +906,7 @@ def _handle_brain_batch(brain, args, graph_changes):
             if isinstance(op_spec, str):
                 # Same serialization quirk one level down: a string ELEMENT
                 # that parses to a dict is the intended op (seen in S2
-                # community batches, id:ce8d9aef). Unrecoverable elements
+                # community batches). Unrecoverable elements
                 # keep the existing per-op error — fan-out is bounded by
                 # the element count the caller actually sent.
                 try:
