@@ -709,8 +709,8 @@ def hook_post_response_track(brain, args, graph_changes):
 
 
 def hook_pre_edit(brain, args, graph_changes):
-    """PreToolUse(Edit|Write) — surface brain rules before file edits, and
-    deliver any pending self-messages (drain → prepend to reason).
+    """PreToolUse(Edit|Write) — surface brain rules before file edits.
+    (Self-message delivery lives on Stop alone — hook_post_response_track.)
 
     Returns JSON {"decision":"approve","reason":"..."}.
     """

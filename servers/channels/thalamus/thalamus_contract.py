@@ -43,9 +43,6 @@ STATE_EXPIRED = 'expired'      # window ended — LOUD for an unanswered ask
 STATE_SENT = 'sent'            # terminal at file(): delegated live-now
                                # broadcast — the courier owns its death
 
-TERMINAL_STATES = (STATE_ANSWERED, STATE_DISMISSED, STATE_WITHDRAWN,
-                   STATE_EXPIRED, STATE_SENT)
-
 
 # ═══════════════════════════════════════════════════════════════
 # AUDIENCES  —  the item's RECIPIENT SET (who the pull predicate serves).
