@@ -30,7 +30,7 @@ import { sessionChip, sessionColor } from '/static/lib/sessions.js';
 // one is reflex and the other is intent.
 const RECALL_SOURCE = {
   hook:     { label: 'turn',     cls: 'act-src--hook',     title: 'automatic recall on this turn' },
-  mcp:      { label: 'reached',  cls: 'act-src--mcp',      title: 'Anchor called recall() deliberately' },
+  mcp:      { label: 'reached',  cls: 'act-src--mcp',      title: 'recall() called deliberately' },
   internal: { label: 'internal', cls: 'act-src--internal', title: 'internal recall' },
 };
 

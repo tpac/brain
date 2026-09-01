@@ -601,32 +601,66 @@ The gate excludes its own file (the scanner must name the shapes it hunts) and t
 Found and fixed on first run: `tests/test_trace_chain_lane.py` hardcoded
 `/Users/tpac/brain`.* *Shipped S.*
 
-**5.0c Name / identity consolidation (D-12) — OPEN. Absorbs §8 #3. Runs as ONE
-pass with the 5.3 runtime scrub class — see §ACTIVE ARC.** 143 `Anchor`
-literals across 43 shipped files resolve to `BRAIN_AGENT_NAME`; `BRAIN_OPERATOR_NAME`
-gains an acquisition path (`userConfig`, D-4 shape). Three unequal classes:
-  1. **mechanical** — boot message, dashboard UI, comments → read from config
-  2. **prompts / rubrics — the real long pole, and NOT a substitution.** In
-     `quality_contract.py`, `encode.py`, `encoder_view.py`, `surface_contract.py`
-     the names are load-bearing narrative *inside* dimension examples and
-     few-shot prompt text — *"cites specific turn-evidence (\"Tom asked three
-     times across consecutive turns\")"*, *"hallucinated self-diagnosis
-     (\"Anchor caught its own misalignment\")"*. A mechanical `Anchor` →
-     `{agent}` swap produces broken prose; doing it well means **rewriting the
-     examples, which changes what the encoder and evaluator are taught** —
-     so it carries an eval gate (CLAUDE.md's benchmark-first rule + the
-     interaction promotion process). This is why it must not be split across
-     two passes: 15 of these files also carry `Tom` literals from the 5.3
-     scrub list, in the same strings. Two passes = two eval gates.
-     *Free reduction first:* `quality_contract.py` (14 of the 143) has no
-     runtime consumer at all — see §ACTIVE ARC free deletions.
-  3. **seed pack — RESOLVED by D-5 (2026-08-30):** the Nursery pack is
-     name-free by construction (no node asserts the entity's name; no
-     interpolation machinery). The only remaining `Tom`/`Anchor` literals in
-     `seed_pack.py` are the three deliberate origin-story tributes
-     (`test_names_only_in_tribute_sites` holds the boundary) — they are
-     content, not identity assertions, and stay.
-*M; classes 1–2 remain here.*
+**5.0c Name / identity consolidation (D-12) — IN PROGRESS. Absorbs §8 #3.**
+
+**The default name is `Jade` (Tom, 2026-08-31), and it is a real name, not a
+display placeholder.** The mechanism separates two facts that the code had
+been conflating: *what the name is* and *whether anyone chose it*. Emptiness
+used to stand in for "unchosen", which is why any default silently disarms
+everything keyed on it.
+- `get_agent_name()` returns the configured name **or `DEFAULT_AGENT_NAME`** —
+  never empty, so no render needs name-free prose.
+- `agent_name_is_default()` carries the chosen-ness fact explicitly.
+- `get_operator_name()` still returns empty when unset: a human's name cannot
+  be invented, so the DAL keeps skipping that stamp.
+Consequences, all deliberate: traces stamp the default (an entity running
+under its shipped name genuinely IS that name, and a later rename leaves
+earlier events honestly recording who was speaking then); the
+identity-unconfigured warning still fires, now keyed on chosen-ness and no
+longer claiming nothing is recorded; and the Nursery's first-gift invitation
+survives, reworded from *"I don't have a name yet"* to *"Jade is the name I
+came with, not one you gave me."*
+
+**Re-measured token-aware 2026-08-31 — the count was never the work.** Of 131
+`Anchor` occurrences in the package, only a small minority are rendering
+sites; the rest are commentary:
+
+| | Python | |
+|---|---|---|
+| comments | 50 | → **5.3 comment audit**, not here |
+| docstrings | 40 | → **5.3 comment audit**, not here |
+| **real code** | **14** | of which 3 are seed_pack's allowlisted tributes |
+
+**The three-namespace split matters more than the total (D-11).** A large
+share of the non-Python hits are the *product's* name, not the instance's —
+`boot-brain.sh`'s *"the Anchor plugin's settings"*, `setup.html`'s
+`<title>Anchor — Setup</title>`. Those become **Entity** at the 5.2 rename and
+must not be routed through config; doing them here would do them twice.
+
+**Done in this pass:** the mechanism above (`daemon_config`, `brain.py`,
+`dal_logs`, `brain_voice`); dashboard UI strings and both SKILL.md
+descriptions reworded name-free (no name channel to the frontend needed —
+6 strings did not justify one); and `trace_contract`'s render fallback
+(`meta.get('agent_identity') or 'Anchor'`) now falls back to config, so a
+stamped event keeps its historical name while an unstamped one renders this
+install's. 131 → 122.
+
+**Remaining, in three buckets:**
+  1. **Eval-gated (phase 4).** `encoding_prompt.SYSTEM_PROMPT` opens *"I am
+     Anchor"* and is the `s1e` interaction default; `surface_contract`'s
+     conversation label (`label = "Anchor"`, paired with a generic
+     `"Operator"` — the agent side never got the generic treatment
+     `test_prompt_uses_generic_operator_label` pins for the human side);
+     `encode.py`'s `encoded(Anchor):` render; and `aspects_v1.json`'s family
+     `meaning` text. All are prompt-visible, so they move together under the
+     interaction-promotion process, not as a find-replace.
+  2. **MCP tool-schema descriptions.** `contract.py`, `brain_mcp.py` — cheap,
+     but require re-running `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py`.
+  3. **Product-name sites → 5.2**, listed above.
+  4. **seed pack — RESOLVED by D-5 (2026-08-30):** name-free by construction;
+     the three origin-story tributes (`test_names_only_in_tribute_sites` holds
+     the boundary) are content, not identity assertions, and stay.
+*Was M; the mechanical half is done, phase 4 is what remains.*
 
 **5.1 Export script — SHIPPED 2026-08-28: `scripts/export-public-tree.sh`.**
 Materializes the public tree from `build-plugin.sh --list` (the builder grew

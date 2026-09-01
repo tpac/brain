@@ -1701,7 +1701,13 @@ def render_trace(row, config=None):
     score_str = ' %.2f' % score if isinstance(score, (int, float)) else ''
     ref_type = row.get('ref_type') or ''
     if ref_type == 'assistant_message':
-        label = meta.get('agent_identity') or 'Anchor'
+        # Stamped identity wins — an event records who was speaking when it
+        # was written, so a renamed entity's old events keep their old name.
+        # The fallback is this install's current name (D-12: config owns it),
+        # never a literal; the human's fallback below is a generic role
+        # because we cannot invent a person's name.
+        from servers.daemon_config import get_agent_name
+        label = meta.get('agent_identity') or get_agent_name()
     elif ref_type == 'user_message':
         label = meta.get('human_identity') or 'Operator'
     elif ref_type == 'tool_result':

@@ -61,11 +61,25 @@ LAUNCHD_SIGKILL_GRACE_S = 20
 
 
 # ─── Identity binding ───
-# Concrete names for the human operator and the agent (Anchor). Stamped
-# onto S0 trace_events metadata at write time so each event independently
-# records who said what. Source: ~/.config/brain/env (sourced by
-# boot-brain.sh, inherited into daemon environment). Empty string when
-# unset — DAL skips stamping, no placeholder sentinels.
+# Concrete names for the human operator and the agent. Stamped onto S0
+# trace_events metadata at write time so each event independently records who
+# said what. Source: ~/.config/brain/env (sourced by boot-brain.sh, inherited
+# into daemon environment).
+#
+# The agent name always has a value — an entity with no name at all forces
+# every render into awkward name-free prose. The operator name does not: we
+# cannot invent a human's name, so empty still means unset there and the DAL
+# skips stamping it.
+#
+# Whether the agent name was CHOSEN is a separate fact from what it IS, and
+# both are needed. Emptiness used to stand in for "unchosen", which is why a
+# default silently disarms everything keyed on it — the identity warning, and
+# the Nursery's naming invitation. `agent_name_is_default()` carries that fact
+# explicitly instead, so an entity can genuinely be Jade while the system still
+# knows nobody picked it.
+
+DEFAULT_AGENT_NAME = 'Jade'
+
 
 def get_operator_name() -> str:
     """Canonical name of the current human partner. Empty if unset."""
@@ -73,8 +87,23 @@ def get_operator_name() -> str:
 
 
 def get_agent_name() -> str:
-    """Canonical name of the agent (the brain's self-token). Empty if unset."""
-    return os.environ.get('BRAIN_AGENT_NAME', '').strip()
+    """Canonical name of the agent (the brain's self-token).
+
+    Never empty — falls back to DEFAULT_AGENT_NAME. Ask
+    `agent_name_is_default()` if you need to know whether the operator
+    actually chose it.
+    """
+    return os.environ.get('BRAIN_AGENT_NAME', '').strip() or DEFAULT_AGENT_NAME
+
+
+def agent_name_is_default() -> bool:
+    """True while the agent is running under the name it shipped with.
+
+    The name is issued, not chosen — the distinction the entity's own pitch
+    rests on, and what the boot's naming invitation and the trace-identity
+    warning both gate on.
+    """
+    return not os.environ.get('BRAIN_AGENT_NAME', '').strip()
 
 
 # ─── Code Fingerprinting ───
