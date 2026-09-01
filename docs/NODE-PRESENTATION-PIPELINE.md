@@ -30,7 +30,7 @@ The concerns, each with a canonical form AND scattered/bespoke instances:
 
 ### Concern 1 — ID resolution
 Node ids are exact 8-char hex everywhere; there is no short→full resolution
-step (the id-resolution unification, docs/ID-RESOLUTION-UNIFICATION-PLAN.md).
+step (the id-resolution unification, 2026-08-31 — brain node id:10a535fd).
 The only tolerated recovery is surface's menu-scoped `_unique_prefix_match`
 (uniqueness-required, logged) plus the leading-zero retry — both reconstruct
 an exact id and announce themselves. A miss is the owning brain method's to
