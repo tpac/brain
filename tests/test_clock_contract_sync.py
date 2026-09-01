@@ -34,17 +34,14 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # Directories where wall-clock calls are forbidden (semantic-time code).
-# The whole grain axis, as a PREFIX — a future s3/s4 is covered without anyone
-# remembering to add it. Keep test_time_window_contract.CTX_PROTECTED_DIRS on
-# the same prefix; they are two halves of one rule and a reader who sees this
-# one generalize will assume the other did too.
+# The whole grain axis, as a PREFIX, so a future grain is covered without
+# anyone remembering to list it. What belongs on that axis, and why a
+# real-elapsed package must not join it, is stated once in
+# servers/scales/__init__.py — don't restate it here.
 #
-# The prefix is only safe while nothing wall-clock-by-design lives under
-# scales/. What made it unsafe before was one line, not a whole package:
-# self_channel/presence.py's datetime.now() for ROSTER STALENESS (delivery
-# windows go through servers.clock and this scan never sees them). That
-# package now lives under servers/channels/, which is the fix for that class
-# — not an EXEMPT_FILES entry.
+# Must equal test_time_window_contract.CTX_PROTECTED_DIRS; the two are halves
+# of one rule. test_prefix_zones_agree below enforces that rather than trusting
+# this comment.
 PROTECTED_DIRS = [
     'servers/scales',
 ]
@@ -262,3 +259,27 @@ def test_one_grammar_across_both_doors():
     # "next opportunity", a lookback bound does not.
     assert _resolve_time_bound('') == ''
     assert resolve_when('now') is None
+
+
+def test_prefix_zones_agree():
+    """The two clock contracts must scan the SAME tree.
+
+    They enforce halves of one rule — this file bans bare datetime.now() /
+    date.today(); test_time_window_contract bans iso_now() / iso_cutoff()
+    without at=. Widening one alone is worse than leaving both narrow,
+    because the widened one's comment then promises a coverage the other
+    does not deliver, and the gap is silent: a bare iso_cutoff() in a newly
+    added grain would ship uncaught and anchor an eval replay to wall-clock.
+
+    That is not hypothetical — it is exactly what the 2026-09-01 channels/
+    move did, and only an audit caught it. This assertion is the guard that
+    would have caught it instead.
+    """
+    from tests.test_time_window_contract import CTX_PROTECTED_DIRS
+    assert sorted(PROTECTED_DIRS) == sorted(CTX_PROTECTED_DIRS), (
+        'The two clock contracts scan different trees:\n'
+        '  test_clock_contract_sync.PROTECTED_DIRS      = %r\n'
+        '  test_time_window_contract.CTX_PROTECTED_DIRS = %r\n'
+        'Widen or narrow BOTH, or the narrower one becomes a silent hole '
+        'the wider one claims to cover.' % (PROTECTED_DIRS, CTX_PROTECTED_DIRS)
+    )

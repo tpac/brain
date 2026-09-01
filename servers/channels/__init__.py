@@ -12,15 +12,10 @@ render all reach a live stream and live elsewhere (`scales/s1`,
 `additionalContext` sense of "channel" used in CLAUDE.md's Conventions — that
 names the injection pipe, this names who is speaking.
 
-NOT under `scales/`: neither package runs an `integrate(O, K) → Δ` loop.
-`scales/` is the GRAIN axis — s1, s2, and the shared machinery serving them.
-Both clock contracts (`test_clock_contract_sync`, `test_time_window_contract`)
-can therefore name `servers/scales` as a PREFIX, so a future grain is guarded
-without anyone remembering to list it. That prefix stays honest only while
-nothing wall-clock-by-design sits under `scales/` — the alternative, an
-`EXEMPT_FILES` entry, is what those tests explicitly ask you not to grow.
-Delivery windows here are real-elapsed: the courier-class exemption documented
-in `self_contract` and inherited by `thalamus_contract`, not an oversight.
+NOT under `scales/`: neither package runs an `integrate(O, K) → Δ` loop, and
+the delivery windows here are real-elapsed by design (TTLs, roster staleness).
+The placement rule and why it is load-bearing live in one place —
+`servers/scales/__init__.py`, the axis these packages are not on.
 
 A delivery is traced as an s0 K event (`self_message`, `thalamus_delivery`),
 so a channel rides the S0 loop as an incoming correspondent rather than

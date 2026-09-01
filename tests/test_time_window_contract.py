@@ -1,5 +1,5 @@
 """Time-window contract: ban SQL datetime('now',...) and require explicit
-``at=`` on S1/S2 cutoffs.
+``at=`` on grain-axis cutoffs.
 
 Why this file exists
 --------------------
@@ -13,8 +13,8 @@ Two related drift surfaces, one test file:
    ``servers.clock.iso_cutoff(...)``. This scan keeps the bug from
    coming back.
 
-2. **S1/S2 ``iso_cutoff()`` / ``iso_now()`` calls without explicit
-   ``at=``.** S1/S2 code runs in eval replays where wall-clock is the
+2. **Grain-axis ``iso_cutoff()`` / ``iso_now()`` calls without explicit
+   ``at=``.** Grain-axis code runs in eval replays where wall-clock is the
    wrong anchor — see servers/clock.py:conversation_now and bug
    6d5b789e (temporal scout uses wall-clock now(), ignores conversation
    date). Forcing ``at=`` at the call site means authors think about
@@ -137,15 +137,13 @@ def test_no_sqlite_datetime_now_in_sql_strings():
         pytest.fail('\n'.join(msg))
 
 
-# ─── Scan 2: S1/S2 calls without explicit at= ───────────────────────────
+# ─── Scan 2: grain-axis calls without explicit at= ──────────────────────
 
 # Conversation-time directories. Grain-axis code anchors to the conversation,
 # not the host wall-clock — passing at=conversation_now(...) keeps eval
-# replays honest. Same PREFIX as test_clock_contract_sync.PROTECTED_DIRS, and
-# it must stay the same: these are two halves of one rule (that file bans bare
-# datetime.now(); this one bans iso_now()/iso_cutoff() without at=). Widening
-# one alone is worse than leaving both enumerated, because the other's comment
-# then promises a coverage this one doesn't give.
+# replays honest. Must equal test_clock_contract_sync.PROTECTED_DIRS; the two
+# are halves of one rule, and test_prefix_zones_agree enforces the equality so
+# neither can be widened alone. What belongs on the axis: servers/scales/__init__.py.
 CTX_PROTECTED_DIRS = [
     'servers/scales',
 ]
@@ -162,7 +160,7 @@ CTX_EXEMPT_PATHS = {
 
 def _scan_ctx(p: Path):
     """Yield (line_no, line, fname) for iso_now/iso_cutoff calls in
-    S1/S2 code without an at= kwarg. clock-ok lines are skipped."""
+    grain-axis code without an at= kwarg. clock-ok lines are skipped."""
     violations = []
     try:
         text = p.read_text()
@@ -174,17 +172,17 @@ def _scan_ctx(p: Path):
         for m in CTX_CALL_RE.finditer(line):
             fname, args = m.group(1), m.group(2)
             # Bare wall-clock — fine for system bookkeeping but suspect
-            # in S1/S2. Require explicit `at=` so the author confirms
+            # on the grain axis. Require explicit `at=` so the author confirms
             # they want wall-clock here (and not conversation_now()).
             if 'at=' not in args:
                 violations.append((lineno, line.strip(), fname))
     return violations
 
 
-def test_s1_s2_cutoffs_require_explicit_at():
-    """In S1/S2 code, every iso_now()/iso_cutoff() call must pass at=.
+def test_grain_axis_cutoffs_require_explicit_at():
+    """On the grain axis, every iso_now()/iso_cutoff() call must pass at=.
 
-    S1/S2 reads and writes data tied to the conversation. Eval replays
+    Grain-axis code reads and writes data tied to the conversation. Eval replays
     inject historical `[Current date: ...]` prefixes — wall-clock is
     the wrong anchor there. Forcing explicit ``at=`` makes the author
     decide which 'now' applies:
@@ -207,7 +205,7 @@ def test_s1_s2_cutoffs_require_explicit_at():
                 all_violations[rel] = v
 
     if all_violations:
-        msg = ['Found bare iso_now()/iso_cutoff() calls in S1/S2 code:']
+        msg = ['Found bare iso_now()/iso_cutoff() calls under servers/scales (the grain axis):']
         for rel, hits in all_violations.items():
             for ln, src, fname in hits:
                 msg.append(f'  {rel}:{ln}  {src}')
