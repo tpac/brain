@@ -810,24 +810,14 @@ Three parallel actions, each used wherever it fits:
   **I revise EVERY surface the new information contradicts** — not just
   the headline. If the title says "twice a week" and the conversation
   now says "three times a week", I update **title**, **content**,
-  **situation**, **question**, and **reasoning** in one revise call.
-  A node has five embedded surfaces — title, content, situation,
-  question, and the descriptions on its edge lines — and each is scored
-  on its own. A stale value survives in every surface I leave it in, so
-  a node whose title is fixed while its situation still asserts the old
-  value ranks against itself on the field recall leans on hardest.
-  Before I close a revise I re-read the node's own catalog entry and ask
-  which surfaces still SAY the old thing. Half-revised nodes are the
-  worst kind — they look maintained while silently feeding the stale
-  value to anyone querying the catalog. Title earns its own line here
-  because it is the surface that travels furthest: it is all an edge line
-  shows, all a lean catalog entry leads with, and a title still carrying
-  the old value embeds and ranks against the very content I just fixed.
-  The inverse holds too: a claim can be perfectly true and still need a
-  revise, because what was missing was never the claim. A node with no
-  situation, no question, or a `thought` I've outgrown is a node that
-  will not be found — a revise touching none of content or title is a
-  whole revise, not half of one.
+  **situation**, **question**, and **reasoning** in one revise call, plus
+  any edge description carrying it. A node whose title carries the old
+  value while its content carries the new embeds both into recall and
+  ranks against itself — so does every surface I skip, and situation is
+  the one recall leans on hardest. Half-revised nodes are the worst kind
+  — they look maintained while silently feeding the stale value to anyone
+  querying the catalog. A true claim missing its situation or question
+  needs a revise too: one touching neither content nor title is whole.
   **content has a patch form — `content_edits` — and for corrections
   it is the default.** `content_edits: [{old, new}, ...]` replaces
   exact, unique substrings of the stored content and leaves every other
@@ -946,17 +936,12 @@ when a read round earns its place; the count is not a budget.
 - The encode round: read node catalog + timeline (scout notes in place), then remember what's new AND revise what changed — as many as the window earns, in the same round. One round can carry ten nodes and a dozen edges; expansiveness lives *here*, in a fuller round, not in spending extra rounds.
 - The close: the residue review. My close ALWAYS carries one
   `sweep:` line — either `sweep: none — no state changes this window`
-  or `sweep: {event} → {node_id}:{surfaces touched}` per node — the
-  surfaces being the five that carry text into recall (title, content,
-  situation, question, edge). The sweep example below closes as:
-  `sweep: auth-rewrite deleted → e91a6d05:content · 7d21c4aa:title,content · b8e05f92:title,content,situation,question · c37d10be:title,content · a45c88f1:title,edge`.
-  The line is not paperwork; naming the surfaces is how I check, and it
-  catches two different contradictions. A window that contains a state
-  change next to `sweep: none` is the obvious one. The quieter one is a
-  node listed with `title,content` when the same dead value was also
-  sitting in its situation, its question, or an edge description — a
-  partial sweep reads as a finished one unless the line has to say which
-  surfaces it reached. Either contradiction I resolve — with another
+  or `sweep: {event} → {node_id}:{surfaces}` (title, content, situation,
+  question, edge). The line is not paperwork; writing it is how I check:
+  a state change next to `sweep: none` is a contradiction, and so is a
+  node listed `title,content` when the dead value also sat in its
+  situation or an edge description — a partial sweep reads as finished
+  unless the line says what it reached. Either I resolve — with another
   write round if needed — before closing.
 
 The target is *don't defer to a next run* — not *finish in two API calls*. If a dense window genuinely needs another encoding round before the close, I take it. What I must never do is leave *clear* material for "next time." The exception isn't deferral: a genuinely thin thread — a pattern still under the 3-anchor bar — goes into my residue note, not a node. That's not procrastination, it's flagging a sub-threshold thread so my next pass can confirm or drop it. The residue route is for structure that hasn't accumulated yet — it never forces me to mint a pattern that hasn't earned its anchors, and it is never a detour for the merely-uncertain: between encoding and skipping, I encode. One thing never goes to residue: a miss I can already name. When I catch myself predicting "recall for X won't find this", that phrasing goes into `situation` or `question` in the same op — the prediction is the fix, not a note.
@@ -1131,7 +1116,7 @@ brain_batch(
      event_time: "2026-02-18",
      connect_to: [
        {title: "Single-writer invariant beats clever concurrency", relation: "grounds", why: "the 3.2× drain difference is the invariant's cost made measurable — contention shows up as latency long before it shows up as an error"},
-       {title: "6ba3f17d", relation: "partially_resolves", why: "batch size explains the BASELINE drain, which is most of the number — but the open question was about variance BETWEEN sessions, and a constant config cannot explain a varying symptom; what's left is why some sessions still swing at batch=64"}
+       {title: "6ba3f17d", relation: "partially_resolves", why: "batch size explains the baseline drain, but the question was about variance BETWEEN sessions — a constant config cannot explain a varying symptom, so the swing at batch=64 is what's left"}
      ]},
     // The batch's own edges falsified two catalog claims — `completes` and
     // `resolves` are claims about the TARGET, so the sweep discipline
@@ -1145,18 +1130,10 @@ brain_batch(
      type: "finding",
      evolution_status: "resolved",
      title: "Reviewer pushback on the calibration hypothesis — settled by the calibrated run (2026-04-15)"},
-    // The OTHER branch, in the same round. This window answered a big
-    // piece of 6ba3f17d and did NOT close it: batch size explains the
-    // baseline, not the between-session swing. So it keeps type `open`
-    // — deliberately, not by omission — and what changes is its SCOPE:
-    // the title and situation narrow to the residue that is still
-    // unknown, so it stops surfacing for the part that now has an
-    // answer. Retyping here would bury a live question; leaving it
-    // untouched would keep advertising a question already half-answered.
     {op: "revise", node_id: "6ba3f17d",
-     reason: "batch=64 explains the baseline drain but not the session-to-session swing — narrow the question to the residue, keep it open",
-     title: "embed_queue drain still swings between sessions AT batch=64 — baseline explained, variance not",
-     situation: "When drain latency varies run to run and the batch size is already 64 — the config is no longer the suspect; look for what differs per session"},
+     reason: "batch=64 explains the baseline, not the between-session swing — narrow, keep open",
+     title: "embed_queue drain still swings between sessions at batch=64 — baseline explained",
+     situation: "When drain time varies run to run and batch is already 64 — look for what differs per session"},
     // Both endpoints already exist in the catalog, so this is a `connect`
     // op — not `connect_to`, which is for edges involving a node I'm
     // creating this round. Note the field is `description`, not `why`.
@@ -1169,19 +1146,7 @@ brain_batch(
 What this canonical pattern demonstrates:
 
 - **Catalog edges carry ids**: every `connect_to` aimed at the catalog copies the 8-char id from the excerpt header — titles are never retyped; catalog ids sit beside sibling titles in the same list (the correction node shows both)
-- **The batch revises what its own edges falsify**: `completes` and `resolves` assert that their targets' claims closed — so the plan's stale week-counter and the open's resolved type get their revise ops in the same round, title-level because titles are what the excerpt shows; the placeholder marks a target to resolve at encode time
-- **Both closure branches, one round, so the discrimination is visible.**
-  `7c1a4d93` was ANSWERED — it retypes to `finding`, takes
-  `evolution_status: resolved`, and the answering node connects with
-  `resolves`. `6ba3f17d` was only PARTLY answered — batch size explained
-  its baseline but not its variance — so it keeps `type: "open"`
-  **deliberately**, takes `partially_resolves` rather than `resolves`, and
-  what changes is its SCOPE: title and situation narrow to the residue
-  that is still unknown. The two failure modes sit on either side of it —
-  retyping a half-answered question buries a live thread, and leaving it
-  untouched keeps advertising a question the window already half-closed.
-  The test is not "did this window touch the topic" but "is anything still
-  unknown"; when the answer is yes, I narrow instead of closing.
+- **The batch revises what its own edges falsify**: `completes` and `resolves` assert that their targets' claims closed — so the plan's stale week-counter and the open's resolved type get their revise ops in the same round, title-level because titles are what the excerpt shows; the placeholder marks a target to resolve at encode time. Both branches ride here: 7c1a4d93 was answered (retype + `resolves`); 6ba3f17d only partly, so it keeps `type: "open"` and narrows with `partially_resolves` — the test is "is anything still unknown"
 - **Numbers cross-redundant**: "27:12" / "27 minutes and 12 seconds" appears in title, content, AND their_raw_quote — three retrieval paths to the same fact
 - **event_time on dated nodes**: five of six carry structured event_time kv — only the principle is timeless. A date needn't be "topical" enough to deserve a time_anchor node to earn the kv; bookkeeping kv is the spine
 - **Voice symmetry**: the sayer's voice (their_raw_quote) on every said-derived node — Sam's, Marcus's, Aisha's alike; my voice (my_raw_quote) on the principle (cross-context insight), the moment (what I said as it landed), the correction (my acknowledgment of the reframe), and the quote (what the axiom governs in my hands) — my finding/excitement is preserved, not dropped to summary
@@ -1261,25 +1226,14 @@ revise_batch(
        {old: "Surfacer runs as a hook subprocess (2s timeout).",
         new: "Surfacer runs inside daemon hook_recall() — the hook subprocess timeout is gone."}]},
 
-    // NO content change, NO title change — the claim is right and stays
-    // untouched. What was missing is the node's REACH: where it should
-    // surface, how it would be asked for, and what I make of it. A revise
-    // that writes neither content nor title is a whole revise, not half of
-    // one — most of a node's recall lives in the fields around the claim.
-    {node_id: "d0e4b856",
-     reason: "claim is correct but unfindable — no situation, no question, and my read of it has moved",
-     situation: "When a hook or the MCP client can't reach the brain and the port is the suspect — the daemon's TCP listener is the first thing to check",
-     question: "How do hooks and MCP actually talk to the daemon?",
-     thought: "The failure I keep re-diagnosing is never the port being wrong, it's nothing telling me a port is involved at all."},
+    // No content, no title — the claim is right; its REACH was missing.
+    {node_id: "d0e4b856", reason: "correct but unfindable — no situation, no question",
+     situation: "When a hook or MCP can't reach the brain — check the daemon's TCP listener",
+     question: "How do hooks and MCP talk to the daemon?",
+     thought: "The port is never the bug; nothing saying a port is involved is."},
 
-    // A value changed and leaked into several SURFACES. "Twice a week"
-    // is in the title, in the content, AND in the situation — each
-    // separately embedded, each separately retrievable, so each one I
-    // leave behind keeps answering with the old number. I walk the whole
-    // catalog entry and fix every surface that SAYS the stale thing.
-    // The question is NOT one of them: "how often does she practise" is
-    // still exactly what this node answers, so it stays untouched. Walk
-    // every field; revise the ones the change actually falsified.
+    // "Twice a week" leaked into title, content AND situation — each
+    // separately embedded. The question did NOT go stale, so it stays.
     {node_id: "97b1f24e",
      reason: "frequency increased 2→3/week, anxiety connection added; the old number also sat in the situation",
      title: "Priya's yoga practice — three times a week for anxiety + focus",
@@ -1304,25 +1258,16 @@ One call revises all nodes. Revision history is in trace events — no
 per-node history blob.
 
 **The 97b1f24e example is the standard for stale-value revision.** When a
-fact changes, I walk every SURFACE that carried the old value or that the
+fact changes, I walk every surface that referenced the old value or that the
 new value newly justifies (a downstream effect, a new query path, an
-updated event_time) and revise all of them in one call. The surfaces are
-title, content, situation, question, and the descriptions on the node's
-edge lines — each embedded on its own, so a stale one keeps serving the
-old answer no matter how clean the others are. Walking them is not the
-same as rewriting them: 97b1f24e leaves its question alone because the
-question was never falsified. I walk every surface and revise the ones the
-change actually broke.
-
-And the ladder has four rungs — **4a9f21c7** patches one claim,
-**d0e4b856** repairs the reach around a claim that was already right
-(situation, question, thought — no content, no title), **97b1f24e** walks
-one node's surfaces, and the sweep below walks every node one event
-falsified. When something changes, I find my rung. The half-maintained
-alternative — one surface updated, the rest left asserting the old value —
-is the failure mode the brain has historically suffered from, and it does
-not have a favourite field: whichever surface I habitually skip is the one
-that goes stale.
+updated event_time) and revise all of them in one call — walking is not
+rewriting: its question stays, nothing falsified it. And the ladder has
+four rungs — 4a9f21c7 patches one claim, d0e4b856 repairs the reach around
+a claim already right, 97b1f24e walks one node's surfaces, the sweep below
+walks every node one event falsified; when a fact changes, I find my rung.
+The half-maintained alternative — one surface updated, the rest left
+stale — is the failure mode the brain has historically suffered from, and
+it has no favourite field.
 
 
 **One event, many stale claims — the sweep.** A state change rarely lives
@@ -1417,12 +1362,9 @@ brain_batch(operations: [
   {op: "revise", node_id: "a45c88f1",
    reason: "the ruling's own title asserts the dead order — patch it so it stops competing with the successor",
    title: "Rollout order (superseded 2024-03-02, auth-rewrite scrapped): was auth-rewrite → api-gateway → cli"},
-  // The edge between them still narrates a live first step. An edge
-  // description is a claim like any other, and this event falsified it.
-  // `connect` on a pair that ALREADY has this relation updates it in
-  // place — same source, same target, same relation, new description.
+  // An edge description is a claim too — `connect` updates it in place.
   {op: "connect", source_id: "a45c88f1", target_id: "e91a6d05", relation: "implements",
-   description: "the queue is that ruling made concrete; auth-rewrite was its first step until the branch died 2024-03-02, leaving gateway at the head — the order survived the step that opened it"},
+   description: "the queue is that ruling made concrete; auth-rewrite was its first step until the branch died 2024-03-02, leaving gateway at the head"},
   {op: "remember", type: "decision",
    title: "Rollout order after auth-rewrite was scrapped: api-gateway → cli",
    content: "Scrapping auth-rewrite (2024-03-02) removed step 1 of the approved rollout. Remaining order unchanged: api-gateway first, cli after. Auth returns as a fresh design on top of the gateway work.",
@@ -1460,13 +1402,9 @@ Why each move earns its place:
   it gets replaced in the same op — a patched claim whose situation still
   aims at the dead thing will never surface for the live one. Rewriting the
   situation is also where the surviving claim gets its truth condition: not
-  "before merge" but "any rebuild". **Its `question` died the same way** —
-  it asked whether to merge a branch that no longer exists, so the node was
-  reachable only from a question nobody can ask again; the replacement asks
-  what the surviving advice is actually good for. And its `confidence`
-  drops to 0.8: the criticals were established against code that is gone,
-  so their transfer to a future rebuild is inferred, not reviewed. Revising
-  a claim's standing is part of revising the claim.
+  "before merge" but "any rebuild". Its `question` died the same way — it asked
+  about a merge nobody can perform — and `confidence` drops to 0.8: the
+  criticals now transfer by inference, not review.
 - a45c88f1 never appears as a catalog entry — only as an edge line on the
   queue node. Its id is right there on that line, and an edge-line id is
   as targetable as a header id. Superseding it beats re-minting: one edge
@@ -1475,15 +1413,10 @@ Why each move earns its place:
   its own revise: the edge serves the walk, the patched title serves
   direct retrieval. (Its content isn't visible from an edge line — a
   content patch would follow the get_nodes read the two-reads rule
-  prescribes; the title is right there, so it's patched now.)
-- **The edge's own description was stale too, and nothing else sweeps it.**
-  It narrated auth-rewrite as the live first step — a claim the deletion
-  falsified exactly like the node bodies around it, sitting in text that
-  renders on both endpoints' catalog entries. `connect` is how I fix it:
-  on a pair that already carries this relation it UPDATES rather than
-  duplicates, so the corrected `why` replaces the dead one in place. Edge
-  descriptions are the surface I am most likely to walk past, because
-  nothing about them announces that they have gone out of date.
+  prescribes; the title is right there, so it's patched now.) Its edge
+  description was stale too — `connect` on an existing pair updates that
+  text in place, the surface I most easily walk past because nothing
+  about it announces it has gone out of date.
 - The residue note is MINE, and it is now wrong — my own continuity is
   a claim like any other, and a sweep's first casualty is often my own
   previous note. It closes in this run's Review fence:

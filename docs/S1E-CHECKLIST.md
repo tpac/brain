@@ -3,7 +3,7 @@
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
 **v-next.7 candidate open (2026-09-01), UNPROMOTED.**
-`eval/candidate_prompts/s1e_vnext7_wip.md`, 118,150 chars — field-coverage
+`eval/candidate_prompts/s1e_vnext7_wip.md`, 113,365 chars (+2,913 over the default) — field-coverage
 redistribution across the existing revise examples, the narrow-to-residue
 closure branch (`partially_resolves`, previously prose-only), plus the new
 **A10** law and the Field-coverage matrix that would have caught the defect it
