@@ -150,8 +150,11 @@ PEEK_MSG_MAX = 300                 # per-message cap on a peek's recent_msgs (a 
 # The next_boot letter is the encoded arc surfaced at boot, NOT a stored
 # self_inflight row (see header), so nothing letter-shaped is in the courier.
 # Time is WALL-CLOCK (iso_now/iso_after) — TTL measures REAL elapsed hours, and
-# cross-stream sends aren't on the eval-replay path; self_channel is
-# deliberately outside the conversation-time dirs the clock contract enforces.
+# cross-stream sends aren't on the eval-replay path. This package sits outside
+# the clock contracts' scanned tree BY PLACEMENT, not by an exemption entry:
+# it lives under servers/channels/, and servers/scales/__init__.py owns the
+# rule that puts it there. (It was outside by accident until 2026-09-01 — the
+# scanned zone simply predated the package.)
 BROADCAST_TTL_HOURS = 1            # undelivered broadcast older than this is dead
 DIRECTED_TTL_HOURS = 24            # a directed message waits up to a day for its recipient
 ROSTER_ACTIVE_WINDOW_MIN = 5       # "active": acted this recently — reach freely, expect a reply
