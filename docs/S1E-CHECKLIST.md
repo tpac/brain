@@ -472,6 +472,12 @@ as a section; the Allen full-cut.
      gap 5 became a repeat defect precisely because a closed gap left no
      standing count behind it.
 
+  **A10 is the revise-shaped instance of a wider family.** `E11`–`E16` state
+  the general forms — rationale attachment, before-state depiction,
+  graded-vs-binary checks, standing counts, numeric self-conformance, and
+  teaching economy. Point those at every example family in the prompt, not
+  just the revise ops; this defect was only *found* in revise.
+
 ## B. Placement laws (under T3)
 
 - **B1. Placement beats content.** Same idea: 30% as a buried bullet, 60% as
@@ -777,6 +783,86 @@ Author-blindness is the point — I know the intent, which is exactly what hides
   against itself, so this entire class is structurally invisible to it. Tom had
   asked for it once before as a one-off (8a9f5996, clean at the time); it never
   became a step, and everything above accumulated in the gap.
+
+### E11–E16 — the v-next.7 boxes (2026-09-01)
+
+Six audits generalized out of one defect: v-next.6's prose named four revise
+fields, its examples showed two, and production followed the examples
+(`450650d5`). Each is stated for the whole prompt, not for revise, and each
+names where else to point it. **A10 is the revise-shaped instance; these are
+the general forms.**
+
+- **E11. Rationale-attachment census — the emphasis is where the CONSEQUENCES
+  are, not where the mentions are.** Wherever the prompt offers a menu of N
+  options, count where the *consequence sentences* attach ("…embeds and ranks
+  against itself", "…is the failure mode"). An option with a named consequence
+  is TAUGHT; an option in a list is MENTIONED, and output follows the taught
+  one. **Conviction:** v-next.6 attached three consequence sentences to `title`
+  and one to `situation` (the dead-referent case only) — the encoder repaired
+  title+content, quoted the title rationale back verbatim in its own `reason`
+  string, and left `situation` stale. Prose that named four fields lost to a
+  3:1 rationale ratio. **Run it on:** the four correction flavors (does one
+  carry all the why?), the three closure branches, the two registers, the
+  atomization tie-breakers, voice fields vs each other, `connect` vs
+  `connect_to`, the skip-vs-encode gate, the two reads. Ratio, not presence,
+  is the output.
+
+- **E12. Before-state depiction audit — an example teaches recognition only if
+  its INPUT shows the thing to be recognized.** Every excerpt in the prompt
+  renders a SUBSET of what the assembly actually renders. Where a lesson is
+  "notice X, then act", X must be visible in the depicted input, and the
+  depiction must not be lossier than production on that surface.
+  **Conviction:** ZERO catalog excerpts rendered a `situation:` line and the
+  one excerpt edge line carried no description — while `build_node_catalog`
+  renders both (full-rich; `edge_style: 'oneline'` is the *surface* path, not
+  the encoder's). So the encoder had no template for a stale situation or a
+  stale edge `why`. **Run it on:** every catalog excerpt, the timeline sample,
+  the `<continuity>`/residue render, the `<scout_notes>` sample, the
+  `[associated]` stub render. Test per lesson: is its trigger visible in the
+  depicted input, and does the depiction match what assembly emits?
+
+- **E13. Graded-vs-binary check audit — does each self-check catch PARTIAL
+  compliance, or only total absence?** **Conviction:** the mandatory `sweep:`
+  line is the prompt's own completeness guard, and it fires only on
+  `sweep: none`. A repair reaching two of four stale surfaces wrote an honest
+  `sweep:` line, passed, and closed `DONE`. A check that can only see "did
+  nothing" cannot see "did half" — and half is the common failure, not the
+  rare one. **Run it on:** the `sweep:` line, the Review fence, the
+  atomization same-batch and edge-description tests, the two-reads gate, the
+  3-anchor bar, the skip verdict. Method: construct the half-done case for
+  each and ask whether the check's own wording rejects it.
+
+- **E14. A gap closed by an instance fix leaves a standing count, or it
+  reopens.** **Conviction:** E2/E3 gap 5 caught this exact defect
+  ("the sweep runs 5 revise ops, 5/5 patch content only"), the weave plan
+  closed it by adding ONE `situation` patch to ONE op and marked it DONE, and
+  nothing re-measured the set. v-next.6 shipped with the distribution
+  unchanged in kind. Fixing the instance was right; recording it as closed
+  without leaving a measurement is what made it recur. **Run it on:** every
+  DONE row in any weave plan — each must name either the invariant now
+  enforced (a law plus its count) or an accepted one-off with its reason.
+
+- **E15. The prompt obeys its own stated numbers.** A9 says the whole prompt
+  is an example; this is its checkable half. Census every explicit numeric
+  rule and test the prompt's OWN example payloads against it.
+  **Conviction:** the `partially_resolves` why drafted for v-next.7 landed at
+  310 chars against the prompt's stated 120–180 band — a violation sitting
+  inside the document that states the band. **Run it on:** edge-why length
+  (120–180), `source_refs` 1–3, "3+ distinct turns", title-length norms,
+  situation trigger-register form. Cheap and scriptable; belongs in E2's
+  sweep.
+
+- **E16. New teaching rides an existing explanation.** A new bullet or comment
+  block is the expensive default; a clause folded into the explanation that
+  already covers that ground is the cheap one, and examples outrank the prose
+  around them anyway (`8225980e`). **Conviction:** the first v-next.7 draft
+  added +7,698 chars, of which the six largest hunks (~5,600) were new
+  explanatory prose while the behavioral levers — the added fields — were
+  100–220 char hunks. Folding every added block into an adjacent existing
+  explanation produced +2,913 with zero teaching lost; one op got THREE new
+  fields for −2 chars. **Run it at draft close:** for each added block, name
+  the existing explanation that could carry it as a clause. If one exists,
+  fold. Report the net-per-hunk table, not just the total.
 
 ## R. Recall→encode pointers (Opus scout, 2026-08-21)
 
