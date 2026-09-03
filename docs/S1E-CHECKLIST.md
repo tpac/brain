@@ -5,7 +5,7 @@
 ## Measurement arc CLOSED 2026-09-03 — position is the lever, the revise shape is the next change ◀ HEAD
 
 - **v-next.7 measured, not green** (30 runs, 3/cell, hand-adjudicated): 17/30 vs 15/30, run-44 tie — `e6390869`.
-- **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. `ENCODER_GIST` in `encode_contract.py`, `--gist` on the harness. **Uncommitted; not promoted.**
+- **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. `ENCODER_GIST` in `encode_contract.py`, `--gist` on the harness. **Committed on the branch (`ed36eda`), unmerged, not promoted** — the pre-merge review (`docs/REVISE-SHAPE-SPEC.md` §8) found the gist bypasses the interaction resolver and names an edge surface no revise op reaches; it ships only with the revise-shape change.
 - **Edge descriptions: 0/24 through every prompt layer.** Ruled a contract-shape defect, not a prompt one: one revise shape — every field takes its new value or `{old,new}` swaps, edges ride as `connect_to` on revise — `docs/REVISE-SHAPE-SPEC.md`, `73d30b14`. Drift guardrail: `tests/test_teaching_vocabulary_sync.py`.
 - New boxes from the arc: **T8, A11, E18–E24** below. Full record: `docs/S1E-REORG-AUDIT.md`.
 - Next: implement the spec (lockstep table), run the edge cell, then the cross-prompt census. v42 stays dormant.
