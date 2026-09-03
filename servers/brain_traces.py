@@ -63,6 +63,28 @@ def _resolve_time_bound(value):
         raise ValueError('time bound %r %s' % (value, e))
 
 
+def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
+    """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
+    chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id).
+    The S0 turn events differ only in event_type / ref_type / summary /
+    metadata; everything else is turn-fixed. Routing them all through here
+    keeps session_id from being dropped — the self_message append once
+    omitted it, leaving cross-stream deliveries unattributable to the
+    recipient session.
+
+    Callers: the hooks (daemon_hooks) and the delivery leg (channels/
+    delivery.py). Call it by BARE NAME — test_trace_contract_sync resolves
+    `_s0_trace(...)` as a scale-binding helper; an attribute call would be
+    extractor-blind.
+
+    Returns the appended trace_event id (hook_recall passes the current
+    prompt's id to get_session_turns as exclude_trace_id)."""
+    return brain._trace_dal.append(
+        chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
+        event_type=event_type, ref_type=ref_type, summary=summary,
+        metadata=metadata)
+
+
 class BrainTracesMixin:
     """Brain-level trace capabilities: the generic query door, journal/arc
     residue, episodic recall, and conversation reads. Composed onto Brain."""

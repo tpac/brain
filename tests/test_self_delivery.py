@@ -99,6 +99,24 @@ class TestStopDelivery(BrainTestBase):
             "self_message delivery trace not attributed to recipient session 'S'")
 
 
+class TestStopDeliveryChain(BrainTestBase):
+    needs_embedder = False
+
+    def test_delivery_trace_shares_the_turns_chain(self):
+        """The delivery blocked THIS turn's stop, so its trace must land on
+        this turn's s0 chain — not the next one. The hook holds the counter
+        at N through delivery (post_response_common increment=False) and
+        advances it after."""
+        _seed(self.brain, 'S', 'chained tap')
+        self.assertEqual(_stop(self.brain, 'S').get('decision'), 'block')
+        events = self.brain.query_traces(session_id='S').get('events', [])
+        chains = {e.get('ref_type'): e.get('chain_id') for e in events}
+        self.assertIn('self_message', chains)
+        # This turn's other trace (heartbeat: _stop without a prior recall
+        # is classified non-conversational) must share the chain.
+        self.assertEqual(chains['self_message'], chains.get('heartbeat'))
+
+
 class TestCrossHookConsumeOnce(BrainTestBase):
     needs_embedder = False
 

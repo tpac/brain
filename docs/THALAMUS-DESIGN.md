@@ -94,23 +94,33 @@ never on *still-open*.
   the agent's loop mid-run, where it can adapt. Per-render caps bound the read
   side.
 
-### Delivery — pull at the two proven moments
+### Delivery — pull at the two proven moments, on the shared last mile
 
 Sessions pull; the Thalamus never enumerates sessions, never pushes, holds no
-roster.
+roster. The leg itself is owned by `servers/channels/delivery.py` — the last
+mile every channel rides (ruling id:7c7e805c: the Thalamus owns NO transport).
+Both hooks call `deliver(brain, ctx, moment)`; a source opts into a moment by
+guarantee — `serves(source, moment) ⇔ moment.forcing ∨ source.survives_a_miss`
+(ruling id:bb0513ae) — which is why the Thalamus speaks at both moments while
+the consume-once courier is Stop-only.
 
-- **Stop drain** — beside stream mail, in its own render section. The locked
-  `render_signal` containment contract ("other stream says:") is untouched.
-- **Boot render** — replaces the `journals-escalation` standing-items block.
+- **Stop** (`decision:block`, forcing) — beside stream mail, in its own render
+  section. The locked `render_signal` containment contract ("other stream
+  says:") is untouched.
+- **Boot** (`additionalContext`, passive) — replaces the `journals-escalation`
+  standing-items block. Fires on fresh sessions only (resume/compaction get no
+  boot render).
 
 Pull predicate: `state=open ∧ deliver_at ≤ now < expires_at ∧ audience matches
 ∧ no ledger row (item, this session, CURRENT armed_epoch)` — only
 current-generation deliveries block; prior generations are history. The
 ledger is written at render, for exactly the items the block shows —
 annotate-at-render is the only visibility mechanism that survives receipt
-expiry (id:8a170558). Each delivery also writes a trace event (new ref_type;
-sync `trace_contract` + its test) — untraced delivery *is* the visibility
-problem this system exists to fix.
+expiry (id:8a170558). `delivery.py` also writes one s0 K `thalamus_delivery`
+trace per moment that shows items, at boot and Stop alike. The two records
+answer different questions: the LEDGER is the delivery-policy record and
+already measures drain-and-answer; the TRACE buys joinability with the S0
+stream (what else happened in that session's turns).
 
 Asks default to `next-boot`: an architecture question arriving mid-thread
 trains reflex-deferral; at boot there is no thread to protect.

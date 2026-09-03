@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Files that contain trace writes (production code only, not tests)
 TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
+    'servers/channels/delivery.py',  # the last-mile leg traces each delivery (s0/K per source)
     'servers/brain.py',            # stamp_boot_liveness writes a boot heartbeat (s0/K/heartbeat)
     'servers/brain_traces.py',     # write_journal_notes batches journal_note rows
     'servers/mutation_emitter.py', # THE mutation-trace writer (node_created/archived/deleted)
@@ -53,7 +54,7 @@ TRACE_WRITER_FILES = [
 #     ref_type=)
 #   x._trace_dal.append_batch([{...}, ...])   each element's 'scale' key
 #   _s0_trace(brain, ctx, event_type=,        the helper — it hardcodes 's0'
-#     ref_type=)                              (daemon_hooks._s0_trace)
+#     ref_type=)                              (brain_traces._s0_trace)
 #   self.trace(event_type, ref_type, ...)     the enclosing class's SCALE
 #     (S2Unit.trace)                          attribute, inherited if needed
 #   dispatch*('trace_append', {...})          the dict's 'scale' key

@@ -1,6 +1,61 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-08-31 — Steps 7, 9 and 11-partial SHIPPED; queue resumes at Step 8 ◀ ACTIVE ARC
+## §2026-09-01 — Step 8 SHIPPED as channels/delivery.py; queue resumes at Step 10 ◀ ACTIVE ARC
+
+**Step 8 shipped** per rulings id:7c7e805c (Thalamus owns NO transport) and
+id:bb0513ae (the msgs layer is the last mile; sources opt into moments by
+guarantee): `servers/channels/delivery.py` owns the leg both hooks ride —
+`Moment` (BOOT passive / STOP forcing), `Source` (courier / thalamus),
+`serves(source, moment) ⇔ moment.forcing ∨ source.survives_a_miss`, and
+`deliver()` (walk, failure-isolate, trace per source, join, WARN >5000 —
+ruling id:1e22a2f0, folding Step 10(a)'s composed-reason ownership in). The
+hooks' inlined two-source blocks are gone; `brain_voice` no longer imports
+thalamus; `_s0_trace` moved to `brain_traces.py` (the traces door — the
+AST guardrail resolves it by call name, so the move is invisible to it).
+Moment vocabulary moved to `delivery.py`; `thalamus_contract` derives its
+names from it (the reverse import would close the package cycle — delivery
+imports the channel packages call-time inside the render adapters).
+
+**Pre-merge review (8 finder angles, all findings verified) drove a fix
+pass**; the declared behavior deltas after it:
+1. the boot leg writes the s0 K `thalamus_delivery` trace (was 96%
+   untraced; asks were 100% invisible to `query_traces`);
+2. the composed leg WARNS above 5000 chars — `_log_warning`, not an error;
+3. trace summary wording is `delivered N <noun> at <moment>` (was
+   `… via Stop block`; no consumer parses it — verified);
+4. the boot error key `boot_thalamus_failed` is replaced by per-source
+   `<source>_delivery_boot` + leg-level `boot_delivery_failed` (no readers);
+5. the Stop delivery trace lands on the chain of the turn it blocked — the
+   pre-existing off-by-one (increment before delivery) is fixed via
+   `post_response_common(increment=False)` + hook-owned increment;
+6. boot delivery no longer dies with the Frame: its ctx resolves in its own
+   try, so a Frame failure can't silently suppress an ask.
+Review ordering fix worth naming: sources ledger/consume inside render, so
+`deliver()` keeps the block FIRST and traces after — a trace failure costs
+the trace, never an already-recorded delivery. `REF_THALAMUS_DELIVERY` now
+lives in `trace_contract.py` (cycle-free, registered in REF_TYPES by
+construction); `thalamus_contract` re-exports it. Known residual: the trace
+guardrail sees delivery.py's dynamic `ref_type` as an empty triple (vacuous
+pass) — the realistic drift class is covered by the import-time guards.
+
+NOTE the trace's honest claim (measured 2026-08-31): the LEDGER already
+measures drain-and-answer; the trace buys S0-stream joinability.
+THALAMUS-DESIGN.md's delivery section states the final shape. A pre-Step-8
+subtraction pass (merge 213759c) removed 4 dead symbols, fixed 3 stale
+docstrings, and added two file() door guards: a directed ask rejects
+(undeliverable by construction — asks are boot-only and a nameable session
+already booted), and expires ≤ when rejects (never becomes due).
+
+**Queue:** Step 10 remainder — (b) only: `compose_block_loud` extracted to
+`loud_truncation.py`, both contracts call it ((a)'s join-cap owner landed in
+`delivery.py`). Then Step 11 remainder: the `render_boot_v2` comment about
+what boot commits (now: ledger rows + the delivery trace), the three
+identical boot try/except sections → `_boot_section` helper, and the
+sweep-block consolidation (ruling id:23cd4d61: after 7–10).
+
+---
+
+## §2026-08-31 — Steps 7, 9 and 11-partial SHIPPED; queue resumed at Step 8
 
 **Done since the section below:** Steps 7 and 9, each reviewed pre-commit
 (the review window is pre-commit — merging to main IS deploying).
