@@ -2,7 +2,15 @@
 
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
-## v-next.7 — INSTRUMENT BUILT, NOTHING MEASURED (2026-09-01) ◀ HEAD
+## Measurement arc CLOSED 2026-09-03 — position is the lever, the revise shape is the next change ◀ HEAD
+
+- **v-next.7 measured, not green** (30 runs, 3/cell, hand-adjudicated): 17/30 vs 15/30, run-44 tie — `e6390869`.
+- **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. `ENCODER_GIST` in `encode_contract.py`, `--gist` on the harness. **Uncommitted; not promoted.**
+- **Edge descriptions: 0/24 through every prompt layer.** Ruled a contract-shape defect, not a prompt one: one revise shape — every field takes its new value or `{old,new}` swaps, edges ride as `connect_to` on revise — `docs/REVISE-SHAPE-SPEC.md`, `73d30b14`. Drift guardrail: `tests/test_teaching_vocabulary_sync.py`.
+- New boxes from the arc: **T8, A11, E18–E24** below. Full record: `docs/S1E-REORG-AUDIT.md`.
+- Next: implement the spec (lockstep table), run the edge cell, then the cross-prompt census. v42 stays dormant.
+
+## Prior head — v-next.7 instrument built (2026-09-01), superseded by the measurement above
 
 Steps 1–3 of the measurement chain are committed (`979aaf8`); the A/B has not
 been run. **Handoff: brain `b64d3e14`. Runbook:
@@ -426,6 +434,15 @@ as a section; the Allen full-cut.
   consistent marker. Placeholders = one grammar. What's best for the LLM is
   the right shape; a mixed sign system is noise that costs comprehension
   every run. (Tom, 2026-08-21)
+- **T8. Verbs in the shape of the functions.** When the prompt asks for an
+  act an op performs, it names the op. The agent's decision at write time is
+  a lookup from intent to tool, and an English synonym for the act breaks the
+  lookup exactly there — it teaches the intent and hides the door. Every
+  surface the agent is asked to maintain therefore comes with the op that
+  writes it, by name. (Tom, 2026-09-03; conviction `f358bba7`: a surface the
+  prompt named by an English verb, whose op existed in the toolset, was
+  written 0 times in 24 runs.) Enforced mechanically:
+  `tests/test_teaching_vocabulary_sync.py`.
 
 ## A. Example laws (under T1)
 
@@ -509,6 +526,15 @@ as a section; the Allen full-cut.
   teaching economy. Point those at every example family in the prompt, not
   just the revise ops; this defect was only *found* in revise.
 
+- **A11. A rule born from a census is checked against every worked example
+  before it is written down.** A census finds a shape; a rule has to name the
+  discriminator. If an example violates the draft rule and the example is
+  right, the rule is too broad — and examples outrank rules (A3), so it would
+  lose silently wherever they met. (Conviction `206171f1`: two census-born
+  rules forbade a dozen legitimate example fields; narrowed to the offender
+  class the census had actually found, both held.) Run it on: any rule whose
+  evidence is a production distribution.
+
 ## B. Placement laws (under T3)
 
 - **B1. Placement beats content.** Same idea: 30% as a buried bullet, 60% as
@@ -551,7 +577,9 @@ as a section; the Allen full-cut.
 - **C1. Fix at the layer that binds:** schema > code guard > MCP description >
   prompt example > prompt rule. Hard constraints go in code (learned 3×
   independently); tool schemas are a hard contract, prompts are advisory.
-  (genealogy #11, #76, #17)
+  (genealogy #11, #76, #17) Strongest conviction so far: a surface untouched
+  through four prompt layers was a contract-shape defect — the op existed but
+  was defined as a different act (`73d30b14`).
 - **C2. Tool-mechanics rules work best AT the tool** — the connect_to rule in
   the MCP description took violations 1/run → 0 where the same rule at the top
   of the prompt never did; the absorb description fix re-framed every caller
@@ -730,14 +758,17 @@ Author-blindness is the point — I know the intent, which is exactly what hides
   (Stop 8, DEAD-CONFLICT — the Speed line now defers to the two reads).
 - **E2. Example sweep after the draft settles** — every example re-audited
   against every rule that changed (A3), on all dimensions (A4), for leakable
-  ids (A5).
+  ids (A5), and every census-born rule against every example (A11).
 - **E3. Coverage matrix:** every box → carrier (line/example/MCP/code/
   open-by-design). Empty cell = caught gap.
 - **E4. Eval gate:** register DORMANT → eval → activate → sync. Never sync
   between register and activate. No single-run conclusions — same-capture
   variance exceeds arm deltas (079d9736); pendulum-test both directions;
   check the axes you didn't target (v15.9 fixed one item, cost the cohort
-  -30%). (genealogy #18, #33)
+  -30%). (genealogy #18, #33) A baseline quoted in a handoff says whether it
+  pins the INSTRUMENT (a scorer assertion on recorded ops) or the BEHAVIOR (a
+  rerun expectation) — the two are read as the same number and are not
+  (`9c1b2ab0`).
 - **E5. A rule earns its place only if removing it degrades behavior with
   examples still present.** (genealogy #142)
 - **E6. Guide, don't engineer (T5).** Emergent types, open KV, lazy promotion,
@@ -942,6 +973,76 @@ the general forms.**
   fields for −2 chars. **Run it at draft close:** for each added block, name
   the existing explanation that could carry it as a clause. If one exists,
   fold. Report the net-per-hunk table, not just the total.
+
+### E18–E24 — the measurement-arc boxes (2026-09-03)
+
+Seven audits from the week the v-next.7 instrument was finally run (record:
+`docs/S1E-REORG-AUDIT.md`). The through-line: a prompt can be right and
+retrievable and still not change what the agent does — the levers that did
+were position in the input and the shape of the tool, and the instrument
+that saw the trade-offs was the full-shape read, not the target metric.
+
+- **E18. Reachability census.** For every surface the prompt tells the agent
+  to maintain, name the op in the agent's toolset that writes it, and check
+  that the op's own definition reads as that act. A surface with no op is
+  unreachable whatever the teaching; an op that exists but is defined as a
+  different act is unreachable in practice. (Conviction `ef0db084`,
+  `92519f2e`: one surface stayed at 0/24 through rule, rationale, worked
+  example, and recency restatement — the door existed under another name,
+  and the tool carrying the right name sat outside the toolset.) Run it on:
+  every surface in the every-surface sentence, every contract field, every
+  S2 prompt.
+
+- **E19. Ownership audit.** E12 asks whether the trigger is visible in the
+  input; this asks whether the surface reads as the agent's OWN text —
+  something it may edit — rather than as a description of something else. A
+  claim the agent does not experience as its own is a claim it will not
+  repair. (Conviction: the encoder model's uncued account of the surface it
+  never touched — it "reads like description of the target node rather than
+  my own asserted text", `92519f2e`.) Run it on: every rendered element the
+  agent is expected to revise.
+
+- **E20. Know whether the instrument measures teaching or application.**
+  Cold-read probes answer "does the reader retrieve the rule?"; encoder runs
+  answer "does the reader apply it under load?" Perfect probe scores on every
+  arm mean the defect is application, and probing further measures nothing.
+  (Conviction `70cdd24d`: three versions, every rule question answered
+  correctly, zero behavioral separation.) Run it on: any change whose defect
+  is described as under-application.
+
+- **E21. Position before prose.** The last instruction before the work is a
+  lever the template cannot reach. A rule the agent under-applies at scale is
+  restated there first; the template grows only if that fails. (Conviction
+  `7bdb1c25`: a short reminder at the payload's recency slot changed
+  application by thirty points on an unchanged template; four template
+  rewrites the same week changed it by about none.) Extends B1–B6 from the
+  template to the assembled input.
+
+- **E22. Read every A/B on the full shape.** The target metric is one column.
+  Field fill, voice, refs, edge topology, relation entropy, title length,
+  patch-vs-rewrite are read beside it; a win on the target with a loss
+  elsewhere is a trade, and trades are ruled, not assumed. (Conviction
+  `4c7a4c05`: the intervention that moved the target also thinned voice
+  capture and destabilized episodic refs; the target criterion could see
+  neither.) Instrument: the op-layer shape read ported from
+  `eval/longmem/corpus_shape.py`.
+
+- **E23. Field write-rate census.** Every taught field against its production
+  write rate, standing. A field taught in prose and written at ~0% is either
+  dropped or given a carrier op in a worked example — A1 measured, not
+  asserted. (Conviction `4c7a4c05`: three taught fields at 0–6% in
+  production, none carried by an example op; a new key taught in two prose
+  places was written 0 times in 10 runs.) Run it on: every field in the
+  contract summary, every open key the prompt names.
+
+- **E24. Gold coverage per encoding purpose.** A gold set scores one purpose
+  — factual repair, conceptual capture, voice, arc. A change aimed at a
+  purpose the set does not score cannot be ruled on by that set, whatever its
+  number says: build the items for that purpose first, or say the eval is
+  silent. (Conviction `2e4da492`: a candidate written to change WHAT gets
+  captured was scored on stale-token repair; the only signal came from an
+  unplanned classification pass.) Names an example gap too: nothing in the
+  set models a node about how the other side works, talks, or repeats.
 
 ## R. Recall→encode pointers (Opus scout, 2026-08-21)
 
