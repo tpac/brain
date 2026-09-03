@@ -82,6 +82,23 @@ class TestSessionContextPersistence:
         assert loaded.session_id == 'persist-test'
         assert loaded.stop_counter == 10
 
+    def test_delivery_stamp_roundtrips(self):
+        # last_delivery_stop mirrors last_recall_stop through save/load. What
+        # this guarantees is the SAVE/LOAD contract only: session state
+        # reaches disk via the autosave loop (not brain.save()), so a crash
+        # inside the autosave window between a delivery-block and its
+        # continuation degrades the reaction to a heartbeat — a documented
+        # limitation, not a corruption (the stamp is consumed-on-match, so a
+        # stale value can never mis-classify a later stop either way).
+        from servers.session_context import SessionContext
+        ctx = SessionContext(session_id='dlv-persist', stop_counter=4)
+        ctx.last_delivery_stop = 4
+        ctx.last_delivery_armed_at = '2026-09-03T10:00:00+00:00'
+        ctx.save(self.brain._session_state)
+        loaded = SessionContext.load(self.brain._session_state, 'dlv-persist')
+        assert loaded.last_delivery_stop == 4
+        assert loaded.last_delivery_armed_at == '2026-09-03T10:00:00+00:00'
+
     def test_load_nonexistent_returns_none(self):
         from servers.session_context import SessionContext
         loaded = SessionContext.load(self.brain._session_state, 'nonexistent')

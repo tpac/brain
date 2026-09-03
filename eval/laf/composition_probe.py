@@ -41,7 +41,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.isolated_brain import IsolatedBrain                       # noqa: E402
 from servers import embedder                                          # noqa: E402
-from servers.trace_contract import CONVERSATIONAL_REF_TYPES           # noqa: E402
+from servers.trace_contract import OPERATOR_DIALOGUE_REF_TYPES           # noqa: E402
 import episodic_ops                                                   # noqa: E402
 from episodic_ops import (                                            # noqa: E402
     episodic_roles, episodic_encoded, episodic_picked, DEFAULT_TOP_MOMENTS,
@@ -78,12 +78,12 @@ class UncappedEpisodes:
             self.meta, self.created, self.M = _share.meta, _share.created, _share.M
             self._age_days = _share._age_days
         else:
-            ph = ",".join("?" * len(CONVERSATIONAL_REF_TYPES))
+            ph = ",".join("?" * len(OPERATOR_DIALOGUE_REF_TYPES))
             rows = brain._trace_dal.conn.execute(
                 "SELECT te.chain_id, te.session_id, te.created_at, tem.vector "
                 "FROM trace_events te JOIN trace_embeddings tem ON tem.trace_id = te.id "
                 "WHERE te.scale='s0' AND te.ref_type IN (%s)" % ph,
-                list(CONVERSATIONAL_REF_TYPES)).fetchall()
+                list(OPERATOR_DIALOGUE_REF_TYPES)).fetchall()
             rows = [r for r in rows if r[3]]
             self.meta = [(r[0], r[1]) for r in rows]
             self.created = np.array([r[2] for r in rows])

@@ -1246,13 +1246,14 @@ class BrainRecallMixin:
         OFF by default so this never touches the live hot path until eval-gated activation.
         """
         from .brain_constants import TRACE_CHAIN_T, TRACE_CHAIN_N, TRACE_CHAIN_RESERVE
-        from .trace_contract import CONVERSATIONAL_REF_TYPES
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES
         try:
-            # rows: (chain_id, session_id, created_at, vector) — indexed pull of
-            # exactly the embedded conversational traces (same door recall_laf
-            # uses); the conversational dial lives in trace_contract.
+            # rows: (chain_id, session_id, created_at, vector) — indexed pull
+            # of exactly the embedded operator-dialogue traces (same door
+            # recall_laf uses); PINNED per this lane's own hygiene rule
+            # (user/assistant only), not the timeline dial.
             trows = self._trace_dal.event_vector_rows(
-                scale='s0', ref_types=list(CONVERSATIONAL_REF_TYPES))
+                scale='s0', ref_types=list(OPERATOR_DIALOGUE_REF_TYPES))
             tr = [(embedder.cosine_similarity(query_vec, r[3]), r[3])
                   for r in trows]
             if not tr:

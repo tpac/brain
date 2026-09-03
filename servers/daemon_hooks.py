@@ -202,8 +202,8 @@ def hook_recall(brain, args, graph_changes):
     _user_msg_trace_id = _s0_trace(
         brain, ctx, event_type='K', ref_type='user_message',
         summary=user_message[:200] if user_message else '',
-        metadata={'content': user_message[:4000],
-                  'recall_chain': ctx.s1r_chain()} if user_message else None)
+        metadata={'recall_chain': ctx.s1r_chain()} if user_message else None,
+        content=user_message or None)
 
     # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
@@ -542,23 +542,17 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def post_response_common(brain, session_id, user_message, assistant_response,
-                         increment=True):
+def post_response_common(brain, session_id, user_message, assistant_response):
     """Shared post-response path: S0 traces, heartbeat, stop counter
     increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
-    increment=False lets the ONE caller that still writes turn-N traces
-    after this returns — the Stop hook's delivery leg — keep the counter at
-    N and advance it itself, so a delivery trace lands on the chain of the
-    turn whose stop it blocked, not the next one. Every other caller keeps
-    the default and never touches the counter.
-
-    Returns the SessionContext (after increment, unless increment=False).
+    Returns the SessionContext after increment.
     """
-    from .pipeline_contract import PIPELINE as _PL
     ctx = brain.get_or_create_session(session_id)
-    assistant_response = (assistant_response or "")[:_PL['assistant_response_store']]
+    # No pre-cap here: _s0_trace owns the one (loud) stored-content cap; a
+    # second slice against the same constant is how the sides drift apart.
+    assistant_response = assistant_response or ""
 
     # Turn classification (trace_contract S0 TURN CLASSIFICATION): a turn is
     # conversational iff a real UserPromptSubmit ran hook_recall THIS stop (which
@@ -570,21 +564,41 @@ def post_response_common(brain, session_id, user_message, assistant_response,
     # poll-driven reactor derives the count from traces (turns_since_last_encode
     # counts s0 user_message turns), which heartbeats never write.
     is_conversational = (ctx.last_recall_stop == ctx.stop_counter)
-    ctx.last_turn_conversational = is_conversational
+    # Delivery-continuation: this stop is the reaction to a delivery that
+    # blocked the previous one — the Stop hook arms the stamp only for a
+    # dial-on, traced correspondent (trace_contract.arms_continuation), so
+    # dial-off leaves this structurally dead and the stop stays a heartbeat.
+    # One-shot read-and-clear; the freshness window is the real guard against
+    # a stale stamp — an ESC'd continuation fires no Stop, so counter and
+    # stamp freeze, and a /watch wakeup hours later would otherwise match.
+    # Cadence is untouched either way (it counts user_message rows only).
+    from .clock import iso_cutoff as _iso_cutoff
+    from .trace_contract import DELIVERY_REACTION_WINDOW_MIN as _RW
+    armed_stop, armed_at = ctx.last_delivery_stop, ctx.last_delivery_armed_at
+    ctx.last_delivery_stop, ctx.last_delivery_armed_at = -1, ''
+    is_delivery_reaction = (
+        not is_conversational
+        and armed_stop == ctx.stop_counter
+        and armed_at >= _iso_cutoff(minutes=_RW))
+    ctx.last_turn_conversational = is_conversational or is_delivery_reaction
 
     # S0 traces (using SessionContext for chain IDs)
     try:
-        if is_conversational:
-            # user_message is written at UserPromptSubmit (hook_recall), when the
-            # prompt ARRIVES — so presence/peek can surface a stream's current
-            # prompt mid-turn (rendezvous identity) instead of only after the turn
-            # completes. Only the assistant half is written here, at Stop. Same
-            # chain_id: stop_counter is unchanged between hook_recall and this Stop
-            # (incremented below), so the pair stays grouped.
+        if is_conversational or is_delivery_reaction:
+            # For an operator turn: user_message was written at
+            # UserPromptSubmit (hook_recall), when the prompt ARRIVED — so
+            # presence/peek can surface a stream's current prompt mid-turn.
+            # Only the assistant half is written here, at Stop; stop_counter
+            # is unchanged between hook_recall and this Stop (incremented
+            # below), so the pair shares the chain. For a delivery REACTION:
+            # the incoming K was written by deliver() at the PREVIOUS stop's
+            # hook, after that stop's increment — which put it on THIS chain,
+            # so the pair shares the chain by the same invariant from the
+            # other side.
             _s0_trace(
                 brain, ctx, event_type='delta', ref_type='assistant_message',
-                summary=assistant_response[:200] if assistant_response else '',
-                metadata={'content': assistant_response[:4000]} if assistant_response else None)
+                summary=assistant_response[:200],
+                content=assistant_response or None)
         else:
             # Heartbeat: wakeup re-arm, no real prompt. One observability marker
             # (off CONVERSATIONAL_REF_TYPES → never encoded). The peer message,
@@ -627,8 +641,7 @@ def post_response_common(brain, session_id, user_message, assistant_response,
     except Exception as e:
         brain._log_error('anchor_touched_flush', e, 'post_response_common')
 
-    if increment:
-        ctx.increment_stop()
+    ctx.increment_stop()
     return ctx
 
 
@@ -641,15 +654,11 @@ def hook_post_response_track(brain, args, graph_changes):
     truth, current — and delivers pending self-messages. One trigger owner (the
     poll) means no hook/poll double-fire race.
     """
-    # increment=False: the delivery leg below still belongs to THIS turn —
-    # its trace must land on the turn's chain — so the hook owns the turn
-    # boundary and advances the counter after delivery.
     ctx = post_response_common(
         brain,
         args.get('session_id', ''),
         args.get("prompt", "") or args.get("message", ""),
         args.get("last_assistant_message", "") or "",
-        increment=False,
     )
     session_id = ctx.session_id
 
@@ -659,17 +668,31 @@ def hook_post_response_track(brain, args, graph_changes):
     # eligible sources (courier drain + Thalamus pull — asks excluded at
     # Stop, they deliver at boot), each failure-isolated and traced. Blocks
     # at most once per batch per source (the next Stop finds nothing and
-    # allows it). Only on the Stop event — this handler also runs on
-    # UserPromptSubmit, where blocking would be wrong.
+    # allows it). Gated on the Stop event: hooks.json wires this handler to
+    # Stop, and the guard keeps any future second wiring from blocking where
+    # blocking would be wrong.
     _reason = ''
     if args.get("hook_event_name") == "Stop":
         try:
-            from servers.channels.delivery import deliver, STOP
-            _reason = deliver(brain, ctx, STOP)
+            from .channels.delivery import deliver, STOP
+            from .trace_contract import arms_continuation
+            from .clock import iso_now as _iso_now
+            # post_response_common already advanced the counter, so the
+            # delivery traces land on the NEXT chain — deliberately: a
+            # delivery that blocks this stop OPENS the next turn as its
+            # incoming side, and the continuation's response completes that
+            # turn on the same chain (incoming K + assistant delta, the same
+            # shape as an operator turn). The stamp arms that continuation's
+            # classification; it stays inside this try because everything
+            # after deliver() runs post-consume — a raise here must never
+            # cost the block.
+            _reason, _traced = deliver(brain, ctx, STOP)
+            if _reason and arms_continuation(_traced):
+                ctx.last_delivery_stop = ctx.stop_counter
+                ctx.last_delivery_armed_at = _iso_now()
         except Exception as _dlv_err:
             brain._log_error('delivery_stop', _dlv_err,
                              'Stop delivery leg raised (session=%s)' % session_id)
-    ctx.increment_stop()
     brain.save()
     if _reason:
         return {"output": "(stored)",

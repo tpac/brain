@@ -48,6 +48,12 @@ class SessionContext:
         # client-side, so its stop never updates this → it reads as a heartbeat.
         # -1 = recall has never run for this session.
         self.last_recall_stop: int = -1
+        # Twin of last_recall_stop for delivery continuations: the stop
+        # number a dial-on delivery-block armed (+ when, for the freshness
+        # window) — classified and consumed in post_response_common, cleared
+        # on boot/resume. -1/'' = none armed.
+        self.last_delivery_stop: int = -1
+        self.last_delivery_armed_at: str = ''
         # Integration cadence (every Nth conversational turn → S1 Scribe) is NOT
         # a stored counter anymore — it's derived live from traces via
         # turns_since_last_encode(). A maintained counter desynced across resume
@@ -247,6 +253,8 @@ class SessionContext:
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
+            'last_delivery_stop': self.last_delivery_stop,
+            'last_delivery_armed_at': self.last_delivery_armed_at,
             'fatigue': self.fatigue,
             'remember_count': self.remember_count,
             'message_count': self.message_count,
@@ -281,6 +289,8 @@ class SessionContext:
                 stop_counter=data.get('stop_counter', 0),
             )
             ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
+            ctx.last_delivery_stop = int(data.get('last_delivery_stop', -1))
+            ctx.last_delivery_armed_at = data.get('last_delivery_armed_at', '') or ''
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))
             ctx.message_count = int(data.get('message_count', 0))

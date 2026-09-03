@@ -1349,7 +1349,7 @@ class TraceDAL(_LogsWriteBase):
 
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
-        trace_contract.CONVERSATIONAL_REF_TYPES (not user-only): a watcher's
+        trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
         last real work is often its own last reply. Turns whose summary starts
         with the wake-envelope marker (a `<task-notification>` ignition) are
         skipped so the focus shows work, not the wake envelope. Both the
@@ -1357,11 +1357,14 @@ class TraceDAL(_LogsWriteBase):
         reproduced here. (Raw; the render layer first-lines/truncates.) Caller
         computes the cutoff (wall-clock vs conversation-time is the caller's
         policy, not the DAL's)."""
-        from .trace_contract import CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER
-        conv_ph = ','.join('?' * len(CONVERSATIONAL_REF_TYPES))
+        # PINNED to operator dialogue (not the dial): presence focus and
+        # ranking must show WORK even after a delivery correspondent flips on
+        # in S0_CONVERSATIONAL_INCOMING — a brain notice is not a focus.
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
+        conv_ph = ','.join('?' * len(OPERATOR_DIALOGUE_REF_TYPES))
         # Presence (liveness) also counts heartbeats — a watch listener living
         # purely on heartbeats is the most reachable stream (B2, 2026-06-04).
-        live_types = CONVERSATIONAL_REF_TYPES + ('heartbeat',)
+        live_types = OPERATOR_DIALOGUE_REF_TYPES + ('heartbeat',)
         live_ph = ','.join('?' * len(live_types))
         # scale='s0' is a behavior-preserving predicate (every conversational +
         # heartbeat ref_type is s0-only per trace_contract.REF_TYPES) that lets
@@ -1394,8 +1397,8 @@ class TraceDAL(_LogsWriteBase):
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
             "ORDER BY %s LIMIT ?" % (conv_ph, conv_ph, live_ph, order),
-            (*CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
-             *CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+            (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             *OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',
@@ -1416,9 +1419,10 @@ class TraceDAL(_LogsWriteBase):
                            skipped so a peek shows work not ignition (raw; the
                            render layer truncates). Read-only.
         """
-        from .trace_contract import CONVERSATIONAL_REF_TYPES, WAKE_ENVELOPE_MARKER
-        conv_ph = ','.join('?' * len(CONVERSATIONAL_REF_TYPES))
-        live_types = CONVERSATIONAL_REF_TYPES + ('heartbeat',)
+        # PINNED to operator dialogue — see active_sessions_by_turn.
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
+        conv_ph = ','.join('?' * len(OPERATOR_DIALOGUE_REF_TYPES))
+        live_types = OPERATOR_DIALOGUE_REF_TYPES + ('heartbeat',)
         live_ph = ','.join('?' * len(live_types))
         agg = self.conn.execute(
             "SELECT "
@@ -1429,7 +1433,7 @@ class TraceDAL(_LogsWriteBase):
             "  (SELECT COUNT(*) FROM trace_events "
             "     WHERE scale='s0' AND session_id=? AND ref_type='user_message')"
             % (conv_ph, live_ph),
-            (session_id, *CONVERSATIONAL_REF_TYPES,
+            (session_id, *OPERATOR_DIALOGUE_REF_TYPES,
              session_id, *live_types, session_id)).fetchone()
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
@@ -1439,7 +1443,7 @@ class TraceDAL(_LogsWriteBase):
             "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
             "  AND summary NOT LIKE ? "
             "ORDER BY created_at DESC LIMIT ?" % conv_ph,
-            (session_id, *CONVERSATIONAL_REF_TYPES,
+            (session_id, *OPERATOR_DIALOGUE_REF_TYPES,
              WAKE_ENVELOPE_MARKER + '%', msg_limit)).fetchall()
         recent = [{'ts': r[0], 'ref_type': r[1], 'text': r[2] or ''} for r in rows]
         return {'started_at': started_at, 'last_active_at': last_active_at,
@@ -1483,9 +1487,10 @@ class TraceDAL(_LogsWriteBase):
                           older_than: str = None) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
-        Returns: [{role, trace_id, content, timestamp, judge_output}]
+        Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
         (brain_traces.py get_conversation and the encoder's
-        _gather_messages derive their shapes from this.)
+        _gather_messages derive their shapes from this — a key added here
+        must be passed through get_conversation's row build too.)
 
         One turn per trace row — never grouped by chain. A chain can hold N
         user messages (an interrupted turn never fires Stop, so stop_counter
@@ -1574,21 +1579,28 @@ class TraceDAL(_LogsWriteBase):
             meta = self._decode_metadata(r[3])
             # Content lives in metadata (full), summary is truncated for display
             content = meta.get('content', '') or r[2] or ''
+            # ref_type rides every turn as the CORRESPONDENT axis — who the
+            # incoming side is (user_message = operator, self_message = a
+            # stream, thalamus_delivery = the brain). The encoder's render
+            # decides the element names; this layer only passes it through.
             if r[1] == 'assistant_message':
                 turns.append({
                     'role': 'assistant',
+                    'ref_type': r[1],
                     'trace_id': r[0],
                     'content': content,
                     'timestamp': r[4],
                     'judge_output': None,
                 })
             else:
-                # Incoming side (user_message today; self_message if flipped on)
+                # Incoming side (user_message today; self_message /
+                # thalamus_delivery once dial-on in S0_CONVERSATIONAL_INCOMING)
                 rc = meta.get('recall_chain', '')
                 if rc and (with_judge_output or with_surfaced):
                     user_refs.append((len(turns), rc))
                 turns.append({
                     'role': 'user',
+                    'ref_type': r[1],
                     'trace_id': r[0],
                     'content': content,
                     'timestamp': r[4],
