@@ -47,7 +47,7 @@ class, and two of the items below are bigger than they look.
 | # | Open | Where it is written up |
 |---|---|---|
 | 1 | **The encoder's system prompt says `"I am Anchor"`** — 3 occurrences in `encoding_prompt.py`'s `SYSTEM_PROMPT`, so every install's encoder claims that name. Eval-gated: a prompt change, not a comment edit | 5.3 → the Anchor inventory |
-| 2 | **`Anchor` across 64 files / 218 occurrences** — comments, docstrings, prompt/rubric files. Tom ruled it a deliberate one-at-a-time sweep with him engaged, NOT a mechanical pass | same table |
+| 2 | **`Anchor` across 62 files / 203 occurrences** (re-measured post-rename 2026-09-03: **150 in 55 shipped files** — the real blocker — and 53 in 7 never-ship files) — comments, docstrings, prompt/rubric files. Tom ruled it a deliberate one-at-a-time sweep with him engaged, NOT a mechanical pass | same table |
 | 3 | **`encoding_source='anchor'`** — 41 data-model literals + the lock gate's `startswith('anchor')`. Rename target recorded as `interactive`/`session` | same, final paragraph |
 | 4 | **The public tree is opt-out** — 413 of 429 files ship because nothing said no | **5.9** |
 | 5 | **Nothing covers what the release step adds** — commit message, tag, repo description, committer identity are all outside every gate | **5.7** (unbuilt) |
@@ -89,7 +89,9 @@ shrinking, the ungated comment part grows on its own.
 **Two corrections to what this section used to claim** — both measured, both
 were false:
 - **5.0c does NOT un-xfail gate assertion 4**, and neither does 5.3. It scans
-  a scope wider than what ships and still matches 216 occurrences / 63 files.
+  a scope wider than what ships and still matches 203 occurrences / 62 files
+  (post-rename 2026-09-03; 150 of them in files that ship, so SCOPE alone
+  cannot arm it).
   The class the plan assigned to the comment audit is **not a comment
   problem** — `Anchor` there names an architectural role that is also a data
   literal (`encoding_source='anchor'`, `anchor_touched`). Detail in the 5.3
@@ -1117,9 +1119,9 @@ the "no new names" gate already exist; one is disarmed and one is
 deliberately sandbox-only. Extend them — do not add a third mechanism.
 - **`Anchor` — NOT a 5.3 item, and this is the correction that matters.**
   `test_agent_name_only_in_config` is `xfail(strict=True)` and still matches
-  **216 occurrences / 63 files** (re-measured 2026-09-01 post-merge; it was
-  148 in class 1 before a 13-commit merge made it 154 — it drifts like gate B
-  did). The plan assigned class 1 — *comments + docstrings in `servers/` and
+  **203 occurrences / 62 files** (re-measured post-rename 2026-09-03; it read
+  216 / 63 on 2026-09-01, and class 1 went 148 → 154 across one 13-commit
+  merge — it drifts like gate B did, and 5.2's 15 sites moved it down). The plan assigned class 1 — *comments + docstrings in `servers/` and
   `tests/`*, 154 of the 216 — to the comment audit. **Reading them says that
   assignment is wrong.**
 
@@ -1141,8 +1143,10 @@ deliberately sandbox-only. Extend them — do not add a third mechanism.
   does `anchor` stay as the role token it already is?** Until that is answered,
   sweeping the comments is a rename that stops half-way through the system.
 
-  **THE OPEN `Anchor` INVENTORY — 218 occurrences / 64 files, re-measured
-  2026-09-03.** Tom ruled 2026-09-02 that this is *"a thorough sweep with me
+  **THE OPEN `Anchor` INVENTORY — 203 occurrences / 62 files: 150 in 55 files
+  that ship (plugin manifest or public-tree extras), 53 in 7 that never do.
+  Re-measured post-rename 2026-09-03 by the 5.2 stream and independently
+  reproduced by the 5.3 stream.** Tom ruled 2026-09-02 that this is *"a thorough sweep with me
   highly engaged in changes"*, one site at a time — not a mechanical pass.
   Classified by what each occurrence IS, because the classes need different
   answers:
@@ -1154,8 +1158,8 @@ deliberately sandbox-only. Extend them — do not add a third mechanism.
 | `tests/` comments + docstrings | 53 | same | follows |
 | other prompt/rubric files | 20 | comments in `surface_contract`, `encoder_view`, `encode_contract` | follows |
 | `seed_pack.py` origin-story tributes | 3 | deliberate CONTENT, ratified D-5 2026-08-30, allowlisted | **settled — leave** |
-| product-name sites | 15 | `boot-brain.sh` ×11, `setup.html` ×4 → **Entity** | **5.2's, not this thread** |
-| unowned, never ship | 47 | `servers/**/ARCHITECTURE.md` (22) + `scripts/consolidation_edge_recovery/output/` (25) | test-scope question only |
+| ~~product-name sites~~ | ~~15~~ **0** | `boot-brain.sh` ×11, `setup.html` ×4 → **Entity**, done by 5.2 (`633329e`) | **closed** |
+| unowned, never ship | 53 / 7 files | `servers/BOOT-ARCHITECTURE.md` (18), `scripts/consolidation_edge_recovery/output/plan.json` (21) + `apply.log.jsonl` (4), `servers/scales/s1/ARCHITECTURE.md` (4), `scripts/migrate_trace_identity.py` (3), `CHANGELOG.md` (2), `scripts/compute_zscore_stats.py` (1) — reaches neither the manifest nor the public tree | test-scope question only (narrow `SCOPE` or clean) — and it does NOT arm the gate: the 150 shipped hits do |
 
   **And the piece that is not a string at all:** `encoding_source='anchor'` is
   a **channel category**, not a name — the daemon stamps it on every
