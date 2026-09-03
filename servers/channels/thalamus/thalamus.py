@@ -363,10 +363,10 @@ def pull(brain, session_id, via):
     deliver at BOOT ONLY — an architecture question arriving mid-thread
     trains reflex-deferral; at boot there is no thread to protect.
 
-    The caller owns tracing (the Stop hook holds the chain); at boot the
-    ledger + boot_renders row are the record. Two sessions racing a
-    once-item can each deliver it — rare and harmless (a reminder seen
-    twice beats one lost); the ledger stays truthful about both.
+    The caller owns tracing (channels/delivery.py holds the chain at both
+    moments); the ledger here is the delivery-policy record. Two sessions
+    racing a once-item can each deliver it — rare and harmless (a reminder
+    seen twice beats one lost); the ledger stays truthful about both.
     """
     if via not in tc.MOMENTS:
         # via is written to the ledger verbatim — vocabulary, not free text.

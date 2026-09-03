@@ -401,6 +401,9 @@ class BrainVoice:
         # partnership, active threads are brain-scoped (filter_nodes reads).
         # When session_id is missing or Frame Constructor fails, log loudly
         # and continue without the prior — explicit degraded mode.
+        # session_ctx outlives the Frame try: the delivery leg below needs it
+        # too (the caller owns the trace chain).
+        session_ctx = None
         try:
             session_ctx = brain.get_or_create_session(session_id) if session_id else None
             frame_md = session_ctx.get_frame(brain) if session_ctx else ''
@@ -431,21 +434,23 @@ class BrainVoice:
             out.append(standing)
             out.append("")
 
-        # ── Thalamus — due items for this session (the boot delivery
-        # moment). Pull-based: the queue never pushes; this render records
-        # its own deliveries in the ledger. Failure-isolated like the rest
-        # of boot. Asks deliver here (boot-only), notices at boot or Stop.
+        # ── Delivery — the boot moment; eligibility, tracing, and the
+        # source walk live in channels/delivery.py. Failure-isolated in its
+        # OWN try with its own ctx resolution: a Frame failure must not
+        # silently cancel delivery (asks are boot-only — a skipped boot here
+        # is an ask nobody ever sees).
+        delivery_block = ''
         try:
-            from servers.channels.thalamus import thalamus as _thalamus
-            from servers.channels.thalamus.thalamus_contract import (
-                VIA_BOOT as _VIA_BOOT)
-            th_block, _ = _thalamus.pull(brain, session_id, via=_VIA_BOOT)
+            dctx = session_ctx or (
+                brain.get_or_create_session(session_id) if session_id else None)
+            if dctx:
+                from servers.channels.delivery import deliver, BOOT
+                delivery_block = deliver(brain, dctx, BOOT)
         except Exception as e:
-            brain._log_error('boot_thalamus_failed', e,
-                             'render_boot_v2: thalamus pull raised — boot continues without it')
-            th_block = ''
-        if th_block:
-            out.append(th_block)
+            brain._log_error('boot_delivery_failed', e,
+                             'render_boot_v2: delivery leg raised — boot continues without it')
+        if delivery_block:
+            out.append(delivery_block)
             out.append("")
 
         brain.save()

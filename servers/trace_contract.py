@@ -58,14 +58,20 @@ EVENT_TYPES = {
 # What ref_type values are valid per scale + event_type.
 # ref_type tells you WHAT the event is about. ref_id points to it.
 
+# The Thalamus delivery marker — declared here (not in thalamus_contract)
+# because channels/delivery.py needs it at load and thalamus_contract imports
+# delivery for the moment names; this file imports neither, so the constant
+# is reachable from both without a cycle. thalamus_contract re-exports it.
+REF_THALAMUS_DELIVERY = "thalamus_delivery"
+
 REF_TYPES = {
     # Scale 0: raw exchange
     ("s0", "K"):       ["user_message",
                          "self_message",      # incoming turn from a stream of thought (self↔self),
                                               # not the operator — same exchange, different correspondent
-                         "thalamus_delivery", # Thalamus items rendered into this session at a Stop
-                                              # drain — the brain speaking to its streams; the boot
-                                              # leg's record is the ledger + boot_renders row
+                         REF_THALAMUS_DELIVERY,  # Thalamus items rendered into this session (boot or
+                                              # Stop — channels/delivery.py traces both legs); the
+                                              # brain speaking to its streams
                          "heartbeat"],        # a /watch wakeup re-arm with no real input (no operator
                                               # prompt, empty inbox). Recorded for observability, but
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.

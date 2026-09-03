@@ -21,6 +21,7 @@ from datetime import datetime
 
 # ── Constants (canonical definitions in brain_voice.py) ──
 
+from servers.brain_traces import _s0_trace
 from servers.brain_voice import BrainVoice
 # Hoisted — if this import ever breaks, the daemon fails at boot instead of
 # silently degrading recall 16s in.
@@ -541,29 +542,19 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
-    """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
-    chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
-    four S0 turn events — user_message, assistant_message, heartbeat,
-    self_message — differ only in event_type / ref_type / summary / metadata;
-    everything else is turn-fixed. Routing them all through here keeps
-    session_id from being dropped — the self_message append once omitted it,
-    leaving cross-stream deliveries unattributable to the recipient session.
-
-    Returns the appended trace_event id (hook_recall passes the current
-    prompt's id to get_session_turns as exclude_trace_id)."""
-    return brain._trace_dal.append(
-        chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
-        event_type=event_type, ref_type=ref_type, summary=summary,
-        metadata=metadata)
-
-
-def post_response_common(brain, session_id, user_message, assistant_response):
+def post_response_common(brain, session_id, user_message, assistant_response,
+                         increment=True):
     """Shared post-response path: S0 traces, heartbeat, stop counter
     increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
-    Returns the SessionContext after increment.
+    increment=False lets the ONE caller that still writes turn-N traces
+    after this returns — the Stop hook's delivery leg — keep the counter at
+    N and advance it itself, so a delivery trace lands on the chain of the
+    turn whose stop it blocked, not the next one. Every other caller keeps
+    the default and never touches the counter.
+
+    Returns the SessionContext (after increment, unless increment=False).
     """
     from .pipeline_contract import PIPELINE as _PL
     ctx = brain.get_or_create_session(session_id)
@@ -636,7 +627,8 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     except Exception as e:
         brain._log_error('anchor_touched_flush', e, 'post_response_common')
 
-    ctx.increment_stop()
+    if increment:
+        ctx.increment_stop()
     return ctx
 
 
@@ -649,56 +641,39 @@ def hook_post_response_track(brain, args, graph_changes):
     truth, current — and delivers pending self-messages. One trigger owner (the
     poll) means no hook/poll double-fire race.
     """
+    # increment=False: the delivery leg below still belongs to THIS turn —
+    # its trace must land on the turn's chain — so the hook owns the turn
+    # boundary and advances the counter after delivery.
     ctx = post_response_common(
         brain,
         args.get('session_id', ''),
         args.get("prompt", "") or args.get("message", ""),
         args.get("last_assistant_message", "") or "",
+        increment=False,
     )
     session_id = ctx.session_id
 
-    # Self-message + Thalamus delivery — the SOLE push path (Stop-only,
-    # 2026-06-04). The prominent Stop block reliably reaches the model; the old
-    # PreToolUse additionalContext leg was missed (consumed the tap into context
-    # the model didn't act on), so it was removed. Two sources compose here,
-    # each failure-isolated: the courier drain (stream speech, consume-once)
-    # and the Thalamus pull (the brain's own due items — ledger-recorded, asks
-    # excluded at Stop, they deliver at boot). Blocks at most once per batch
-    # per source (next Stop finds nothing and allows it). Only on the Stop
-    # event — this handler also runs on UserPromptSubmit, where blocking would
-    # be wrong.
+    # Delivery — the Stop moment, the forcing leg: a `decision:block` reason
+    # compels a read, where a passive mid-thread additionalContext competes
+    # with recall and can be missed. channels/delivery.py owns the leg:
+    # eligible sources (courier drain + Thalamus pull — asks excluded at
+    # Stop, they deliver at boot), each failure-isolated and traced. Blocks
+    # at most once per batch per source (the next Stop finds nothing and
+    # allows it). Only on the Stop event — this handler also runs on
+    # UserPromptSubmit, where blocking would be wrong.
+    _reason = ''
     if args.get("hook_event_name") == "Stop":
-        _parts = []
         try:
-            from servers.channels.self_channel import signal as _self_signal
-            _block, _n = _self_signal.drain_and_render(brain, session_id)
-            if _n:
-                _s0_trace(
-                    brain, ctx, event_type='K', ref_type='self_message',
-                    summary='delivered %d self-message(s) via Stop block' % _n)
-                _parts.append(_block)
-        except Exception as _self_err:
-            brain._log_error('self_delivery_stop', _self_err,
-                             'Stop self-message delivery (session=%s)' % session_id)
-        try:
-            from servers.channels.thalamus import thalamus as _thalamus
-            from servers.channels.thalamus.thalamus_contract import (
-                REF_THALAMUS_DELIVERY as _REF_TH, VIA_STOP as _VIA_STOP)
-            _th_block, _th_n = _thalamus.pull(brain, session_id, via=_VIA_STOP)
-            if _th_n:
-                _s0_trace(
-                    brain, ctx, event_type='K', ref_type=_REF_TH,
-                    summary='delivered %d thalamus item(s) via Stop block' % _th_n)
-                _parts.append(_th_block)
-        except Exception as _th_err:
-            brain._log_error('thalamus_delivery_stop', _th_err,
-                             'Stop thalamus delivery (session=%s)' % session_id)
-        if _parts:
-            brain.save()
-            return {"output": "(stored)",
-                    "decision": "block", "reason": "\n\n".join(_parts)}
-
+            from servers.channels.delivery import deliver, STOP
+            _reason = deliver(brain, ctx, STOP)
+        except Exception as _dlv_err:
+            brain._log_error('delivery_stop', _dlv_err,
+                             'Stop delivery leg raised (session=%s)' % session_id)
+    ctx.increment_stop()
     brain.save()
+    if _reason:
+        return {"output": "(stored)",
+                "decision": "block", "reason": _reason}
     return {"output": "(stored)"}
 
 

@@ -23,9 +23,9 @@ Design: docs/THALAMUS-DESIGN.md
 
 from datetime import datetime as _dt
 
-from servers.trace_contract import REF_TYPES as _REF_TYPES
 from servers.loud_truncation import cap_text_loud
 from servers.clock import iso_after, resolve_offset, FUTURE
+from servers.channels.delivery import BOOT as _BOOT, STOP as _STOP
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -70,13 +70,16 @@ def default_audience(needs_answer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# MOMENTS  —  the delivery moments a session pulls at. `via` is written to
-# the ledger verbatim, so it must be vocabulary, not free text — pull()
+# MOMENTS  —  the delivery moments a session pulls at. The vocabulary is
+# OWNED by channels/delivery.py (the last-mile leg both channels ride);
+# these are its names, kept here so the pull predicate and ledger speak
+# them without reaching around the contract. `via` is written to the
+# ledger verbatim, so it must be vocabulary, not free text — pull()
 # validates against MOMENTS loudly (a typo'd via would behave as Stop and
 # ledger the typo).
 # ═══════════════════════════════════════════════════════════════
-VIA_BOOT = 'boot'
-VIA_STOP = 'stop'
+VIA_BOOT = _BOOT.name
+VIA_STOP = _STOP.name
 MOMENTS = (VIA_BOOT, VIA_STOP)
 ASK_MOMENTS = (VIA_BOOT,)  # asks deliver at boot only — an architecture
                            # question arriving mid-thread trains
@@ -206,16 +209,13 @@ def resolve_for_whom(for_whom, needs_answer):
 # ═══════════════════════════════════════════════════════════════
 # A Thalamus delivery is an incoming K to the receiving session, next to
 # self_message. Untraced delivery IS the visibility problem this system
-# exists to fix. The Stop hook writes it (the caller owns tracing — it holds
-# the chain); at boot the ledger + boot_renders row are the record.
-REF_THALAMUS_DELIVERY = 'thalamus_delivery'
-
-# Loud-by-default: fail at import, not at the first delivery.
-if REF_THALAMUS_DELIVERY not in _REF_TYPES.get(('s0', 'K'), ()):
-    raise RuntimeError(
-        "thalamus_contract ↔ trace_contract drift: %r is missing from "
-        "REF_TYPES[('s0','K')]. Add it (next to 'self_message')."
-        % REF_THALAMUS_DELIVERY)
+# exists to fix. channels/delivery.py writes it at BOTH moments (the caller
+# owns tracing — it holds the chain); the ledger stays the delivery-policy
+# record (who got which item, which epoch), the trace is the S0-stream join.
+# The constant LIVES in trace_contract (which registers it in REF_TYPES by
+# construction and is import-cycle-free from channels/); re-exported here for
+# this package's callers.
+from servers.trace_contract import REF_THALAMUS_DELIVERY
 
 
 # ═══════════════════════════════════════════════════════════════

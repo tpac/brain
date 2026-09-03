@@ -263,15 +263,16 @@ def pending_count(brain, to_session):
 
 
 def drain_and_render(brain, to_session):
-    """Phase 2b delivery primitive — drain this stream's inbox and render the
+    """Delivery primitive — drain this stream's inbox and render the
     pending messages into one budgeted block. Returns (block, n_drained), or
     ("", 0) when empty. Consume-once is inherited from drain_inbox.
 
-    The Stop hook is the only caller: it returns the block as a
-    `decision:block` reason, so a turn cannot end on an unread tap. Delivery
-    deliberately does NOT ride on_prompt — that channel is passive, competes
-    with recall, and would lose the consume-once race. The caller owns tracing
-    (it holds the chain id)."""
+    The only caller is the courier's render adapter in channels/delivery.py,
+    and only at the forcing Stop moment (`decision:block` — a turn cannot end
+    on an unread tap): the courier declares `survives_a_miss=False` there, so
+    `serves()` keeps this drain off every passive moment, where consume-once
+    against a channel that can be missed would lose messages. The delivery
+    leg owns tracing (it holds the chain)."""
     pending = drain_inbox(brain, to_session)
     if not pending:
         return "", 0
