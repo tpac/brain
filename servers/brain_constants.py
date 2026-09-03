@@ -190,7 +190,8 @@ FTS5_PASSTHROUGH_SCORE = 0.20  # Score for FTS5-only candidates (above noise flo
 
 # Trace-chain lane — episodic dual-store rescue (flag-gated via BRAIN_TRACE_CHAIN=1, default OFF).
 # Design: docs/RECALL-DUAL-STORE-DESIGN.md §3.2 + §3.3 form 1. Tier-1 proven (dual_store_merge_probe:
-# #11 0->8 buried topical nodes rescued against the real baseline). Mirrors the fts5_only lane shape.
+# #11 0->8 buried topical nodes rescued against the real baseline).
+# Mirrors the fts5_only reserved-lane shape.
 TRACE_CHAIN_RESERVE = 5      # reserved tail slots for trace-chain rescues (additive; never reorders top)
 TRACE_CHAIN_T = 5            # top dialogue traces to chain FROM (answer trace may not be rank-1)
 TRACE_CHAIN_N = 25           # nodes each trace pulls before dedup/merge

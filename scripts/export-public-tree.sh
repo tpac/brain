@@ -50,8 +50,9 @@ DENYLIST=(
   # scripts/export-public-tree.sh and scripts/ is outside the manifest. It also
   # carries this gate's own fixtures (deliberate `/Users/tpac` + `Tom Pachys`
   # strings that prove gate B catches them), so it can never pass gate B and
-  # must not be allowlisted either — allowlisting the co-located leak on line
-  # 487 would defeat the very check that line exists to prove.
+  # must not be allowlisted either — allowlisting the co-located leak in
+  # test_scrub_allowlist_cannot_mask_a_colocated_leak would defeat the very
+  # check that fixture exists to prove.
   tests/test_deploy_contract.py
 
   # Dev harnesses, not tests — zero importers among tests/test_*.py, and each
@@ -73,10 +74,12 @@ DENYLIST=(
 # ── Gate B: personal-information patterns (grep -E, case-insensitive) and the
 # attribution allowlist — the ONLY file:pattern pairs permitted to match.
 # The author's handle is matched BARE (`tpac`), not just as a path — the
-# `/Users/tpac` form missed "never left tpac's laptop" in a comment. Both the
-# employer's current name (`ex.co`) and its former one (`playbuzz`) are here:
-# scrubbing only the old name is how 20 hits of the current one survived.
-SCRUB_PATTERNS='\btpac\b|\btom\b|Pachys|playbuzz|\bex\.co\b|\bexco\b|AgentsContext'
+# `/Users/tpac` form missed "never left tpac's laptop" in a comment. NO trailing
+# `\b` on it: `\btpac\b` would be NARROWER than the path form it replaced and
+# would miss a sibling checkout like `/Users/tpac_old`. Both the employer's
+# current name (`ex.co`) and its former one (`playbuzz`) are here: scrubbing
+# only the old name is how 20 hits of the current one survived.
+SCRUB_PATTERNS='\btpac|\btom\b|Pachys|playbuzz|\bex\.co\b|\bexco\b|AgentsContext'
 ALLOWLIST=(
   # deliberate author attribution
   "LICENSE:Tom Pachys"
@@ -127,19 +130,38 @@ _scrub_gate() {
   # allowance), and instead of dropping the whole line, STRIP the allowed
   # pattern's occurrences and re-test what's left — an attribution line that
   # also carries a leak ("Tom Pachys, /Users/tpac/…") must still fail.
+  # The strip is BOUNDARY-AWARE: an allowed pattern only cancels a match when
+  # it is not the prefix of a longer word. Without that, allowing
+  # `github.com/tpac` would silently also allow `github.com/tpachys`, and
+  # allowing `Tom` would allow `Tommy` — the allowlist would grant more than
+  # it names.
+  #
+  # THREE checks, because `grep -rIin` alone sees only the text it can read:
+  #   content — the lines themselves (allowlist applies)
+  #   PATH    — the file NAMES. grep prints only matching CONTENT, so
+  #             `tests/fixtures/tom_pachys_session.json` full of anodyne JSON
+  #             passed clean. Naming a fixture after the session it came from is
+  #             exactly what this repo does — `tests/conversations` is
+  #             denylisted for that reason.
+  #   BINARY  — files `grep -I` SKIPS. A skipped file is unexamined, and gate B
+  #             must never report clean over something it could not read. There
+  #             are zero binaries in the export today, which is why this is free
+  #             to assert now rather than after one arrives.
   local hits
   hits="$(cd "$root" && grep -rIinE "$SCRUB_PATTERNS" . --exclude-dir=.git 2>/dev/null | sed 's|^\./||' || true)"
   local allow=""
   for pair in "${ALLOWLIST[@]}"; do allow+="${pair%%:*}"$'\t'"${pair#*:}"$'\n'; done
   local remaining
-  remaining="$(printf '%s' "$hits" | ALLOW="$allow" SCRUB="$SCRUB_PATTERNS" python3 -c '
+  remaining="$(printf '%s' "$hits" | ALLOW="$allow" SCRUB="$SCRUB_PATTERNS" ROOT="$root" python3 -c '
 import os, re, sys
 scrub = re.compile(os.environ["SCRUB"], re.IGNORECASE)
+root = os.environ["ROOT"]
 allow = {}
 for row in os.environ["ALLOW"].splitlines():
     if row.strip():
         f, pat = row.split("\t", 1)
         allow.setdefault(f, []).append(pat)
+out = []
 for line in sys.stdin:
     line = line.rstrip("\n")
     if not line:
@@ -147,9 +169,23 @@ for line in sys.stdin:
     fname, _, rest = line.partition(":")
     content = rest.partition(":")[2]
     for pat in allow.get(fname, []):
-        content = content.replace(pat, "")
+        content = re.sub(re.escape(pat) + r"(?![\w-])", "", content)
     if scrub.search(content):
-        print(line)
+        out.append(line)
+for dirpath, dirnames, filenames in os.walk(root):
+    dirnames[:] = [d for d in dirnames if d != ".git"]
+    for fn in filenames:
+        full = os.path.join(dirpath, fn)
+        rel = os.path.relpath(full, root)
+        if scrub.search(rel):
+            out.append("%s:0:<FILENAME> %s" % (rel, rel))
+        try:
+            with open(full, "rb") as fh:
+                if b"\x00" in fh.read(8192):
+                    out.append("%s:0:<BINARY> unreadable by the scrub gate" % rel)
+        except OSError:
+            pass
+print("\n".join(out))
 ')"
   if [ -n "$remaining" ]; then
     printf '%s\n' "$remaining" | head -50 >&2

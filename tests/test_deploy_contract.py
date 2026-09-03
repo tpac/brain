@@ -517,10 +517,55 @@ class TestPublicTreeExport:
         """
         out = tmp_path / 'public-tree'
         r = self._run(str(out), timeout=300)
+        # Don't name the cause in the headline: the export also dies when a
+        # tracked file is missing from the working tree (a half-finished `git
+        # mv`), and "grew a personal-information hit" would send the reader
+        # hunting for a leak that isn't there. The gate's own output says which.
         assert r.returncode == 0, (
-            'the live tree no longer exports clean — a tracked file grew a '
-            'personal-information hit (see the file:line list below).\n'
+            'the live tree no longer exports clean — the failing gate names '
+            'itself below (gate B = a personal-information hit; gate A = a '
+            'denylisted path; a `cp` error = a tracked file missing on disk).\n'
             f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
+
+    # ── the allowlist must not be able to grow quietly ──
+
+    @staticmethod
+    def _allowlist():
+        """The ALLOWLIST pairs, parsed out of the export script."""
+        src = open(TestPublicTreeExport.SCRIPT, encoding='utf-8').read()
+        body = src.split('ALLOWLIST=(', 1)[1].split('\n)', 1)[0]
+        return [tuple(m.split(':', 1))
+                for m in re.findall(r'^\s*"([^"]+)"', body, re.M)]
+
+    # Bumping this is the point: a new allowlist entry is a deliberate,
+    # reviewable line in a diff, never a quiet way to turn a red gate green.
+    ALLOWLIST_SIZE = 16
+
+    def test_allowlist_cannot_grow_quietly(self):
+        """The one way to make gate B green WITHOUT fixing the leak is to add
+        an allowlist entry — two lines, no review, and the leak still ships.
+        Pinning the count makes that an explicit diff someone has to defend."""
+        entries = self._allowlist()
+        assert len(entries) == self.ALLOWLIST_SIZE, (
+            f'gate B allowlist is {len(entries)} entries, pinned at '
+            f'{self.ALLOWLIST_SIZE}. Adding one EXEMPTS a real string from the '
+            'personal-information gate — if that is genuinely what you mean '
+            '(shipped behaviour, deliberate attribution, or a test asserting ON '
+            'the literal), bump this number in the same commit and say why.')
+
+    def test_no_stale_allowlist_entries(self):
+        """A stale entry is an exemption nothing is using — dead permission that
+        silently covers whatever lands in that file next. Same discipline as
+        test_capture_grep_pin.test_allowlist_entries_still_exist."""
+        repo = os.path.join(os.path.dirname(__file__), '..')
+        for rel, pat in self._allowlist():
+            path = os.path.join(repo, rel)
+            assert os.path.exists(path), (
+                f'allowlisted file is gone: {rel} — drop the entry')
+            with open(path, encoding='utf-8', errors='replace') as f:
+                assert pat in f.read(), (
+                    f'allowlisted pattern {pat!r} no longer appears in {rel} — '
+                    'drop the entry rather than leaving a dead exemption')
 
     def test_export_refuses_to_clobber_foreign_dir(self, tmp_path):
         (tmp_path / 'precious.txt').write_text('mine')

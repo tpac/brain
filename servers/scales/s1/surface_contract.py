@@ -1904,7 +1904,7 @@ def select_edges(connections, query_vec, limit=3, prior_vecs=None,
 #
 # No SURFACE_FORMAT whitelist. No hardcoded "show content but not reasoning."
 # Fields with high activation surface; fields with low activation don't.
-# The framing: fading means less and less data surfaced.
+# Fading means less and less data surfaced.
 # ═══════════════════════════════════════════════════════════════
 
 # Minimum per-node budget — below this, we stop rendering further nodes

@@ -6,9 +6,9 @@ only — no raw SQL here: the session_state reads live on the brain
 the line is `self_contract.render_presence`.
 
 This is the PULL primitive: I look at my other streams of thought when interest
-calls. The AUTOMATIC
-surfacing of the presence line at boot / hook fire is a separate, eval-gated
-step (docs/BOOT-REIGNITION.md) — build it on top of build_presence().
+calls. The AUTOMATIC surfacing of the presence line at boot / hook fire is a
+separate, eval-gated step (docs/BOOT-REIGNITION.md) — build it on top of
+build_presence().
 """
 
 from datetime import datetime, timezone

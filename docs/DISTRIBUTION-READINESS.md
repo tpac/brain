@@ -981,18 +981,61 @@ hardcoded three real project names (`{'EX.CO CTV kit', 'ex.co',
 Resolved: comments generalized (a real recall failure used as a worked example
 became "buried topical nodes"), six test fixtures renamed `exco` → `acme-site`
 with their assertions in lockstep, and the v30 slug map collapsed to *every
-legacy value → 'brain'*. That last one is a **no-op in practice** — the three
-names only ever existed on the author's own brain, whose `nodes.project` column
-is already dropped, so the migration's guard returns before the map is reached;
-any brain that could still run it would take the `else` branch anyway. The
-index-drop and column-drop steps are untouched: deleting the whole migration
-would have lost real structural work.
+legacy value → 'brain'*.
+
+⚠ **That last one is NOT a no-op — an earlier draft of this paragraph said it
+was, and a review caught it against §5.0's own numbers.** The claim was that
+only the already-migrated live brain ever held those values. But **623 local
+`brain*.db` files are still below v30, and 9 of them carry the trio**: four
+backups/clones (2026-05-17, 06-15, 06-28) and five `eval/reports/snapshot_replay`
+corpora from 2026-04-25. Opening any of them through `Brain(db_path=...)` runs
+`_backfill_data` → `if from_version < 30` → the map, so those nodes now slug
+`'brain'` rather than `'ex.co'`.
+
+**Accepted anyway, and here is the honest cost.** Ranking is unaffected —
+`recall_laf`'s `gain_proj` is **0.0**, so the project slug feeds dict filters
+and the "⚠ From another project" render, not scoring. Nothing ships from those
+9 files. `ensure_schema` takes `backup_before_destructive` before any
+sub-`BRAIN_VERSION` migration, so a restore is recoverable. Weighed against
+shipping three real project names to every install, that is the right trade —
+but it is a **lossy change confined to local pre-v30 copies**, not a no-op, and
+anyone restoring one of those four backups should know the EX.CO distinction
+collapses.
+
+The index-drop and column-drop steps are untouched: deleting the whole
+migration (the first thing proposed, and Tom stopped it) would have lost real
+structural work.
 
 **Gate B widened in the same pass** (this is the ratchet, not the cleanup):
-`\btpac\b` (bare, not just `/Users/tpac` — the path form missed *"never left
+`\btpac` (bare, not just `/Users/tpac` — the path form missed *"never left
 tpac's laptop"* in a comment), `\bex\.co\b`, `\bexco\b`. Three allowlist entries
 cover the deliberate `github.com/tpac` publish target. Negative-tested: planted
 lines for all three patterns fail the gate.
+
+**Then an adversarial review was run against the widened gate, and it got
+through 7 of 11 planted leaks.** Every content-level leak in ordinary shipped
+text was caught — Python comment, shell comment, JSON manifest key, SKILL.md
+line — and ordinary English (`tomorrow`, `TOML`, `atom`, `custom`, `Thomas`)
+did not false-positive. The holes were all at the edges, and five of them are
+now closed:
+
+| Hole | Closed by |
+|---|---|
+| **Filenames were never scanned** — `grep` prints matching *content*, so `tests/fixtures/tom_pachys_session.json` full of anodyne JSON passed clean | gate B now walks the tree and matches the patterns against every **path** |
+| **`grep -I` silently skips binaries** — a NUL-prefixed fixture carrying the operator's name and home path exported clean | any file the scrub cannot read now **hard-fails**. Free to assert: the export has zero binaries today |
+| **`\btpac\b` was NARROWER than the `/Users/tpac` it replaced** — missed a sibling checkout like `/Users/tpac_old` | trailing `\b` dropped |
+| **An allowlist entry masked anything it was a prefix of** — allowing `github.com/tpac` also allowed `github.com/tpachys` | the strip is boundary-aware: `re.escape(pat) + (?![\w-])` |
+| **The allowlist could only grow, and two unreviewed lines turn any red green while the leak still ships** | `test_allowlist_cannot_grow_quietly` pins the entry count at 16, and `test_no_stale_allowlist_entries` deletes dead exemptions — the discipline `test_capture_grep_pin` already uses |
+
+**Left open, deliberately, with severity honest:** `\btom\b` misses suffixed
+forms (`Toms-MacBook-Pro`) and dropping that boundary would match `tomorrow`;
+percent-encoded paths (`%2Ftpac`) evade the boundary; a multi-token pattern
+split across two wrapped comment lines evades a line-based grep; unicode
+homoglyphs evade everything. All need either bad luck or intent. **The
+structural one worth naming:** the gate scans the materialized tree, so nothing
+covers what the *release step* adds after materialization — commit message, tag,
+repo description, committer identity. **5.7 owns that boundary and it is
+unbuilt.**
 
 **The lesson worth keeping:** a scrub pattern list is a record of what someone
 once thought of. `playbuzz`-without-`ex.co` is that failure exactly — the

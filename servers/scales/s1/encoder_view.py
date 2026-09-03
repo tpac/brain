@@ -279,8 +279,8 @@ def actions_stub_line(n_actions):
 
 # Node-op categories rendered per turn when the policy is on, replacing the
 # merged `encoded(Anchor)` (= created∪revised) with the verbs, plus the
-# categories the merged form dropped. Labels use
-# the timeline's identity vocabulary — (me), matching <me>/<other>. Each entry
+# categories the merged form dropped. Labels use the timeline's identity
+# vocabulary — (me), matching <me>/<other>. Each entry
 # is (label, link-keys): recalled(me) merges the by-id reads (`recalled`,
 # catalog-folded) with the search-tool results (`looked_up`, provenance-only)
 # into ONE line — the reader's question is "what did I look at", not which

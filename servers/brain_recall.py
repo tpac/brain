@@ -17,8 +17,8 @@ import time
 # Recall result cache (2026-05-08) — short-TTL dedup on top of the
 # single-flight gate. 10s window covers multi-hook bursts (pre_edit +
 # pre_bash_safety + hook_recall fire on every tool call) without
-# letting suggestions go stale on natural pauses. Both paths go through
-# this single recall layer, so one TTL knob covers both.
+# letting suggestions go stale on natural pauses. They all go through this
+# single recall layer, so one TTL knob covers every caller.
 _RECALL_CACHE_TTL_S = 10.0
 _RECALL_CACHE_MAX_ENTRIES = 100
 
@@ -2026,7 +2026,7 @@ class BrainRecallMixin:
         #           Verified failure mode on episodic queries: flood terms ('on'
         #           hits 98/100 titles, 'session' 82/100) lift low-cosine nodes
         #           +0.18 while the discriminative term (the topic name) matches nothing
-        #           — buried gold dabb3078 at rank 92 with rank-12 cosine.
+        #           — buried gold at rank 92 with rank-12 cosine.
         #   'off' — no title boost (null arm).
         #   'idf' — punctuation-stripped terms, each weighted by rarity across
         #           node titles (log idf); flood terms ≈ 0, rare terms dominate.

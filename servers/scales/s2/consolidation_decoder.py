@@ -209,8 +209,8 @@ class ConsolidationDecoder(IntegrationUnit):
         # edge row in either orientation (surface-pick Hebbian co-access
         # creates those rows in recall order), so a later `supersedes` can be
         # stored inverted: co_accessed fixing direction by accident is the
-        # steady state. The edge tells us a
-        # supersession relationship EXISTS for the pair; created_at decides
+        # steady state. The edge tells us a supersession relationship EXISTS
+        # for the pair; created_at decides
         # which node retires. Older-by-created_at is ground truth for opener
         # chains (a successor is by definition newer). Equal timestamps or
         # self-loops → skip, fail-safe.
