@@ -2,7 +2,9 @@
 
 Status: SPEC, ruled by Tom 2026-09-03, not implemented. Implementation is the
 next session's job; this document is what it implements, and every surface it
-must move is listed in §4 so nothing gets re-derived.
+must move is listed in §4 so nothing gets re-derived. **Handoff: brain
+`34b4dd5d`** (boot self-test, verify-before-use, gates); working set outside
+git at `/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session.md`.
 
 ## 1. The rule
 
