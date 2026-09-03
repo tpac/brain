@@ -1,5 +1,5 @@
 {
-  "name": "brain",
+  "name": "anchor",
   "owner": {
     "name": "Tom Pachys",
     "url": "https://github.com/tpac"
@@ -9,12 +9,12 @@
   },
   "plugins": [
     {
-      "name": "brain",
+      "name": "entity",
       "displayName": "Entity",
       "source": "./",
       "license": "PolyForm-Noncommercial-1.0.0 OR PolyForm-Internal-Use-1.0.0",
       "description": "Persistent identity for an AI assistant — a self-healing knowledge graph that survives across sessions, learns from every conversation, and surfaces the right memory at the right moment. Not a RAG store.",
-      "version": "9.7.2",
+      "version": "0.9.0",
       "author": {
         "name": "Tom Pachys"
       }

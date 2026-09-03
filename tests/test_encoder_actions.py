@@ -27,13 +27,17 @@ from servers.scales.s1.encoder_view import (  # noqa: E402
     ACTIONS_BUDGET, ACTIONS_BUDGET_SOFT_EDGE, ACTIONS_BUDGET_TAIL,
     ACTIONS_KEEP_LAST)
 
-# The plugin-adapter tool prefix, built from the manifest — never the literal
+# The plugin-adapter tool prefix, built from the manifests — never the literal
 # (test_deploy_contract's containment gate keeps the adapter shape out of
-# source; .claude/settings.json is its one legitimate home).
+# source; .claude/settings.json is its one legitimate home). CC's shape is
+# mcp__plugin_<plugin>_<server>__<tool>: the plugin name comes from plugin.json,
+# the server name is the .mcp.json key — two namespaces (D-11), not one.
 import json  # noqa: E402
 with open(os.path.join(ROOT, '.claude-plugin', 'plugin.json')) as _f:
     _PLUGIN = json.load(_f)['name']
-PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _PLUGIN)) + '%s'
+with open(os.path.join(ROOT, '.mcp.json')) as _f:
+    _SERVER = next(iter(json.load(_f)))
+PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _SERVER)) + '%s'
 ROLLUP_RE = re.compile(r'^\((\d+) more actions, not shown: ')
 
 

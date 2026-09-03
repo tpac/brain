@@ -14,7 +14,9 @@
 #   B. scrub — personal-information patterns must not appear anywhere in the
 #      output, except an explicit per-file attribution allowlist
 #   C. version — plugin.json and marketplace.json must agree (a drift breaks
-#      `/plugin update`, which compares them)
+#      `/plugin update`, which compares them); with EXPECT_VERSION=X in the
+#      environment they must also both READ X — the release command passes
+#      the version it is releasing, so agreement on the wrong value fails too
 # The gates exist so 5.2–5.7 are enforced instead of remembered: a leak fails
 # the export; it cannot ship quietly.
 set -euo pipefail
@@ -208,7 +210,10 @@ cd "$REPO"
 _pv="$(python3 -c 'import json;print(json.load(open(".claude-plugin/plugin.json"))["version"])')"
 _mv="$(python3 -c 'import json;print(json.load(open(".claude-plugin/marketplace.json"))["plugins"][0]["version"])')"
 [ "$_pv" = "$_mv" ] || fail "version (gate C) — plugin.json=$_pv marketplace.json=$_mv must agree (/plugin update compares them)"
-say "gate C (version): $_pv"
+if [ -n "${EXPECT_VERSION:-}" ] && [ "$_pv" != "$EXPECT_VERSION" ]; then
+  fail "version (gate C) — manifests read $_pv but this release expects $EXPECT_VERSION"
+fi
+say "gate C (version): $_pv${EXPECT_VERSION:+ (expected $EXPECT_VERSION ✓)}"
 
 # ── Materialize: manifest + extras, paths preserved. The DENYLIST is the one
 # owner of "never ship": the copy filter derives from it (no second regex to

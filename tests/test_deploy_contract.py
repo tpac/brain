@@ -102,11 +102,21 @@ def _files_matching(pattern):
 
 
 class TestVersionLockstep:
-    """plugin.json and marketplace.json must carry the same version.
+    """plugin.json and marketplace.json must carry the same version, and that
+    version must be the one the release is meant to ship.
 
     `/plugin update` compares the two; drift is silent until a user's update
-    no-ops. This is a risk on every release, forever.
+    no-ops. This is a risk on every release, forever. Agreement alone is not
+    enough: gate C in the export script checked only that the pair agreed, so
+    the pair could agree on the private build counter (9.7.x) and ship it as
+    the public launch. The value below is the ONE home of the expected
+    version — a release bump edits it in the same commit as the manifests,
+    which is the point: the bump becomes a reviewable line, not a drift.
     """
+
+    # D-10: public launches at 0.9.0 — "not yet v1" is a claim about delivered
+    # value, and the private plugin's 9.x counter means nothing to a stranger.
+    EXPECTED_VERSION = '0.9.0'
 
     def test_marketplace_entry_exists_for_plugin(self):
         names = [p.get('name') for p in MARKETPLACE['plugins']]
@@ -118,6 +128,12 @@ class TestVersionLockstep:
         assert entry.get('version') == PLUGIN['version'], (
             f"version drift: plugin.json={PLUGIN['version']!r} "
             f"marketplace.json={entry.get('version')!r} — breaks /plugin update")
+
+    def test_version_is_the_expected_release(self):
+        assert PLUGIN['version'] == self.EXPECTED_VERSION, (
+            f"plugin.json={PLUGIN['version']!r} but the release is pinned at "
+            f"{self.EXPECTED_VERSION!r} — bump EXPECTED_VERSION in the same "
+            'commit as the manifests, or the export ships the wrong version')
 
 
 class TestAdapterNameContainment:
@@ -151,10 +167,13 @@ class TestAdapterNameContainment:
             f'— service labels stay com.{SERVICE_NAME}.* (D-11)')
 
     def test_repo_slug_contained(self):
-        # The GitHub slug belongs in the manifest (homepage/repository) and
-        # nowhere else in shipped code. Also catches /Users/<owner>/<name>
+        # The GitHub slug belongs in the manifest (homepage/repository), in
+        # the README's install command (users have to be told where to install
+        # from), and in gate B's allowlist entry that names that README string
+        # — nowhere else in shipped code. Also catches /Users/<owner>/<name>
         # personal paths, which double as a scrub-grep (5.1) early warning.
-        allowed = {'.claude-plugin/plugin.json'}
+        allowed = {'.claude-plugin/plugin.json', 'README.md',
+                   'scripts/export-public-tree.sh'}
         pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -566,6 +585,16 @@ class TestPublicTreeExport:
                 assert pat in f.read(), (
                     f'allowlisted pattern {pat!r} no longer appears in {rel} — '
                     'drop the entry rather than leaving a dead exemption')
+
+    def test_gate_c_rejects_unexpected_version(self, tmp_path):
+        # The release command passes the version it is releasing; agreement on
+        # the wrong value must fail before anything is materialized.
+        r = subprocess.run(['bash', self.SCRIPT, str(tmp_path / 'out')],
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, 'EXPECT_VERSION': '0.0.0-never'})
+        assert r.returncode != 0
+        assert 'gate C' in r.stderr and '0.0.0-never' in r.stderr
+        assert not (tmp_path / 'out').exists(), 'gate C must fail before the copy'
 
     def test_export_refuses_to_clobber_foreign_dir(self, tmp_path):
         (tmp_path / 'precious.txt').write_text('mine')

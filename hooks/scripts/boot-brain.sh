@@ -81,7 +81,7 @@ _sq() { printf %s "$1" | sed "s/'/'\\\\''/g"; }
 # on" and then refuse to start a brain.
 _keyless_notice() {
   cat <<EOF
-🧠 Anchor — setup in progress
+🧠 Entity — setup in progress
 
 Your brain is initializing: local runtime, embedding model, memory database,
 and the brain daemon are being set up automatically — no action needed for
@@ -92,12 +92,12 @@ One step remains to complete setup — learning (writing new memories) and
 automatic memory surfacing use the Anthropic API and need your key:
 
   → Open http://localhost:${DASHBOARD_PORT:-47303}/setup and paste it there.
-    (That's your brain's local dashboard — it also shows what Anchor
+    (That's your brain's local dashboard — it also shows what Entity
     remembers, recalls and learns. Local-only, nothing leaves this machine.
     On a brand-new install the page comes alive when the first-run setup
     finishes, ~1-2 minutes.)
 
-  Alternatives: the Anchor plugin's settings in Claude Code — fill the
+  Alternatives: the Entity plugin's settings in Claude Code — fill the
   "Anthropic API key" field, then start a new session (it's applied at
   session start). Or the env file directly:
      mkdir -p "${XDG_CONFIG_HOME:-\$HOME/.config}/brain"
@@ -145,9 +145,9 @@ if ! brain_runtime_ready "$_BOOT_PLUGIN_ROOT"; then
   [ "$BRAIN_KEYLESS_BOOT" = "1" ] && _keyless_notice
   cat <<EOF
 
-🧠 Anchor — first-run install in progress
+🧠 Entity — first-run install in progress
 
-Anchor is building its local runtime in the background (isolated Python +
+Entity is building its local runtime in the background (isolated Python +
 embedding model — a couple of minutes on typical networks; progress:
 $_BOOT_PLUGIN_ROOT/.bootstrap.log). Nothing to do. Memory tools usually
 appear from the NEXT session on (this session only on a very fast
@@ -213,7 +213,7 @@ if [ -z "$BRAIN_DB_DIR" ]; then
     _CAND_Q="'$(_sq "$BRAIN_ADOPTION_CANDIDATE")'"
     cat <<EOF
 
-🧠 Anchor — your existing brain needs one pointer
+🧠 Entity — your existing brain needs one pointer
 
 An existing brain (memories intact) was found at:
 
@@ -233,10 +233,10 @@ Pick one, then start a new session:
        bash '$(_sq "$(dirname "$0")")/relocate-brain.sh' $_CAND_Q
      No pointer needed afterwards — it is found there automatically.
 
-  2. KEEP IT WHERE IT IS — point Anchor at it:
+  2. KEEP IT WHERE IT IS — point Entity at it:
        mkdir -p $_CFG_Q
        printf "\nBRAIN_DB_DIR='%s'\n" $_CAND_Q >> $_CFG_Q/env
-     (or set the brain path field in the Anchor plugin's settings to that
+     (or set the brain path field in the Entity plugin's settings to that
       same folder)
      ⚠ That folder is deleted by a default \`claude plugin uninstall\`
        (only --keep-data spares it). A relocation notice will repeat each
@@ -262,7 +262,7 @@ brain: No brain.db found and auto-create failed.
 
 Two options:
 
-  1. CONNECT TO EXISTING BRAIN — point Anchor at your brain folder:
+  1. CONNECT TO EXISTING BRAIN — point Entity at your brain folder:
        mkdir -p $_CFG_Q
        printf "\nBRAIN_DB_DIR='%s'\n" '/path/to/your/brain/folder' >> $_CFG_Q/env
      The folder should contain (or will contain) brain.db.
@@ -298,7 +298,7 @@ _parked_notice() {
   _P_ID="$(basename "$(dirname "$BRAIN_HOST_PARKED")")"
   cat <<EOF
 
-🧠 Anchor — your brain lives in a folder \`claude plugin uninstall\` deletes
+🧠 Entity — your brain lives in a folder \`claude plugin uninstall\` deletes
 
 Memory works normally this session, but the brain's files sit at:
 
@@ -365,7 +365,7 @@ try:
     sys.stderr.write('[brain-boot] MCP server OK — %d tools available\n' % len(TOOLS))
 except Exception as e:
     # Write to stdout so it appears in session context
-    print('⚠️  MCP SERVER BROKEN — Anchor will have NO direct brain tools')
+    print('⚠️  MCP SERVER BROKEN — Entity will have NO direct brain tools')
     print('   Error: %s' % e)
     print('   The brain hooks still work, but recall/remember/connect MCP tools are dead.')
     print('   Fix the import error in servers/brain_mcp.py and restart the session.')

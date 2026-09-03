@@ -1,6 +1,23 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-09-01) — **5.3 gated half DONE and ratcheted; next is 5.2**
+## §ACTIVE ARC (2026-09-03) — **5.2 DONE (rename + 0.9.0 + the D-10 assertion); next is 5.9, then 5.7**
+
+**5.2 landed 2026-09-03.** Both manifests read `entity` / `anchor` / `0.9.0`;
+the 15 product-name sites (`boot-brain.sh`, `setup.html`) say **Entity**; the
+`com.entity.` check armed at the rename and passed. D-10 is now enforced twice:
+`TestVersionLockstep.EXPECTED_VERSION` (the ONE home of the literal — a release
+bump edits it in the same commit as the manifests) and gate C's optional
+`EXPECT_VERSION=X` (the release command passes what it is releasing; unset keeps
+agreement-only). `.claude/settings.json` carries BOTH permission strings until
+the redeploy has happened and pre-rename sessions have cycled — drop
+`mcp__plugin_brain_brain` then. **Not done in 5.2, by design:** the redeploy
+itself (Tom's timing — it flips every new session on his machine to the
+`entity` name, and his install is a *directory* marketplace whose outer
+`marketplace.json` still says `brain`; observe one session before deciding
+whether the outer entry needs the rename too), and the D-12 xfail (re-measured
+2026-09-03: **55 shipped files / 150 occurrences** still carry `Anchor` — the
+deferred one-at-a-time sweep, not a SCOPE question; the 7 never-ship files /
+53 occurrences are the SCOPE question and can wait until that sweep is done).
 
 **5.3 closed its gated half 2026-09-01. Gate B: 69 → 0, and it now STAYS
 there** — `TestPublicTreeExport::test_live_tree_exports_clean` runs the export
@@ -84,12 +101,10 @@ were false:
 **Remaining, in dependency order:**
 1. ~~**5.3 comment audit**~~ — **gated half DONE + ratcheted 2026-09-01.** The
    ungated ~487 dated/removal-verb lines are a ruling, not a gap (see 5.3).
-2. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
-   wrongly claimed already existed (gate C currently reports **9.7.2** and only
-   checks that the two manifests *agree*), plus the product-name sites
-   (`boot-brain.sh` ×11, `setup.html` ×4 — D-11's *product* namespace, they
-   become **Entity**, not a config read).
-3. **5.7 release command → publish** — the one-way door. Must include an
+2. ~~**5.2 rename + D-10**~~ — **DONE 2026-09-03** (see the arc head).
+3. **5.9 opt-in export** — before the first push, since the first push is the
+   one that can leak. Not a gate on 5.2; a gate on 5.7.
+4. **5.7 release command → publish** — the one-way door. Must include an
    **install smoke test**: the suite runs *inside* the export tree, so it
    cannot catch a file that ships, is never imported by tests, and is needed
    at first run on a stranger's machine.
@@ -193,7 +208,7 @@ the fleet; the rename soak clock starts when existing installs take it.
 **5.4 DONE** same day. **5.6 / D-5 DONE 2026-08-30** — the design gate is
 closed; the publish path has no design questions left. Unstarted: **5.0c**
 (classes 1–2 only — class 3 dissolved with the name-free pack) · **5.3** ·
-**5.5** · **5.2** (rename — `plugin.json` still `name: brain`) · **5.7**.
+**5.5** · ~~**5.2**~~ (done 2026-09-03) · **5.7**.
 Arch-plan steps 7–10 remain open but gate nothing.
 
 **All counts re-measured live 2026-08-31 against the materialized export tree**
@@ -311,19 +326,19 @@ while execution drifts at the substrate* (community id:3350ea51), proven twice o
 | D-3 | yes | `daemon_launch.py` treats a missing `launchctl` as "no launchd platform" and falls through to `subprocess.Popen` |
 | D-4 | yes | `plugin.json.userConfig` carries `api_key` + `brain_path`; the `~/.config/brain/env` ladder rung is intact |
 | D-5 | yes | the Nursery pack, `tests/test_seed_pack.py::TestNurseryPackContracts` |
-| D-6 | not yet — **this is 5.2** | `plugin.json` `name: brain`, `homepage`/`repository` still `tpac/brain`; marketplace `name: brain`. MCP server key correctly stays `brain` (`.mcp.json`) ✓; `displayName: Entity` already shipped ✓ |
+| D-6 | yes (2026-09-03) | `plugin.json` `name: entity`, `homepage`/`repository` `tpac/entity`; marketplace `name: anchor`, entry `entity`. MCP server key stays `brain` (`.mcp.json`) → tools `mcp__plugin_entity_brain__*` ✓; `displayName: Entity` ✓ |
 | D-7 | export yes, **release no** | `export-public-tree.sh` materializes and gates; the exported tree correctly carries no `.git`. The squash-push/tag command is unbuilt (5.7) |
 | D-8 | **partial — one defect** | `eval/` denylisted ✓, `tests/` ship ✓. But the coupled files **have no graceful skip** — they raise `ModuleNotFoundError: No module named 'eval'` at *collection*, which aborts the whole run (`Interrupted: 6 errors during collection`). D-8 says they "degrade to graceful skip"; nothing implements that |
 | D-9 | yes | `CONTRIBUTING.md` states issues-only, PRs not accepted, plus the never-paste-memories privacy note |
-| D-10 | not yet — **and nothing enforces it** | both manifests read `9.7.2`. The doc claimed "5.1 asserts it" — **false**: gate C asserts `plugin.json == marketplace.json` *equality only*; no `0.9.0` literal exists in `export-public-tree.sh` or `test_deploy_contract.py`. Release day could ship `9.7.x` silently |
-| D-11 | yes | `test_deploy_contract` host-neutrality + repo-slug + MCP-prefix containment all live; the `com.N.` sub-check correctly self-skips while adapter name == service name and arms at the rename |
+| D-10 | yes (2026-09-03) — **enforced** | both manifests read `0.9.0`. `TestVersionLockstep.test_version_is_the_expected_release` pins the value (`EXPECTED_VERSION`, the one home of the literal); gate C fails on `EXPECT_VERSION=X` mismatch, and `test_gate_c_rejects_unexpected_version` pins that it fails *before* the copy. The earlier "5.1 asserts it" claim was false until this landed |
+| D-11 | yes | `test_deploy_contract` host-neutrality + repo-slug + MCP-prefix containment all live; the `com.N.` sub-check **armed at the rename 2026-09-03 and passed** (zero `com.entity.` in scope) |
 | D-12 | not yet — **and unguarded** | 143 `Anchor` literals / 43 shipped files. Gate assertion 4 (`test_agent_name_only_in_config`) is `xfail(strict=True)`, so **a new `Anchor` literal added today produces no signal**. 5.0c closes the window |
 | D-13 | yes | XDG birth + adoption net + `resolved.env` single authority, all shipped |
 
-**Score: 8 conformant · 3 pending by design (D-6/D-10/D-12 = 5.2 and 5.0c) ·
-2 substantive defects (D-1 packaging, D-8 graceful-skip) · 1 false enforcement
-claim (D-10).** The three pending are the known work; the two defects and the
-false claim were invisible before this sweep.
+**Score at the 2026-08-31 sweep: 8 conformant · 3 pending by design (D-6/D-10/D-12
+= 5.2 and 5.0c) · 2 substantive defects (D-1 packaging, D-8 graceful-skip) · 1
+false enforcement claim (D-10).** Since then: D-1 fixed (phase 4), D-6 and D-10
+closed by 5.2 (2026-09-03). **Still open: D-8's graceful skip and D-12's gate.**
 
 | # | Decision | Rationale |
 |---|----------|-----------|
@@ -897,12 +912,17 @@ Original spec for reference:
 Also asserts `plugin.json.version == marketplace.json.version` (they must never
 drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
 
-**5.2 Rename pass (D-6, scoped by D-11).** The **CC adapter only** — the service
-layer keeps the name `brain`:
+**5.2 Rename pass (D-6, scoped by D-11) — DONE 2026-09-03.** The **CC adapter
+only** — the service layer keeps the name `brain`:
   1. `plugin.json` — `name: entity`, `version: 0.9.0`, `homepage` + `repository`
-     → `tpac/entity`, and `displayName` (**open**, see below)
-  2. `marketplace.json` — `name: anchor`, plugin entry `entity`, `version: 0.9.0`
-  3. `.claude/settings.json` — the permission string (see the correction below)
+     → `tpac/entity` ✓
+  2. `marketplace.json` — `name: anchor`, plugin entry `entity`, `version: 0.9.0` ✓
+  3. `.claude/settings.json` — both permission strings during the transition
+     (see the correction below) ✓
+  4. product-name sites `boot-brain.sh` ×11 + `setup.html` ×4 → **Entity** ✓
+  5. `test_repo_slug_contained` allowlist grew by two *argued* homes — the
+     README install command and gate B's allowlist entry naming it (the slug
+     was never in the README while it read `tpac/brain`)
 Skill prefixes follow automatically (`brain:brain` → `entity:brain`); no dir
 renames required. **`com.brain.*` launchd labels do NOT change** — D-11. The old
 "change now or never, a later change orphans services" hazard is void.
@@ -943,7 +963,10 @@ tracked `.claude/settings.json` carries
 `permissions.allow: ["mcp__plugin_brain_brain"]` — the **server-wide** form, no
 trailing `__<tool>`. After the rename it stops matching and every brain MCP call
 in this repo's sessions starts prompting. Scope is the dev repo only (the file is
-not in the plugin package); end users are unaffected.
+not in the plugin package); end users are unaffected. **Resolved 2026-09-03 by
+carrying both strings:** live sessions run the pre-rename plugin until the
+redeploy, post-redeploy sessions run `entity` — a swap breaks one population or
+the other; the pair breaks neither. Drop the old entry once both have cycled.
 
 *How it survived an audit:* the claim was "verified" by grepping the doc's own
 string, `mcp__plugin_brain_brain__`, which cannot match the entry. **Verifying a
@@ -1275,9 +1298,12 @@ history, only after 5.1–5.6 are verifiably clean.
 One command, and its whole value is that it *refuses*:
   1. assert the working tree is clean and on `main`
   2. `export-public-tree.sh` → materialize; **abort on any red gate** (A, B, C)
-  3. assert `plugin.json.version == marketplace.json.version == 0.9.0` — the
-     D-10 assertion that does not exist today; fold the bump in here so the two
-     manifests can never be bumped apart
+  3. run the export with `EXPECT_VERSION=<the version being released>` — gate C
+     then fails on agreement-on-the-wrong-value, not just drift (built 2026-09-03
+     with 5.2). The literal itself lives in ONE place,
+     `TestVersionLockstep.EXPECTED_VERSION`; a bump edits it with the manifests,
+     and the release command derives `EXPECT_VERSION` from its own argument
+     rather than carrying a second literal
   4. run the suite **against a copy** of the tree, not the tree itself
      (`.pytest_cache/` pollution — see 5.5); abort on red
   5. secrets scan
