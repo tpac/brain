@@ -46,6 +46,7 @@ Usage:
 """
 import argparse
 import json
+import re
 import os
 import sys
 
@@ -750,6 +751,16 @@ def main():
                     help='complete s1e template to run instead of the active '
                          'one — for candidates that EDIT existing text rather '
                          'than append. Isolated copy only, same as --s1e-patch.')
+    ap.add_argument('--gist-file',
+                    help='splice THIS file\'s text instead of the contract\'s '
+                         'ENCODER_GIST (implies --gist) — for A/B-ing a gist '
+                         'candidate before it is promoted into the contract.')
+    ap.add_argument('--gist', action='store_true',
+                    help='splice encode_contract.ENCODER_GIST into the frozen '
+                         'capture directly before its <timeline> line — the '
+                         'payload-level reminder production assembly emits; a '
+                         'capture predating it needs the splice to be same-'
+                         'state with what the daemon now sends.')
     args = ap.parse_args()
     want = [a.strip().upper() for a in args.arms.split(',') if a.strip()]
 
@@ -819,6 +830,22 @@ def main():
             chain, _short, _stop = parse_chain(cap_path)
             with open(cap_path) as f:
                 captured_raw = f.read()
+            if args.gist or args.gist_file:
+                from servers.scales.s1.encode_contract import ENCODER_GIST
+                if args.gist_file:
+                    with open(args.gist_file) as f:
+                        ENCODER_GIST = f.read().rstrip('\n') + '\n'
+                if ENCODER_GIST in captured_raw:
+                    print('[gist] capture already carries the gist — no splice')
+                else:
+                    m = re.search(r'^<timeline', captured_raw, re.M)
+                    if not m:
+                        raise SystemExit('--gist: no <timeline line in %s'
+                                         % cap_path)
+                    captured_raw = (captured_raw[:m.start()] + ENCODER_GIST
+                                    + '\n' + captured_raw[m.start():])
+                    print('[gist] spliced %d chars before <timeline>'
+                          % (len(ENCODER_GIST) + 1))
             captured = strip_scout_blocks(captured_raw)
             # Arm F needs none of the session's stored state; keep gold items
             # runnable on captures whose messages have aged out of the copy.

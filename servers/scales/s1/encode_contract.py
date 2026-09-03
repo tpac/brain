@@ -232,6 +232,22 @@ PROVENANCE_TAGS = (
 # (recall excludes them), so they never compete for priority.
 ASSOCIATED_TAG = '[associated]'
 
+# ENCODER_GIST — the operating rules restated at the recency position: the
+# payload's last instruction before the timeline. The system prompt teaches
+# these ~800 lines earlier and the catalog then pushes them another ~1,400
+# lines back; measured (2026-09-02, 30 arm-F runs) the sweep rule under-applies
+# exactly there — situation repaired ~50%, edge descriptions 0/6. Free text,
+# not a tag: guide text is free text, angle brackets mean payload structure.
+ENCODER_GIST = """Before I read the timeline, the rules I encode by:
+- The catalog above is a set of LIVE CLAIMS. Whatever this window falsified — a value, a status line, a plan step, an open question now answered — I revise in EVERY surface that carries it: title, content (`content_edits` in place), situation, question, reasoning, and any edge description. A surface I leave alone keeps asserting the dead value to recall.
+- An `open` the window answered changes type and takes `resolves`; partly answered stays `open`, narrowed, with `partially_resolves`.
+- Old values stay only in `content`, and only where the history is load-bearing — never in title, situation, or question.
+- New AND useful earns a node: facts, decisions, corrections (assumed / reality / pattern), verbatim quotes, mechanisms, moments; dated ones carry `event_time` resolved to ISO against the conversation's date. What the catalog already holds I revise or connect by id, never mint again.
+- Every node: situation in trigger register, reasoning, a question where a real asking exists, edges with a specific why.
+- Nothing I write inherits turn numbers or "today".
+"""
+
+
 
 def _filter_noise_relations(nodes_map, brain):
     """Drop noise-aspect relations from each catalog node's connections (lived

@@ -133,6 +133,12 @@ CONNECT_TO_ITEM_SCHEMA = {
 }
 
 
+# Op fields the vocabulary has RETIRED. A name here must appear on no teaching
+# surface — prompt, gist, tool descriptions, field summary — and
+# tests/test_teaching_vocabulary_sync.py enforces that. Retiring a name is a
+# one-line change here; the test then points at every surface still saying it.
+RETIRED_OP_FIELDS = ()
+
 BATCH_OP_SPECS = {
     "remember": {
         "required": ["type", "title", "content"],

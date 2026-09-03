@@ -1000,6 +1000,9 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
         if scout_legend:    # explains the <scout_notes> inside the timeline
             body += "%s\n" % scout_legend
+        # The gist — last instruction before the timeline (encode_contract).
+        from servers.scales.s1.encode_contract import ENCODER_GIST
+        body += ENCODER_GIST + "\n"
         # `now=` stamp (view policy): the absolute anchor that makes every
         # relative label below invertible — and the current-time declaration
         # the encoder's date resolution never had (only the scouts got one).
