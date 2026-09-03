@@ -94,6 +94,18 @@ class TestFile(ThalamusBase):
     def test_empty_body_rejects(self):
         self.assertFalse(self._file('  ')['filed'])
 
+    def test_directed_ask_rejects_as_undeliverable(self):
+        # Asks render at boot only, and a nameable session has already booted —
+        # a directed ask would wait out its window and dead-letter, guaranteed.
+        r = self._file('judge this?', needs_answer=True, for_whom=S1)
+        self.assertFalse(r['filed'])
+        self.assertIn('self_send', r['error'])
+
+    def test_expires_before_when_rejects(self):
+        r = self._file(when='3d', expires='1d')
+        self.assertFalse(r['filed'])
+        self.assertIn('before it ever becomes due', r['error'])
+
     def test_dedup_key_updates_not_duplicates(self):
         r1 = self._file('v1 of the concern', dedup_key='concern-x')
         r2 = self._file('v2 of the concern', dedup_key='concern-x')

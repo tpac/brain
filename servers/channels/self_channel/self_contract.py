@@ -49,7 +49,6 @@ STREAM_TERM_PLURAL = "streams of thought"
 # `peer:<handle>` slots in without a retrofit — see docs/LATERAL-SCALES.md.
 NAMESPACE = "self"
 
-ADDR_NEXT_BOOT = "self:next_boot"   # the next stream to boot (temporal)
 ADDR_BROADCAST = "self:broadcast"   # every live stream
 
 
@@ -58,18 +57,9 @@ def address_for_stream(session_id):
     return "self:%s" % session_id
 
 
-# Which addresses a delivery shim pulls into Observation, keyed by hook:
-ROUTES_AT_BOOT = (ADDR_NEXT_BOOT,)          # boot_brain.py — temporal (but see note below)
-
-
-def routes_at_turn(session_id):             # pre_response_recall — spatial / live
+def routes_at_turn(session_id):
     """Addresses a live stream consumes into O at each hook fire."""
     return (address_for_stream(session_id), ADDR_BROADCAST)
-
-
-def address_from_target(target):
-    """Map an MCP-friendly target — a session_id, or 'broadcast' — to an address."""
-    return ADDR_BROADCAST if target == 'broadcast' else address_for_stream(target)
 
 
 def is_session_id(s):
@@ -169,12 +159,6 @@ def ttl_kind_for(address):
     categories — the next_boot letter isn't a stored courier row, so it has no
     TTL here. (A self-message has no `intent` axis — removed 2026-06-06.)"""
     return 'broadcast' if address == ADDR_BROADCAST else 'directed'
-
-
-# ── Phase 3 forward placeholder (NOT yet enforced) ──────────────────────
-# The boot-letter budget — designed when Phase 3 (the first-person letter)
-# lands. Defined so the design-doc reference resolves; nothing enforces it today.
-LETTER_BODY_MAX = 2000
 
 
 # ═══════════════════════════════════════════════════════════════
