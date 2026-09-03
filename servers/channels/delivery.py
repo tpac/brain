@@ -91,14 +91,24 @@ def serves(source, moment):
 
 
 def deliver(brain, ctx, moment):
-    """Render everything due for `ctx.session_id` at `moment` — one joined
-    block ('' when nothing is due). Each source is failure-isolated: a raise
-    is logged to the errors table and the walk continues. A source that shows
-    something is traced as one s0 K event on the session's chain AFTER its
-    block is kept — the sources ledger/consume inside render, so a trace
-    failure must cost the trace, never a delivery the substrate already
-    recorded as shown."""
-    parts, shown = [], []
+    """Render everything due for `ctx.session_id` at `moment` — returns
+    (composite, traced_ref_types): the joined block ('' when nothing is due)
+    and the ref_type of each source that showed something AND had its trace
+    recorded, in render order. The Stop hook gates its continuation stamp on
+    those — an untraced delivery must never classify a reaction, or the
+    timeline gets a reaction whose incoming side does not exist.
+
+    Each source is failure-isolated: a raise is logged to the errors table
+    and the walk continues. A source that shows something is traced as one
+    s0 K event on the session's chain AFTER its block is kept — the sources
+    ledger/consume inside render, so a trace failure must cost the trace,
+    never a delivery the substrate already recorded as shown. The trace
+    carries the rendered block as its content (capped loudly by _s0_trace,
+    same as every turn trace) and the moment name as its ref_id — indexed,
+    so query_traces(ref_type=..., ref_id='boot') separates boot preludes
+    from Stop turns; the incoming side a dial-on correspondent surfaces in
+    the encoder timeline (trace_contract.S0_CONVERSATIONAL_INCOMING)."""
+    shown, traced = [], []  # (source, block) kept; ref_types whose trace landed
     for source in SOURCES:
         if not serves(source, moment):
             continue
@@ -122,26 +132,26 @@ def deliver(brain, ctx, moment):
                 'empty block (session=%s)'
                 % (source.name, n, moment.name, ctx.session_id))
             continue
-        parts.append(block)
-        shown.append((source, n, len(block)))
-    if not parts:
-        return ''
-    for source, n, _ in shown:
-        try:
+        shown.append((source, block))  # kept FIRST — the block delivers even
+        try:                           # if its trace below fails
             _s0_trace(
                 brain, ctx, event_type='K', ref_type=source.ref_type,
-                summary='delivered %d %s at %s' % (n, source.noun, moment.name))
+                summary='delivered %d %s at %s' % (n, source.noun, moment.name),
+                ref_id=moment.name, content=block)
+            traced.append(source.ref_type)
         except Exception as e:
             brain._log_error(
                 '%s_delivery_%s' % (source.name, moment.name), e,
                 'delivery.deliver: trace write failed at %s — the block is '
-                'still delivered (session=%s)' % (moment.name, ctx.session_id))
-    composite = '\n\n'.join(parts)
+                'still delivered, but this source is dropped from the '
+                'continuation stamp (session=%s)'
+                % (moment.name, ctx.session_id))
+    composite = '\n\n'.join(b for _, b in shown)
     if len(composite) > COMPOSITE_WARN:
         brain._log_warning(
             'delivery_composite_over_budget',
             'composed %s leg is %d chars (warn at %d) — %s'
             % (moment.name, len(composite), COMPOSITE_WARN,
-               ', '.join('%s: %d chars' % (s.name, ln) for s, _, ln in shown)),
+               ', '.join('%s: %d chars' % (s.name, len(b)) for s, b in shown)),
             'delivery.deliver — delivered anyway')
-    return composite
+    return composite, tuple(traced)

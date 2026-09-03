@@ -102,19 +102,114 @@ class TestStopDelivery(BrainTestBase):
 class TestStopDeliveryChain(BrainTestBase):
     needs_embedder = False
 
-    def test_delivery_trace_shares_the_turns_chain(self):
-        """The delivery blocked THIS turn's stop, so its trace must land on
-        this turn's s0 chain — not the next one. The hook holds the counter
-        at N through delivery (post_response_common increment=False) and
-        advances it after."""
+    def test_delivery_opens_the_next_turns_chain(self):
+        """A delivery that blocks a stop OPENS the next turn: its K trace
+        lands on the successor chain — where the continuation's response
+        will complete the turn — not on the chain of the turn it blocked
+        (same shape as an operator turn: incoming K + assistant delta share
+        one chain)."""
         _seed(self.brain, 'S', 'chained tap')
         self.assertEqual(_stop(self.brain, 'S').get('decision'), 'block')
         events = self.brain.query_traces(session_id='S').get('events', [])
         chains = {e.get('ref_type'): e.get('chain_id') for e in events}
         self.assertIn('self_message', chains)
-        # This turn's other trace (heartbeat: _stop without a prior recall
-        # is classified non-conversational) must share the chain.
-        self.assertEqual(chains['self_message'], chains.get('heartbeat'))
+        # The blocked turn's own trace (heartbeat here — _stop without a
+        # prior recall is non-conversational) sits on the PRIOR chain.
+        self.assertNotEqual(chains['self_message'], chains.get('heartbeat'))
+
+
+class TestDeliveryContinuationClassification(BrainTestBase):
+    """The stop AFTER a delivery-block is the turn's reaction. The gate is
+    trace_contract.arms_continuation over the dial dict (read live so a test
+    can simulate a flip via patch.dict — in production the dict only changes
+    with a source edit + restart). Dial-off (today) → heartbeat, matching
+    pre-substrate behavior; dial-on → a real assistant_message. Cadence
+    never moves either way."""
+    needs_embedder = False
+
+    def _flipped(self):
+        from unittest import mock
+        from servers import trace_contract as tc
+        return mock.patch.dict(
+            tc.S0_CONVERSATIONAL_INCOMING, {'self_message': True})
+
+    def _continuation(self, sid, dial_on):
+        from contextlib import nullcontext
+        _seed(self.brain, sid, 'react to this')
+        with self._flipped() if dial_on else nullcontext():
+            self.assertEqual(_stop(self.brain, sid).get('decision'), 'block')
+            _stop(self.brain, sid)   # the continuation's stop
+        return self.brain.query_traces(session_id=sid).get('events', [])
+
+    def test_dial_off_continuation_stays_heartbeat(self):
+        events = self._continuation('SOFF', dial_on=False)
+        refs = [e.get('ref_type') for e in events]
+        self.assertNotIn('assistant_message', refs)
+        self.assertIn('heartbeat', refs)
+
+    def test_dial_on_continuation_is_the_turns_reaction(self):
+        events = self._continuation('SON', dial_on=True)
+        by_ref = {}
+        for e in events:
+            by_ref.setdefault(e.get('ref_type'), []).append(e)
+        self.assertIn('assistant_message', by_ref)
+        # The reaction shares the delivery's chain — one turn, incoming + said.
+        self.assertEqual(by_ref['assistant_message'][0].get('chain_id'),
+                         by_ref['self_message'][0].get('chain_id'))
+        # And the Scribe cadence never moves: no user_message rows exist.
+        self.assertEqual(self.brain.turns_since_last_encode('SON'), 0)
+
+    def test_reaction_only_follows_a_blocking_delivery(self):
+        # No delivery → flip state is irrelevant; a bare wakeup stays a
+        # heartbeat even flipped on.
+        with self._flipped():
+            _stop(self.brain, 'SBARE')
+        refs = [e.get('ref_type') for e in
+                self.brain.query_traces(session_id='SBARE').get('events', [])]
+        self.assertNotIn('assistant_message', refs)
+
+    def test_stamp_is_consumed_by_an_operator_turn(self):
+        # A real prompt lands on the continuation's stop: conversational wins
+        # AND the stamp is read-and-cleared — asserted on the session state
+        # directly, so removing the clear fails this test.
+        from servers.daemon_hooks import hook_recall
+        _seed(self.brain, 'SESC', 'tap then interrupt')
+        with self._flipped():
+            self.assertEqual(_stop(self.brain, 'SESC').get('decision'), 'block')
+            self.assertNotEqual(
+                self.brain.get_or_create_session('SESC').last_delivery_stop, -1)
+            # Operator interrupts the continuation and types a real prompt.
+            hook_recall(self.brain, {'session_id': 'SESC',
+                                     'prompt': 'a real interrupting prompt'}, [])
+            _stop(self.brain, 'SESC')          # conversational turn consumes
+        self.assertEqual(
+            self.brain.get_or_create_session('SESC').last_delivery_stop, -1)
+
+    def test_stale_stamp_is_disarmed_by_boot_and_window(self):
+        # An ESC'd continuation fires no Stop — counter and stamp freeze. The
+        # two guards: a boot/resume disarms (reset_session_activity), and a
+        # stamp older than the freshness window never matches.
+        from servers.trace_contract import DELIVERY_REACTION_WINDOW_MIN
+        from servers.clock import iso_cutoff
+        _seed(self.brain, 'SFRZ', 'tap then vanish')
+        with self._flipped():
+            self.assertEqual(_stop(self.brain, 'SFRZ').get('decision'), 'block')
+            ctx = self.brain.get_or_create_session('SFRZ')
+            self.assertNotEqual(ctx.last_delivery_stop, -1)
+            # Hours pass (age the stamp past the window), then a bare wakeup.
+            ctx.last_delivery_armed_at = iso_cutoff(
+                minutes=DELIVERY_REACTION_WINDOW_MIN + 5)
+            _stop(self.brain, 'SFRZ')
+        events = self.brain.query_traces(session_id='SFRZ').get('events', [])
+        refs = [e.get('ref_type') for e in events]
+        self.assertNotIn('assistant_message', refs)   # wakeup stayed heartbeat
+        # And a boot disarms outright.
+        _seed(self.brain, 'SFRZ', 'tap again')
+        with self._flipped():
+            self.assertEqual(_stop(self.brain, 'SFRZ').get('decision'), 'block')
+        self.brain.reset_session_activity('SFRZ')
+        self.assertEqual(
+            self.brain.get_or_create_session('SFRZ').last_delivery_stop, -1)
 
 
 class TestCrossHookConsumeOnce(BrainTestBase):

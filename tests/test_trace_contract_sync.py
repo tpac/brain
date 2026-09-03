@@ -652,12 +652,26 @@ class TestS0TurnClassification:
         assert ok, "heartbeat must be a valid (s0, K) ref_type"
 
     def test_only_user_message_is_conversational_today(self):
-        # Locks the decisions: operator prompts encode; anchor↔anchor is OFF for
-        # now; heartbeats never. Flipping self_message is a deliberate change.
+        # Locks the decisions: operator prompts encode; anchor↔anchor and
+        # brain↔anchor are OFF until the encoder prompt is taught the
+        # correspondent elements; heartbeats never. Flipping a row is a
+        # deliberate change gated on that encoder work.
         from servers.trace_contract import S0_CONVERSATIONAL_INCOMING
         assert S0_CONVERSATIONAL_INCOMING['user_message'] is True
         assert S0_CONVERSATIONAL_INCOMING['self_message'] is False
+        assert S0_CONVERSATIONAL_INCOMING['thalamus_delivery'] is False
         assert S0_CONVERSATIONAL_INCOMING['heartbeat'] is False
+
+    def test_operator_dialogue_is_a_subset_of_conversational(self):
+        # Option A's safety property: every pinned consumer (presence,
+        # episodes default, LAF, dual-store) selects only ref_types the
+        # encoder whitelist also carries — so a pinned scope can never see a
+        # row the timeline excludes. Aliasing the two constants back together
+        # ("dedupe the twin tuples") is the regression this guards.
+        from servers.trace_contract import (
+            CONVERSATIONAL_REF_TYPES, OPERATOR_DIALOGUE_REF_TYPES)
+        assert set(OPERATOR_DIALOGUE_REF_TYPES) <= set(CONVERSATIONAL_REF_TYPES)
+        assert OPERATOR_DIALOGUE_REF_TYPES == ('user_message', 'assistant_message')
 
     def test_conversational_ref_types_derived_from_one_dial(self):
         # CONVERSATIONAL_REF_TYPES must be DERIVED from S0_CONVERSATIONAL_INCOMING

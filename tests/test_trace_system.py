@@ -655,6 +655,11 @@ class TestGetSessionTurns:
         assert turns[1]['role'] == 'assistant'
         for key in ('trace_id', 'content', 'timestamp', 'judge_output'):
             assert key in turns[0], "Missing key: %s" % key
+        # ref_type is the correspondent axis — the encoder's speaker key.
+        # It has been dropped by a row-build whitelist once already; this
+        # pins it at the DAL layer (get_conversation passes it through).
+        assert turns[0]['ref_type'] == 'user_message'
+        assert turns[1]['ref_type'] == 'assistant_message'
 
     def test_chronological(self):
         """Turns are in chronological order."""
