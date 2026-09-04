@@ -7,8 +7,9 @@ cell (§6 step 3) has a number; Tom ruled the deploy is one merge, together, nev
 the tool-layer half first. The §4 table marks each surface **done** or still
 owed. The vocabulary guardrail is red on `gist` and `MCP revise_batch` for
 `connect_to` — the lockstep working, green again when §4's remaining rows land.
-**Handoff for the next session: brain node named in the launch prompt** (boot
-self-test, verify-before-use, gates); working set outside git at
+**Handoff for the next session: brain `71ce490b`** (boot self-test,
+verify-before-use, gates — the six unruled recommendations are listed there);
+working set outside git at
 `/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session.md`.
 **Before any prompt row is edited: the full read of `SYSTEM_PROMPT` with a
 per-section audit artifact (brain id:71eeff20) — Tom's condition for the
