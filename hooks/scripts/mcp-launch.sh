@@ -42,4 +42,7 @@ fi
 source "$SCRIPT_DIR/brain-env.sh" 1>&2
 
 # Exec MCP server under the venv Python. stdout stays clean for MCP protocol.
-exec "$BRAIN_PYTHON" "$PLUGIN_DIR/servers/brain_mcp.py" "$@"
+# One proxy per session (stdio transport), so the process carries the
+# session's short id: `Entity-mcp-3207` pairs with that session's
+# `Entity-in-3207` listener in Activity Monitor (brain_python_as).
+exec "$(brain_python_as Entity-mcp "${CLAUDE_CODE_SESSION_ID:-}")" "$PLUGIN_DIR/servers/brain_mcp.py" "$@"

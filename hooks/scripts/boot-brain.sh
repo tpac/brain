@@ -383,4 +383,4 @@ if [ $MCP_EXIT -ne 0 ]; then
 fi
 
 # Run boot
-exec python3 "$(dirname "$0")/boot_brain.py"
+exec "${BRAIN_PYTHON_HOOK:-python3}" "$(dirname "$0")/boot_brain.py"

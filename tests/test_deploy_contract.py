@@ -817,3 +817,102 @@ class TestReleaseCommand:
                       '--skip', 'suite', email='a@example.org')
         assert r.returncode != 0
         assert '--skip' in r.stderr
+
+
+class TestProcessNames:
+    """Every long-lived brain process reads as its ROLE in Activity Monitor,
+    not `python3.11`.
+
+    The kernel names a process after the final filename its exec resolved
+    to, so venv/bin/python (a symlink) made a 25 GB daemon and a stray test
+    run indistinguishable. brain-env.sh's `brain_python_as` hard-links the
+    interpreter under a role name; every launcher must exec THROUGH it, and
+    the names must fit the 15-char Linux comm limit (macOS shows 16). A
+    per-session role carries `-XXXX`, the session id's first four hex chars.
+    """
+
+    ROLE_VARS = {
+        'BRAIN_PYTHON_DAEMON': 'Entity-daemon',
+        'BRAIN_PYTHON_DASH': 'Entity-dash',
+        'BRAIN_PYTHON_HOOK': 'Entity-hook',
+    }
+    # launcher → the role its exec line must carry
+    LAUNCHERS = {
+        'hooks/scripts/brain-daemon': 'BRAIN_PYTHON_DAEMON',
+        'hooks/scripts/brain-dashboard': 'BRAIN_PYTHON_DASH',
+        'hooks/scripts/mcp-launch.sh': 'brain_python_as Entity-mcp',
+        'hooks/scripts/brain-watch': 'brain_python_as Entity-in',
+    }
+    COMM_LIMIT = 15
+
+    @staticmethod
+    def _shell_scripts():
+        return [p for p in TRACKED if p.startswith('hooks/scripts/')
+                and (p.endswith('.sh') or '.' not in os.path.basename(p))]
+
+    def test_no_launcher_execs_the_bare_interpreter(self):
+        # Shape-scan, not a list: a new hook that `exec python3`s ships as
+        # python3.11 and fails here.
+        bare = []
+        for rel in self._shell_scripts():
+            for n, line in enumerate(_read(rel).splitlines(), 1):
+                s = line.strip()
+                if not s.startswith('exec '):
+                    continue
+                if 'python' not in s and 'BRAIN_PYTHON' not in s:
+                    continue  # exec of a shell script, not an interpreter
+                if 'BRAIN_PYTHON_' not in s and 'brain_python_as' not in s:
+                    bare.append(f'{rel}:{n}: {s}')
+        assert not bare, 'exec lines that skip the role-named interpreter:\n' + '\n'.join(bare)
+
+    def test_launchers_carry_their_role(self):
+        for rel, token in self.LAUNCHERS.items():
+            assert token in _read(rel), f'{rel} must exec through {token}'
+
+    def test_names_fit_the_kernel_limit(self):
+        env = _read('hooks/scripts/brain-env.sh')
+        for var, name in self.ROLE_VARS.items():
+            assert f'export {var}="$(brain_python_as {name})"' in env
+        text = '\n'.join(_read(p) for p in self._shell_scripts())
+        seen = set()
+        for role, tag in re.findall(r'brain_python_as\s+([A-Za-z][\w-]*)(\s+"\$[^"]*")?', text):
+            full = role + ('-XXXX' if tag else '')
+            seen.add(full)
+            assert len(full) <= self.COMM_LIMIT, f'{full!r} is {len(full)} chars — truncated by the kernel'
+        assert {'Entity-daemon', 'Entity-mcp-XXXX', 'Entity-in-XXXX'} <= seen
+
+    @pytest.mark.skipif(not os.path.exists(os.path.join(REPO, 'venv', 'bin', 'python')),
+                        reason='needs the bundled venv')
+    def test_role_interpreter_is_the_venv_under_the_role_name(self):
+        # Functional: the role path IS the venv interpreter, and the kernel
+        # reports the role. Uses a throwaway session tag and removes its links.
+        tag = 'f00d'
+        out = subprocess.run(
+            ['bash', '-c',
+             'source hooks/scripts/brain-env.sh >/dev/null 2>&1; '
+             'echo "$BRAIN_PYTHON_DAEMON"; brain_python_as Entity-mcp ' + tag],
+            cwd=REPO, capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        assert [os.path.basename(p) for p in out] == ['Entity-daemon', f'Entity-mcp-{tag}']
+        venv_bin = os.path.join(REPO, 'venv', 'bin')
+        try:
+            for path in out:
+                assert os.path.dirname(path) == venv_bin
+                prefix = subprocess.run([path, '-c', 'import sys; print(sys.prefix)'],
+                                        capture_output=True, text=True, timeout=30,
+                                        check=True).stdout.strip()
+                assert prefix == os.path.join(REPO, 'venv'), path
+            proc = subprocess.Popen([out[1], '-c', 'import time; time.sleep(5)'])
+            try:
+                col = 'ucomm=' if sys.platform == 'darwin' else 'comm='
+                name = subprocess.run(['ps', '-o', col, '-p', str(proc.pid)],
+                                      capture_output=True, text=True, timeout=10).stdout.strip()
+                assert name == f'Entity-mcp-{tag}'
+            finally:
+                proc.kill()
+                proc.wait()
+        finally:
+            link = os.path.join(venv_bin, f'Entity-mcp-{tag}')
+            real = os.path.realpath(link) if os.path.lexists(link) else ''
+            for p in (link, real):
+                if p and os.path.lexists(p):
+                    os.unlink(p)

@@ -27,4 +27,5 @@ fi
 # fallback (incl. the $CLAUDE_PLUGIN_DATA standard location). Best-effort —
 # never block the launch; live data still comes via the daemon socket.
 source "$SCRIPT_DIR/resolve-brain-db.sh" 1>&2 || true
-exec "$BRAIN_PYTHON" "$PLUGIN_DIR/dashboard/brain_dashboard_standalone.py" "$@"
+# Role-named interpreter: the process reads `Entity-dash` (brain_python_as).
+exec "${BRAIN_PYTHON_DASH:-$BRAIN_PYTHON}" "$PLUGIN_DIR/dashboard/brain_dashboard_standalone.py" "$@"
