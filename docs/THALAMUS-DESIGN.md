@@ -116,6 +116,14 @@ the consume-once courier is Stop-only.
   boot; notices/reminders stay boot|stop — a cadence ruling, one policy line
   when taken). What rides it are **assists**.
 
+**Two channels, two effects — pick the moment by the effect wanted** (Tom,
+2026-09-04): a Stop `decision:block` is for the entity to *react* to something;
+injected context is for the entity to *be aware* of something. Passive
+injection does not fail, it influences differently. An ask wants a reaction, so
+it rides Stop or the boot ask. A clock, a roster change, a "things moved while
+you were away" wants awareness, so it rides the prompt — and awareness is the
+whole job for a timestamp.
+
 **Assists — the brain computing, not queuing.** An assist is a brain-side
 condition evaluated at pull time for a moment, rendered inside the Thalamus
 block when it holds and silent otherwise. No row, no ledger, nothing to answer
@@ -205,9 +213,8 @@ success.
 third delivery moment, the assist mechanism, the clock re-anchor, and the door
 echo (`remind` / `thalamus_resolve` return `now` beside the deadline they
 resolved — the anchor appears exactly when the entity is doing time arithmetic).
-Then measure whether a passive prompt-time line is *acted on*, not just
-delivered — the v1 constraint below is about a mid-tool-chain tap; the prompt
-itself is where recall lands daily, but that is an argument, not a measurement.
+Awareness is the effect wanted here, so the passive channel is the right one by
+design; there is no "was it acted on" gate to pass.
 
 **Phase 3 — policy.** Retry-on-unacked; machine live-now (`brain`-origin
 render); queued kinds at the Prompt moment (cadence ruling); the `on_topic`
@@ -239,4 +246,4 @@ Measured against 2,381 journal notes (2026-06-24 → 2026-08-10):
 | no viable volume setting | floor ~0.1/day, ceiling ~10.6/day on a 2.6/day channel | volume owned at the door, not by encoder discretion |
 | delivered ≠ acted on (id:ab520c77) | a consumed self-message, still missed | Stop buys one turn, not a decision — asks go to boot; Phase 2 measures draining, not delivery |
 | receipts expire (id:8a170558) | 1h / 24h TTL | Thalamus owns its ledger; annotate-at-render |
-| passive injection fails (removed PreToolUse leg, `364269f`) | — | pull renders at the moments that provably land; the Prompt moment (Phase 2.5) is admitted on the argument that the prompt is where recall lands, and must earn its place by measurement |
+| passive injection produces awareness, not reaction (removed PreToolUse leg, `364269f`; reframed by Tom 2026-09-04) | — | choose the moment by the effect wanted — Stop to react, injected context to be aware; asks ride Stop/boot, awareness items (assists) ride the prompt |

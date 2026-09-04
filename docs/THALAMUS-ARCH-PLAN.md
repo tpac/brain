@@ -835,10 +835,9 @@ activated"; both bare-approve paths return context when stamped),
 or daemon_hooks or trace_contract or clock_contract or time_window" -q`, tier
 checked with `--collect-only | grep`. Then live: idle a session past 30 min,
 prompt, see the line first in the injected context; `query_traces(ref_type=
-'thalamus_delivery', ref_id='prompt')` lists it. After a week: review the
-delivered re-anchors against the next assistant turn — was the gap acted on?
-(The passive-injection constraint in THALAMUS-DESIGN.md is discharged by
-measurement, not by argument.)
+'thalamus_delivery', ref_id='prompt')` lists it. No "was it acted on" gate:
+the effect wanted is awareness, which is what injected context produces (Tom's
+two-channels ruling in THALAMUS-DESIGN.md §Delivery).
 
 **Blast radius.** A new moment walked by two sources: COURIER declines, the
 Thalamus renders assists only. Boot and Stop renders are bit-identical (no
