@@ -202,14 +202,24 @@ def _archived_row(arch, archived_by, edge_relations):
 
 
 def _connect_to_rows(connect_to_result, encoding_source, reason='connect_to'):
-    """edges[] manifest rows from _apply_connect_to's made-list ({src_id,
-    target_id, relation, edge_id, deltas} entries). The emitter's _changed
-    gate drops idempotent re-connects (empty deltas), exactly as the legacy
-    batch emit did."""
-    made = (connect_to_result or {}).get('created') or []
+    """edges[] manifest rows from a connect_to result's made-list ({src_id,
+    target_id, relation, edge_id, deltas[, warnings]} entries) — a dict with
+    `created`, or the list itself. The emitter's _changed gate drops idempotent
+    re-connects (empty deltas), exactly as the legacy batch emit did."""
+    made = (connect_to_result if isinstance(connect_to_result, list)
+            else (connect_to_result or {}).get('created') or [])
     return [_edge_row(e, e.get('relation', ''), reason, encoding_source,
                       e.get('src_id', ''), e.get('target_id', ''))
             for e in made if isinstance(e, dict) and e.get('edge_id')]
+
+
+def _revise_edge_rows(connect_to_result, encoding_source, reason):
+    """edges[] manifest rows for connect_to on REVISE: created edges under the
+    connect_to reason (as on remember), revised ones under the revise's own
+    reason. Shared by the single and batch revise handlers."""
+    ct = connect_to_result or {}
+    return (_connect_to_rows(ct.get('created') or [], encoding_source)
+            + _connect_to_rows(ct.get('revised') or [], encoding_source, reason))
 
 
 def _affected(created=None, revised=None, archived=None):
@@ -451,14 +461,24 @@ def _handle_revise(brain, args, graph_changes):
     _maybe_warn_source_refs_hex_format(brain, refs, 'revise')
 
     for field, value in updates.items():
-        ok, err = validate_field(field, value)
+        ok, err = validate_field(field, value, revising=True)
         if not ok:
             return {"ok": False, "error": err}
 
     content = updates.pop("content", None)
-    result = brain.revise(node_id=node_id, content=content, reason=reason, updates=updates)
+    enc_src = args.get('encoding_source', '')
+    result = brain.revise(node_id=node_id, content=content, reason=reason,
+                          updates=updates, encoding_source=enc_src or None)
     if result.get('error'):
         return {"ok": False, "error": result['error']}
+
+    # connect_to on revise: one directional edge_relation_revised row per
+    # edge changed. Failures stay in the agent-facing connect_to_result.
+    edge_rows = _revise_edge_rows(result.get('connect_to_result'), enc_src, reason)
+    for e in edge_rows:
+        graph_changes.append("%s: %s -[%s]-> %s" % (
+            'CONNECT_TO' if e['reason'] == 'connect_to' else 'REVISE_EDGE',
+            e['source_id'][:8], e['relation'], e['target_id'][:8]))
 
     # Surface verification failures as warnings
     if not result.get('verified', True):
@@ -492,7 +512,7 @@ def _handle_revise(brain, args, graph_changes):
         result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=[node_id]),
-            "mutations": {"nodes": {"revised": [row]}}}
+            "mutations": {"nodes": {"revised": [row]}, "edges": edge_rows}}
 
 
 def _handle_revise_batch(brain, args, graph_changes):
@@ -527,7 +547,7 @@ def _handle_revise_batch(brain, args, graph_changes):
             brain, refs, 'revise_batch.revisions[%d]' % i)
         for field, value in spec.items():
             if field not in ("node_id", "reason"):
-                ok, err = validate_field(field, value)
+                ok, err = validate_field(field, value, revising=True)
                 if not ok:
                     return {"ok": False, "error": "revisions[%d].%s: %s" % (i, field, err)}
 
@@ -547,23 +567,26 @@ def _handle_revise_batch(brain, args, graph_changes):
     # attempted-but-rejected ops.
     revised_ids = []
     manifest_rows = []
+    edge_rows = []
     for row, spec in zip(result.get('results', []), resolved):
         if row.get('status') == 'revised':
             revised_ids.append(row['node_id'])
+            enc_src = spec.get('encoding_source', '') or top_encoding_source or ''
             manifest_rows.append({
                 "node_id": row['node_id'],
                 "reason": spec.get('reason', ''),
-                "encoding_source": (spec.get('encoding_source', '')
-                                    or top_encoding_source or ''),
+                "encoding_source": enc_src,
                 "deltas": row.get('deltas', []),
                 "warnings": list(row.get('warnings', [])),
             })
+            edge_rows.extend(_revise_edge_rows(
+                row.get('connect_to_result'), enc_src, spec.get('reason', '')))
 
     if scope_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=revised_ids),
-            "mutations": {"nodes": {"revised": manifest_rows}}}
+            "mutations": {"nodes": {"revised": manifest_rows}, "edges": edge_rows}}
 
 
 def _op_archive(brain, op_spec, top_encoding_source, graph_changes):

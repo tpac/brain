@@ -11,6 +11,8 @@ from .brain_constants import TYPE_CONFIDENCE
 from .dal import VectorDAL
 from .dal_graph import ABSORB_EXCLUDED_RELATIONS
 from .clock import iso_cutoff, iso_now
+from .contract import (ALL_FIELDS, apply_swaps, connect_to_target, is_swap,
+                       is_swap_list, validate_swaps)
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
     ENRICHMENT_PROMPT_TEMPLATE,
@@ -88,45 +90,13 @@ def unwrap_content_edits(edits):
     return edits, False
 
 
-def apply_content_edits(content, edits):
-    """Apply Edit-style surgical patches to stored node content.
-
-    Each edit replaces exactly one occurrence of `old` with `new`, applied
-    in order against the running result. `old` must be copied verbatim from
-    the node's current content and match exactly once — zero or ambiguous
-    matches fail the whole revise loudly, because a patch that lands in the
-    wrong place silently corrupts the one field recall reads most. Errors
-    are written to teach the calling agent the fix, not just name the fault.
-
-    Returns (new_content, None) on success, (None, error_message) on failure.
-    """
-    if not isinstance(edits, list) or not edits:
-        return None, ("content_edits must be a non-empty list of "
-                      "{old, new} objects")
-    current = content
-    for i, e in enumerate(edits):
-        if (not isinstance(e, dict) or not isinstance(e.get('old'), str)
-                or not e['old'] or not isinstance(e.get('new'), str)):
-            return None, ("content_edits[%d] must be "
-                          "{old: <non-empty string>, new: <string>}" % i)
-        old, new = e['old'], e['new']
-        if old == new:
-            return None, ("content_edits[%d]: old and new are identical — "
-                          "a no-op edit is a mistake, not a patch" % i)
-        n = current.count(old)
-        if n == 0:
-            return None, ("content_edits[%d]: `old` not found in the node's "
-                          "current content (%d chars). `old` must be copied "
-                          "VERBATIM from the stored content — if your view "
-                          "of this node was truncated or aged, expand it "
-                          "with get_nodes first, or send a full `content` "
-                          "rewrite instead." % (i, len(current)))
-        if n > 1:
-            return None, ("content_edits[%d]: `old` matches %d places in "
-                          "the content — extend it with surrounding context "
-                          "until it is unique." % (i, n))
-        current = current.replace(old, new, 1)
-    return current, None
+def _swap_intended(value):
+    """A value that is TRYING to be a swap — a dict carrying `old` or `new`,
+    or a list holding one — but is not well-formed. Distinguishes a typo'd
+    swap (refuse loudly) from an open KV key legitimately holding a list."""
+    def _looks(d):
+        return isinstance(d, dict) and ('old' in d or 'new' in d)
+    return _looks(value) or (isinstance(value, list) and any(_looks(x) for x in value))
 
 
 class BrainRememberMixin:
@@ -1494,30 +1464,39 @@ class BrainRememberMixin:
     # ═══════════════════════════════════════════════════════════════
 
     def revise(self, node_id: str, content: str = None, reason: str = '',
-               updates: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
-        """Update fields on an existing node. Per-field replace semantics.
+               updates: Dict[str, Any] = None, encoding_source: str = None,
+               **kwargs) -> Dict[str, Any]:
+        """Update fields on an existing node — value or swap (contract.REVISE_RULE).
 
         Three ways to call (all equivalent):
           revise(node_id, content="new text", reason="why")
           revise(node_id, updates={"confidence": 0.9}, reason="why")
           revise(node_id, situation="When debugging", reason="adding situation")
 
-        Patch-mode content (mutually exclusive with `content`):
+        A text field takes its NEW VALUE (whole field replaced) or a swap
+        `{old, new}` / list of swaps that changes only what is stale, each
+        `old` matching the stored value exactly once (contract.apply_swaps):
           revise(node_id, reason="why",
-                 updates={"content_edits": [{"old": "...", "new": "..."}]})
-        Each edit replaces one exact, unique occurrence in the stored
-        content (apply_content_edits) — fields other than content are
-        untouched by the patch and keep per-field replace semantics.
+                 title={"old": "9.6.0", "new": "9.7.2"},
+                 content=[{"old": "...", "new": "..."}])
+        `content_edits` is the alias of `content: [swaps]`. Non-text and
+        bare_only fields take bare values; a swap on them is an error.
+
+        Edges ride as `connect_to`, exactly as on remember: an entry changes
+        the edge this node already has to `target` (its `why` or `relation`,
+        value or swap) or creates it (_apply_revise_connect_to). Edge results
+        ride in `connect_to_result`, never in the node's deltas.
 
         Behavior contract:
         - Immutable fields ({id, created_at, locked}) are skipped with a
           warning. Other fields in the same call still process; the skipped
           field surfaces in the result dict's `warnings` list.
-        - Specified fields are REPLACED with the passed value.
-        - Unspecified fields are PRESERVED (only the keys you pass are touched).
+        - Specified fields are written; unspecified fields are PRESERVED.
         - Returns deltas in the result dict — caller (typically daemon_dispatch)
           emits a trace event with these deltas as the canonical revision
           history. There is no per-node history blob; query traces instead.
+        - encoding_source is the caller's provenance for edges this revise
+          creates or renames; it is never written onto the node.
 
         After any revision: re-embeds, re-indexes TF-IDF, updates timestamps.
         """
@@ -1527,10 +1506,12 @@ class BrainRememberMixin:
         if content:
             all_updates['content'] = content
 
-        # Patch-mode content: `content_edits` compiles to a content replace
-        # once the stored content is in hand (after the existence check
-        # below) — everything downstream (deltas, re-embed, trace events)
-        # sees an ordinary content update.
+        # Edges are not node fields: popped before classification, routed
+        # after the node writes. (Without the pop, _store_node_metadata's
+        # control-field skip would drop it while the deltas reported it.)
+        connect_to = all_updates.pop('connect_to', None)
+
+        # Alias: `content_edits` is `content: [swaps]`.
         content_edits = all_updates.pop('content_edits', None)
         content_edits, _unwrapped = unwrap_content_edits(content_edits)
         if _unwrapped:
@@ -1540,25 +1521,53 @@ class BrainRememberMixin:
                              '— unwrapped to %d edit(s)' % len(content_edits)),
                 'lossless recovery, revise proceeded; the caller\'s tool '
                 'schema likely predates the field (stale MCP surface)')
-        # `content is not None` (not the merged dict) closes the falsy hole:
-        # content='' never enters all_updates, but passing it alongside
-        # content_edits is still two competing content intents.
-        if content_edits is not None and (
-                content is not None or all_updates.get('content') is not None):
-            return {'error': ('content and content_edits are mutually '
-                              'exclusive — pass one: content replaces '
-                              'wholesale, content_edits patches in place'),
-                    'node_id': node_id}
+        if content_edits is not None:
+            # `content is not None` (not the merged dict) closes the falsy
+            # hole: content='' never enters all_updates, but passing it
+            # alongside content_edits is still two competing content intents.
+            if content is not None or all_updates.get('content') is not None:
+                return {'error': ('content and content_edits are mutually '
+                                  'exclusive — pass one: content is the new '
+                                  'value or a list of swaps; content_edits is '
+                                  'the alias of the swap list'),
+                        'node_id': node_id}
+            if not isinstance(content_edits, list) or not content_edits:
+                return {'error': ('content_edits must be a non-empty list of '
+                                  '{old, new} objects'), 'node_id': node_id}
+            all_updates['content'] = content_edits
 
-        if not all_updates and content_edits is None:
+        # Swaps resolve against the stored value once the row is in hand;
+        # bare values pass straight through. A swap on a field that is not
+        # text is refused here, before any write.
+        swaps = {}
+        for f, v in list(all_updates.items()):
+            spec = ALL_FIELDS.get(f)
+            if is_swap(v) or is_swap_list(v):
+                if spec is not None and (spec.get('type') != 'str'
+                                         or spec.get('bare_only')):
+                    return {'error': ('%s takes a bare value, not a swap '
+                                      '{old, new} — swaps are for text fields'
+                                      % f), 'node_id': node_id}
+                swaps[f] = all_updates.pop(f)
+            elif _swap_intended(v) or (isinstance(v, (dict, list))
+                                       and spec is not None
+                                       and spec.get('type') == 'str'):
+                # Swap-shaped but malformed (an extra or missing key), or any
+                # structured value on a known text field: name the shape,
+                # never write it as data. Open KV keys keep their freedom to
+                # hold lists and dicts that are not trying to be swaps.
+                _ok, err = (validate_swaps(v, f) if v else (False, None))
+                return {'error': err or ('%s must be a string or a non-empty '
+                                         'list of {old, new} swaps' % f),
+                        'node_id': node_id}
+
+        if not all_updates and not swaps and not connect_to:
             return {'error': 'No updates provided', 'node_id': node_id}
 
         # Capture the FULL field set NOW for vector invalidation. `all_updates`
         # gets mutated below (content is popped, etc.), so we need the
         # original set or the invalidation step misses fields.
-        fields_changed_for_invalidation = set(all_updates.keys())
-        if content_edits is not None:
-            fields_changed_for_invalidation.add('content')
+        fields_changed_for_invalidation = set(all_updates.keys()) | set(swaps)
 
         # v29 / Phase B: source_refs is a join-table field, not a node column.
         # Pop it before the field classification so it doesn't land in
@@ -1591,11 +1600,25 @@ class BrainRememberMixin:
         old_content = old_content or ''
         ts = self.now()
 
-        if content_edits is not None:
-            patched, edit_err = apply_content_edits(old_content, content_edits)
-            if edit_err:
-                return {'error': edit_err, 'node_id': node_id}
-            all_updates['content'] = patched
+        # Resolve swaps against the stored values — all of them before any
+        # write, so one bad `old` leaves the node untouched. title/content
+        # come from the row; every other text field (promoted or open KV)
+        # from node_metadata_kv.
+        if swaps:
+            stored = {'title': title or '', 'content': old_content}
+            kv_keys = [f for f in swaps if f not in stored]
+            if kv_keys:
+                stored.update(self._meta_kv.get_fields(node_id, kv_keys))
+            for f, sw in swaps.items():
+                current = stored.get(f)
+                if not isinstance(current, str) or not current:
+                    return {'error': ('%s has no stored value to swap into — '
+                                      'pass the field\'s new value instead'
+                                      % f), 'node_id': node_id}
+                patched, edit_err = apply_swaps(current, sw, f)
+                if edit_err:
+                    return {'error': edit_err, 'node_id': node_id}
+                all_updates[f] = patched
 
         # ── Field classification ──
         # Top-level fields live on the nodes table (updatable via SQL).
@@ -1877,7 +1900,17 @@ class BrainRememberMixin:
                     'co_anchored_autoedge_revise', e,
                     'co_anchored auto-edge on revise %s' % node_id[:12])
 
-        return {
+        # Edges last: node writes are committed truth by now, and connect_to is
+        # fail-soft per entry (a bad edge never undoes a good field write).
+        # Edge warnings stay on the edge side (connect_to_result and the edge
+        # manifest rows) — a node warning would mint a node_revised trace for
+        # a revise that changed no node field.
+        connect_to_result = None
+        if connect_to:
+            connect_to_result = self._apply_revise_connect_to(
+                node_id, connect_to, encoding_source=encoding_source)
+
+        result = {
             'id': node_id,
             'type': writable.get('type', node_type),
             'title': title,
@@ -1892,6 +1925,10 @@ class BrainRememberMixin:
             'pending_resolved': 0,
             'source_refs_replaced': source_refs_replaced,
         }
+        # Present ONLY when connect_to was passed — same contract as remember.
+        if connect_to_result is not None:
+            result['connect_to_result'] = connect_to_result
+        return result
 
     # ═══════════════════════════════════════════════════════════════
     # v5.2: Critical node approval flow
@@ -2005,9 +2042,9 @@ class BrainRememberMixin:
             title_query = entry
             relation_pairs = [('related', '')]
         elif isinstance(entry, dict):
-            title_query = entry.get('title', '')
+            title_query = connect_to_target(entry)
             if not title_query:
-                reason = "connect_to entry missing 'title' field"
+                reason = "connect_to entry missing 'target' field"
                 self._log_error(
                     'connect_to_invalid', ValueError(reason),
                     'entry=%s' % str(entry)[:200])
@@ -2017,7 +2054,7 @@ class BrainRememberMixin:
                 # falsy guard above but would crash the .strip()/.lower()/regex
                 # calls downstream — that AttributeError escapes _apply_connect_to
                 # and rolls back the whole batch. Reject loudly instead.
-                reason = ("connect_to entry 'title' must be a string, got %s"
+                reason = ("connect_to entry 'target' must be a string, got %s"
                           % type(title_query).__name__)
                 self._log_error(
                     'connect_to_invalid', TypeError(reason),
@@ -2060,34 +2097,16 @@ class BrainRememberMixin:
         # terminal decision: a sibling created in this batch whose exact
         # title is hex-shaped still resolves as a sibling (Pass 1 semantics —
         # sibling ids don't exist at authoring time).
-        import re as _re
-        if _re.fullmatch(r'[0-9a-fA-F]{8,}', title_query.strip()):
-            prefix = title_query.strip().lower()
-            try:
-                row = self.conn.execute(
-                    'SELECT id FROM nodes WHERE id LIKE ? LIMIT 2',
-                    (prefix + '%',)).fetchall()
-            except Exception as e:
-                reason = "id-prefix lookup failed: %s" % str(e)[:120]
-                self._log_error(
-                    'connect_to_id_lookup_failed', e,
-                    'id-prefix lookup for %r' % title_query[:80])
-                return None, [], reason
-            if len(row) == 1:
-                target_id = row[0][0]
+        if re.fullmatch(r'[0-9a-fA-F]{8,}', title_query.strip()):
+            resolved, reason = self._resolve_id_prefix(title_query)
+            if resolved:
+                target_id = resolved
             elif sibling_map and title_query.lower() in sibling_map:
                 target_id = sibling_map[title_query.lower()]
             else:
-                if len(row) > 1:
-                    reason = ("id prefix %r is ambiguous (matches multiple "
-                              "nodes) — pass more characters of the id"
-                              % prefix[:16])
-                else:
-                    reason = ("id %r matches no node — check the copied id"
-                              % prefix[:16])
                 self._log_error(
                     'connect_to_bad_id', ValueError(reason),
-                    'target=%s matches=%d' % (title_query[:80], len(row)))
+                    'target=%s' % title_query[:80])
                 return None, [], reason
 
         # Pass 1: sibling map (NEW wins on title collision)
@@ -2268,6 +2287,216 @@ class BrainRememberMixin:
             % (best_d, title_query[:90], best_title[:90], best_id[:8]))
         return best_id, None
 
+    def _resolve_id_prefix(self, prefix):
+        """An 8+-hex id prefix → the one node id it names, or (None, reason).
+        Shared by connect_to resolution on remember (Pass 0) and revise."""
+        prefix = prefix.strip().lower()
+        try:
+            ids = self._nodes.resolve_id_prefix(prefix)
+        except Exception as e:
+            self._log_error('connect_to_id_lookup_failed', e,
+                            'id-prefix lookup for %r' % prefix[:80])
+            return None, "id-prefix lookup failed: %s" % str(e)[:120]
+        if len(ids) == 1:
+            return ids[0], None
+        if len(ids) > 1:
+            return None, ("id prefix %r is ambiguous (matches multiple nodes) "
+                          "— pass more characters of the id" % prefix[:16])
+        return None, "id %r matches no node — check the copied id" % prefix[:16]
+
+    def _apply_revise_connect_to(self, node_id, connect_to_spec,
+                                 encoding_source=None):
+        """connect_to on REVISE (contract.REVISE_RULE): each entry addresses
+        the edge between this node and `target` — an existing node id, never a
+        sibling title. The edge is identified by (this node, target, relation),
+        either direction: a bare `relation` names the row (optional when the
+        pair carries exactly one), a swap renames it in place (revise_edge),
+        `why` as a value replaces the description and as a swap patches it.
+        No such edge → created outgoing with a bare `why` (>=30 chars). A new
+        relation on an edge that points INTO this node rides that edge in its
+        stored direction — one physical edge per pair — and the record carries
+        a warning: the passive verb says the actor the other way.
+
+        Unlike remember's connect_to there is no default relation (absent
+        means "the one relation the pair has") and no title matching. `why`
+        accepts `description` as its alias, as remember does.
+
+        Fail-soft per entry like remember's connect_to, never silent: every
+        failure carries a caller-facing reason and logs the real exception.
+        Returns {'created': [...], 'revised': [...], 'failed': [{target,
+        reason}], 'warnings': [...]}; created/revised records are {src_id,
+        target_id, relation, edge_id, deltas, warnings} in the edge's STORED
+        direction — the shape dispatch's edge manifest reads.
+        """
+        out = {'created': [], 'revised': [], 'failed': [], 'warnings': []}
+        if isinstance(connect_to_spec, str):
+            try:
+                parsed = json.loads(connect_to_spec)
+            except ValueError:
+                parsed = None
+            connect_to_spec = parsed if isinstance(parsed, list) else connect_to_spec
+        if not isinstance(connect_to_spec, list):
+            reason = ("connect_to must be a list, got %s"
+                      % type(connect_to_spec).__name__)
+            self._log_error('connect_to_invalid', TypeError(reason),
+                            'revise src=%s' % node_id[:8])
+            out['failed'].append({'target': str(connect_to_spec)[:80],
+                                  'reason': reason})
+            return out
+
+        def fail(label, reason, exc=None):
+            self._log_error('revise_connect_to_failed', exc or ValueError(reason),
+                            'src=%s target=%s' % (node_id[:8], label))
+            out['failed'].append({'target': label, 'reason': reason})
+
+        gdal = self._graph
+        for entry in connect_to_spec:
+            target_q = connect_to_target(entry)
+            label = str(target_q or entry)[:80]
+            if not isinstance(entry, dict):
+                fail(label, 'connect_to entry must be an object {target, relation, why}')
+                continue
+            if (not isinstance(target_q, str)
+                    or not re.fullmatch(r'[0-9a-fA-F]{8,}', target_q.strip())):
+                fail(label, "on revise `target` must be an existing node's id "
+                            "(8+ hex chars) — sibling titles only exist on remember")
+                continue
+            target_id, reason = self._resolve_id_prefix(target_q)
+            if not target_id:
+                fail(label, reason)
+                continue
+            if target_id == node_id:
+                fail(label, 'a node cannot connect_to itself')
+                continue
+
+            if isinstance(entry.get('relations'), list):
+                pairs = [(r.get('relation'), r.get('why', r.get('description')))
+                         for r in entry['relations'] if isinstance(r, dict)]
+                if not pairs:
+                    fail(label, 'connect_to relations array is empty or malformed')
+                    continue
+            else:
+                pairs = [(entry.get('relation'),
+                          entry.get('why', entry.get('description')))]
+
+            edge_id = gdal.get_edge_id(node_id, target_id)
+            for rel, why in pairs:
+                # Re-read per pair: a rename in this loop changes the row set.
+                active = ({r['relation']: r for r in gdal.get_relations(edge_id)}
+                          if edge_id else {})
+                kind, res, exc = self._revise_one_edge_relation(
+                    node_id, target_id, edge_id, active, rel, why, encoding_source)
+                if kind == 'failed':
+                    fail(label, res, exc)
+                    continue
+                out[kind].append(res)
+                out['warnings'].extend(res.get('warnings') or [])
+                edge_id = edge_id or res.get('edge_id')
+        return out
+
+    def _revise_one_edge_relation(self, node_id, target_id, edge_id, active,
+                                  rel, why, encoding_source):
+        """One (relation, why) pair of a revise connect_to entry. Returns
+        ('created' | 'revised', record, None) or ('failed', reason, exc|None).
+        The record's src/target are the edge's STORED endpoints."""
+        # relation: absent | bare name | swap (rename)
+        rel_swap = None
+        if is_swap_list(rel):
+            if len(rel) != 1:
+                return 'failed', 'a relation takes one swap {old, new}, not a list', None
+            rel_swap = rel[0]
+        elif is_swap(rel):
+            rel_swap = rel
+        elif rel is not None and not isinstance(rel, str):
+            return 'failed', 'relation must be a string or a swap {old, new}', None
+
+        new_relation = None
+        if rel_swap:
+            if not isinstance(rel_swap.get('old'), str) or not isinstance(rel_swap.get('new'), str):
+                return 'failed', 'relation swap needs string old and new', None
+            row = rel_swap['old']
+            new_relation = rel_swap['new']
+            if row not in active:
+                return 'failed', ("edge to %s has no active relation %r to rename "
+                                  "(has: %s)" % (target_id[:8], row, sorted(active))), None
+        elif rel:
+            row = rel if rel in active else None
+        elif len(active) == 1:
+            row = next(iter(active))
+        elif not active:
+            return 'failed', ("no edge between %s and %s — pass `relation` (and "
+                              "a bare `why` of 30+ chars) to create one"
+                              % (node_id[:8], target_id[:8])), None
+        else:
+            return 'failed', ("edge to %s carries %d relations (%s) — pass "
+                              "`relation` to say which"
+                              % (target_id[:8], len(active), ', '.join(sorted(active)))), None
+
+        # A bare `why` is a whole description: the same >=30 floor whether it
+        # creates the edge or replaces a description (a swap patches a span
+        # and is judged by its match, not its length).
+        if isinstance(why, str) and len(why.strip()) < 30:
+            return 'failed', ("a bare `why` on the %r edge to %s needs 30+ chars — "
+                              "what the edge MEANS; a swap {old, new} patches a "
+                              "span" % (rel or row, target_id[:8])), None
+
+        def stored_ends(eid):
+            ends = self._graph.get_edge_endpoints(eid) if eid else None
+            return ends or (node_id, target_id)
+
+        if row is None:
+            # Create. Direction: outgoing from this node — or, when the pair
+            # already has an edge, that edge's stored direction (one physical
+            # edge per pair); warn when it points into this node.
+            if not isinstance(why, str):
+                return 'failed', ("creating the %r edge to %s needs a bare `why` "
+                                  "of 30+ chars — what the edge MEANS"
+                                  % (rel, target_id[:8])), None
+            try:
+                edge_res = self.connect_typed(node_id, target_id, relation=rel,
+                                              weight=0.6, description=why,
+                                              encoding_source=encoding_source)
+            except Exception as e:
+                return 'failed', 'connect_typed failed: %s' % str(e)[:160], e
+            eid = (edge_res or {}).get('edge_id')
+            src, tgt = stored_ends(eid)
+            record = {'src_id': src, 'target_id': tgt, 'relation': rel,
+                      'edge_id': eid, 'deltas': (edge_res or {}).get('deltas', []),
+                      'warnings': []}
+            if edge_id and src == target_id:
+                record['warnings'].append(
+                    "relation %r to %s was stored on the pair's existing edge, "
+                    "which points %s → %s (into this node) — if %s is the actor, "
+                    "use the passive verb (e.g. superseded_by, corrected_by) so "
+                    "the stored direction reads right"
+                    % (rel, target_id[:8], target_id[:8], node_id[:8], node_id[:8]))
+            return 'created', record, None
+
+        # Revise the existing row: description value-or-swap, optional rename.
+        description = None
+        if isinstance(why, str):
+            description = why
+        elif is_swap(why) or is_swap_list(why):
+            description, err = apply_swaps(active[row].get('description') or '',
+                                           why, 'why')
+            if err:
+                return 'failed', err, None
+        elif why is not None:
+            return 'failed', 'why must be a string or a swap {old, new}', None
+        if description is None and new_relation is None:
+            return 'failed', ("the %r edge to %s changes nothing — pass a new "
+                              "`why`, a swap into it, or a relation swap"
+                              % (row, target_id[:8])), None
+        res = self.revise_edge(node_id, target_id, row, new_relation=new_relation,
+                               description=description,
+                               encoding_source=encoding_source)
+        if not res.get('ok'):
+            return 'failed', res.get('error', 'revise_edge failed'), None
+        src, tgt = stored_ends(res.get('edge_id'))
+        return 'revised', {'src_id': src, 'target_id': tgt,
+                           'relation': res['relation'], 'edge_id': res['edge_id'],
+                           'deltas': res.get('deltas', []), 'warnings': []}, None
+
     def _apply_connect_to(self, src_id, connect_to_spec, sibling_map=None,
                           encoding_source=None, exclude_ids=None):
         """Resolve and create edges for each connect_to entry from src_id.
@@ -2341,7 +2570,7 @@ class BrainRememberMixin:
             return {'created': created, 'failed': failed}
 
         for entry in connect_to_spec:
-            title_query = entry.get('title', entry) if isinstance(entry, dict) else entry
+            title_query = connect_to_target(entry) or entry
             target_id, relation_pairs, reason = self._resolve_connect_to_entry(
                 entry, sibling_map=sibling_map, exclude_self=src_id,
                 exclude_ids=exclude_ids)
@@ -2452,8 +2681,7 @@ class BrainRememberMixin:
                                                    exclude_ids=created_set))
                 if not target_id:
                     connect_to_failed.append(
-                        {'title': entry.get('title', '') if isinstance(entry, dict)
-                                  else str(entry)[:80],
+                        {'title': str(connect_to_target(entry))[:80],
                          'reason': fail_reason})
                     continue
                 if target_id in created_set:
@@ -2538,7 +2766,8 @@ class BrainRememberMixin:
 
             try:
                 result = self.revise(node_id=node_id, content=content,
-                                     reason=reason, updates=updates)
+                                     reason=reason, updates=updates,
+                                     encoding_source=spec.get('encoding_source'))
                 # `ok` rides alongside `status` so log_failed_batch_ops (which
                 # scans per-op rows for ok=False on every dispatched command)
                 # sees per-row failures — without it a revise_batch whose every
@@ -2548,7 +2777,7 @@ class BrainRememberMixin:
                                     'node_id': node_id, 'ok': False,
                                     'status': 'error', 'error': result['error']})
                 else:
-                    results.append({
+                    row = {
                         'op': 'revise',
                         'index': _idx,
                         'node_id': node_id,
@@ -2556,7 +2785,12 @@ class BrainRememberMixin:
                         'status': 'revised',
                         'deltas': result.get('deltas', []),
                         'warnings': result.get('warnings', []),
-                    })
+                    }
+                    # Edge outcomes ride with the row — every failed entry's
+                    # reason is visible, and dispatch builds edge traces from it.
+                    if 'connect_to_result' in result:
+                        row['connect_to_result'] = result['connect_to_result']
+                    results.append(row)
                     revised_count += 1
             except Exception as e:
                 self._log_error('revise_batch', e, 'revising %s' % node_id[:8])

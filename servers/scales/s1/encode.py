@@ -1634,11 +1634,7 @@ def _save_session_context(brain, dispatch_fn, session_id, final_text):
 def _get_tool_schemas():
     """Get S1 encoding tool schemas from brain_mcp (single source of truth)."""
     from servers import brain_mcp
-    ENCODING_TOOLS = {
-        'remember_batch', 'revise_batch',
-        'brain_batch', 'connect_batch',
-        'recall_batch', 'get_nodes',
-    }
+    from servers.scales.s1.encode_contract import ENCODING_TOOLS
     return [{"name": t["name"], "description": t["description"],
              "input_schema": t["inputSchema"]}
             for t in brain_mcp.TOOLS if t["name"] in ENCODING_TOOLS]

@@ -175,6 +175,16 @@ S1E_INTERACTION_DEFAULT = {
     'model': 'claude-sonnet-4-6',
 }
 
+# The encoder's toolset — the brain_mcp tools handed to the S1 encoding
+# agent (encode._get_tool_schemas). Contract-owned so the vocabulary guardrail
+# (tests/test_teaching_vocabulary_sync.py) and the prompt's tool names bind
+# to the same set. Standalone tools outside it (revise_edge, connect, ...)
+# are Anchor's and S2's, not the encoder's.
+ENCODING_TOOLS = frozenset({
+    'remember_batch', 'revise_batch', 'brain_batch', 'connect_batch',
+    'recall_batch', 'get_nodes',
+})
+
 # Lived-sequence timeline (S1E code-half piece 1): how many recent s0 events to
 # pull when assembling the messages+actions interleave. Bounded by EPISODE_MAX_LIMIT
 # (=500) — recall_episodes/filter_events clamps anything larger — so 500 IS the max

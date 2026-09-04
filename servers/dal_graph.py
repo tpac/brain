@@ -127,6 +127,15 @@ class GraphDAL:
         ).fetchone()
         return row[0] if row else None
 
+    def get_edge_endpoints(self, edge_id: str):
+        """(source_id, target_id) as STORED — the direction the pair was first
+        written in, which every later relation on the edge inherits. None when
+        no such edge."""
+        row = self.conn.execute(
+            'SELECT source_id, target_id FROM edges WHERE edge_id = ?',
+            (edge_id,)).fetchone()
+        return (row[0], row[1]) if row else None
+
     def get_neighbors(self, node_id: str, limit: int = 8,
                       exclude_relations: set = None,
                       exclude_node_ids: set = None,

@@ -49,13 +49,13 @@ value sits in" — becomes literally the call.
 | `connect_to` on revise — no such edge | created, outgoing from this node, with the given relation and `why` (which must then be a bare string ≥30 chars). Direction matches `remember`'s `connect_to`. |
 | `connect_to` on revise — `relations: [{relation, why}]` | accepted with the same item semantics, one row each. |
 | ops other than `revise` | unchanged. `remember` gains only the `target` alias (§3). `connect` keeps its upsert semantics for the callers that rely on it; the prompt stops teaching it as the repair path. `revise_edge` stays a standalone deferred tool for Anchor and S2. |
-| unknown keys on revise | still land in the node's KV store — **except `connect_to`**, which today would be stored as a KV field named `connect_to`. After this change it routes to edges. No other key changes route. |
+| unknown keys on revise | still land in the node's KV store — **except `connect_to`**, which today is silently DROPPED: `brain.revise` lets it through field classification, `_store_node_metadata` skips it as a control field, and the result still lists it in `fields_updated` with a `node_revised` delta — an edge change is reported that never happened. After this change it routes to edges. No other key changes route. |
 
 ## 3. Aliases and renames
 
 | old | new | policy |
 |---|---|---|
-| `content_edits: [{old,new}]` on revise | `content: [{old,new}]` | accepted as an alias, normalized at the contract boundary (`unwrap_operations` is the natural seam). Passing both is the same mutual-exclusion error. Retire when the encoder's op dumps show zero uses across a full A/B round; retirement = moving the name into `RETIRED_OP_FIELDS` (contract), which the guardrail test then enforces everywhere. |
+| `content_edits: [{old,new}]` on revise | `content: [{old,new}]` | accepted as an alias, normalized in `brain.revise` before the swaps apply. Passing both is the same mutual-exclusion error. Retire when the encoder's op dumps show zero uses across a full A/B round; retirement = drop `CONTENT_EDITS_SCHEMA` and the alias handling, and add the name to `tests/test_retired_fields.py::RETIRED_NODE_FIELDS` — its scan (prompts, gist, field summary, every op description, every tool blob) then enforces absence. One retirement registry, not two. |
 | `connect_to[].title` | `connect_to[].target` | on **both** `remember` and `revise`, so the item shape is identical. `title` stays an accepted alias for one deprecation window. Rationale: the field is defined as "an 8-char id for an existing node, a title only for a same-batch sibling" — a name that lies about its usual content, which the prompt spends sentences correcting ("copy the id into the `title` slot"). On revise it would be actively misleading. |
 
 ## 4. Lockstep — every surface that changes, or the change is not real
@@ -68,12 +68,16 @@ tool descriptions (id:1b7984f8). All rows move in one change.
 
 | surface | owner | today | after |
 |---|---|---|---|
-| `BATCH_OP_SPECS["revise"]` | `servers/contract.py` | props `node_id, reason, content_edits`; description "…prefer `content_edits`…" | props gain `connect_to` (item schema shared with remember); field values typed `string \| swap \| swap[]` via a `SWAP_SCHEMA`; description states the one rule; `content_edits` kept in props as alias, marked deprecated |
-| `CONNECT_TO_ITEM_SCHEMA` | `servers/contract.py` | `required: [title]`; `title` = id-or-sibling-title | `required: [target]` with `title` accepted as alias for the window; description rewritten around `target` |
-| `CONTENT_EDITS_SCHEMA` | `servers/contract.py` | content-only patch list | generalized to `SWAP_SCHEMA` (item `{old,new}`); the old name remains as the alias's schema |
-| `RETIRED_OP_FIELDS` | `servers/contract.py` | `()` | unchanged at ship; gains `content_edits` at retirement |
-| `brain.revise` | `servers/brain_remember.py` | pops `content_edits`, `apply_content_edits` on content only; unknown keys → KV | `apply_field_swaps(field, value)` for any text field; `connect_to` popped and routed to the edge upsert / rename (via the existing `revise_edge` path) with direction resolution; alias normalization before either |
-| `_handle_brain_batch` revise branch, `_handle_revise`, `revise_batch` | `servers/dispatch_write.py`, `brain_remember.py` | pass-through | pass-through; the batch pre-check sees `connect_to` as a declared prop, not an unknown key |
+| `BATCH_OP_SPECS["revise"]` | `servers/contract.py` | **done** | description states `REVISE_RULE` (the one rule, one string every surface quotes); props gain `content` typed `string \| swap \| swap[]` via `swappable()` (the exemplar of the union — other fields follow it, additionalProperties open) and `connect_to` with `REVISE_CONNECT_TO_ITEM_SCHEMA` (derived from the remember item schema: same vocabulary and `why` exemplars, `relation`/`why` and `relations[]` items swappable, `target` id-only); `content_edits` kept in props as the alias |
+| `CONNECT_TO_ITEM_SCHEMA` | `servers/contract.py` | **done** | `anyOf: [{required: [target]}, {required: [title]}]`; `target` carries the description, `title` is "Deprecated alias of `target`"; `contract.connect_to_target(entry)` is the one place the alias is known — every reader (resolver, apply, batch-level label, the batch probe) calls it |
+| `CONTENT_EDITS_SCHEMA` | `servers/contract.py` | **done** | `SWAP_SCHEMA` is the item (no prose of its own — it is inlined at every swappable field), `SWAP_LIST_SCHEMA` the list; `CONTENT_EDITS_SCHEMA` is the list with a one-line deprecated-alias description |
+| swap-typed fields | `servers/contract.py` | **done** | every writable str field swaps by default (the open-KV default); `bare_only: True` marks the exceptions — `type`, `evolution_status`, `event_time`, `emotion_label`, `source_turn_id`; `get_swap_fields()` returns `{name: spec}` for the generators |
+| `RETIRED_OP_FIELDS` | `servers/contract.py` | **deleted** | retirement lives in `tests/test_retired_fields.py` alone (§3) |
+| `ENCODING_TOOLS` | `servers/scales/s1/encode_contract.py` | **done** | hoisted from a function-local set in `encode.py`; the guardrail test imports it |
+| `brain.revise` | `servers/brain_remember.py` | **done** | `connect_to` popped first; `content_edits` normalized to `content: [swaps]`; swaps separated from bare values and refused on non-text / `bare_only` fields before any write; after the row is read every swap resolves against the stored value (`contract.apply_swaps`, title/content from the row, everything else from KV) — all of them before any write, so one bad `old` leaves the node untouched; edges routed last through `_apply_revise_connect_to` → `revise_edge` (update/rename, either direction) or `connect_typed` (create), results in `connect_to_result`, never in node deltas; warning when a NEW relation lands on an edge that points into the node (ruling 1c67e263); `encoding_source` param carries the caller's provenance for edges only |
+| `contract.validate_field` | `servers/contract.py` | **done** | knows the swap shape: valid on any str field not `bare_only`, refused plainly elsewhere; `is_swap` / `is_swap_list` / `validate_swaps` / `apply_swaps` are the primitives every layer shares |
+| `GraphDAL.get_edge_endpoints` | `servers/dal_graph.py` | **done** | stored (source, target) of an edge — the direction warning's evidence |
+| `_handle_brain_batch` revise branch, `_handle_revise`, `revise_batch` | `servers/dispatch_write.py`, `brain_remember.py` | **done** | pass-through; `_handle_revise` passes `encoding_source` and turns `connect_to_result` into `edge_relation_revised` manifest rows (created under reason `connect_to`, revised under the revise's reason); `revise_batch` passes `encoding_source` |
 | MCP `revise` description + `content_edits` prop | `servers/brain_mcp.py` | "Specified fields are REPLACED… For content there is a patch form — `content_edits`…" | the one rule, verbatim from §1; `content_edits` described as alias |
 | MCP `revise_batch` description + `revisions` items | `servers/brain_mcp.py` | same as above, batch form | same rule; items gain `connect_to` |
 | MCP `brain_batch` oneOf | derived from `BATCH_OP_SPECS` | — | derives automatically; re-run `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py` |
@@ -88,7 +92,7 @@ tool descriptions (id:1b7984f8). All rows move in one change.
 | s1e prompt — sweep example | same | 5 revises with `content_edits` + title rewrites; no edge op | same 5 revises in swap form; a45c88f1's revise carries `connect_to: [{target: "e91a6d05", relation: "implements", why: {old, new}}]` — the edge repaired inside the node's op |
 | s1e prompt — Temporal → validity intervals | same | "`content_edits` on the changed claim" | "a swap on the changed claim" |
 | gist (`ENCODER_GIST`) | `servers/scales/s1/encode_contract.py` | "…title, content (patched in place)…" | "one `revise` per node: a swap on every surface the stale value sits in, `connect_to` for its edge descriptions" |
-| `tests/test_revise_unified.py` | tests | `content_edits` suite | swap suite on every text field, list order, exactly-once errors, alias normalization, bare+swap conflict; `connect_to` on revise: update why, rename relation, create if absent, ambiguity error, sibling-title rejection, direction resolution |
+| `tests/test_revise_unified.py` | tests | **done** | classes H (`TestValueOrSwap`, `TestSwapDispatch`) and I (`TestConnectToOnRevise`): swaps on title / situation / open KV / content, list order, exactly-once and all-or-nothing, bare_only refusal, no-stored-value refusal, alias conflict, dispatch validator; connect_to: why value and swap, relation rename, relation optional-when-one / required-when-several, create outgoing, bare-why floor, sibling-title rejection, incoming edge found, new relation on incoming edge rides it and warns, `title` alias, never a node field, field+edge in one op, revise_batch, dispatch emits `edge_relation_revised` and no node delta |
 | `tests/test_brain_batch_op_contract.py` | tests | three sites derive from `BATCH_OP_SPECS` | unchanged assertions; `connect_to` on revise covered by the derived oneOf |
 | `tests/test_teaching_vocabulary_sync.py` | tests (new, this session) | guards today's vocabulary | guards the new one; retirement of `content_edits` flips a contract tuple and the test enforces its absence on every surface |
 | `docs/S1E-CHECKLIST.md` E10 | docs | four checks | unchanged; this change is E10's worked instance |
@@ -105,14 +109,17 @@ tool layer to one vocabulary, from the contract outward:
    prompt AND stated in the `revise` / `revise_batch` descriptions AND in the
    field summary — a name present in the contract but silent on any surface
    is the E11 defect;
-4. every name in `RETIRED_OP_FIELDS` is absent from all of those and from the
-   gist;
-5. every backticked identifier in the gist is an op, tool, writable field,
+4. every backticked identifier in the gist is an op, tool, writable field,
    `connect_to` key, or one of the relation verbs the gist deliberately names.
 
-Adding `content_edits` to `RETIRED_OP_FIELDS` without touching the prompt fails
-(4); renaming `title` → `target` in the schema without touching the examples
-fails (2); adding `connect_to` to the revise spec without teaching it fails (3).
+Retired names are `tests/test_retired_fields.py`'s job (one registry:
+`RETIRED_NODE_FIELDS`), whose scan covers the prompts, the gist, the field
+summary, every op description and every tool blob.
+
+Adding `content_edits` to `RETIRED_NODE_FIELDS` without touching the prompt
+fails that scan; renaming `title` → `target` in the schema without touching the
+examples fails (2); adding `connect_to` to the revise spec without teaching it
+fails (3).
 
 ## 6. Eval plan (next session)
 
@@ -148,9 +155,9 @@ result (gist + revise shape) against the round-2 `v41 + gist A` baseline.
 |---|---|---|
 | 1 | **The gist bypasses the interaction resolver.** It is S1E-only instructional text hardcoded in `encode_contract.py`; a registered `s1e` override cannot see, edit, or disable it, the fingerprint does not cover it, and `--gist-file` exists only because `tests/interaction_override.py` cannot reach it. | Make it an interaction: `s1e_gist` with its code default indexed in `servers/interaction_defaults.py`, read in `_build_user_content` through `brain.get_interaction_prompt('s1e_gist')`, positioned by the assembler. The harness then A/Bs it through `inject_prompt` like `--s1e-template`; delete `--gist-file`. |
 | 2 | **`--gist-file` double-splices.** The idempotence guard tests the *candidate* text after rebinding `ENCODER_GIST`; any capture carrying the production gist (or an older wording) gets a second gist. Empty file passes (`'\n' in text`). | Superseded by row 1. If a splice survives for pre-gist captures: one `--gist [FILE]` flag, a distinct local, strip-then-splice keyed on the contract text, non-empty assertion, and a `[gist]` line that names which text ran. |
-| 3 | **The gist names a surface no revise op reaches.** "and any edge description" with no op; the natural encoding — `connect_to` on a revise — is stored today as a KV field named `connect_to` (§2). | Exactly what §1–§4 implement. Until then the gist must not ship. |
+| 3 | **The gist names a surface no revise op reaches.** "and any edge description" with no op; the natural encoding — `connect_to` on a revise — is silently dropped today and reported as written (§2, verified 2026-09-03: `_CONTROL_FIELDS` skip, not a KV row). | Exactly what §1–§4 implement. Until then the gist must not ship. |
 | 4 | **Guardrail test defects.** `_teaching_surfaces` stringifies schema *values* (10 of 21 revise field names unfindable); taught-check is bare substring, retired-check is word-boundary; the "every field" check covers one field; retirement path self-contradicts (retire → both tests fire, or `assert fields` fires); `_teaching_surfaces` re-evaluated per field; gist allowlist split across three literals. | `json.dumps(tool)` for surfaces (as `test_retired_fields.py:152`); one `\b` matcher; bind the taught set to the union the new spec produces (`get_writable_fields()` ∪ `connect_to`); make retirement executable; hoist the surfaces once; one `GIST_OPEN_VOCABULARY`. |
-| 5 | **Two duplications in the test.** `ENCODER_TOOL_NAMES` hand-copies `ENCODING_TOOLS` (function-local in `encode.py`); `RETIRED_OP_FIELDS` is a third retirement registry beside `tests/test_retired_fields.py::RETIRED_NODE_FIELDS` and `ALL_FIELDS`' `agent_writable: False`. | Hoist `ENCODING_TOOLS` into `encode_contract.py`, import it in both. Delete `RETIRED_OP_FIELDS` and its test; extend `test_retired_fields`' scan with the gist, `generate_field_summary()`, and every `BATCH_OP_SPECS[*]['description']`. §3's retirement policy reads: flip `agent_writable` / drop the alias, and the extended scan enforces absence. |
+| 5 | **Two duplications in the test.** `ENCODER_TOOL_NAMES` hand-copies `ENCODING_TOOLS` (function-local in `encode.py`); `RETIRED_OP_FIELDS` is a third retirement registry beside `tests/test_retired_fields.py::RETIRED_NODE_FIELDS` and `ALL_FIELDS`' `agent_writable: False`. | **Closed.** `ENCODING_TOOLS` lives in `encode_contract.py`, imported by `encode.py` and the guardrail. `RETIRED_OP_FIELDS` and its test are gone; `test_retired_fields` scans the gist, `generate_field_summary()`, and every `BATCH_OP_SPECS[*]['description']` beside the prompts. §3 states the one retirement policy. |
 | 6 | **Gist emitted unconditionally while `<node_catalog>` is conditional** — "the catalog above" dangles on catalog-less payloads. | Gate the catalog bullets on `node_catalog`, or render the gist in two parts. |
 | 7 | **The production prompt's payload legend is now false** ("`<scout_legend>` sits just before the timeline") and the gist has no legend entry. | Lockstep row: What I Receive names the gist block and its position. |
 | 8 | **`partially_resolves` is in no aspect** (only `resolves` is in `correction_improvement`/`settlement`); the prompt, the gist, and the test allowlist all teach it. Predates this branch. Not a loss: the S2 aspect unit classifies unhomed relation verbs on its cadence — but a verb we teach on purpose should not wait for classification. | Tom ruled (2026-09-03): add it — human edit to `aspects_v1.json` beside `resolves`, plus the `REQUIRED_ASPECTS` line only if a new aspect is introduced. |

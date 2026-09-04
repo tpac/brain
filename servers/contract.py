@@ -42,54 +42,143 @@ import re
 # with NO prose support (eval/mcp_variants/probe_v1_oneof_prefix.*); see
 # eval/mcp_batch_probe.py. Dict order = probed branch order — keep it.
 
-# Shared schema for revise's patch-mode content field — one source for the
-# revise/revise_batch tool schemas AND brain_batch's revise branch; two
-# hand-maintained copies of a wire contract drift.
-CONTENT_EDITS_SCHEMA = {
-    "type": "array",
-    "description": (
-        "Surgical content patches, applied in order: each item replaces ONE "
-        "exact occurrence of `old` with `new` in the stored content. `old` is "
-        "copied VERBATIM from the node's current content and must match "
-        "exactly once — a missing or ambiguous match fails this op loudly "
-        "with guidance. This is how a falsified claim gets fixed without "
-        "re-authoring — and risking — everything else the node holds. "
-        "Mutually exclusive with `content` (a full rewrite is for "
-        "restructures)."),
-    "items": {
-        "type": "object",
-        "required": ["old", "new"],
-        "properties": {
-            "old": {"type": "string", "description":
-                    "Exact, unique substring of the current content"},
-            "new": {"type": "string", "description": "Replacement text"},
-        },
+# The revise rule (docs/REVISE-SHAPE-SPEC.md §1): on revise a field takes
+# either its NEW VALUE — the whole field replaced — or a SWAP `{old, new}`
+# (a list of swaps for several spots) that changes only what is stale. One
+# source for the revise/revise_batch tool schemas AND brain_batch's revise
+# branch; two hand-maintained copies of a wire contract drift.
+REVISE_RULE = (
+    "On revise a field takes its NEW VALUE (the whole field replaced) or a "
+    "swap `{old, new}` — a list of swaps for several spots — that changes "
+    "only what is stale; `old` is copied VERBATIM from the node as shown and "
+    "must occur exactly once, or the op fails loudly with the count and "
+    "nothing is written. Fields not named are untouched. Edges ride as "
+    "`connect_to` exactly as on remember: on revise an entry changes the "
+    "edge this node already has to that `target` (its `why`, or its "
+    "`relation` — value or swap), or creates it if there is none.")
+
+# The swap item. No prose of its own: REVISE_RULE states the rule once per
+# op description, and this object is inlined at every swappable field, so a
+# sentence here would ride the tool blob many times over.
+SWAP_SCHEMA = {
+    "type": "object",
+    "required": ["old", "new"],
+    "properties": {
+        "old": {"type": "string", "description":
+                "Exact, unique span of the current value"},
+        "new": {"type": "string", "description": "Replacement text"},
     },
+}
+SWAP_LIST_SCHEMA = {"type": "array", "items": SWAP_SCHEMA}
+
+
+def is_swap(value):
+    """`{old, new}` — one in-place swap (REVISE_RULE)."""
+    return isinstance(value, dict) and set(value) == {'old', 'new'}
+
+
+def is_swap_list(value):
+    """A non-empty list of swaps."""
+    return (isinstance(value, list) and bool(value)
+            and all(is_swap(v) for v in value))
+
+
+def validate_swaps(value, field):
+    """Shape check for a swap or swap list on `field` — string `old`
+    (non-empty) and `new`, `old != new`. Returns (ok, error)."""
+    swaps = value if isinstance(value, list) else [value]
+    for i, e in enumerate(swaps):
+        if (not is_swap(e) or not isinstance(e['old'], str) or not e['old']
+                or not isinstance(e['new'], str)):
+            return False, ("%s swap[%d] must be {old: <non-empty string>, "
+                           "new: <string>}" % (field, i))
+        if e['old'] == e['new']:
+            return False, ("%s swap[%d]: old and new are identical — a no-op "
+                           "swap is a mistake, not a patch" % (field, i))
+    return True, None
+
+
+def apply_swaps(stored, value, field):
+    """Apply a swap or swap list to `field`'s stored value, in order, each
+    `old` matching exactly once against the running result (REVISE_RULE).
+    Zero or ambiguous matches fail loudly with the count — a swap that lands
+    in the wrong place silently corrupts a surface recall reads. Errors are
+    written to teach the calling agent the fix. Returns (new_value, None) or
+    (None, error)."""
+    ok, err = validate_swaps(value, field)
+    if not ok:
+        return None, err
+    swaps = value if isinstance(value, list) else [value]
+    current = stored
+    for i, e in enumerate(swaps):
+        old, new = e['old'], e['new']
+        n = current.count(old)
+        if n == 0:
+            return None, ("%s swap[%d]: `old` not found in the node's current "
+                          "%s (%d chars). `old` must be copied VERBATIM from "
+                          "the value as shown — if your view of this node was "
+                          "truncated or aged, expand it with get_nodes first, "
+                          "or send the field's full new value instead."
+                          % (field, i, field, len(current)))
+        if n > 1:
+            return None, ("%s swap[%d]: `old` matches %d places — extend it "
+                          "with surrounding context until it is unique."
+                          % (field, i, n))
+        current = current.replace(old, new, 1)
+    return current, None
+
+
+def swappable(prop):
+    """A text field's revise-time schema: `string | swap | swap[]`, keeping
+    the field's own description. Applied to every get_swap_fields() spec
+    wherever a revise surface is generated."""
+    out = {"anyOf": [{"type": "string"}, SWAP_SCHEMA, SWAP_LIST_SCHEMA]}
+    if prop.get("description"):
+        out["description"] = prop["description"]
+    return out
+
+
+# `content_edits` is the ALIAS of `content: [swaps]` — the pre-rule name for
+# the swap list, content-only. Accepted and normalized at the write boundary;
+# retire (drop this schema + the alias handling, add the name to
+# tests/test_retired_fields.py) once the encoder's op dumps show zero uses
+# across a full A/B round.
+CONTENT_EDITS_SCHEMA = {
+    **SWAP_LIST_SCHEMA,
+    "description": ("Deprecated alias of `content: [{old, new}, ...]`; "
+                    "passing both is an error."),
 }
 
 # Shared item schema for connect_to entries — one source for the
-# remember/remember_batch schemas AND brain_batch's remember branch
-# (BATCH_OP_SPECS below). Carries the {title, relation, why} shape and
-# the BAD/GOOD `why` examples; without it brain_batch callers had no
+# remember/remember_batch/revise schemas AND brain_batch's remember + revise
+# branches (BATCH_OP_SPECS below). Carries the {target, relation, why} shape
+# and the BAD/GOOD `why` examples; without it brain_batch callers had no
 # generation-time signal for entry shape (2026-06-12 review finding #1).
+# `target` is the key; `title` is its deprecated alias, accepted for one
+# window (the field is an id in the usual case — a name that says "title"
+# lies about its content, and on revise would be actively misleading).
 CONNECT_TO_ITEM_SCHEMA = {
     "type": "object",
-    "required": ["title"],
+    "anyOf": [{"required": ["target"]}, {"required": ["title"]}],
     "properties": {
-        "title": {
+        "target": {
             "type": "string",
             "description": (
-                "Target: for an EXISTING node, its exact 8-char hex id copied "
-                "verbatim from any visible id: surface (a hex-shaped value is "
-                "always treated as an id — never matched as a title — and on a "
-                "miss dropped loudly); for a node "
-                "created in this same batch, its exact title (siblings resolve "
-                "before catalog matches, any declaration order). NEW wins on "
-                "title collision — "
-                "to update an existing catalog node use `revise` on its id, not "
-                "a duplicate-title remember. Unresolved targets are logged and "
-                "skipped, never failing the batch."
+                "The other node: for an EXISTING node, its exact 8-char hex id "
+                "copied verbatim from any visible id: surface (a hex-shaped "
+                "value is always treated as an id — never matched as a title "
+                "— and on a miss dropped loudly). On remember only, a node "
+                "created in this same batch may be named by its exact title "
+                "(siblings resolve before catalog matches, any declaration "
+                "order; NEW wins on title collision — to update an existing "
+                "catalog node use `revise` on its id, not a duplicate-title "
+                "remember). On revise the target must be an id. Unresolved "
+                "targets are logged and skipped, never failing the batch."
             ),
+        },
+        "title": {
+            "type": "string",
+            "description": "Deprecated alias of `target`.",
         },
         "relation": {
             "type": "string",
@@ -132,12 +221,45 @@ CONNECT_TO_ITEM_SCHEMA = {
     },
 }
 
+def connect_to_target(entry):
+    """The target a connect_to entry names — `target`, or its deprecated alias
+    `title`. The one place the alias is known; every reader of an entry's
+    target goes through here, so dropping the alias is a one-line change."""
+    if not isinstance(entry, dict):
+        return entry
+    return entry.get('target') or entry.get('title', '')
 
-# Op fields the vocabulary has RETIRED. A name here must appear on no teaching
-# surface — prompt, gist, tool descriptions, field summary — and
-# tests/test_teaching_vocabulary_sync.py enforces that. Retiring a name is a
-# one-line change here; the test then points at every surface still saying it.
-RETIRED_OP_FIELDS = ()
+
+def _revise_connect_to_item_schema():
+    """connect_to on REVISE, derived from the remember item schema: same
+    keys, the same relation vocabulary and `why` exemplars, plus what revise
+    adds — `relation` and `why` take a swap (rename the relation in place /
+    patch the description) because the entry addresses an edge that may
+    already exist, and `target` must be an id (there are no siblings on a
+    revise). Built from CONNECT_TO_ITEM_SCHEMA so an edit there reaches both."""
+    base = CONNECT_TO_ITEM_SCHEMA["properties"]
+    props = dict(base)
+    props["target"] = {"type": "string", "description": (
+        "The other node's exact 8-char hex id — an existing node; sibling "
+        "titles are not valid on revise.")}
+    props["relation"] = swappable({"description": (
+        base["relation"]["description"] + " On revise a bare relation "
+        "identifies the edge row (required when the pair carries more than "
+        "one relation); a swap {old, new} renames it in place — weight and "
+        "history survive. Also the relation to create when the pair has no "
+        "edge yet.")})
+    props["why"] = swappable({"description": (
+        base["why"]["description"] + " On revise a bare string replaces the "
+        "description and a swap {old, new} patches it; required, bare, when "
+        "the edge is being created.")})
+    rel_items = base["relations"]["items"]
+    props["relations"] = {**base["relations"], "items": {
+        **rel_items, "properties": {k: swappable(v) for k, v in
+                                    rel_items["properties"].items()}}}
+    return {**CONNECT_TO_ITEM_SCHEMA, "properties": props}
+
+
+REVISE_CONNECT_TO_ITEM_SCHEMA = _revise_connect_to_item_schema()
 
 BATCH_OP_SPECS = {
     "remember": {
@@ -161,13 +283,11 @@ BATCH_OP_SPECS = {
     },
     "revise": {
         "required": ["node_id", "reason"],
-        "description": ("Update node fields. Any other key is a field update "
-                        "(content, situation, reasoning, ...) — specified "
-                        "fields are REPLACED. For content, prefer "
-                        "`content_edits` when fixing specific claims: "
-                        "surgical patches that leave the rest of the content "
-                        "untouched. A full `content` rewrite is for "
-                        "restructures; the two are mutually exclusive."),
+        "description": ("Update an existing node. Any other key is a field "
+                        "(content, title, situation, question, reasoning, "
+                        "...). " + REVISE_RULE + " Non-text fields "
+                        "(confidence, type, event_time, ...) take bare values. "
+                        "`content_edits` is the alias of `content: [swaps]`."),
         "properties": {
             "node_id": {"type": "string", "description": "Node to revise"},
             "reason": {"type": "string", "description":
@@ -175,6 +295,15 @@ BATCH_OP_SPECS = {
                        "events, NOT stored on the node. Distinct from the "
                        "node FIELD `reasoning`, which a revise op updates "
                        "like any other field."},
+            # One text field shown with the value-or-swap type so the batch
+            # schema carries the shape; every other swap field follows the
+            # same type (additionalProperties stays open).
+            "content": swappable({"description":
+                                  "New content, or swaps into the stored content"}),
+            "connect_to": {"type": "array", "description":
+                           "This node's edges to change or add — an entry per "
+                           "target; see the item shape",
+                           "items": REVISE_CONNECT_TO_ITEM_SCHEMA},
             "content_edits": CONTENT_EDITS_SCHEMA,
         },
     },
@@ -257,15 +386,22 @@ def unwrap_operations(operations):
 
 STRUCTURAL_FIELDS = {
     "id":         {"store": "nodes", "type": "str", "required": True, "immutable": True},
-    "type":       {"store": "nodes", "type": "str", "required": True,
+    # Every writable str field takes `{old, new}` swaps on revise (REVISE_RULE,
+    # get_swap_fields) — the same default an open KV key has. `bare_only`
+    # marks the exceptions: vocabulary and ISO-valued strings (type,
+    # evolution_status, event_time, emotion_label) and ids, where nothing is
+    # a span. Exclusion is the deliberate act, so a new text field is
+    # swappable without anyone remembering a flag.
+    "type":       {"store": "nodes", "type": "str", "required": True, "bare_only": True,
                    "description": "Node type (decision, lesson, mechanism, correction, moment, open, ... — open vocabulary, use what fits)."},
     "title":      {"store": "nodes", "type": "str", "required": True,
                    "description": "Specific and scannable — the title is itself an embedded recall vector; specificity is findability."},
     "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "trace events (node_revised deltas); legacy _sys_revision_history blobs dropped by migration",
-                   "description": ("Rich content — reasoning, tradeoffs, specifics. On revise, "
-                                   "prefer content_edits (exact old→new patches) over full "
-                                   "replacement: a rewrite must re-author everything the node "
-                                   "holds, and dropped details are silent losses.")},
+                   "description": ("Rich content — reasoning, tradeoffs, specifics. On revise: "
+                                   "its new value, or `{old, new}` swaps into what is stored "
+                                   "(`content_edits` is the alias of the swap list) — a full "
+                                   "rewrite must re-author everything the node holds, and "
+                                   "dropped details are silent losses.")},
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0,
                    "description": ("0.0-1.0. Set below 1.0 when the claim is hedged, contested, "
                                    "or inferred — recall exposes it and filters select on it. "
@@ -283,16 +419,16 @@ STRUCTURAL_FIELDS = {
     "critical":   {"store": "nodes", "type": "bool", "default": False, "agent_writable": False},
     "emotion":    {"store": "nodes", "type": "float",
                    "description": "Emotional charge of the moment — signed; recall reads the magnitude. Pair with emotion_label."},
-    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral",
+    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral", "bare_only": True,
                       "description": "Name of the felt register ('satisfaction', 'frustration', ...)."},
     # `project` lives in PROMOTED_FIELDS (metadata_kv) — the nodes.project
     # column was dropped in schema v30. Provenance is system-stamped at the
     # write boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str", "agent_writable": False},
     "personal_context": {"store": "nodes", "type": "str", "agent_writable": False},
-    "evolution_status":  {"store": "nodes", "type": "str",
+    "evolution_status":  {"store": "nodes", "type": "str", "bare_only": True,
                           "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."},
-    "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
+    "source_turn_id":   {"store": "nodes", "type": "str", "bare_only": True, "description": "message_stream ID that produced this node (episode linkage)"},
     # system_stamped: excluded from the agent-facing schemas — MCP writes
     # default to 'anchor' at the write boundary; scale agents get theirs
     # force-stamped by apply_encoder_attribution. Never agent-authored
@@ -360,6 +496,7 @@ PROMOTED_FIELDS = {
     "event_time": {
         "store": "metadata_kv",
         "type": "str",
+        "bare_only": True,
         "description": ("When the remembered thing HAPPENED — ISO 8601, "
                         "distinct from created_at (when it was written). "
                         "Resolve relative dates to absolute; leave absent "
@@ -438,6 +575,16 @@ def get_writable_fields():
             and v.get("agent_writable", True)}
 
 
+def get_swap_fields():
+    """{name: spec} of the writable fields that take `{old, new}` swaps on
+    revise (REVISE_RULE): every str field not marked `bare_only`. Open KV keys
+    (not in ALL_FIELDS) are swappable too — callers treat an unknown key as
+    text. Same shape as get_writable_fields so a generator can `swappable(spec)`
+    straight from it."""
+    return {k: v for k, v in get_writable_fields().items()
+            if v.get("type") == "str" and not v.get("bare_only")}
+
+
 def get_remember_fields():
     """Fields that brain.remember() accepts — ALL writable fields.
     Structural fields go to nodes table, promoted fields go to their
@@ -445,8 +592,10 @@ def get_remember_fields():
     return get_writable_fields()
 
 
-def validate_field(name, value):
-    """Validate a field value against the contract. Returns (ok, error_msg)."""
+def validate_field(name, value, revising=False):
+    """Validate a field value against the contract. Returns (ok, error_msg).
+    `revising=True` admits the swap shape (REVISE_RULE) — swaps patch a stored
+    value, so they exist only on revise; on remember a swap is a type error."""
     if name not in ALL_FIELDS:
         return True, None  # Unknown field — free field, no validation
 
@@ -455,6 +604,13 @@ def validate_field(name, value):
         return True, None  # NULL is always valid
 
     expected_type = spec.get("type")
+    # Value-or-swap: a swap is valid on any text field that is not bare_only;
+    # on anything else it is a schema error, said plainly.
+    if revising and (is_swap(value) or is_swap_list(value)):
+        if expected_type == "str" and not spec.get("bare_only"):
+            return validate_swaps(value, name)
+        return False, ("%s takes a bare value, not a swap {old, new} — swaps "
+                       "are for text fields" % name)
     if expected_type == "float":
         try:
             value = float(value)

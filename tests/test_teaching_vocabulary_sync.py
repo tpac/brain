@@ -14,15 +14,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from servers.contract import (BATCH_OP_SPECS, CONNECT_TO_ITEM_SCHEMA,  # noqa: E402
-                              RETIRED_OP_FIELDS, generate_field_summary,
-                              get_writable_fields)
-from servers.scales.s1.encode_contract import ENCODER_GIST  # noqa: E402
+                              generate_field_summary, get_writable_fields)
+from servers.scales.s1.encode_contract import ENCODER_GIST, ENCODING_TOOLS  # noqa: E402
 from servers.scales.s1.encoding_prompt import SYSTEM_PROMPT  # noqa: E402
 from servers import brain_mcp  # noqa: E402
 
 TOOLS = {t['name']: t for t in brain_mcp.TOOLS}
-ENCODER_TOOL_NAMES = {'remember_batch', 'revise_batch', 'brain_batch',
-                      'connect_batch', 'recall_batch', 'get_nodes'}
 # Relation verbs the gist names on purpose — relations are open vocabulary,
 # so they are allowlisted here rather than derived. Extend when the gist does.
 GIST_RELATIONS = {'resolves', 'partially_resolves'}
@@ -109,14 +106,8 @@ def test_every_revise_spec_field_is_taught_on_every_surface():
     assert not silent, 'revise fields the contract offers but a surface never names: %s' % silent
 
 
-def test_retired_fields_are_taught_nowhere():
-    stale = [(name, f) for f in RETIRED_OP_FIELDS for name, text in _teaching_surfaces()
-             if re.search(r'\b%s\b' % re.escape(f), text)]
-    assert not stale, 'retired op fields still taught: %s' % stale
-
-
 def test_gist_uses_only_contract_vocabulary():
-    known = set(BATCH_OP_SPECS) | ENCODER_TOOL_NAMES | set(get_writable_fields())
+    known = set(BATCH_OP_SPECS) | ENCODING_TOOLS | set(get_writable_fields())
     known |= {prop for spec in BATCH_OP_SPECS.values() for prop in spec['properties']}
     known |= set(CONNECT_TO_ITEM_SCHEMA['properties']) | {'old', 'new'} | GIST_RELATIONS
     known |= {'open'}  # the type the gist names (types are open vocabulary; this one is load-bearing)
@@ -131,7 +122,7 @@ def test_encoder_tool_names_in_prompt_exist():
     assert names, 'prompt names no batch tools'
     unknown = names - set(TOOLS)
     assert not unknown, 'prompt names tools that do not exist: %s' % sorted(unknown)
-    not_encoder = names - ENCODER_TOOL_NAMES
+    not_encoder = names - ENCODING_TOOLS
     assert not not_encoder, 'prompt names tools the encoder does not hold: %s' % sorted(not_encoder)
 
 
