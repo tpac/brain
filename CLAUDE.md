@@ -34,7 +34,7 @@ separate inter-layer protocol. Shape and rationale: `docs/ARCHITECTURE-FRACTAL.m
 
 **Where a boundary already leaks, the rule is directional** — don't add new bypasses. The guardrail tests hold the line where it currently is.
 
-**Know the owner before you write** — if you can't name which module owns the data you're about to touch, read the Map. Spatial certainty comes before code.
+**Know the owner before you write or place** — if you can't name which module owns what you're about to touch or propose, read the Map. Spatial certainty comes before code.
 
 **Extend before creating** — a new module is a structural commitment. Justify it with a distinct responsibility, audience, or lifecycle. "It feels like a new thing" isn't one.
 
@@ -69,13 +69,12 @@ holds the packages that ADDRESS a live stream — `self_channel` (another stream
 and `thalamus` (the brain itself). Which side a new package belongs on is a real
 decision with a guardrail behind it: **`servers/scales/__init__.py` states the
 rule** — don't re-derive it. Note this is a different sense of "channel" than the
-`additionalContext` injection channel in Conventions below. Two databases:
+hooks' `additionalContext` injection. Two databases:
 `brain.db` (nodes, edges, embeddings) and `brain_logs.db` (traces, session state,
 interactions, errors).
 
 ## Conventions
 
-- `additionalContext` is the only channel that reaches Claude.
 - `encoding_source` is `category:process` — `anchor`, `encoder:sonnet`, `s2:<unit>`, `hook:<event>`, `migration:*`. Only `anchor*` can lock a node.
 - Trace chains come from `SessionContext`: `s0-` / `s1r-` / `s1e-{session_short}-{stop}`; S2 uses `s2-{ts}-{unit}`.
 - `SessionContext` is passed on every call — the brain owns no current session. Anything conversation-scoped is keyed by `session_id`, never a global `brain_meta` key. Two sessions run at once; ask whether one would clobber the other.
@@ -85,7 +84,7 @@ interactions, errors).
 - Adding an aspect is a human edit to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line. The encoder only routes strings into existing aspects; it cannot propose one.
 - Scope provenance is stamped by `stamp_scope_provenance` and is never agent-authored.
 - `brain.get_node()` walks corrections on every canonical pull and attaches `_corrections`. Forgetting corrections requires deliberately bypassing the canonical pull.
-- Recall's doors reach that pull through `brain.canonicalize_results` — one method, every shape (by-query, by-id, batch): it overlays `CANONICAL_ATTACHMENT_KEYS` and scrubs the veil over the attachments. A new recall door routes through it, or `test_recall_door_parity` fails.
+- Recall's doors reach that pull through `brain.canonicalize_results` — one method, every shape (by-query, by-id, batch): it overlays `CANONICAL_ATTACHMENT_KEYS` and scrubs the veil over the attachments. A new recall door routes through it, or the door-parity tests fail.
 
 ## Development Rules
 
@@ -97,26 +96,22 @@ interactions, errors).
 
 **On the grain axis (anywhere under `servers/scales`), pass `at=conversation_now(...)` explicitly.** Grain-axis reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
 
-**`as_of` replay is one-directional — it HIDES, it cannot RESTORE.** It masks nodes/traces created after the instant, but a node archived *since* stays gone: `archive_node` deletes its vectors, so no mask can put it back. A replay therefore runs on today's survivors, not the corpus as it stood — pool shrinkage ~2% at mid-2026 cutoffs, ~10% at the walker's oldest (2026-04). Historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`), which is the faithful half of a lossy mechanism; treat as_of numbers as approximate and degrading with cutoff age.
+**`as_of` replay HIDES, it cannot RESTORE.** It masks what was created after the instant, but a node archived *since* stays gone (`archive_node` deletes its vectors), so a replay runs on today's survivors; historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`). Treat as_of numbers as approximate, degrading with cutoff age.
 
 ### Prompts & configs: code owns the default, the DB holds only overrides
 
-Since the Step 8 collapse (2026-08-23) the runtime resolves every interaction
-through `get_interaction_prompt/_config`: the **code default** (`SYSTEM_PROMPT`
-in the prompt `.py`, config dict in the consumer's contract file — indexed by
-`servers/interaction_defaults.py`) unless an **override pointer** is deployed.
-A healthy install shows **2** pointers in `./dev check-overrides` — `recall_laf`
-and `trace_recording` are permanent by design (`interaction_collapse.COLLAPSE_POLICY`);
-do not "clean" them.
+The runtime resolves every interaction through `get_interaction_prompt/_config`:
+the **code default** (`SYSTEM_PROMPT` in the prompt `.py`, config dict in the
+consumer's contract file — indexed by `servers/interaction_defaults.py`) unless
+an **override pointer** is deployed. `./dev check-overrides` shows **2** permanent
+pointers (`recall_laf`, `trace_recording` — `interaction_collapse.COLLAPSE_POLICY`);
+don't "clean" them.
 
-**Change the production default** (fleet-wide): edit the prompt `.py` / contract
-dict and merge — the daemon reads it at next restart. No registration, no sync
-ceremony, no version bump. The eval gate is a process rule, not a code path:
-candidates land as overrides and get promoted into the default after the eval
-passes. ⚠ The daemon runs the MAIN tree — a prompt edit in a worktree reaches
-it only after merge (the session-boot staleness reload fingerprints main, not
-worktrees). **New boundary:** the full recipe is in
-`servers/interaction_defaults.py`'s docstring.
+**Change the production default**: edit the prompt `.py` / contract dict, merge,
+restart — no registration, no version bump. The eval gate is process, not code:
+candidates land as overrides and are promoted after the eval passes. ⚠ The daemon
+runs MAIN — a worktree edit reaches it only after merge. New boundary: the recipe
+is `servers/interaction_defaults.py`'s docstring.
 
 **Deploy an override on THIS install** (experiment / hotfix / debug):
 
@@ -126,11 +121,10 @@ set_interaction_active(name, version=N+1)    # deploys — runtime reads it on n
 clear_interaction_override(name)             # reverts to the code default
 ```
 
-**Eval / A/B**: never hand-roll — `tests/interaction_override.py` is the one
-door (`override_interaction(...)` + the self-reverting `interaction_override(...)`
-CM). Baseline arms need no clearing anymore: an IsolatedBrain copy of collapsed
-production starts at the 2-pointer baseline. Promotion after a green eval =
-move the winning template into the code default, then `clear_interaction_override`.
+**Eval / A/B**: `tests/interaction_override.py` is the one door
+(`override_interaction(...)`, self-reverting `interaction_override(...)` CM); an
+IsolatedBrain copy starts at the 2-pointer baseline. Promote = move the winner
+into the code default, then `clear_interaction_override`.
 
 `tests/test_interaction_defaults.py` + `test_interaction_bypass_guard.py` hold
 the contract: every accessor literal has a registry entry, code defaults pass
@@ -158,8 +152,8 @@ Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon l
 ### Deploying a change
 
 The daemon runs `servers/*` from the repo, so:
-- **`servers/*`** → daemon **restart** (`restart` MCP tool / `hooks/scripts/restart-daemon.sh`); live this session.
-- **`hooks/`, `brain_mcp.py`, `SKILL.md`, manifests** → **`./redeploy.sh`** (commit first) **+ new session**.
+- **`servers/*`** except `brain_mcp.py` → daemon **restart** (`restart` MCP tool / `hooks/scripts/restart-daemon.sh`); live this session.
+- **`servers/brain_mcp.py`, `hooks/`, `SKILL.md`, manifests** → **`./redeploy.sh`** (commit first) **+ new session**.
 
 Don't gate a deploy-restart with the maintenance lock — it makes the daemon skip startup.
 
