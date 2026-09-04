@@ -3230,8 +3230,11 @@ class TestParkedNoticeRender(unittest.TestCase):
         self.assertIn("relocate-brain.sh", r.stdout)
         self.assertIn(self._parked, r.stdout)
         self.assertIn("BRAIN_PARKED_ACK", r.stdout)
-        # the derived plugin id makes the --keep-data line paste-ready
-        self.assertIn("brain-x --keep-data", r.stdout)
+        # the notice names the data FOLDER and points at --keep-data; since the
+        # entity rename the folder is not the plugin id, so the line is not
+        # paste-ready by design (`claude plugin list` shows which plugin)
+        self.assertIn("--keep-data", r.stdout)
+        self.assertIn("data folder is `brain-x`", r.stdout)
 
     def test_notice_quiet_on_resume_and_compact(self):
         for source in ("resume", "compact"):
