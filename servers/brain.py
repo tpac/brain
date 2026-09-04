@@ -1810,28 +1810,33 @@ class Brain(
         throttle and failure-isolated (loud via _log_error)."""
         import time as _time
         now = now if now is not None else _time.time()
-        if now - getattr(self, '_courier_reap_checked', 0) >= 3_600:
-            self._courier_reap_checked = now
+
+        # Imports stay inside each sweep: a broken channel module costs that
+        # sweep alone, never the other one or the S2 cycle that follows.
+        def reap_expired():
+            from .channels.self_channel import signal
+            return signal.reap_expired(self)
+
+        def expire_due():
+            from .channels.thalamus import thalamus
+            return thalamus.expire_due(self)
+
+        # (throttle stamp, sweep, log line, error tag) — one row per channel
+        # store; the hourly throttle and the failure isolation are the policy.
+        for stamp, sweep, line, tag in (
+                ('_courier_reap_checked', reap_expired,
+                 'self-channel: reaped %d expired message(s)', 'self_signal_reap'),
+                ('_thalamus_sweep_checked', expire_due,
+                 'thalamus: expired %d item(s) past their window', 'thalamus_expire')):
+            if now - getattr(self, stamp, 0) < 3_600:
+                continue
+            setattr(self, stamp, now)
             try:
-                from .channels.self_channel import signal as _self_signal
-                reaped = _self_signal.reap_expired(self)
-                if reaped:
-                    print('[brain] self-channel: reaped %d expired message(s)'
-                          % reaped, flush=True)
+                n = sweep()
+                if n:
+                    print('[brain] %s' % (line % n), flush=True)
             except Exception as e:
-                self._log_error('self_signal_reap', e,
-                                'reap_expired in channel sweep')
-        if now - getattr(self, '_thalamus_sweep_checked', 0) >= 3_600:
-            self._thalamus_sweep_checked = now
-            try:
-                from .channels.thalamus import thalamus as _thalamus
-                expired = _thalamus.expire_due(self)
-                if expired:
-                    print('[brain] thalamus: expired %d item(s) past their '
-                          'window' % expired, flush=True)
-            except Exception as e:
-                self._log_error('thalamus_expire', e,
-                                'expire_due in channel sweep')
+                self._log_error(tag, e, '%s in channel sweep' % sweep.__name__)
 
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:

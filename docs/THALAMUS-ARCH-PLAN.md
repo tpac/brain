@@ -185,11 +185,10 @@ docstrings, and added two file() door guards: a directed ask rejects
 (undeliverable by construction — asks are boot-only and a nameable session
 already booted), and expires ≤ when rejects (never becomes due).
 
-**Queue:** ~~Step 10 remainder — (b)~~ DONE 2026-09-04 (see Step 10). Then
-Step 11 remainder: the `render_boot_v2` comment about what boot commits
-(now: ledger rows + the delivery trace), the three identical boot try/except
-sections → `_boot_section` helper, and the sweep-block consolidation (ruling
-id:23cd4d61: after 7–10).
+**Queue:** ~~Step 10 remainder — (b)~~ DONE 2026-09-04 (see Step 10). ~~Then
+Step 11 remainder~~ DONE 2026-09-04 (see Step 11). The numbered queue is
+empty; what remains is the §2026-09-03 flip-day checklist (encoder stream)
+and the NEXT-ARC THREAD (the fourth correspondent).
 
 ---
 
@@ -744,19 +743,20 @@ node 8178593a's standing rule).
 
 ## Step 11 — Docs and small placements batch
 
-**Problem.** Review nits that lie to the next reader:
+**DONE 2026-09-04 — nothing here remains.** Review nits that lied to the next reader:
 - ~~`thalamus/__init__.py` is empty~~ — DONE (e0f1ea8, corrected in cabef0e).
-  Both package docstrings and `servers/channels/__init__.py` now carry the
-  placement rationale; nothing here remains.
-- `render_boot_v2`'s comment still claims "rendering is read-only"; boot now commits
-  ledger rows (and health auto-fix already wrote before that). State what boot commits.
-  Collapse the three identical try/except sections (Frame / standing / thalamus) into a
-  `_boot_section(name, build)` helper while there.
-- `hook_pre_edit`'s docstring claims it delivers pending self-messages; the Stop path is
-  the only drain caller.
-- `_row_to_item`'s positional tuple indexing + `list_items`' `r[:-1]` — switch to
-  `sqlite3.Row`/named access or a single column-map, so a mid-list column add can't
-  silently shift fields (Step 5 adds a column; do this alongside or right after).
+- ~~`render_boot_v2`'s "rendering is read-only" comment + three identical
+  try/except sections~~ — DONE: the comment states what boot commits (liveness
+  stamp, health auto-fix, session row, delivery ledger rows + s0 trace, save);
+  session-ctx / Frame / standing / delivery each run through
+  `_boot_section(what, build)` (error key `boot_<what>_failed`; session-ctx is
+  its own part, so a Frame failure can no longer take the context down).
+- ~~`hook_pre_edit`'s docstring~~ — DONE (names the Stop path as the only drain).
+- ~~`_row_to_item` positional indexing~~ — DONE (cb29678b: by-name mapping).
+- ~~sweep-block consolidation (ruling id:23cd4d61)~~ — DONE:
+  `Brain.sweep_channels_if_due` is one table + loop (throttle stamp, sweep, log
+  line, error tag); imports stay per-sweep so a broken channel module costs that
+  sweep alone, never the S2 cycle behind it.
 
 **Files & call sites.** `servers/channels/thalamus/__init__.py`, `servers/brain_voice.py`,
 `servers/daemon_hooks.py`, `servers/channels/thalamus/thalamus.py`.
