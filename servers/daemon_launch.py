@@ -45,17 +45,21 @@ def debugger_friendly_python() -> str:
     venv Python is not protected and can be introspected live.
 
     Priority:
-      1. $BRAIN_PYTHON env var (explicit override)
-      2. <checkout>/venv/bin/python — REPO_ROOT is servers/'s parent, so this
+      1. $BRAIN_PYTHON_DAEMON — the venv python under its role name, so the
+         process reads `Entity-daemon` (brain-env.sh brain_python_as); the
+         launchd path (hooks/scripts/brain-daemon) execs the same file
+      2. $BRAIN_PYTHON env var (explicit override)
+      3. <checkout>/venv/bin/python — REPO_ROOT is servers/'s parent, so this
          resolves the bundled venv in a dev checkout AND an installed plugin
-      3. Fall back to sys.executable with a stderr warning
+      4. Fall back to sys.executable with a stderr warning
 
     Returning the first hit keeps future `sudo py-spy dump` / `lldb -p`
     calls actually usable when the daemon goes hot.
     """
-    override = os.environ.get('BRAIN_PYTHON', '').strip()
-    if override and os.path.exists(override):
-        return override
+    for var in ('BRAIN_PYTHON_DAEMON', 'BRAIN_PYTHON'):
+        override = os.environ.get(var, '').strip()
+        if override and os.path.exists(override):
+            return override
 
     local_venv = os.path.join(REPO_ROOT, 'venv', 'bin', 'python')
     if os.path.exists(local_venv):

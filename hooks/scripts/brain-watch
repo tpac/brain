@@ -27,4 +27,6 @@ source "$SCRIPT_DIR/brain-env.sh" 1>&2
 if [ "$#" -eq 0 ]; then
   set -- "${CLAUDE_CODE_SESSION_ID:?pass <session_id> or run inside a Claude Code session}"
 fi
-exec "$BRAIN_PYTHON" "$PLUGIN_DIR/hooks/scripts/self_inbox_poller.py" "$@"
+# Role-named interpreter: `Entity-in-3207` pairs with the same session's
+# `Entity-mcp-3207` in Activity Monitor (brain_python_as).
+exec "$(brain_python_as Entity-in "$1")" "$PLUGIN_DIR/hooks/scripts/self_inbox_poller.py" "$@"

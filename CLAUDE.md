@@ -61,7 +61,7 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
 | Edge model | `servers/dal_graph.py` | `add_relation` docstring |
 | Backups (rolling, pre-destructive, clones) | `servers/db_backup.py`, `db_backends/sqlite.py` | module docstring |
-| Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
+| Runtime flags, process names (`Entity-*`) | `hooks/scripts/brain-env.sh` | flags read at daemon start only; `brain_python_as` docstring |
 
 All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
 axis (s1, s2 + shared machinery); `channels/` is indexed by CORRESPONDENT — the

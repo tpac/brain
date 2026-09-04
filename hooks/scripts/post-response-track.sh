@@ -8,4 +8,4 @@
 # daemon owns everything behind it. Do not add gates here.
 source "$(dirname "$0")/resolve-brain-db.sh"
 export HOOK_INPUT=$(cat)
-exec python3 "$(dirname "$0")/post_response_track.py"
+exec "${BRAIN_PYTHON_HOOK:-python3}" "$(dirname "$0")/post_response_track.py"
