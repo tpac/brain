@@ -17,6 +17,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
 
+from tests.eval_optional import require_eval  # noqa: E402
+require_eval()  # D-8: eval/ is absent from the public tree
+
 from eval.encoder_prompt_ab import score_gold  # noqa: E402
 
 CORR = {'corrects', 'supersedes', 'reframes', 'resolves'}

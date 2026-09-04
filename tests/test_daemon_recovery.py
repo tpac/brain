@@ -1541,13 +1541,17 @@ class TestInstallerPlistDrift(unittest.TestCase):
             f.write('#!/bin/bash\nprintf "%s"\n' % code)
         os.chmod(path, 0o755)
 
-    def _run(self, script):
+    def _run(self, script, **extra):
         import subprocess
         env = dict(os.environ,
                    HOME=self._home,
                    PATH=self._bin + os.pathsep + os.environ.get("PATH", ""),
                    BRAIN_DB_DIR=self._dbdir,
                    XDG_CONFIG_HOME=os.path.join(self._home, ".config"))
+        # an entity env in the developer's shell must not flip these tests —
+        # the entity behaviour has its own tests below, which pass it explicitly
+        env.pop("BRAIN_INSTANCE", None)
+        env.update(extra)
         return subprocess.run(["bash", script], env=env,
                               capture_output=True, text=True, timeout=60)
 
@@ -1629,6 +1633,32 @@ class TestInstallerPlistDrift(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(set(self._verbs()), {"print"},
                          "up + no drift → early exit, launchd untouched")
+
+    # ── entities never touch launchd (predicate owned by launchd-install.sh) ──
+    # The loaded service is uid-wide, the plist path is $HOME-relative: an
+    # entity under a scratch $HOME would read "no plist here" as drift and
+    # bootout production's job. Both installers must exit before launchctl.
+
+    def test_dashboard_under_instance_touches_no_launchd(self):
+        self._fake_launchctl(print_rc=0)
+        self._fake_curl("000")
+        target = os.path.join(self._agents, "com.brain.dashboard.plist")
+        with open(target, "w") as f:
+            f.write("<plist>production</plist>\n")
+        r = self._run(self.DASH_SCRIPT, BRAIN_INSTANCE="ent1",
+                      BRAIN_DAEMON_PORT="47999")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._verbs(), [], "an entity must never reach launchctl")
+        self.assertEqual(open(target).read(), "<plist>production</plist>\n")
+
+    def test_daemon_installer_under_instance_touches_no_launchd(self):
+        self._fake_launchctl(print_rc=1)
+        r = self._run(self.DAEMON_SCRIPT, BRAIN_INSTANCE="ent1",
+                      BRAIN_DAEMON_PORT="47999")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._verbs(), [])
+        self.assertFalse(os.path.exists(
+            os.path.join(self._agents, "com.brain.daemon.plist")))
 
     # ── identity preservation (review findings: tree-flip / db-dir hijack) ──
 

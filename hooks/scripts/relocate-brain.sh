@@ -34,8 +34,14 @@ die() { printf '%s\n' "[relocate-brain] FATAL: $*" >&2; exit 1; }
 # (brain_config_knob_db_dir / brain_config_option_db_dir, via api-key-env's
 # brain_user_env_file) and exports BRAIN_XDG_DIR. launchd-install.sh owns the
 # unload ritual (brain_launchd_unload). Route through them, never copy.
+. "$SCRIPT_DIR/launchd-install.sh" || die "launchd-install.sh missing or unreadable (damaged install)"
+# Relocation is for the production brain. Under an entity env the unload
+# below would still name production's labels, the maintenance lock and pid
+# file it reaches for are production's — and sourcing the resolver would
+# already have persisted the ENTITY's brain into production's resolved.env,
+# so the refusal comes before the resolver.
+brain_launchd_entity && die "BRAIN_INSTANCE=$BRAIN_INSTANCE is set — run this from a plain shell, not an entity's"
 . "$SCRIPT_DIR/resolve-brain-db.sh"
-. "$SCRIPT_DIR/launchd-install.sh"
 SRC="${1:-${BRAIN_DB_DIR:-}}"
 SRC="${SRC%/}"
 [ -n "$SRC" ] || die "no brain directory resolved and none given"

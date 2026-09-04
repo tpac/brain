@@ -33,6 +33,23 @@ brain_launchd_managed() {
     launchctl print "$_BRAIN_LAUNCHD_DOMAIN/$1" >/dev/null 2>&1
 }
 
+# Entities (BRAIN_INSTANCE set — eval brains, install smoke runs) never use
+# launchd: they run daemon_server as a child process on their own port. The
+# loaded service is uid-wide while the plist path is $HOME-relative, so an
+# entity under a scratch $HOME reads "no plist at my path" as drift and would
+# bootout + re-bootstrap PRODUCTION's job onto its own tree — persistent
+# across reboots. Every caller checks this first; the mutators below refuse
+# regardless, so a caller that forgets cannot do the damage.
+brain_launchd_entity() {
+    [ -n "${BRAIN_INSTANCE:-}" ]
+}
+_brain_launchd_refuse_entity() {
+    # $1 what  $2 log prefix — true (and loud) when the caller must stop
+    brain_launchd_entity || return 1
+    echo "${2:-[launchd-install]} refusing to $1 under BRAIN_INSTANCE=$BRAIN_INSTANCE — entities never touch launchd" >&2
+    return 0
+}
+
 # Materialize the template for THIS machine into $6 (real paths, no tokens).
 # Rendering is deterministic, so the caller can diff the result against the
 # installed copy to detect drift without touching launchd.
@@ -123,6 +140,7 @@ brain_launchd_render() {
 brain_launchd_unload() {
     # $1 label  $2 log prefix
     local _label="$1" _prefix="$2"
+    _brain_launchd_refuse_entity "unload $_label" "$_prefix" && return 1
     launchctl bootout "$_BRAIN_LAUNCHD_DOMAIN/$_label" >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5; do
         brain_launchd_managed "$_label" || break
@@ -143,6 +161,7 @@ brain_launchd_unload() {
 brain_launchd_reinstall() {
     # $1 label  $2 rendered  $3 log prefix
     local _label="$1" _rendered="$2" _prefix="$3"
+    _brain_launchd_refuse_entity "reinstall $_label" "$_prefix" && return 1
 
     if ! brain_launchd_unload "$_label" "$_prefix"; then
         echo "$_prefix WARN: keeping installed plist (drift retries next run)" >&2
@@ -157,6 +176,7 @@ brain_launchd_reinstall() {
 # to preserve.
 brain_launchd_install_fresh() {
     # $1 label  $2 rendered
+    _brain_launchd_refuse_entity "install $1" && return 1
     _brain_launchd_load "$1" "$2"
 }
 

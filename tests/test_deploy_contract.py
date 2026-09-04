@@ -24,6 +24,8 @@ adapter: N becomes `entity` and any `com.entity.` occurrence is a leak.
 
 Run: ./dev python3 -m pytest tests/test_deploy_contract.py -v
 """
+import ast
+import functools
 import json
 import os
 import re
@@ -77,9 +79,24 @@ SCOPE = [
 ]
 
 
+@functools.lru_cache(maxsize=None)
 def _read(rel_path):
+    # the tree does not change during a run; several scans read every file
     with open(os.path.join(REPO, rel_path), 'rb') as f:
         return f.read().decode('utf-8', errors='ignore')
+
+
+@functools.lru_cache(maxsize=None)
+def _manifest():
+    """The package manifest — `build-plugin.sh --list`, the ONE owner of
+    "what ships". Both the manifest sanity test and the reachability scan
+    read it from here; one subprocess per run."""
+    out = subprocess.run(
+        ['bash', os.path.join(REPO, 'build-plugin.sh'), '--list'],
+        capture_output=True, text=True, timeout=60, cwd=REPO,
+    )
+    assert out.returncode == 0, out.stderr
+    return [l for l in out.stdout.splitlines() if l.strip()]
 
 
 def _load_json(rel_path):
@@ -306,6 +323,102 @@ class TestShippedScriptsReachable:
             'shipped hooks/scripts files with no wiring path (dead on every '
             f'install — delete them or name their external wiring in ALLOW): {orphans}')
 
+    # ── servers/: reachability by IMPORT, not by name ──
+    # hooks/scripts/* are wired by NAME (hooks.json, plists, skills), so text
+    # containment is the right edge above. servers/* are wired by IMPORT, and
+    # a module's stem (`dal`, `clock`, `contract`) appears in prose
+    # everywhere, so name-matching would vouch for anything. The edge here is
+    # the import graph: ast over every shipped .py, relative and absolute
+    # imports resolved to files, `from pkg import submodule` included, lazy
+    # in-function imports included (ast sees them; a runtime probe would
+    # not). Seeds are the non-servers shipped code (hooks/scripts/*.py,
+    # dashboard/) plus module paths named as strings in the wiring
+    # (`-m servers.daemon_server` in brain-daemon, `servers/brain_mcp.py` in
+    # mcp-launch.sh). `git ls-files` guarantees the manifest cannot ROT and
+    # says nothing about whether a listed file is REACHED; the suite cannot
+    # tell either — it runs inside the tree and exercises only what a test
+    # imports. Eval-only instruments have shipped to every install this way.
+
+    @staticmethod
+    def _imports(rel):
+        """Dotted names a Python file imports. Relative imports resolve against
+        the file's package; `from X import y` yields X and X.y (y may be a
+        submodule)."""
+        try:
+            tree = ast.parse(_read(rel), filename=rel)
+        except SyntaxError:
+            return set()
+        pkg = rel.split('/')[:-1]
+        out = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                out.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    base = pkg[:len(pkg) - (node.level - 1)]
+                    mod = '.'.join(base + ([node.module] if node.module else []))
+                else:
+                    mod = node.module or ''
+                if mod:
+                    out.add(mod)
+                    out.update(f'{mod}.{a.name}' for a in node.names)
+        return out
+
+    def test_every_shipped_servers_module_reachable(self):
+        manifest = _manifest()
+        shipped = {p for p in manifest if p.startswith('servers/')}
+        py = {p for p in shipped if p.endswith('.py')}
+
+        def resolve(dotted):
+            rel = dotted.replace('.', '/')
+            return {c for c in (rel + '.py', rel + '/__init__.py') if c in py}
+
+        def packages_of(rel):
+            # importing servers.a.b runs servers/__init__ and servers/a/__init__
+            parts = rel.split('/')[:-1]
+            return {'/'.join(parts[:i]) + '/__init__.py'
+                    for i in range(1, len(parts) + 1)} & py
+
+        def edges(rel):
+            out = set(packages_of(rel))
+            for d in imports[rel]:
+                out |= resolve(d)
+            return out
+
+        imports = {p: self._imports(p) for p in py}   # parse each file once
+        seeds = [p for p in manifest if not p.startswith('servers/')]
+        seed_text = '\n'.join(_read(p) for p in seeds)
+        live = set()
+        for p in seeds:
+            if p.endswith('.py'):
+                for d in self._imports(p):
+                    live |= resolve(d)
+        for d in re.findall(r'\bservers(?:\.[A-Za-z_][A-Za-z0-9_]*)+', seed_text):
+            live |= resolve(d)
+        live |= {f for f in re.findall(r'\bservers/[A-Za-z0-9_/]+\.py\b', seed_text) if f in py}
+        # Fixpoint over the frontier: whatever a live module imports is live.
+        frontier = set(live)
+        while frontier:
+            grown = set()
+            for m in frontier:
+                grown |= edges(m)
+            frontier = grown - live
+            live |= grown
+
+        orphans = sorted(py - live)
+        # data files under servers/ (a .json today) follow the hooks/scripts
+        # rule: named by basename or stem somewhere live
+        live_text = seed_text + '\n' + '\n'.join(_read(p) for p in live)
+        for d in sorted(shipped - py):
+            base = os.path.basename(d)
+            if base not in live_text and os.path.splitext(base)[0] not in live_text:
+                orphans.append(d)
+        assert not orphans, (
+            'shipped servers/ files nothing imports from the entrypoints '
+            '(hooks, dashboard, brain_mcp, daemon_server) — dead on every '
+            f'install: delete them, relocate them beside their real consumer '
+            f'(eval/, scripts/), or wire them: {orphans}')
+
 
 class TestMechanismContainment:
     """Duplicated mechanisms have ONE home, and this fails when a second
@@ -410,6 +523,8 @@ class TestMechanismContainment:
                 'servers/daemon_client.py',      # the client wire, the owner
                 'servers/daemon_server.py',      # the server side — binds, not connects
                 'servers/daemon_launch.py',      # port-occupied probe — binds, not connects
+                'scripts/smoke-lib.sh',          # dev sandbox picking an ephemeral port for
+                                                 # ITS daemon — never ships, never connects
                 'dashboard/daemon_client.py',    # sanctioned copy: the dashboard must
                                                  # run when servers/ is absent or broken
                 'hooks/scripts/post_tool_trace.py',  # fires on EVERY tool call;
@@ -463,19 +578,13 @@ class TestPublicTreeExport:
 
     SCRIPT = os.path.join(os.path.dirname(__file__), '..',
                           'scripts', 'export-public-tree.sh')
-    BUILDER = os.path.join(os.path.dirname(__file__), '..',
-                           'build-plugin.sh')
 
     def _run(self, *args, timeout=60):
         return subprocess.run(['bash', self.SCRIPT, *args],
                               capture_output=True, text=True, timeout=timeout)
 
     def test_manifest_list_mode_is_sane(self):
-        out = subprocess.run(['bash', self.BUILDER, '--list'],
-                             capture_output=True, text=True, timeout=60,
-                             cwd=os.path.dirname(self.BUILDER))
-        assert out.returncode == 0, out.stderr
-        files = [l for l in out.stdout.splitlines() if l.strip()]
+        files = _manifest()
         assert len(files) > 100, 'manifest suspiciously small'
         assert '.claude-plugin/plugin.json' in files
         leaked = [f for f in files
@@ -510,6 +619,24 @@ class TestPublicTreeExport:
         assert self._run('--denylist-only', str(tmp_path)).returncode != 0, \
             'real-session fixture dir must be denylisted'
 
+    def test_secrets_gate(self, tmp_path):
+        assert self._run('--secrets-only', str(tmp_path)).returncode == 0
+        (tmp_path / 'mod.py').write_text('KEY = "sk-ant-api03-' + 'A' * 40 + '"\n')
+        r = self._run('--secrets-only', str(tmp_path))
+        assert r.returncode != 0 and 'mod.py' in r.stderr, r.stderr
+        (tmp_path / 'mod.py').unlink()
+        # files that have no business in a public tree, whatever they hold
+        (tmp_path / 'scratch.db').write_bytes(b'')
+        r = self._run('--secrets-only', str(tmp_path))
+        assert r.returncode != 0 and 'scratch.db' in r.stderr, r.stderr
+
+    def test_secrets_gate_ignores_short_fixture_keys(self, tmp_path):
+        # the suite ships fixture keys shaped like sk-ant-test-abc123 by design;
+        # the gate looks for real key lengths, not the assignment
+        (tmp_path / 't.py').write_text(
+            "os.environ['ANTHROPIC_API_KEY'] = 'sk-ant-test-abc123'\n")
+        assert self._run('--secrets-only', str(tmp_path)).returncode == 0
+
     def test_scrub_allowlist_cannot_mask_a_colocated_leak(self, tmp_path):
         # review finding: line-level subtraction hid a leak sharing a line
         # with an allowed attribution — the gate must strip only the allowed
@@ -543,8 +670,26 @@ class TestPublicTreeExport:
         assert r.returncode == 0, (
             'the live tree no longer exports clean — the failing gate names '
             'itself below (gate B = a personal-information hit; gate A = a '
-            'denylisted path; a `cp` error = a tracked file missing on disk).\n'
+            'denylisted path; gate D = a credential shape or a forbidden file; '
+            'a `cp` error = a tracked file missing on disk).\n'
             f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
+        # D-8's graceful skip must not rot: eval/ is absent from this tree,
+        # and a test module that reaches it without require_eval() aborts
+        # the WHOLE exported suite at collection. Collecting the exported
+        # tests catches every coupling shape — a module import, a bare
+        # import via a sys.path insert, a helper module, an in-body path —
+        # by running the thing instead of pattern-matching for it. The
+        # export's conftest warns that its own venv is absent and proceeds.
+        c = subprocess.run(
+            [sys.executable, '-m', 'pytest', '--collect-only', '-q',
+             '-p', 'no:cacheprovider', 'tests'],
+            cwd=str(out), capture_output=True, text=True, timeout=120)
+        assert c.returncode == 0, (
+            'the exported suite does not collect — a test reaches eval/ (or '
+            'another excluded path) without the D-8 graceful skip; add '
+            '`from tests.eval_optional import require_eval; require_eval()` '
+            f'above the import.\n--- stdout ---\n{c.stdout[-3000:]}\n'
+            f'--- stderr ---\n{c.stderr[-2000:]}')
 
     # ── the allowlist must not be able to grow quietly ──
 
@@ -601,3 +746,68 @@ class TestPublicTreeExport:
         r = self._run(str(tmp_path))
         assert r.returncode != 0
         assert (tmp_path / 'precious.txt').exists()
+
+
+class TestReleaseCommand:
+    """5.7: the release command's REFUSALS, which are its whole value.
+
+    Only the preflight is exercised: it runs before anything expensive and
+    before the tree is staged, so a refusal here proves the door stays shut
+    without paying for the export, the suite or the smoke. The commit the
+    release adds — author, e-mail, messages, target URL — is the one artifact
+    the export gates never see; these pin that it is gated anyway."""
+
+    SCRIPT = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'release.sh')
+
+    def _run(self, tmp_path, *args, email=None, previous='none'):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('RELEASE_AUTHOR_EMAIL', 'RELEASE_PREVIOUS')}
+        env['RELEASE_STAGE'] = str(tmp_path / 'stage')
+        if email is not None:
+            env['RELEASE_AUTHOR_EMAIL'] = email
+        if previous is not None:
+            env['RELEASE_PREVIOUS'] = previous
+        return subprocess.run(['bash', self.SCRIPT, *args], capture_output=True,
+                              text=True, timeout=120, env=env)
+
+    def test_refuses_without_explicit_author_email(self, tmp_path):
+        # git's configured identity must never be the fallback — on the dev
+        # machine it is a work address
+        r = self._run(tmp_path, '0.9.0')
+        assert r.returncode != 0
+        assert 'RELEASE_AUTHOR_EMAIL' in r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists(), 'refused, yet staged'
+
+    def test_refuses_without_a_predecessor_statement(self, tmp_path):
+        # the upgrade test cannot be forgotten, only declined by name
+        r = self._run(tmp_path, '0.9.0', email='a@example.org', previous=None)
+        assert r.returncode != 0
+        assert 'RELEASE_PREVIOUS' in r.stderr
+        r = self._run(tmp_path, '0.9.0', email='a@example.org',
+                      previous=str(tmp_path / 'not-a-tree'))
+        assert r.returncode != 0
+        assert 'not a plugin tree' in r.stderr
+
+    def test_refuses_personal_author_email(self, tmp_path):
+        r = self._run(tmp_path, '0.9.0', email='someone@playbuzz.com')
+        assert r.returncode != 0
+        assert 'gate B' in r.stderr, r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists()
+
+    def test_refuses_malformed_version(self, tmp_path):
+        r = self._run(tmp_path, '9.7', email='a@example.org')
+        assert r.returncode != 0
+        assert 'X.Y.Z' in r.stderr
+
+    def test_publish_refuses_a_foreign_remote(self, tmp_path):
+        # a mis-aimed push is the one way history could leak
+        r = self._run(tmp_path, '0.9.0', '--publish', 'git@github.com:someone/else.git',
+                      email='a@example.org')
+        assert r.returncode != 0
+        assert 'repository' in r.stderr and 'someone/else' in r.stderr
+
+    def test_publish_refuses_skipped_steps(self, tmp_path):
+        r = self._run(tmp_path, '0.9.0', '--publish', PLUGIN['repository'],
+                      '--skip', 'suite', email='a@example.org')
+        assert r.returncode != 0
+        assert '--skip' in r.stderr

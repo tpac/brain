@@ -17,6 +17,7 @@ To run with the right Python without thinking about it:
 """
 import atexit
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -79,6 +80,21 @@ _ENV_LEAKS = []
 _ENV_LEAK_EXEMPT = 'test_env_isolation.py'
 
 
+_SECRET_KEY = re.compile(r'KEY|TOKEN|SECRET|PASSWORD', re.I)
+
+
+def _shown(key, value):
+    """A leaked value as the report may print it. A credential is shown as
+    its fingerprint — the report lands in terminals and CI logs, where a raw
+    key must never appear (the daemon's own rule, key_fingerprint)."""
+    if value is None:
+        return 'unset'
+    if _SECRET_KEY.search(key):
+        from servers.scales.dispatch import key_fingerprint
+        return 'fp:%s' % key_fingerprint(value)
+    return repr(value)
+
+
 def _restore_env(saved, where=''):
     # Re-add before delete: a restore that dies half-done must not leave a
     # deliberately-popped baseline (the ASPECTS_JSON_PATH pin) missing, and
@@ -86,10 +102,11 @@ def _restore_env(saved, where=''):
     leaked = []
     for key, value in saved.items():
         if key not in _ENV_NOT_OURS and os.environ.get(key) != value:
-            leaked.append('%s: %r -> %r' % (key, value, os.environ.get(key)))
+            leaked.append('%s: %s -> %s' % (key, _shown(key, value),
+                                            _shown(key, os.environ.get(key))))
             os.environ[key] = value
     for key in [k for k in os.environ if k not in saved and k not in _ENV_NOT_OURS]:
-        leaked.append('%s: unset -> %r' % (key, os.environ.get(key)))
+        leaked.append('%s: unset -> %s' % (key, _shown(key, os.environ.get(key))))
         os.environ.pop(key, None)
     if leaked and where and _ENV_LEAK_EXEMPT not in where:
         _ENV_LEAKS.append((where, leaked))
@@ -161,6 +178,46 @@ if not os.environ.get('ASPECTS_JSON_PATH'):
     os.environ['BRAIN_TEST_ASPECTS_DEFAULT_PIN'] = os.environ['ASPECTS_JSON_PATH']
 
 
+# Hermetic config home + key. brain.llm_available gates surface/encode/S2/warms
+# on a resolved sk-* key (keyless first-run onboarding); without pinning,
+# real-Brain tests would behave differently on machines with vs without a key.
+# A fake sk- prefix keeps the suite deterministic; unit tests mock LLM calls,
+# so the fake never reaches the API.
+#
+# The pin covers the FILE as well as the variable: resolve_api_key() reads
+# ${XDG_CONFIG_HOME:-~/.config}/brain/env on every llm_available check and
+# writes the file's key into os.environ (the file wins — that is what makes
+# key replacement work without a restart), so a real env file in reach swaps
+# the fake for a real credential on the first test that touches it, and the
+# leak guard above then reports what it caught. So the config home is a
+# per-run dir holding the fake key and nothing secret — set unconditionally
+# (at import no test has run; one that wants its own config home sets it
+# later) and BEFORE servers.daemon_config is imported below, which resolves
+# the daemon port from the same file at import. The brain-location POINTER
+# (BRAIN_DB_DIR, from the knob or resolved.env) is carried over: IsolatedBrain
+# finds the production brain through it, and it holds no secret.
+_HERMETIC_KEY = 'sk-test-hermetic-not-a-key'
+_real_cfg = os.path.join(os.environ.get('XDG_CONFIG_HOME')
+                         or os.path.expanduser('~/.config'), 'brain')
+_cfg_home = tempfile.mkdtemp(prefix='pytest_xdg_config_')
+atexit.register(shutil.rmtree, _cfg_home, True)
+os.makedirs(os.path.join(_cfg_home, 'brain'))
+_pointer = ''
+for _name in ('env', 'resolved.env'):
+    try:
+        with open(os.path.join(_real_cfg, _name)) as _f:
+            _lines = [l for l in _f if l.startswith('BRAIN_DB_DIR=')]
+    except OSError:
+        continue
+    if _lines:
+        _pointer = _lines[-1]
+        break
+with open(os.path.join(_cfg_home, 'brain', 'env'), 'w') as _f:
+    _f.write('ANTHROPIC_API_KEY=%s\n%s' % (_HERMETIC_KEY, _pointer))
+os.environ['XDG_CONFIG_HOME'] = _cfg_home
+os.environ['ANTHROPIC_API_KEY'] = _HERMETIC_KEY
+
+
 # CPU-only pin. daemon_config is the one module under servers/ that writes
 # os.environ at IMPORT (DAEMON_CPU_ENV — ORT_DISABLE_ALL_ACCELERATORS is the
 # load-bearing SIGABRT guard on Apple Silicon), and most test files reach it
@@ -172,14 +229,6 @@ if not os.environ.get('ASPECTS_JSON_PATH'):
 import servers.daemon_config  # noqa: E402,F401
 
 
-# Hermetic key: brain.llm_available gates surface/encode/S2/warms on a
-# resolved sk-* key (keyless first-run onboarding). Without pinning, real-
-# Brain tests would behave differently on machines with vs without a key
-# in ~/.config/brain/env — passing on the dev box, gating (and failing) on
-# a keyless one. A fake sk- prefix keeps the suite deterministic; unit
-# tests mock actual LLM calls, so the fake never reaches the API. Also
-# stops load_env() from pulling the developer's REAL key into test runs.
-os.environ.setdefault('ANTHROPIC_API_KEY', 'sk-test-hermetic-not-a-key')
 
 _BYPASS_ENV = 'BRAIN_ALLOW_ANY_PYTHON'
 

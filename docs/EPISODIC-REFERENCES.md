@@ -1641,7 +1641,7 @@ If storage ever becomes a concern (today: ~50MB/year growth — comfortable for 
 
 ### 16.8 — Trim historical pre-Phase-5 `co_accessed` edges
 
-Today's graph contains `co_accessed` edges from the pre-Phase-5 era (when every recall created edges between all top-25 candidates, not just the post-Haiku selected ones). The `integrity_audit.py` warning flags this — *"co_accessed edges are X% of all edges — organic but noisy"* — and the noise undermines the new meaningful post-Haiku `co_accessed` mechanism plus the structural `co_anchored` signal (decision 15).
+Today's graph contains `co_accessed` edges from the pre-Phase-5 era (when every recall created edges between all top-25 candidates, not just the post-Haiku selected ones). The noise undermines the new meaningful post-Haiku `co_accessed` mechanism plus the structural `co_anchored` signal (decision 15).
 
 **The trim task** (runs any time after the episodic-references plan ships):
 - Identify pre-Phase-5 `co_accessed` edges (by `created_at` < Phase 5 cutover date, or by lack of selection-source metadata if older edges don't carry it).

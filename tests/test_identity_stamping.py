@@ -310,8 +310,12 @@ class ConfigReaderTest(unittest.TestCase):
         finally:
             if prior_op is not None:
                 os.environ['BRAIN_OPERATOR_NAME'] = prior_op
+            else:
+                os.environ.pop('BRAIN_OPERATOR_NAME', None)
             if prior_ag is not None:
                 os.environ['BRAIN_AGENT_NAME'] = prior_ag
+            else:
+                os.environ.pop('BRAIN_AGENT_NAME', None)
 
 
 if __name__ == '__main__':

@@ -6,10 +6,11 @@
 #   Usage: export-public-tree.sh [out-dir]          (default: dist/public-tree)
 #          export-public-tree.sh --scrub-only DIR    (gate B alone, for tests)
 #          export-public-tree.sh --denylist-only DIR (gate A alone, for tests)
+#          export-public-tree.sh --secrets-only DIR  (gate D alone, for tests)
 #
 # Contents = the package manifest (build-plugin.sh --list — the ONE owner of
 # "what ships", LICENSES/ included) + additive extras (README, CONTRIBUTING, tests/)
-# − the denylist. Three hard-fail gates run on the RESULT, not the intent:
+# − the denylist. Four hard-fail gates run on the RESULT, not the intent:
 #   A. denylist — private artifacts must not exist in the output
 #   B. scrub — personal-information patterns must not appear anywhere in the
 #      output, except an explicit per-file attribution allowlist
@@ -17,8 +18,12 @@
 #      `/plugin update`, which compares them); with EXPECT_VERSION=X in the
 #      environment they must also both READ X — the release command passes
 #      the version it is releasing, so agreement on the wrong value fails too
+#   D. secrets — credential shapes must not appear, and files that have no
+#      business in a public tree (databases, env files, private keys, caches)
+#      must not exist
 # The gates exist so 5.2–5.7 are enforced instead of remembered: a leak fails
-# the export; it cannot ship quietly.
+# the export; it cannot ship quietly. Every gate runs on the LIVE tree on
+# every suite run (TestPublicTreeExport::test_live_tree_exports_clean).
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 say() { printf '%s\n' "[export-public] $*"; }
@@ -197,10 +202,65 @@ print("\n".join(out))
   say "gate B (scrub): clean"
 }
 
+# ── Gate D: credential shapes, and files that must not exist at all.
+# Vendor key prefixes with REAL-key length floors: the suite ships short fake
+# fixture keys (sk-ant-test-abc123) by design, and matching the assignment
+# would flag every one of them. gitleaks runs as well when installed; the
+# gate line says which detectors ran, so degraded coverage is never silent.
+# `sk-` keys are segmented by every vendor (sk-ant-…, sk-proj-…-…), so the
+# body may carry `-`/`_`; the 40-char floor is what separates a real key from
+# the short fixture keys the suite ships.
+SECRET_PATTERNS='\bsk-[A-Za-z0-9_-]{40,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|xox[abprs]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35}'
+
+_secrets_gate() {
+  local root="$1" bad=0
+  [ -d "$root" ] || fail "secrets (gate D) — $root is not a directory, nothing scanned"
+  [ ! -e "$root/.git" ] || { printf '%s\n' "  a .git directory is in the tree" >&2; bad=1; }
+  local junk
+  junk="$(cd "$root" && find . \( -name '*.db' -o -name '*.db-wal' -o -name '*.db-shm' \
+      -o -name '.env' -o -name 'env' -o -name '*.pem' -o -name '*.key' -o -name '*.p12' \
+      -o -name '*.pfx' -o -name 'id_rsa*' -o -name '.DS_Store' -o -name '__pycache__' \
+      -o -name '.pytest_cache' \) -print)"
+  if [ -n "$junk" ]; then
+    printf '%s\n' "$junk" | sed 's/^/  forbidden file: /' >&2; bad=1
+  fi
+  # grep's exit code is three-valued; a scan that could not run must not
+  # read as a scan that found nothing.
+  local hits rc
+  set +e
+  hits="$(cd "$root" && grep -rInE "$SECRET_PATTERNS" . --exclude-dir=.git)"
+  rc=$?
+  set -e
+  case "$rc" in
+    0) printf '%s\n' "$hits" | head -50 | sed 's/^/  credential shape: /' >&2; bad=1 ;;
+    1) ;;
+    *) fail "secrets (gate D) — grep exited $rc (unreadable path?), nothing scanned" ;;
+  esac
+  local via="built-in patterns"
+  if command -v gitleaks >/dev/null 2>&1; then
+    # Any non-zero is red, but its OUTPUT is shown — a usage error and a leak
+    # both exit 1, and the operator must be able to tell which.
+    local gl_out gl_rc
+    set +e
+    gl_out="$(gitleaks detect --no-git --source "$root" --redact 2>&1)"
+    gl_rc=$?
+    set -e
+    if [ "$gl_rc" -ne 0 ]; then
+      printf '%s\n' "$gl_out" | tail -30 | sed 's/^/  gitleaks: /' >&2
+      printf '%s\n' "  gitleaks exited $gl_rc" >&2
+      bad=1
+    fi
+    via="built-in patterns + gitleaks"
+  fi
+  [ "$bad" -eq 0 ] || fail "secrets (gate D) — see above"
+  say "gate D (secrets): clean ($via)"
+}
+
 # Test doors: run one gate against an arbitrary tree, no export.
 case "${1:-}" in
   --scrub-only)    _scrub_gate "${2:?dir required}";    exit 0 ;;
   --denylist-only) _denylist_gate "${2:?dir required}"; exit 0 ;;
+  --secrets-only)  _secrets_gate "${2:?dir required}";  exit 0 ;;
 esac
 
 OUT="${1:-$REPO/dist/public-tree}"
@@ -245,4 +305,5 @@ say "materialized $_count files -> $OUT"
 
 _denylist_gate "$OUT"
 _scrub_gate "$OUT"
+_secrets_gate "$OUT"
 say "public tree is clean: $OUT"

@@ -1,6 +1,31 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-09-03) — **5.2 DONE (rename + 0.9.0 + the D-10 assertion); next is 5.9, then 5.7**
+## §ACTIVE ARC (2026-09-03) — **5.7 BUILT and dry-run green; the push waits on Tom (e-mail domain, repo, go). 5.9 is unowned.**
+
+**5.7 built 2026-09-03/04 — `scripts/release.sh`, `install-smoke.sh`,
+`upgrade-smoke.sh` (harness `smoke-lib.sh`), NOT published.** One command,
+dry-run by default, seven steps that each refuse the rest on red: preflight
+(version shape, author identity, a named predecessor or `none`, publish
+preconditions) → export (gates A/B/C, plus new **gate D** secrets) →
+deploy-gate → **install smoke** (a stranger's first run under a scratch
+`$HOME`: cold boot, detached bootstrap, XDG birth, keyless daemon, both
+entrypoints import, both resolvers find the brain unaided) → **upgrade
+smoke** (the previous release's user updates and keeps their brain: daemon
+reloads onto the new code, no node lost, the lived one still served) → the
+suite on a COPY, keyless → squash repo + tag with author asserted on the
+objects. `--publish <url>` opens the door only on a clean `main`, URL equal
+to the manifest's `repository`, nothing skipped, and `RELEASE_PREVIOUS=none`
+only against a remote with no refs. Rollback is fix-forward, and the command
+says so on every run. **Day one it refused twice for real:** a dead
+`servers/integrity_audit.py` (caught by the new servers/ reachability test —
+deleted on Tom's call) and `test_gold_surfaces.py` importing `eval/` without
+the D-8 skip (fixed; the live-tree test now `--collect-only`s the export so
+that class cannot rot again). A high-effort review then found ten defects in
+the command itself, two of them welding it shut; all ten fixed and
+re-verified. Detail in the 5.7 item. **Waiting on Tom:** the public
+committer e-mail (a domain to be opened — the command requires one
+explicitly and scrubs it), `tpac/entity` creation, and the `--publish` go.
+**5.9 (opt-in export) is still unowned and should land before publish day.**
 
 **5.2 landed 2026-09-03.** Both manifests read `entity` / `anchor` / `0.9.0`;
 the 15 product-name sites (`boot-brain.sh`, `setup.html`) say **Entity**; the
@@ -50,7 +75,7 @@ class, and two of the items below are bigger than they look.
 | 2 | **`Anchor` across 62 files / 203 occurrences** (re-measured post-rename 2026-09-03: **150 in 55 shipped files** — the real blocker — and 53 in 7 never-ship files) — comments, docstrings, prompt/rubric files. Tom ruled it a deliberate one-at-a-time sweep with him engaged, NOT a mechanical pass | same table |
 | 3 | **`encoding_source='anchor'`** — 41 data-model literals + the lock gate's `startswith('anchor')`. Rename target recorded as `interactive`/`session` | same, final paragraph |
 | 4 | **The public tree is opt-out** — 413 of 429 files ship because nothing said no | **5.9** |
-| 5 | **Nothing covers what the release step adds** — commit message, tag, repo description, committer identity are all outside every gate | **5.7** (unbuilt) |
+| 5 | ~~Nothing covers what the release step adds~~ — **closed by 5.7**: author name asserted equal to the manifest's, e-mail + commit/tag messages through gate B, publish URL by equality; committer identity asserted on the git objects. Repo *description* is set on GitHub, outside the command | **5.7** |
 | 6 | **The v30 slug-map collapse is lossy** for 9 local pre-v30 copies, four of them Tom's own backups | 5.3 → the ⚠ note |
 | 7 | 116 dangling `docs/`/`eval/` references | 5.3 → the split table |
 
@@ -329,8 +354,8 @@ while execution drifts at the substrate* (community id:3350ea51), proven twice o
 | D-4 | yes | `plugin.json.userConfig` carries `api_key` + `brain_path`; the `~/.config/brain/env` ladder rung is intact |
 | D-5 | yes | the Nursery pack, `tests/test_seed_pack.py::TestNurseryPackContracts` |
 | D-6 | yes (2026-09-03) | `plugin.json` `name: entity`, `homepage`/`repository` `tpac/entity`; marketplace `name: anchor`, entry `entity`. MCP server key stays `brain` (`.mcp.json`) → tools `mcp__plugin_entity_brain__*` ✓; `displayName: Entity` ✓ |
-| D-7 | export yes, **release no** | `export-public-tree.sh` materializes and gates; the exported tree correctly carries no `.git`. The squash-push/tag command is unbuilt (5.7) |
-| D-8 | **partial — one defect** | `eval/` denylisted ✓, `tests/` ship ✓. But the coupled files **have no graceful skip** — they raise `ModuleNotFoundError: No module named 'eval'` at *collection*, which aborts the whole run (`Interrupted: 6 errors during collection`). D-8 says they "degrade to graceful skip"; nothing implements that |
+| D-7 | yes (2026-09-03) — **push not yet run** | `export-public-tree.sh` materializes and gates; `scripts/release.sh` squash-commits the export into a fresh repo (one commit, tag, author asserted on the objects, global git excludes disabled) and pushes only under `--publish` on a clean `main` to the manifest's URL. Dry-run verified; the push itself awaits Tom |
+| D-8 | yes (2026-09-01, ratcheted 2026-09-03) | `eval/` denylisted ✓, `tests/` ship ✓, `tests/eval_optional.py::require_eval()` is the one skip door (8 modules). The ratchet: `test_live_tree_exports_clean` runs `pytest --collect-only` over the exported tree, so a new eval-coupled test aborts the deploy gate at merge time instead of the release |
 | D-9 | yes | `CONTRIBUTING.md` states issues-only, PRs not accepted, plus the never-paste-memories privacy note |
 | D-10 | yes (2026-09-03) — **enforced** | both manifests read `0.9.0`. `TestVersionLockstep.test_version_is_the_expected_release` pins the value (`EXPECTED_VERSION`, the one home of the literal); gate C fails on `EXPECT_VERSION=X` mismatch, and `test_gate_c_rejects_unexpected_version` pins that it fails *before* the copy. The earlier "5.1 asserts it" claim was false until this landed |
 | D-11 | yes | `test_deploy_contract` host-neutrality + repo-slug + MCP-prefix containment all live; the `com.N.` sub-check **armed at the rename 2026-09-03 and passed** (zero `com.entity.` in scope) |
@@ -1077,8 +1102,10 @@ split across two wrapped comment lines evades a line-based grep; unicode
 homoglyphs evade everything. All need either bad luck or intent. **The
 structural one worth naming:** the gate scans the materialized tree, so nothing
 covers what the *release step* adds after materialization — commit message, tag,
-repo description, committer identity. **5.7 owns that boundary and it is
-unbuilt.**
+repo description, committer identity. **5.7 owns that boundary** — built
+2026-09-03: `release.sh` asserts the author name against the manifest, scrubs
+the e-mail and both messages through gate B, vets the push URL by equality,
+and re-reads the identity off the commit objects.
 
 **The lesson worth keeping:** a scrub pattern list is a record of what someone
 once thought of. `playbuzz`-without-`ex.co` is that failure exactly — the
@@ -1251,6 +1278,10 @@ to done than the item implied: nothing outside the eval coupling breaks. No
   (asserts `eval/longmem/connect_ab.py` exists on disk).
 Plus the gold-data consumers, once those three files are denylisted (ruled
 2026-08-31: exclude, not sanitize).
+**A 9th arrived within a week** — `test_gold_surfaces.py` (2026-09-01) imported
+`eval/` at module level and aborted the exported suite; the release dry run
+caught it. Fixed the same way, and the class is now ratcheted: the live-tree
+export test collects the exported suite on every run (D-8 row above).
 
 **Set RE-DERIVED — no longer an estimate:**
 - **Import-coupled: exactly 6 files**, all `ModuleNotFoundError: No module
@@ -1298,24 +1329,114 @@ new-vs-old encoder eval on the frozen-corpus harness. *Was L; shipped.*
 **5.7 [LAST — one-way door] Publish.** Fresh public repo `tpac/entity`, clean
 history, only after 5.1–5.6 are verifiably clean.
 
-**The `release` command — scoped 2026-08-31, NOT built (needs an explicit go).**
-One command, and its whole value is that it *refuses*:
-  1. assert the working tree is clean and on `main`
-  2. `export-public-tree.sh` → materialize; **abort on any red gate** (A, B, C)
-  3. run the export with `EXPECT_VERSION=<the version being released>` — gate C
-     then fails on agreement-on-the-wrong-value, not just drift (built 2026-09-03
-     with 5.2). The literal itself lives in ONE place,
-     `TestVersionLockstep.EXPECTED_VERSION`; a bump edits it with the manifests,
-     and the release command derives `EXPECT_VERSION` from its own argument
-     rather than carrying a second literal
-  4. run the suite **against a copy** of the tree, not the tree itself
-     (`.pytest_cache/` pollution — see 5.5); abort on red
-  5. secrets scan
-  6. `git init` a fresh checkout, one commit, tag `vX.Y.Z`, push
-Small now that tree-building and gating exist. It should absorb what the
-abandoned release-ratchet rebuild (BACKLOG item 4) was for. **The exported tree
-already carries no `.git` (verified)** — history cannot leak through the export
-itself; only a mis-aimed push could.
+**The `release` command — BUILT 2026-09-03/04 (`scripts/release.sh`), dry-run
+verified, NOT published.** `release.sh <version> [--publish <url>]
+[--skip <step>]`. Two things it refuses to guess: `RELEASE_AUTHOR_EMAIL`
+(the public commit's identity — git's configured identity is a work address)
+and `RELEASE_PREVIOUS` (the previous release's tree, or the word `none` for a
+first release — unset refuses, so the upgrade test can be declined by name
+but never forgotten). Dry-run by default; seven steps, the first red refuses
+everything after it, cheap gates before the long suite:
+  1. **preflight** — `X.Y.Z` shape; author e-mail present and scrubbed through
+     gate B together with the commit and tag messages (`--scrub-only` door);
+     author *name* asserted equal to `plugin.json.author` (the manifest's
+     allowlist entry vets it); `--publish` additionally needs URL ==
+     `plugin.json.repository`, no `--skip`, branch `main`, clean tree, and
+     `RELEASE_PREVIOUS=none` only against a remote with **no refs**
+     (`git ls-remote`, no prompt) — a second release cannot skip the upgrade
+     gate by declaration
+  2. **export** — `EXPECT_VERSION=<version> export-public-tree.sh` → gates A,
+     B, C (the version literal lives once, in
+     `TestVersionLockstep.EXPECTED_VERSION`; the command passes its own
+     argument) and the new **gate D** (credential shapes with real-key length
+     floors — `sk-…` bodies may be segmented, the 40-char floor is what
+     separates a key from a fixture; forbidden files: `*.db`, `.env`, private
+     keys, caches; gitleaks too when installed, output shown on any non-zero,
+     and the gate line says which detectors ran)
+  3. **deploy-gate** — `tests/test_deploy_contract.py`: version lockstep,
+     `servers/` reachability (ast import graph from the entrypoints), the
+     live-tree export + `--collect-only` ratchet
+  4. **smoke** — `scripts/install-smoke.sh` on a copy (harness:
+     `scripts/smoke-lib.sh`): scratch `$HOME`/XDG, `env -i`, `BRAIN_INSTANCE`
+     + ephemeral port; cold hook answers in ~1s and detaches the bootstrap
+     (~15s warm-cached); warm boot births the brain at `$XDG_DATA_HOME/brain`,
+     daemon up keyless, MCP imports; both entrypoints import; daemon round
+     trip; then the shell and the Python resolvers each find the brain
+     *without* `BRAIN_DB_DIR` and `resolved.env` is persisted. ~40s.
+     Production daemon and dashboard verified untouched
+  5. **upgrade** — `scripts/upgrade-smoke.sh <old> <new>`: install OLD as a
+     stranger (the whole install smoke), write one lived memory through the
+     daemon, lay NEW over it the way a marketplace update does (the tree
+     replaced, the bootstrapped runtime kept — **an assumption**: an update
+     that also discards the runtime is a cold re-bootstrap this does not
+     model), then the sessions after: the daemon must reload onto NEW's code
+     (bounded wait — `ensure_daemon` gives an in-place reload 20s before it
+     defers, so the NEXT session's boot is what is judged), no node lost and
+     the lived one still served by id (the count may grow: a release that adds
+     a seed node gap-fills it on first boot), entrypoints import, a command
+     answers. ~50s. Skipped, and shown as skipped, on a first release
+  6. **suite** — the full suite against a COPY of the export under the dev
+     venv (the export has no venv, no `pytest.ini`; timeout passed
+     explicitly), with **no key in the shell** — a stranger's `pytest`
+  7. **repo** — `git init`, one commit, tag `v<version>`; `-c
+     core.excludesFile=/dev/null add -A -f` so a personal global ignore cannot
+     drop a shipped file; every exported file present in the commit (missing
+     ones listed); author and committer read back off the objects
+Then the report, the fix-forward notice, the would-be push commands, and exit
+— or, under `--publish`, `remote add` + `push -u origin main` + `push origin
+v<version>`. **Rollback is fix-forward** and the command says so on every
+run: Claude Code offers no downgrade from a marketplace repo and the schema
+migrations are one-way; a bad release is undone by the next release, and the
+user's data is protected by the daemon's pre-destructive backups.
+
+**Measured 2026-09-03/04.** Dry run #1 refused at deploy-gate: the new
+reachability test found `servers/integrity_audit.py` shipping with zero
+importers (dead since the `signal_queue` removal; Tom: delete). Dry run #2
+refused at suite: `test_gold_surfaces.py` aborted collection on the export
+(see 5.5). Dry run #3 ran the whole suite green — **3037 passed, 0 failed** —
+and was still refused, correctly: 31 test scopes had overwritten the hermetic
+fake key with the developer's REAL key, because `llm_available` writes the
+env FILE's key into the process (file wins, so key replacement needs no
+restart) and the conftest pin covered only the variable. Invisible under
+`./dev`, where the shell already carries that key; red for a stranger, whose
+guard report would have printed their key 31 times. Fixed at the root: the
+conftest pins a per-run `XDG_CONFIG_HOME` holding the fake key and only the
+brain-location pointer, before `daemon_config` is imported, and the leak
+report prints credentials as fingerprints. Two high-effort code reviews
+(Opus finder angles + one verifier per candidate) found **ten** defects
+each, nineteen confirmed by execution: `--publish` could never pass preflight
+(the URL it requires contains the org name gate B forbids), the secrets
+pattern matched 16 shipped fixture keys, `if fn; then` had disabled errexit
+inside every step body, the smoke's own ladder assertion was a tautology, a
+slow reload would have failed the upgrade gate, `RELEASE_PREVIOUS=none` could
+skip it under `--publish`, the entity refusal in `relocate-brain.sh` ran after
+the resolver had already persisted the entity's brain, and more. All fixed;
+lessons id:488d5ad7. **Rode along:** `ensure-dashboard.sh` lacked the
+`BRAIN_INSTANCE` guard `install-daemon-service.sh` had — a smoke or entity
+boot under a scratch `$HOME` would have booted out the production dashboard
+and re-bootstrapped it onto the scratch tree. The predicate now lives once in
+`launchd-install.sh` (`brain_launchd_entity`), the mutators refuse under it,
+all three callers check it before touching anything, and two tests pin that
+neither installer reaches `launchctl` under an instance.
+**Dry run #4 (everything, with a synthetic 0.8.9 predecessor), 2026-09-04 —
+GREEN end to end:** preflight 0s · export 8s (A, B, C=0.9.0, D clean) ·
+deploy-gate 15s · smoke 42s · upgrade 51s · suite 2009s (**3037 passed, 0
+failed, no leak report**, bare keyless shell) · repo 2s — one commit, 431
+files, tag `v0.9.0`, author and committer read back off the objects — then
+the fix-forward notice and the would-be push commands, nothing pushed.
+
+**What is left before the door opens — all Tom's:** the public committer
+e-mail (Tom will open a domain; anything with his name or handle trips gate B
+by design, so the address either is name-free or gets a deliberate allowlist
+entry), `gh repo create tpac/entity`, and the `--publish` go. And **5.9** —
+unowned — should land first, since it exists to prevent the accidental-launch
+class. The first REAL upgrade test runs at 0.9.1 with 0.9.0's public tree as
+`RELEASE_PREVIOUS`. Follow-on worth its own item: run the suite inside the
+smoke's freshly bootstrapped runtime rather than the dev venv, so the tests
+see the dependency set a new user actually resolves. **The exported tree
+carries no `.git` (verified)** — history cannot leak through the export
+itself; only a mis-aimed push could, and `--publish` refuses any URL but the
+manifest's.
 
 **Irreversible: git history is forever, and this repo's history carries the
 personal data.** Re-counted 2026-08-31 — **89 tracked files across 2138
