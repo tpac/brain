@@ -44,9 +44,8 @@ dial-derived) now pins presence, episodes default, LAF, and the trace
 chain; only `get_session_turns`, the embed lockstep (SAID_AND_DID), and
 the continuation stamp ride the dial. `recall_episodes`' MCP description
 states the contract (default = operator dialogue; deliveries opt-in via
-ref_type — the tool_result convention) — NOTE it lives in brain_mcp.py and
-reaches sessions at the next redeploy, which is FROZEN pending the 5.2
-rename; it rides that. Other round-2 fixes: `ref_type` now flows through
+ref_type — the tool_result convention) — it lives in brain_mcp.py and
+reached sessions with the 5.2 redeploy (2026-09-04). Other round-2 fixes: `ref_type` now flows through
 `get_conversation` (it was dropped by the row whitelist — the deliverable
 was inert for the actual encoder path); the continuation stamp is gated at
 the hook over TRACED sources only and CONSUMED the moment its stop passes
@@ -121,6 +120,17 @@ into their own s0 K row — a fourth incoming ref_type on the dial
 (dial-off like the others) — so the encoder can render a system voice
 distinct from the operator. Render half = encoder stream; split half =
 this arc's successor. Not built here (scope: turns-and-voices substrate).
+
+PROMPT MOMENT + FIRST ASSIST (Tom, 2026-09-04, from the 12h clock incident,
+id:8ece8811): **the Thalamus injects at the user prompt** — a third delivery
+moment, passive, ahead of the recall surface — and its first rider is a
+computed *assist*, not a queued item: the clock re-anchor, rendered only when
+the session's last assistant turn is older than the live window. Tom's
+ruling: "It's absolutely the right location, but it means the thalamus needs
+to also support injecting on user prompt … add it to the Thalamus thread as
+the first context assist injection mechanism and alert." Spec: Step 12.
+Design prose: THALAMUS-DESIGN.md §Delivery (Prompt, Assists) + Phase 2.5.
+Brain: id:3ed231ee (design), the ruling node linked from it.
 
 Exposure: NOTHING reaches the model or the encoder until a dial row flips —
 the flip is the encoder session's move, after the prompt is taught and
@@ -752,3 +762,98 @@ session after deploy.
 **Depends on.** Best after Step 5 (row shape).
 
 **Respects.** Docs-current-state-only rule; "comments carry the why".
+
+---
+
+## Step 12 — The Prompt moment and the first assist (clock re-anchor)
+
+**Problem.** The entity has no clock: its "now" is the newest timestamp in
+context, and nothing enters the context while wall time passes between turns.
+Across an idle gap (operator away, `--resume`, compaction) the anchor goes stale
+silently — on 2026-09-04 a 12-hour gap turned a correct `remind(when='12h')`
+result into a suspected parser bug (id:8ece8811). Nothing that rides the prompt
+carries a clock; a stamp on every prompt would be tuned out (the harness's own
+date-change line was). The Thalamus has no prompt moment, and no way to say
+something that is *computed* rather than *filed*.
+
+**Target state.**
+- `delivery.PROMPT = Moment('prompt', forcing=False)`; `MOMENTS = (BOOT, PROMPT,
+  STOP)`. `thalamus_contract` derives `VIA_PROMPT`; `tc.MOMENTS` gains it
+  (`pull` raises on an unknown `via`).
+- **Assists** in the Thalamus: `tc.ASSISTS = {'clock_reanchor': (VIA_PROMPT,)}`
+  — name → moments it may speak at. `pull(brain, session_id, via)` evaluates the
+  assists registered for `via` after the queued items and folds their lines into
+  the same block and the same `(block, n)` count, so `deliver()` keeps and
+  traces it as one `thalamus_delivery` K with `ref_id='prompt'`. No row, no
+  ledger. Queued kinds yield nothing at `prompt` — `_due_filter` is unchanged
+  and a test pins `pull(via='prompt')` → assists only, with an open notice and an
+  open ask in the table.
+- **Clock re-anchor** (`thalamus.py`, first assist): anchor = the session's
+  newest `assistant_message` trace — `dal_logs.session_activity` grows one
+  aggregate `last_assistant_at` (+ `brain_traces` passthrough; presence/peek
+  get "last spoke at" for free). None → silent (first prompt; boot Frame just
+  stamped Now). Age ≤ `ROSTER_LIVE_WINDOW_MIN` (read from `self_contract` — a
+  contract constant; hoist to a channels-level contract only if a second
+  consumer appears) → silent. Else one line:
+  `⏱ 12h 11m since your last turn — now 2026-09-04 14:52 UTC (Friday). Re-anchor
+  before reasoning about time: streams, queue, repo may have moved.` Wall-clock,
+  like every Thalamus timestamp (id:2c491848).
+- **`hook_recall`** calls `deliver(brain, ctx, PROMPT)` once and prepends the
+  block on all three return sites: surface produced context; surface produced
+  nothing (today a bare `approve` — becomes `additionalContext=block`); the
+  `register_only` short-answer fast path ("ok" after 12 hours is the case).
+  `_traced` is ignored — the Stop-side continuation stamp is untouched. COURIER
+  declines the passive moment by the existing predicate.
+- **Replay guard.** `eval/frame_replay.py` references `hook_recall`; if any eval
+  drives it end to end, wall-clock minus a historical stamp fires the assist on
+  every replayed prompt — skip the PROMPT leg when a replay clock is injected
+  (`conversation_now(brain)` off wall-clock by more than a minute), presence's
+  existing exemption precedent.
+- **Door echo.** `thalamus.file()` and the resolve path return `now` beside the
+  deadline they resolved; `remind` / `thalamus_resolve` MCP results carry it.
+  Result-shape change → `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py`
+  before restart.
+- **Dial.** `thalamus_delivery` is already dial-off; the assist inherits that.
+  When the dial flips, decide whether assists should enter the encoder timeline
+  as brain speech or be marked out — name it on the flip-day checklist, do not
+  decide here.
+
+**Files & call sites.** `servers/channels/delivery.py`;
+`servers/channels/thalamus/thalamus_contract.py`, `thalamus.py`;
+`servers/dal_logs.py` (`session_activity`), `servers/brain_traces.py`;
+`servers/daemon_hooks.py` (`hook_recall`, three return sites); `brain_mcp.py`
+(result passthrough only if the door shape needs declaring). Tests:
+`test_delivery.py` (moments, `serves`, empty-brain `deliver(PROMPT)` →
+`('', ())`), `test_thalamus.py` (pull at prompt → assists only; re-anchor at
+29/31 min; `now` in results), `test_self_presence.py` (`last_assistant_at`;
+heartbeat tail does not move it), `test_daemon_hooks.py` (stamp precedes "Brain
+activated"; both bare-approve paths return context when stamped),
+`test_trace_contract_sync` / `test_clock_contract_sync` /
+`test_time_window_contract` green (nothing under `scales/` changes).
+
+**Verification.** `./dev pytest tests/ -k "thalamus or delivery or self_presence
+or daemon_hooks or trace_contract or clock_contract or time_window" -q`, tier
+checked with `--collect-only | grep`. Then live: idle a session past 30 min,
+prompt, see the line first in the injected context; `query_traces(ref_type=
+'thalamus_delivery', ref_id='prompt')` lists it. After a week: review the
+delivered re-anchors against the next assistant turn — was the gap acted on?
+(The passive-injection constraint in THALAMUS-DESIGN.md is discharged by
+measurement, not by argument.)
+
+**Blast radius.** A new moment walked by two sources: COURIER declines, the
+Thalamus renders assists only. Boot and Stop renders are bit-identical (no
+assist registers for them). One added aggregate in `session_activity`. The
+`register_only` path gains one cheap leg (two small queries).
+
+**Respects.** Moment vocabulary lives in `delivery.py`; moment-as-`ref_id`; the
+eligibility predicate (id:7c7e805c, id:bb0513ae) untouched; the Thalamus owns no
+transport; `servers/scales/` gains no real-elapsed clock; wall-clock Thalamus
+timestamps (id:2c491848); the admission test (id:6a11f45f: clock → Thalamus).
+
+**Depends on.** Step 10(b) is independent; rebase-aware with it in
+`thalamus_contract.py`. Best after the Step 11 boot-helper collapse only if that
+lands first — no hard dependency.
+
+**Named, not included.** Queued kinds riding the Prompt moment (cadence
+ruling); `recall_episodes` bound echo (same shape as the door echo); the boot
+Frame's conversation-time "Now" (untouched, grain-side).
