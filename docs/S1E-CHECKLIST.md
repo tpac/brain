@@ -8,7 +8,7 @@
 - **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. `ENCODER_GIST` in `encode_contract.py`, `--gist` on the harness. **Committed on the branch (`ed36eda`), unmerged, not promoted** — the pre-merge review (`docs/REVISE-SHAPE-SPEC.md` §8) found the gist bypasses the interaction resolver and names an edge surface no revise op reaches; it ships only with the revise-shape change.
 - **Edge descriptions: 0/24 through every prompt layer.** Ruled a contract-shape defect, not a prompt one: one revise shape — every field takes its new value or `{old,new}` swaps, edges ride as `connect_to` on revise — `docs/REVISE-SHAPE-SPEC.md`, `73d30b14`. Drift guardrail: `tests/test_teaching_vocabulary_sync.py`.
 - New boxes from the arc: **T8, A11, E18–E24** below. Full record: `docs/S1E-REORG-AUDIT.md`.
-- Next: implement the spec (lockstep table), run the edge cell, then the cross-prompt census. v42 stays dormant.
+- **Revise shape steps 1–2 committed on the branch (`2ad74aa`, 2026-09-03):** contract (value-or-swap, `connect_to` on revise, `target` alias) and write path (`brain.revise` swaps + edge routing) — `docs/REVISE-SHAPE-SPEC.md` §4 marks the rows. Unmerged; deploy is one merge together with the surfaces, after the edge cell. Next: a fresh session opens with the FULL prompt read + per-section audit (id:71eeff20), then §4's surface rows (field summary, MCP descriptions, `s1e_gist` interaction, prompt rows), the harness, the edge cell, then the cross-prompt census. v42 stays dormant.
 
 ## Prior head — v-next.7 instrument built (2026-09-01), superseded by the measurement above
 

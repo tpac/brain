@@ -1,10 +1,18 @@
 # Revise shape — value or swap, edges via `connect_to`
 
-Status: SPEC, ruled by Tom 2026-09-03, not implemented. Implementation is the
-next session's job; this document is what it implements, and every surface it
-must move is listed in §4 so nothing gets re-derived. **Handoff: brain
-`34b4dd5d`** (boot self-test, verify-before-use, gates); working set outside
-git at `/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session.md`.
+Status: ruled by Tom 2026-09-03. **Steps 1–2 (contract + write path) are
+committed on the branch as `2ad74aa`**, unmerged — the daemon runs main and
+nothing deploys until the surfaces (§4 prompt/gist/MCP rows) move and the edge
+cell (§6 step 3) has a number; Tom ruled the deploy is one merge, together, never
+the tool-layer half first. The §4 table marks each surface **done** or still
+owed. The vocabulary guardrail is red on `gist` and `MCP revise_batch` for
+`connect_to` — the lockstep working, green again when §4's remaining rows land.
+**Handoff for the next session: brain node named in the launch prompt** (boot
+self-test, verify-before-use, gates); working set outside git at
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session.md`.
+**Before any prompt row is edited: the full read of `SYSTEM_PROMPT` with a
+per-section audit artifact (brain id:71eeff20) — Tom's condition for the
+prompt half.**
 
 ## 1. The rule
 
