@@ -237,12 +237,6 @@ class MetadataDAL:
             (key,)).fetchone()
         return row[0] if row else 0
 
-    def total_nodes(self) -> int:
-        """Count how many nodes have any metadata."""
-        row = self.conn.execute(
-            'SELECT COUNT(DISTINCT node_id) FROM node_metadata_kv').fetchone()
-        return row[0] if row else 0
-
     def get_all_by_key(self, key: str) -> Dict[str, str]:
         """Get all node_id→value pairs for a given key. For bulk loading."""
         rows = self.conn.execute(

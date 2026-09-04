@@ -235,13 +235,12 @@ relocating their POLICY is Step 7). Node doors: `brain.archived_subset/resolve_l
 fallbacks; callers choose their miss policy). `NodeDAL.resolve_ids` bulk method kills the
 per-item LIKE round-trips (`dispatch_write` pays it per batch row). Statusline counts:
 one `brain.store_counts()` replacing `daemon_server.py:883-886`'s four reach-ins + the three
-near-duplicate private `_get_*_count` wrappers. `integrity_audit.py` gets
-`brain.metadata_coverage(fields)`. `community_encoder`'s three live-id checks →
+near-duplicate private `_get_*_count` wrappers. `community_encoder`'s three live-id checks →
 `NodeDAL.live_subset` (inverse of `archived_subset`, same query).
 **The ratchet:** clone `tests/test_traces_layer_guardrail.py` → `test_graph_layer_guardrail.py`;
 without it this door erodes like the interaction door did.
 **Files.** New `servers/brain_graph.py`; ~28 call sites across scales/s1, scales/s2, dispatch_*,
-daemon_hooks, pipeline_contract, integrity_audit.
+daemon_hooks, pipeline_contract.
 **Verification.** Full suite (import surface + DAL tier). Guardrail test proves the fence.
 **Blast radius.** Wide but pure delegation. **Depends on.** Step 5 (bulk signatures), LAF merge.
 **Respects.** id:6e0279b7 (this is its graph twin); parked wake-envelope untouched.

@@ -290,6 +290,14 @@ These aren't builds — they gate other work. Each needs the operator.
 
 ## Parked with a design — the brain holds it, don't redesign
 
+- **Thalamus Prompt moment + clock re-anchor assist** — the Thalamus injects at the
+  user prompt (third delivery moment, `delivery.PROMPT`), and its first rider is a
+  computed *assist*: one gap-as-event line when the session's last `assistant_message`
+  is older than `ROSTER_LIVE_WINDOW_MIN` (the entity's "now" is the newest stamp in
+  context and goes stale silently). Plus `remind`/`thalamus_resolve` echoing `now`.
+  Ruled by Tom 2026-09-04 into the thalamus-arch thread: `THALAMUS-ARCH-PLAN.md`
+  Step 12 (spec), `THALAMUS-DESIGN.md` §Delivery + Phase 2.5 (design). Brain
+  `3ed231ee` (design), `8ece8811` (the lesson).
 - **`remind()` / prospective memory** — guaranteed time-triggered delivery (recall is
   probabilistic; a reminder must fire). Full design + scope guards: brain `ee7224ed`.
   It has since argued for itself in the wild — one ping needed three mechanisms because

@@ -17,6 +17,18 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# launchd-install.sh owns the plist ritual shared with
+# install-daemon-service.sh, AND the entity predicate — why entities never get
+# a managed service lives there. An entity gets no dashboard from this script;
+# its port and brain are its own to serve.
+source "$SCRIPT_DIR/launchd-install.sh" \
+  || { echo "[ensure-dashboard] FATAL: launchd-install.sh missing or unreadable (damaged install)" >&2; exit 1; }
+if brain_launchd_entity; then
+  echo "[ensure-dashboard] BRAIN_INSTANCE=$BRAIN_INSTANCE — entities get no managed dashboard"
+  exit 0
+fi
+
 LABEL="com.brain.dashboard"
 TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 
@@ -25,9 +37,7 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 # stdout suppressed (bootstrap noise); stderr kept — a resolution failure must
 # say WHY, not surface later as a bare "BRAIN_DB_DIR unresolved".
 source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null || true
-# The plist ritual is owned by launchd-install.sh and shared with
-# install-daemon-service.sh; the liveness policy below is this script's own.
-source "$SCRIPT_DIR/launchd-install.sh"
+# The liveness policy below is this script's own.
 PORT="${DASHBOARD_PORT:-47303}"
 
 _up() { [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/" 2>/dev/null)" = "200" ]; }

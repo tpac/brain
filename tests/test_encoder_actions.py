@@ -36,7 +36,9 @@ import json  # noqa: E402
 with open(os.path.join(ROOT, '.claude-plugin', 'plugin.json')) as _f:
     _PLUGIN = json.load(_f)['name']
 with open(os.path.join(ROOT, '.mcp.json')) as _f:
-    _SERVER = next(iter(json.load(_f)))
+    _servers = list(json.load(_f))
+assert _servers == ['brain'], f'.mcp.json servers changed: {_servers}'
+_SERVER = _servers[0]
 PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _SERVER)) + '%s'
 ROLLUP_RE = re.compile(r'^\((\d+) more actions, not shown: ')
 

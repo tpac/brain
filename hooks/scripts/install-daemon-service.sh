@@ -31,12 +31,14 @@ set -o pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Entities (BRAIN_INSTANCE set) never use launchd — they run daemon_server as a
-# child process. Without this guard, a session carrying an entity env would
-# render the plist from the ENTITY's BRAIN_DB_DIR, detect drift against the
-# installed copy, and bootout+re-bootstrap PRODUCTION's job pointed at the
-# eval brain — persistent across reboots.
-[ -n "${BRAIN_INSTANCE:-}" ] && exit 0
+# launchd-install.sh owns the plist ritual (render + identity preservation +
+# bootstrap/reload) shared with ensure-dashboard.sh, AND the entity predicate:
+# entities never use launchd, and the reason lives with the predicate.
+# Sourced first so the check costs nothing beyond the domain lookup the
+# ritual needs anyway.
+source "$SCRIPT_DIR/launchd-install.sh" \
+  || { echo "[install-daemon-service] FATAL: launchd-install.sh missing or unreadable (damaged install)" >&2; exit 1; }
+brain_launchd_entity && exit 0
 
 LABEL="com.brain.daemon"
 TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
@@ -53,10 +55,7 @@ TEMPLATE="$SCRIPT_DIR/$LABEL.plist"
 # surface below as a bare "BRAIN_DB_DIR unresolved". This runs detached on the
 # cold-install chain, where .bootstrap.log is the only channel there is.
 source "$SCRIPT_DIR/resolve-brain-db.sh" >/dev/null || true
-# The plist ritual (render + identity preservation + bootstrap/reload) is
-# owned by launchd-install.sh and shared with ensure-dashboard.sh; the policy
-# below — install-only, then verify — is this script's own.
-source "$SCRIPT_DIR/launchd-install.sh"
+# The policy below — install-only, then verify — is this script's own.
 TARGET="$(brain_launchd_target "$LABEL")"
 
 [ -f "$TEMPLATE" ] || { echo "[install-daemon-service] FATAL: plist template missing: $TEMPLATE" >&2; exit 1; }

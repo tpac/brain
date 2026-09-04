@@ -305,8 +305,9 @@ Memory works normally this session, but the brain's files sit at:
     $BRAIN_HOST_PARKED
 
 A plugin UPDATE is safe there; a default UNINSTALL deletes that whole folder,
-memories included (only \`claude plugin uninstall $_P_ID --keep-data\` spares
-it). Recommended: move the brain to the standard location, which no plugin
+memories included (only \`claude plugin uninstall <plugin> --keep-data\` spares
+it — the plugin whose data folder is \`$_P_ID\`; \`claude plugin list\` shows
+which). Recommended: move the brain to the standard location, which no plugin
 operation ever touches. One command does it safely — stops the daemon under
 the maintenance lock, verifies the copy, keeps the original as a renamed
 spare, and restores services:
