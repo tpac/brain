@@ -21,6 +21,10 @@ import glob, json, math, os, re, sys
 from collections import Counter
 from statistics import mean
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from encoder_ops import edge_entries, kind, new_text, ops_of as _ops_of_write  # noqa: E402
+from servers.contract import is_swap, is_swap_list  # noqa: E402  (encoder_ops put the repo root on the path)
+
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()  # dir holding ops*/ dumps
 P = '/Users/tpac/AgentsContext/s1e-field-coverage-gold/payloads'
 PAYLOAD = {  # chain → capture
@@ -61,24 +65,11 @@ def source_tokens(chain):
     _src_cache[chain] = (nouns, nums); return _src_cache[chain]
 
 def ops_of(d):
-    for w in d['writes']:
-        a = w.get('args') or {}
-        for key in ('operations', 'nodes', 'revisions', 'connections'):
-            v = a.get(key)
-            if isinstance(v, list):
-                for op in v: yield op
-                break
-        else:
-            if a: yield a
-
-def kind(op):
-    if op.get('op'): return op['op']
-    if op.get('node_id'): return 'revise'
-    if op.get('source_id') and op.get('target_id'): return 'connect'
-    return 'remember'
+    """Every op in a dump — the one reader (eval/encoder_ops) the harness uses too."""
+    return [op for w in d['writes'] for op in _ops_of_write(w)]
 
 def score_run(path):
-    d = json.load(open(path)); chain = os.path.basename(path).split('-F-')[0]
+    d = json.load(open(path)); chain = d.get('chain') or os.path.basename(path).split('-F-')[0]
     ops = list(ops_of(d))
     rem = [o for o in ops if kind(o) == 'remember']
     rev = [o for o in ops if kind(o) in ('revise', 'absorb')]
@@ -101,21 +92,19 @@ def score_run(path):
     r['types_distinct'] = len(types)
     r['abstract_nodes'] = sum(1 for o in rem if o.get('type') in ABSTRACT)
     r['abstract_with_grounds'] = sum(1 for o in rem if o.get('type') in ABSTRACT and any((c.get('relation') == 'grounds') for c in (o.get('connect_to') or [])))
-    # edges: connect_to on creates + standalone connects
+    # edges: connect_to on creates AND revises + standalone connects — every
+    # entry counts (a why-less edge is an empty why, not a dropped edge), the
+    # relations-form one per relation, targets read through the shared reader
     whys, rels = [], Counter()
     deg = [len(o.get('connect_to') or []) for o in rem]
     id_t = title_t = 0
-    for o in rem:
-        for c in (o.get('connect_to') or []):
-            t = str(c.get('title') or '').strip()
-            if HEX8.match(t): id_t += 1
-            else: title_t += 1
-            rel = str(c.get('relation') or ''); rels[rel] += 1
-            ws = [c.get('why')] + [x.get('why') for x in (c.get('relations') or []) if isinstance(x, dict)]
-            whys += [len(str(w)) for w in ws if w is not None]
-    for o in con:
-        rels[str(o.get('relation') or '')] += 1
-        whys.append(len(str(o.get('description') or '')))
+    for o in rem + rev + con:
+        for e in edge_entries(o):
+            if e['via'] == 'connect_to':
+                if HEX8.match(e['target'].strip()): id_t += 1
+                else: title_t += 1
+            rels[e['relation']] += 1
+            whys.append(len(e['why']))
     r['edges'] = len(whys); r['why_chars'] = sum(whys)
     r['why_band'] = sum(1 for L in whys if 120 <= L <= 180); r['why_thin'] = sum(1 for L in whys if L < 80); r['why_empty'] = sum(1 for L in whys if L == 0)
     r['generic'] = sum(rels[x] for x in GENERIC); r['rescue'] = sum(rels[x] for x in RESCUE)
@@ -125,16 +114,17 @@ def score_run(path):
     tot = sum(rels.values())
     r['_rels'] = rels
     # revise op shape
-    r['rev_content_edits'] = sum(1 for o in rev if o.get('content_edits'))
-    r['rev_full_content'] = sum(1 for o in rev if o.get('content') and not o.get('content_edits'))
+    # value-or-swap: a patch is content swaps (or the content_edits alias); a rewrite is a bare string
+    r['rev_content_edits'] = sum(1 for o in rev if o.get('content_edits') or is_swap(o.get('content')) or is_swap_list(o.get('content')))
+    r['rev_full_content'] = sum(1 for o in rev if isinstance(o.get('content'), str) and o.get('content'))
     r['rev_title'] = sum(1 for o in rev if o.get('title')); r['rev_situation'] = sum(1 for o in rev if o.get('situation'))
     r['rev_question'] = sum(1 for o in rev if o.get('question')); r['rev_reasoning'] = sum(1 for o in rev if o.get('reasoning'))
     r['rev_evolution'] = sum(1 for o in rev if o.get('evolution_status')); r['rev_type'] = sum(1 for o in rev if o.get('type'))
     r['rev_fields_mean_num'] = sum(len([k for k in o if o.get(k) and k not in ('op', 'node_id', 'reason')]) for o in rev)
     # specificity retention vs the timeline
     nouns, nums = source_tokens(chain)
-    blob = ' '.join(' '.join(str(o.get(k) or '') for k in ('title', 'content', 'situation', 'reasoning', 'their_raw_quote', 'my_raw_quote')) for o in rem + rev)
-    blob += ' '.join(str(e.get('new') or '') for o in rev for e in (o.get('content_edits') or []) if isinstance(e, dict))
+    blob = ' '.join(' '.join(new_text(o.get(k)) for k in ('title', 'content', 'situation', 'reasoning', 'their_raw_quote', 'my_raw_quote')) for o in rem + rev)
+    blob += ' ' + ' '.join(new_text(o.get('content_edits')) for o in rev)
     r['src_nouns'] = len(nouns); r['nouns_kept'] = sum(1 for p in nouns if p in blob)
     r['src_nums'] = len(nums); r['nums_kept'] = sum(1 for p in nums if p in blob)
     return r
@@ -190,7 +180,7 @@ def main():
     row('  relation entropy (bits)', entropy)
     row('  distinct relations', lambda c: len(c['_rels']))
     print('-- revises: op shape (not computable from a brain)')
-    row('  content_edits (patch)', lambda c: pct(c['rev_content_edits'], c['revises']))
+    row('  content swaps (patch)', lambda c: pct(c['rev_content_edits'], c['revises']))
     row('  full content rewrite', lambda c: pct(c['rev_full_content'], c['revises']))
     for f in ('title', 'situation', 'question', 'reasoning', 'type', 'evolution'):
         row('  touches ' + f, lambda c, f=f: pct(c['rev_' + f], c['revises']))
