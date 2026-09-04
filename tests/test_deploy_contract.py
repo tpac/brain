@@ -168,11 +168,12 @@ class TestAdapterNameContainment:
 
     def test_repo_slug_contained(self):
         # The GitHub slug belongs in the manifest (homepage/repository), in
-        # the README's install command (users have to be told where to install
-        # from), and in gate B's allowlist entry that names that README string
-        # — nowhere else in shipped code. Also catches /Users/<owner>/<name>
-        # personal paths, which double as a scrub-grep (5.1) early warning.
-        allowed = {'.claude-plugin/plugin.json', 'README.md',
+        # the two install commands users are handed (README, and the migration
+        # guide an old-plugin user gives to Claude on its own), and in gate B's
+        # allowlist entries naming those strings — nowhere else in shipped
+        # code. Also catches /Users/<owner>/<name> personal paths, which double
+        # as a scrub-grep (5.1) early warning.
+        allowed = {'.claude-plugin/plugin.json', 'README.md', 'MIGRATING.md',
                    'scripts/export-public-tree.sh'}
         pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
         leaks = set(_files_matching(pattern)) - allowed
@@ -558,7 +559,7 @@ class TestPublicTreeExport:
 
     # Bumping this is the point: a new allowlist entry is a deliberate,
     # reviewable line in a diff, never a quiet way to turn a red gate green.
-    ALLOWLIST_SIZE = 16
+    ALLOWLIST_SIZE = 17
 
     def test_allowlist_cannot_grow_quietly(self):
         """The one way to make gate B green WITHOUT fixing the leak is to add

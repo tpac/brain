@@ -155,7 +155,8 @@ claude plugin install entity@anchor
 
 Then start a Claude Code session. First boot sets up the runtime, creates a
 fresh brain, and seeds it with a small pack of identity and mechanism
-memories it grows from. You can add your API key in the plugin's settings
+memories it grows from. Coming from the old `brain` plugin? Follow
+[MIGRATING.md](MIGRATING.md) — the rename means it is not an in-place update. You can add your API key in the plugin's settings
 when Claude Code asks, or set `ANTHROPIC_API_KEY` in your shell.
 
 ## Where your memories live — and what survives
