@@ -261,8 +261,13 @@ _BRAIN_BATCH_DESCRIPTION = (
 
 
 def _generate_revise_schema():
-    """Generate the 'revise' MCP tool schema from the contract."""
-    from servers.contract import CONTENT_EDITS_SCHEMA, get_writable_fields
+    """Generate the 'revise' MCP tool schema from the contract (REVISE_RULE):
+    every text field is `string | swap | swap[]` through swappable(), non-text
+    fields take bare values, and `connect_to` carries the node's edge changes
+    — the same objects brain_batch's revise branch carries, so the two tool
+    surfaces cannot drift."""
+    from servers.contract import (BATCH_OP_SPECS, CONTENT_EDITS_SCHEMA, REVISE_RULE,
+                                  get_swap_fields, get_writable_fields, swappable)
 
     TYPE_MAP = {"str": "string", "float": "number", "bool": "boolean", "int": "integer"}
 
@@ -273,35 +278,32 @@ def _generate_revise_schema():
             "NOT stored on the node. Required. Distinct from the node FIELD "
             "`reasoning` (why the node was encoded); to update that field, "
             "pass `reasoning` as well.")},
-        # single-sourced from the contract — see CONTENT_EDITS_SCHEMA
+        # single-sourced from the contract: the swap-list alias and the edge
+        # entries are the objects brain_batch's revise branch carries
         "content_edits": CONTENT_EDITS_SCHEMA,
+        "connect_to": BATCH_OP_SPECS["revise"]["properties"]["connect_to"],
     }
+    swap_fields = get_swap_fields()
     for name, spec in get_writable_fields().items():
+        if name in swap_fields:
+            properties[name] = swappable(spec)
+            continue
         prop = {"type": TYPE_MAP.get(spec.get("type", "str"), "string")}
-        desc = spec.get("description", "")
-        # All revisable fields use REPLACE semantics — specified fields
-        # update, unspecified preserve. Revision history lives in trace
-        # events (event_type='delta', ref_type='node_revised').
-        desc = (desc + " " if desc else "") + "(replaces existing value)"
-        prop["description"] = desc.strip()
+        if spec.get("description"):
+            prop["description"] = spec["description"]
         properties[name] = prop
 
     return {
         "name": "revise",
         "description": (
-            "Update fields on an existing brain node. Specified fields are "
-            "REPLACED with the passed value; unspecified fields are PRESERVED "
-            "(only the keys you pass are touched). For content there is a "
-            "patch form — `content_edits: [{old, new}, ...]` — that fixes "
-            "specific claims in place and leaves the rest of the content "
-            "untouched; prefer it over a full `content` rewrite whenever the "
-            "change is a correction rather than a restructure (a rewrite "
-            "must re-author everything the node holds, and dropped details "
-            "are silent losses). Immutable fields "
-            "({id, created_at, locked}) are skipped with a warning — call "
-            "still succeeds for the other fields. Revision history lives in "
-            "trace events — query via `query_traces` with "
-            "ref_type='node_revised' to see what changed when.\n\n"
+            "Update fields on an existing brain node. " + REVISE_RULE + " "
+            "Non-text fields (confidence, type, event_time, ...) take bare "
+            "values; `content_edits` is the deprecated alias of "
+            "`content: [swaps]`. Immutable fields ({id, created_at, locked}) "
+            "are skipped with a warning — call still succeeds for the other "
+            "fields. Revision history lives in trace events — query via "
+            "`query_traces` with ref_type='node_revised' to see what changed "
+            "when.\n\n"
             "WHEN TO REVISE vs ENCODE NEW:\n"
             "• Revise when a recalled node is stale, incomplete, or wrong but "
             "the SAME concept. Add `situation`, fix `reasoning`, sharpen content. "
@@ -334,6 +336,8 @@ def _build_revise_batch_schema():
     join-table field, not a contract column, so revise's generator doesn't
     emit it.
     """
+    from servers.contract import REVISE_RULE
+
     item_properties = dict(_generate_revise_schema()["inputSchema"]["properties"])
     # NOT _SOURCE_REFS_SCHEMA: that text carries remember-side advice
     # ("leave empty when...") which on a revise is a silent ref-wipe.
@@ -350,7 +354,14 @@ def _build_revise_batch_schema():
     }
     return {
         "name": "revise_batch",
-        "description": "Revise multiple brain nodes in one call — one call, many revisions, instead of one call per node. Specified fields are REPLACED, unspecified fields are PRESERVED, and `content_edits: [{old, new}, ...]` patches specific claims in the stored content without re-authoring the rest (prefer it for corrections; mutually exclusive with `content`). Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised').",
+        "description": (
+            "Revise multiple brain nodes in one call — one call, many "
+            "revisions, instead of one call per node. " + REVISE_RULE + " "
+            "Non-text fields take bare values; `content_edits` is the "
+            "deprecated alias of `content: [swaps]`. Immutable fields "
+            "({id, created_at, locked}) skipped with warning. Each row emits "
+            "its own trace event for revision history (queryable via "
+            "`query_traces` with ref_type='node_revised')."),
         "inputSchema": {
             "type": "object",
             "required": ["revisions"],

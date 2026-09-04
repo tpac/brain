@@ -1355,6 +1355,11 @@ def generate_field_summary():
     lines.append("source_refs  (array)  — 8-char hex trace ids anchoring the node "
                  "to its originating moments; sparse (1-3 load-bearing turns), "
                  "copied verbatim from the input's trace markers")
+    # The revise rule, once, in the contract's own words — this summary is
+    # injected after the prompt, so it is the surface that wins on a
+    # disagreement (E10); it must state the same rule the tools do.
+    lines.append("")
+    lines.append(REVISE_RULE)
     lines.append("")
     lines.append("RETURNS: every remember (single or batch) returns related_nodes — "
                  "the top 5 most similar existing nodes with full content. "

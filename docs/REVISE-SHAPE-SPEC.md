@@ -5,8 +5,8 @@ committed on the branch as `2ad74aa`**, unmerged — the daemon runs main and
 nothing deploys until the surfaces (§4 prompt/gist/MCP rows) move and the edge
 cell (§6 step 3) has a number; Tom ruled the deploy is one merge, together, never
 the tool-layer half first. The §4 table marks each surface **done** or still
-owed. The vocabulary guardrail is red on `gist` and `MCP revise_batch` for
-`connect_to` — the lockstep working, green again when §4's remaining rows land.
+owed. The vocabulary guardrail is red on `gist` for `connect_to` (the MCP rows
+landed 2026-09-04) — the lockstep working, green again when the gist row lands.
 **Handoff for the next session: brain `71ce490b`** (boot self-test,
 verify-before-use, gates — the six unruled recommendations are listed there);
 working set outside git at
@@ -87,11 +87,11 @@ tool descriptions (id:1b7984f8). All rows move in one change.
 | `contract.validate_field` | `servers/contract.py` | **done** | knows the swap shape: valid on any str field not `bare_only`, refused plainly elsewhere; `is_swap` / `is_swap_list` / `validate_swaps` / `apply_swaps` are the primitives every layer shares |
 | `GraphDAL.get_edge_endpoints` | `servers/dal_graph.py` | **done** | stored (source, target) of an edge — the direction warning's evidence |
 | `_handle_brain_batch` revise branch, `_handle_revise`, `revise_batch` | `servers/dispatch_write.py`, `brain_remember.py` | **done** | pass-through; `_handle_revise` passes `encoding_source` and turns `connect_to_result` into `edge_relation_revised` manifest rows (created under reason `connect_to`, revised under the revise's reason); `revise_batch` passes `encoding_source` |
-| MCP `revise` description + `content_edits` prop | `servers/brain_mcp.py` | "Specified fields are REPLACED… For content there is a patch form — `content_edits`…" | the one rule, verbatim from §1; `content_edits` described as alias |
-| MCP `revise_batch` description + `revisions` items | `servers/brain_mcp.py` | same as above, batch form | same rule; items gain `connect_to` |
+| MCP `revise` description + `content_edits` prop | `servers/brain_mcp.py` | **done** | description = `REVISE_RULE` + bare-value note + alias note; every `get_swap_fields()` prop through `swappable()` (the "(replaces existing value)" suffix is gone); `connect_to` is the same object as `BATCH_OP_SPECS['revise']['properties']['connect_to']`; the blob grew 6.4K → 14.5K chars (inline swap shape at ten fields + the edge item schema — the brain_batch choice, kept) |
+| MCP `revise_batch` description + `revisions` items | `servers/brain_mcp.py` | **done** | same rule; items inherit `connect_to` from the revise generator |
 | MCP `brain_batch` oneOf | derived from `BATCH_OP_SPECS` | — | derives automatically; re-run `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py` |
 | MCP `remember` description (`connect_to` passage) | `servers/brain_mcp.py` | "use `connect_to` with a correction-aspect relation…" | unchanged text; item key `target` (alias `title`) |
-| `generate_field_summary` content line | `servers/contract.py` | "On revise, prefer content_edits (exact old→new patches) over full replacement…" | "On revise, any text field takes its new value or `{old,new}` swaps; prefer swaps for corrections…" |
+| `generate_field_summary` content line | `servers/contract.py` | **done** | content line says value-or-swap; `REVISE_RULE` verbatim as its own line before RETURNS — the summary is injected last, so it states the rule the tools state |
 | s1e prompt — Actions → revise bullet | `servers/scales/s1/encoding_prompt.py` | 48 lines: every-surface rule, `content_edits` default, "short fields have no patch form", REPLACE semantics | the one rule + every-surface sentence naming `connect_to` for edge descriptions; the "short fields have no patch form" clause is **deleted** (it becomes false); `source_refs` REPLACE note stays |
 | s1e prompt — Actions → connect bullet | same | "wire edges between two existing catalog nodes" | creation only, stated as such; repair is `connect_to` on the node's revise |
 | s1e prompt — connect_to targets section | same | "copy that 8-char id into the `title` slot" | `target` slot; sibling-title form on remember only |
