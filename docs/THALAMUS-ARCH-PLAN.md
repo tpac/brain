@@ -175,12 +175,11 @@ docstrings, and added two file() door guards: a directed ask rejects
 (undeliverable by construction — asks are boot-only and a nameable session
 already booted), and expires ≤ when rejects (never becomes due).
 
-**Queue:** Step 10 remainder — (b) only: `compose_block_loud` extracted to
-`loud_truncation.py`, both contracts call it ((a)'s join-cap owner landed in
-`delivery.py`). Then Step 11 remainder: the `render_boot_v2` comment about
-what boot commits (now: ledger rows + the delivery trace), the three
-identical boot try/except sections → `_boot_section` helper, and the
-sweep-block consolidation (ruling id:23cd4d61: after 7–10).
+**Queue:** ~~Step 10 remainder — (b)~~ DONE 2026-09-04 (see Step 10). Then
+Step 11 remainder: the `render_boot_v2` comment about what boot commits
+(now: ledger rows + the delivery trace), the three identical boot try/except
+sections → `_boot_section` helper, and the sweep-block consolidation (ruling
+id:23cd4d61: after 7–10).
 
 ---
 
@@ -696,6 +695,14 @@ re-raising.
 ---
 
 ## Step 10 — The composed Stop reason gets an owner (and one block composer)
+
+**DONE.** (a) landed in `channels/delivery.py` as `COMPOSITE_WARN` — a WARN,
+not a cap (ruling id:1e22a2f0). (b) 2026-09-04: `compose_block_loud(items,
+render, cap, reserved) → (body, kept, dropped)` in `servers/loud_truncation.py`;
+both contracts call it and keep their own head/tail (a dropped thalamus item
+stays due, a dropped courier message is spent — the self-channel tail now says
+so, ruling id:404e2d9f). Render-identical by a 496-case snapshot diff; direct
+tests in `tests/test_loud_truncation.py`.
 
 **Problem.** Each Stop source caps itself at 4000 (`RECEIVED_BLOCK_MAX`, `BLOCK_MAX`),
 then `daemon_hooks` joins them with **no cap over the join** — a Stop `decision:block`

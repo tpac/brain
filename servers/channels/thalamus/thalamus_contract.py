@@ -23,7 +23,7 @@ Design: docs/THALAMUS-DESIGN.md
 
 from datetime import datetime as _dt
 
-from servers.loud_truncation import cap_text_loud
+from servers.loud_truncation import cap_text_loud, compose_block_loud
 from servers.clock import iso_after, resolve_offset, FUTURE
 from servers.channels.delivery import BOOT as _BOOT, STOP as _STOP
 
@@ -247,6 +247,9 @@ def render_item(item):
     return '\n'.join(lines)
 
 
+_HEAD = '🧠 from the brain (thalamus) — %d item(s)'
+
+
 def render_block(items, overflow=0, cap=BLOCK_MAX):
     """Compose due items into ONE budgeted block. Two loud caps — per item
     (BODY_MAX, in render_item) and whole block (`cap`); overflow items are
@@ -263,18 +266,10 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
     # Budget against the widest possible head, then rebuild it from the
     # kept count — the head must claim what the block SHOWS, never what
     # was fetched (head, tail, ledger, and pull's count all say `kept`).
-    parts, used, dropped = [], len('🧠 from the brain (thalamus) — %d item(s)'
-                                   % len(items)), 0
-    for i, item in enumerate(items):
-        rendered = render_item(item).strip()
-        if parts and used + len(rendered) + 2 > cap:  # always keep one
-            dropped = len(items) - i
-            break
-        parts.append(rendered)
-        used += len(rendered) + 2
-    head = '🧠 from the brain (thalamus) — %d item(s)' % len(parts)
-    body = '\n\n'.join(parts)
+    body, kept, dropped = compose_block_loud(
+        items, render_item, cap, reserved=len(_HEAD % len(items)))
+    head = _HEAD % kept
     tail = dropped + max(0, overflow)
     if tail:
         body += '\n\n(+%d more due — thalamus_list shows them)' % tail
-    return '%s\n\n%s' % (head, body), len(parts)
+    return '%s\n\n%s' % (head, body), kept

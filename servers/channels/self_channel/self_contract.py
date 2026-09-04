@@ -29,7 +29,7 @@ Design: docs/SELF-CHANNEL-DESIGN.md · taxonomy: docs/LATERAL-SCALES.md
 """
 
 from servers.trace_contract import REF_TYPES as _REF_TYPES
-from servers.loud_truncation import cap_text_loud
+from servers.loud_truncation import cap_text_loud, compose_block_loud
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -309,16 +309,12 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     head = "🧵 from your other streams of thought"
     note = ("   — what they did is theirs; you know it, you didn't do it. "
             "Attribute accordingly if you encode.")
-    parts, used, dropped = [], len(head) + len(note), 0
-    for i, m in enumerate(messages):
-        rendered = _render_one(m).strip()
-        if parts and used + len(rendered) + 2 > cap:   # always keep at least one
-            dropped = len(messages) - i
-            break
-        parts.append(rendered)
-        used += len(rendered) + 2
-    body = "\n\n".join(parts)
+    body, _, dropped = compose_block_loud(
+        messages, _render_one, cap, reserved=len(head) + len(note))
     if dropped:
-        body += ("\n\n(+%d more waiting — over the injection budget; "
+        # Drained means consumed: a cap-dropped message is spent, not queued
+        # for a later Stop — the courier (self_inflight) is the only place
+        # it survives, so the tail must not promise it will come back.
+        body += ("\n\n(+%d more drained but over the injection budget — "
                  "full text in the dashboard Streams tab)" % dropped)
     return "%s\n%s\n\n%s" % (head, note, body)

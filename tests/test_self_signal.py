@@ -231,7 +231,7 @@ class TestSelfSignal(BrainTestBase):
                  "rendered": ('⚡ s%02d says:\n   "' % i) + "x" * 300 + '"'} for i in range(20)]
         block = self_contract.render_received_block(msgs, cap=800)
         self.assertLess(len(block), 800 + 200)   # bounded near the cap
-        self.assertIn("more waiting", block)      # overflow is announced
+        self.assertIn("drained but over the injection budget", block)  # overflow announced, honestly
 
     def test_render_caps_long_body_loudly(self):
         """A single over-long body is cut at DELIVERED_BODY_MAX with a LOUD inline
