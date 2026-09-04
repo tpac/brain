@@ -8,7 +8,7 @@
 - **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. The gist is the `s1e_gist` interaction (`encoding_gist_prompt.py`, resolver-read since 2026-09-04), `--gist` on the harness. **Committed on the branch (`ed36eda`), unmerged, not promoted** — the pre-merge review (`docs/REVISE-SHAPE-SPEC.md` §8) found the gist bypasses the interaction resolver and names an edge surface no revise op reaches; it ships only with the revise-shape change.
 - **Edge descriptions: 0/24 through every prompt layer.** Ruled a contract-shape defect, not a prompt one: one revise shape — every field takes its new value or `{old,new}` swaps, edges ride as `connect_to` on revise — `docs/REVISE-SHAPE-SPEC.md`, `73d30b14`. Drift guardrail: `tests/test_teaching_vocabulary_sync.py`.
 - New boxes from the arc: **T8, A11, E18–E24** below. Full record: `docs/S1E-REORG-AUDIT.md`.
-- **Revise shape steps 1–2 committed on the branch (`2ad74aa`, 2026-09-03):** contract (value-or-swap, `connect_to` on revise, `target` alias) and write path (`brain.revise` swaps + edge routing) — `docs/REVISE-SHAPE-SPEC.md` §4 marks the rows. Unmerged; deploy is one merge together with the surfaces, after the edge cell. Done 2026-09-04: the full prompt read + per-section audit (id:71eeff20; finding 0d40ac77 — three rows the spec missed), the tool-layer rows (`a932bac`), the `s1e_gist` interaction and the guardrail rewrite. Next: the harness (step 4), the prompt rows (step 5), probes + wide tier, the edge cell, then the cross-prompt census. v42 stays dormant.
+- **Revise shape steps 1–2 committed on the branch (`2ad74aa`, 2026-09-03):** contract (value-or-swap, `connect_to` on revise, `target` alias) and write path (`brain.revise` swaps + edge routing) — `docs/REVISE-SHAPE-SPEC.md` §4 marks the rows. Unmerged; deploy is one merge together with the surfaces, after the edge cell. Done 2026-09-04: the full prompt read + per-section audit (id:71eeff20; finding 0d40ac77 — three rows the spec missed), the tool-layer rows (`a932bac`), the `s1e_gist` interaction + guardrail rewrite (`c1a66df`), the harness (`50032ba`; 0 gold numbers moved on re-score), and the prompt rows (step 5 — A10 recount below). Next: probes + wide tier (step 6), the edge cell (step 7), then the cross-prompt census. v42 stays dormant.
 
 ## Prior head — v-next.7 instrument built (2026-09-01), superseded by the measurement above
 
@@ -1139,6 +1139,23 @@ on two ops and an id-keyed dict collides; both patches diff byte-identical.)
 | edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |
 | `source_refs` | 0 | 0 | **DELIBERATE ZERO.** Prose (REPLACE semantics, "never pass `[]` as a no-op") warns about a footgun whose correct behavior is *omission* — and an omitted field cannot be shown in an example. Recorded per A10.5 rather than forced. |
 | voice fields, emotion | 0 | 0 | **DELIBERATE ZERO** — revise-time voice/emotion rewriting is not a behavior we want; they belong to the authoring moment. |
+
+**Revise-shape branch (2026-09-04) — recounted after the step-5 rows** (a
+`./dev python3` census over the fenced examples; the same 11 revise ops as v6,
+no example added):
+
+| field | ops | form |
+|---|---|---|
+| title | 7 | 3 swap (2b8ef0c1, 97b1f24e, c37d10be — one span went stale) / 4 bare (restructures) |
+| content | 7 | 7 swap — `content_edits` no longer appears in the prompt |
+| situation | 3 | 3 bare — the excerpts render no stored situation to swap into; d0e4b856's comment says why bare |
+| reasoning / event_time / type | 1 each | bare |
+| edge description | **1** (was 0) | a45c88f1's `connect_to` why swap, `old` copied from the excerpt's edge line |
+| question / thought / evolution_status / confidence | 0 | not this change's rows — v-next.7's additions ride the next template pass (Tom, 2026-09-04: template scope) |
+
+Rationale attachment: the every-surface sentence now names six surfaces with one
+consequence clause, and "Edges ride the same revise" attaches a second to the
+edge description — the surface that measured 0/24.
 
 **Rationale-attachment count** (A10.3) — where consequence clauses attach:
 

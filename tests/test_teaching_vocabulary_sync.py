@@ -130,8 +130,12 @@ def test_every_example_op_is_a_batch_op():
 
 
 def test_every_connect_to_key_in_examples_is_in_the_item_schema():
+    """Item keys, plus the swap keys a revise entry's `relation`/`why` may
+    carry (REVISE_CONNECT_TO_ITEM_SCHEMA makes both swappable) — the sweep
+    example's a45c88f1 entry swaps its why."""
     allowed = set(CONNECT_TO_ITEM_SCHEMA['properties'])
     allowed |= set(CONNECT_TO_ITEM_SCHEMA['properties']['relations']['items']['properties'])
+    allowed |= set(SWAP_SCHEMA['properties'])
     seen = set()
     for block in _fenced(SYSTEM_PROMPT):
         seen |= _connect_to_item_keys(block)
