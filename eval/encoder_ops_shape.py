@@ -42,6 +42,7 @@ ARMS = [  # (label, glob) — order = table order
     ('ideas',        'ops3/*-ideas/*.json'),
     ('v41+gistB',    'ops4/*-v41gistB/*.json'),
     ('v9+gistB',     'ops4/*-v9gistB/*.json'),
+    ('shape+gist',   'ops5/*-shape/*.json'),     # the revise-shape branch: prompt rows + s1e_gist + tool layer
 ]
 MERGE = {'v41 rep': 'v41', 'v42 rep': 'v42'}
 GENERIC = {'related', 'related_to'}

@@ -153,6 +153,20 @@ fails (3).
 3. Edge cell: canonical `d827d22f` ×3 and run-44 ×2, candidate + gist, versus
    the round-2 `v41 + gist A` baseline (3 runs/cell already). The number that
    matters: edge description repaired, currently **0/24** across every arm.
+   **Run 2026-09-04 (branch a1699cf; K s1e=265128878479, s1e_gist=eafc2cc736f3;
+   dumps `ab_2026-09-01_03/ops5/`): edge 0/3 — now 0/27 across every arm.**
+   `connect_to` appeared on 0 of 13 revise ops in the five runs while the same
+   runs wrote 13 standalone `connect` ops. Other surfaces held: canonical 2, 3,
+   3 of 4 hand-adjudicated (baseline 3, 3, 3 — two negated-history situations
+   the scorer's stale-token gate undercounts); run-44 4/4 and 1/4 (baseline 2,
+   2, 1 — the first 4/4 on that item), twin 2/2 (baseline 2/3). Shape: content
+   swaps 91%, full rewrites 0%, id-form targets 92% (81%), fields/revise 2.5
+   (2.4), connects/run 3.2 (1.2); source_refs item-dependent (canonical 0/18 vs
+   5/23, run-44 7/9 vs 2/15). Finding: brain id:9a9e35c1. Candidate next
+   levers, unrun: a "revise + edges"
+   sentence in `_BRAIN_BATCH_DESCRIPTION` (its prose still frames connect_to as
+   remember's); rendering the catalog Edges line so the why reads as the node's
+   own claim (E19); a gist bullet naming the Edges line's text as mine to swap.
 4. Only then the cross-prompt census (verb→op mismatches, surfaces named vs
    ops that reach them, example coverage of ops) over every registered
    default — the vocabulary it checks is what steps 1–2 change.
