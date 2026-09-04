@@ -26,7 +26,7 @@ separate inter-layer protocol. Shape and rationale: `docs/ARCHITECTURE-FRACTAL.m
 
 **One owner per concern** — every concern has exactly one module that owns it. Reach it through that module's API, never around it.
 
-**Route, don't reach** — about to write SQL outside `dal*.py`, or touch a table another layer owns? Walk it: what concern is this? which module owns it? does it expose what I need? Then call that. The walk is the rule; the prohibition is its shadow.
+**Route, don't reach** — about to write SQL outside `dal*.py`, or touch a table another layer owns? Walk it: what concern is this? which module owns it? does it expose what I need? Then call that.
 
 **A missing function is the finding, not the obstacle** — "the owner doesn't expose it" is the reason to add it there, not license to bypass. Add it to the owner, call it from here.
 
@@ -64,14 +64,12 @@ Where each concern lives. The module docstring is the detail — this table is t
 | Runtime flags | `hooks/scripts/brain-env.sh` | read at daemon start only |
 
 All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
-axis (s1, s2 + shared machinery); `channels/` is indexed by CORRESPONDENT and
-holds the packages that ADDRESS a live stream — `self_channel` (another stream)
-and `thalamus` (the brain itself). Which side a new package belongs on is a real
-decision with a guardrail behind it: **`servers/scales/__init__.py` states the
-rule** — don't re-derive it. Note this is a different sense of "channel" than the
-hooks' `additionalContext` injection. Two databases:
-`brain.db` (nodes, edges, embeddings) and `brain_logs.db` (traces, session state,
-interactions, errors).
+axis (s1, s2 + shared machinery); `channels/` is indexed by CORRESPONDENT — the
+packages that ADDRESS a live stream (`self_channel`: another stream; `thalamus`:
+the brain). **`servers/scales/__init__.py` states the placement rule** — don't
+re-derive it. (A different sense of "channel" than the hooks' `additionalContext`
+injection.) Two databases: `brain.db` (nodes, edges, embeddings) and
+`brain_logs.db` (traces, session state, interactions, errors).
 
 ## Conventions
 
@@ -90,11 +88,11 @@ interactions, errors).
 
 ### Time-window queries: route through `clock.iso_now()` / `iso_cutoff()`
 
-**Never use SQLite's `datetime('now', ...)` against TEXT timestamp columns** — it returns space-separated timestamps, brain stores ISO-T, and the lexicographic mismatch silently corrupts `>` filters. Use `from .clock import iso_cutoff` and bind: `WHERE created_at > ?`. `julianday('now')` is fine — it returns a number.
+**Never SQLite `datetime('now', …)` against TEXT timestamp columns** — it emits space-separated timestamps, brain stores ISO-T, and `>` filters silently break. Bind `iso_cutoff(...)` instead: `WHERE created_at > ?`. `julianday('now')` is fine (numeric).
 
-**Use `iso_now()` for any new-row timestamp** (`created_at`, `updated_at`, `last_accessed`). `Brain.now()` and TraceDAL inserts route through it. Single source of truth for the write-side format (`'…+00:00'`).
+**`iso_now()` for every new-row timestamp** (`created_at`, `updated_at`, `last_accessed`) — the one write-side format (`'…+00:00'`).
 
-**On the grain axis (anywhere under `servers/scales`), pass `at=conversation_now(...)` explicitly.** Grain-axis reads/writes are conversation-time, not wall-clock. Eval replays inject historical `[Current date: ...]` prefixes; bare `iso_now()` / `iso_cutoff()` would anchor to today's wall-clock and silently corrupt the replay. System bookkeeping (log cleanup, integrity audits, dashboard counts) is exempt — wall-clock is correct there. The rule's axis is conversation-time data (`event_time`, relative-date resolution, renders) — masks and windows over transaction-time columns (`created_at`, trace timestamps) anchor to wall-clock instead: a conversation-time value against a transaction-time column silently corrupts replays (id:c12c4735). `tests/test_time_window_contract.py` enforces both rules.
+**Grain axis (`servers/scales`): pass `at=conversation_now(...)`.** Conversation-time data (`event_time`, relative dates, renders) anchors to the replayed date, or eval replays silently corrupt. Windows over transaction-time columns (`created_at`, trace timestamps) stay wall-clock, as does system bookkeeping (id:c12c4735). `tests/test_time_window_contract.py` enforces both.
 
 **`as_of` replay HIDES, it cannot RESTORE.** It masks what was created after the instant, but a node archived *since* stays gone (`archive_node` deletes its vectors), so a replay runs on today's survivors; historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`). Treat as_of numbers as approximate, degrading with cutoff age.
 
@@ -127,16 +125,12 @@ IsolatedBrain copy starts at the 2-pointer baseline. Promote = move the winner
 into the code default, then `clear_interaction_override`.
 
 `tests/test_interaction_defaults.py` + `test_interaction_bypass_guard.py` hold
-the contract: every accessor literal has a registry entry, code defaults pass
-their own validators, no default file claims the DB is authoritative, and
-nothing imports a default around the resolver or reaches `_interaction_dal`
-outside the Brain.
+the contract (registry coverage, validators, no bypass of the resolver or
+`_interaction_dal`).
 
 ### Python runtime — use `./dev`
 
-The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the interpreter the daemon runs, the hooks resolve, and the one **not** blocked by macOS SIP — debuggers (`py-spy`, `lldb`) can only attach to this one.
-
-**Run every dev command through the wrapper:**
+The brain bundles its own Python at `venv/bin/python` (3.11.11) — the interpreter the daemon runs, the hooks resolve, and the only one macOS SIP lets `py-spy`/`lldb` attach to. Run every dev command through the wrapper:
 
 ```bash
 ./dev pytest tests/                   # test suite
@@ -145,9 +139,7 @@ The brain bundles its own Python at `venv/bin/python` (3.11.11). That's the inte
 ./dev                                 # subshell with PATH primed
 ```
 
-`tests/conftest.py` refuses to run if pytest isn't launched under the bundled Python — catches the "tests pass here but daemon runs a different Python" class of bug. Bypass for a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`.
-
-Hooks source `brain-env.sh` transitively via `resolve-brain-db.sh`; the daemon launcher picks the same Python explicitly. Don't add new hook scripts that skip `brain-env.sh`.
+`tests/conftest.py` refuses any other interpreter (bypass a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`). Hooks reach `brain-env.sh` via `resolve-brain-db.sh`; new hook scripts must not skip it.
 
 ### Deploying a change
 
@@ -159,35 +151,19 @@ Don't gate a deploy-restart with the maintenance lock — it makes the daemon sk
 
 ### Recovering a hung daemon
 
-Hung-but-alive daemons recover reactively: hooks and the MCP health monitor (2s pings, ~20s tolerance) call `recover_daemon()`, whose corpse test (unresponsive + PID file long past its bind) gates a `launchctl kickstart -k`; launchd `KeepAlive` respawns real exits. Deploy restarts are NOT kills: the `restart` command reloads in place (`_exec_reload` execs `hooks/scripts/brain-daemon`, same PID, env + DB ladder re-resolved), and `ensure_daemon()` at session start converges a healthy-but-stale daemon via that same reload (its own ladder — never `recover_daemon`), kickstarting only corpses and db-dir moves. Pause auto-recovery for live debugging (`py-spy`/`lldb`) with the maintenance lock. Full mechanism picture: brain node id:50c9a4e0.
+Hung-but-alive daemons recover reactively: hooks and the MCP health monitor call `recover_daemon()`, whose corpse test gates a `launchctl kickstart -k`; launchd `KeepAlive` respawns real exits. Deploy restarts reload in place (`_exec_reload`, same PID); `ensure_daemon()` at session start converges a stale daemon the same way and kickstarts only corpses. Pause auto-recovery for live debugging with the maintenance lock. Full picture: brain node id:50c9a4e0.
 
 ### Test Integrity
 
-**When a test fails, STOP.** Do not change the test OR the code.
-1. Report: what the test expected vs what code returned.
-2. Ask: "Is the test wrong, or does the code have a bug?"
-3. Wait for the answer.
-
-Do NOT weaken tests. Do NOT "fix" code to satisfy a test without asking.
+**When a test fails, stop** — change neither the test nor the code. Report what the test expected vs what the code returned, ask whether the test or the code is wrong, wait for the answer.
 
 ### Test Architecture
 
-Tests organized by what they catch:
-- **Contract tests** — layer sync, trace writes, pipeline shapes
-- **Component tests** — DAL, format_node, scoring, signal queue
-- **Transition tests** — wiring between pipeline stages (format changes that break consumers)
-- **Cycle tests** — O/K/Δ loop property (Δ becomes next O)
-- **Integration tests** — real data, full pipeline
-
-`BrainTestBase` for tests needing a brain. Set `needs_embedder = False` when semantic search isn't needed (saves 1GB + 1.5s). `IsolatedBrain` for tests against production data copies.
+`BrainTestBase` for tests needing a brain (`needs_embedder = False` when semantic search isn't needed — saves 1GB + 1.5s); `IsolatedBrain` for tests against production data copies.
 
 ### Benchmark-First Rule
 
-Before changing sacred systems, benchmark FIRST:
-- Recall: `eval/brain_recall_identity_eval.py` / `eval/surface_funnel.py` against `servers/brain_recall.py` (see `eval/README.md`)
-- Encoding: `eval/s1_encode_eval.py` against `scales/s1/encode.py`
-- Frame / surface: `eval/frame_replay.py` capture/compare against an isolated brain copy
-- Longmem end-to-end (encode→recall→answer): the **Frozen Corpus** two-stage harness — `eval/longmem/build_corpus.py` encodes once (slow), `eval/longmem/sweep.py` recalls over the frozen brains cheaply, many times; `build_corpus.py --interaction-override` A/Bs prompt candidates. Full reference: `docs/EVAL-PLATFORM.md`.
+Before changing sacred systems, benchmark first — recall: `eval/brain_recall_identity_eval.py`, `eval/surface_funnel.py`; encoding: `eval/s1_encode_eval.py`; Frame/surface: `eval/frame_replay.py` against an isolated copy; longmem end-to-end: `eval/longmem/build_corpus.py` (encode once) + `sweep.py` (recall many times; `--interaction-override` A/Bs prompts). Reference: `eval/README.md`, `docs/EVAL-PLATFORM.md`.
 
 ### Encode-Decode Symmetry
 
@@ -195,11 +171,9 @@ Encoding and decoding are two halves of the same system. If you add a field to e
 
 ### Loud by Default
 
-Silent failures are the most dangerous class of bug; assume every `try/except` is a potential dark corner. The brain has a small family of mechanisms that surface what used to hide: dispatcher `check_unknown_keys` catches dropped fields; per-unit `consecutive_failures` counters surface stuck S2 units; `brain_batch_invalid_op`, oversized-cluster, embedding-decode, and max_tokens-truncation errors all log to the brain errors table. Tests lock the contracts (`test_dispatch_contract_sync`, `test_trace_contract_sync`, `test_contract_sync`, `test_interaction_defaults`, `test_recall_door_parity`). When adding new code, the question isn't "can this fail?" — it's "would I know if it did?"
+Silent failures are the most dangerous class of bug; every `try/except` is a potential dark corner. Dropped fields, stuck S2 units, invalid batch ops, oversized clusters, embedding-decode and truncation errors all log to the brain errors table, and the `*_contract_sync` tests lock the contracts. The question for new code isn't "can this fail?" — it's "would I know if it did?"
 
 ### Code Ownership
-
-You are the sole maintainer of code quality, architecture, and cleanliness.
 
 **Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
 
@@ -218,7 +192,6 @@ You are the sole maintainer of code quality, architecture, and cleanliness.
 - Don't construct DB paths (read the boot output)
 - **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index. Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
 - **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
-- **Trace the pipeline before changing it** — the decode→encode pipeline has coupled stages. Don't change one stage without understanding the full flow.
 
 **Deep, not wide.** Go all the way down on the thing you're changing — its tests, its callers, the doc that would otherwise lie, the real fix instead of the workaround. Don't widen to the adjacent problem you noticed; name it and move on. Completeness is finishing the cut, not enlarging it.
 
