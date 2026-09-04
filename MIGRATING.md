@@ -12,7 +12,7 @@ the new runtime to build. Nothing gets deleted at any step.
 - Never run `claude plugin uninstall` without `--keep-data`. Never `rm`
   anything. Never move brain files by hand — one script does that, safely.
 - If a check fails, stop and show the user what you saw. Do not improvise a
-  fix; the old plugin and its data are still intact at every point below.
+  fix; the brain's files are intact at every point below.
 
 ---
 
@@ -20,55 +20,108 @@ the new runtime to build. Nothing gets deleted at any step.
 
 The plugin was renamed. Claude Code identifies a plugin by
 `<plugin>@<marketplace>`, and both halves changed (`brain@brain` →
-`entity@anchor`), so `/plugin update` cannot carry anyone across. The new
-plugin has to be installed alongside, and the old one removed.
+`entity@anchor`), so `/plugin update` cannot carry anyone across. The old
+plugin has to be removed and the new one installed.
 
 The one real hazard: on older installs the brain's files live inside a folder
-that a default `claude plugin uninstall` deletes. Phase 1 moves them out
-before anything is uninstalled. Everything else is bookkeeping.
+that a default `claude plugin uninstall` deletes. `--keep-data` in Phase 1 is
+what protects them; Phase 3 then moves them somewhere no plugin operation
+ever touches. Everything else is bookkeeping.
 
 ---
 
 ## Phase 0 — Where is the brain, and how big is it?
 
-Run:
+Find the brain. Try these in order and stop at the first that answers:
 
 ```bash
-cat "${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"
+cat "${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"   # BRAIN_DB_DIR = the live brain
+cat "${XDG_CONFIG_HOME:-$HOME/.config}/brain/env"            # a BRAIN_DB_DIR the user set by hand
+ls ~/.claude/plugins/data/*/brain/brain.db ~/.local/share/brain/brain.db 2>/dev/null
 ```
 
-Note two values: `BRAIN_DB_DIR` (where the brain lives) and `PLUGIN_ROOT`
-(where the old plugin is installed).
+Write down the folder that holds `brain.db`. Call it **the brain path**.
+If the old plugin was pointed at the brain through its *settings* field
+("Existing brain location"), note that too — Phase 2 needs it.
 
-Classify `BRAIN_DB_DIR`:
+Classify the brain path:
 
-| It contains | Meaning | Phase 1 |
-|---|---|---|
-| `/.claude/plugins/data/` | **parked** inside a plugin-owned folder — at risk on uninstall | **required** |
-| anything else (`~/.local/share/brain`, a legacy pre-plugin folder, a custom path) | already outside plugin control — safe | skip to Phase 2 |
+| It contains | Meaning |
+|---|---|
+| `/.claude/plugins/data/` | **parked** inside a plugin-owned folder — Phase 3 will move it |
+| anything else | already outside plugin control — Phase 3 is a no-op |
 
-Also note the memory count from this session's boot banner — the line that
-reads *"I have N memories"*. Write N down. It is the number every later
-check compares against.
+Now record how big the brain is, as **N**, using whichever of these the
+install offers:
 
-Confirm the numbers with the user before continuing.
+1. The boot banner line *"I have N memories"* (plugin 9.7.1 or later).
+2. The node count on the local dashboard, `http://localhost:47303`.
+3. Failing both: `ls -l <brain path>/brain.db` — record the size in bytes.
+
+Confirm the brain path and N with the user before continuing. N is the fact
+every later check compares against.
 
 ---
 
-## Phase 1 — Move a parked brain to safety (only if parked)
-
-The relocation tool ships with plugin version 9.7.2 or later. Make sure the
-old plugin is current, then restart Claude Code so the new hooks load:
+## Phase 1 — Remove the old plugin, keeping its data folder
 
 ```bash
-claude plugin update brain
+claude plugin uninstall brain --keep-data
 ```
 
-In the fresh session, the boot banner shows a notice titled *"your brain lives
-in a folder `claude plugin uninstall` deletes"* and names the exact command.
-It is this one (substitute the `PLUGIN_ROOT` from Phase 0):
+`--keep-data` is not optional. It preserves the plugin's data folder, which on
+a parked install **is where the brain lives**.
+
+Then remove the marketplace the old plugin came from, so no copy of the old
+code remains for the background service to keep launching:
 
 ```bash
+claude plugin marketplace list          # find the one that carried `brain`
+claude plugin marketplace remove <that-marketplace>
+```
+
+Expected side effect: memory is offline until Phase 2 finishes. That is
+normal.
+
+---
+
+## Phase 2 — Install `entity`
+
+```bash
+claude plugin marketplace add tpac/entity
+claude plugin install entity@anchor
+```
+
+Start a new Claude Code session. First boot builds an isolated runtime and
+downloads the embedding model (a couple of minutes; the banner reports
+progress) and installs the background service pointing at the new plugin.
+
+The new plugin finds the existing brain through `~/.config/brain/resolved.env`
+— it does not create a fresh one when a brain is recorded there. Two cases
+need a hand:
+
+- If the old install used the plugin's **settings field** to point at the
+  brain, that setting did not carry over. Enter the brain path from Phase 0
+  in `entity`'s settings ("Existing brain location"), then start a new
+  session.
+- If the boot banner offers a choice about an existing brain, pick the option
+  that **connects to the existing brain** at the brain path. Never pick
+  "start fresh".
+
+API key: if it was stored in the old plugin's settings, the old plugin already
+mirrored it to `~/.config/brain/env`, and the new plugin reads it from there.
+If Claude Code asks for a key anyway, enter it in the new plugin's settings.
+
+---
+
+## Phase 3 — Move a parked brain to safety (only if parked)
+
+If Phase 0 classified the brain as parked, the new session's boot banner shows
+a notice titled *"your brain lives in a folder `claude plugin uninstall`
+deletes"* and names the exact command. It is the new plugin's own script:
+
+```bash
+cat "${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"     # PLUGIN_ROOT = the entity install
 bash "<PLUGIN_ROOT>/hooks/scripts/relocate-brain.sh"
 ```
 
@@ -78,68 +131,37 @@ swaps the new location in with one atomic rename, **keeps the original beside
 its old path as an inert spare** (that spare is the backup — leave it), and
 restarts the services pointing at the new location.
 
-Then start a new session and check:
+Then start a new session. `resolved.env` should now show `BRAIN_DB_DIR` under
+`.local/share/brain`, and the parked notice should be gone.
 
-1. `cat "${XDG_CONFIG_HOME:-$HOME/.config}/brain/resolved.env"` — `BRAIN_DB_DIR`
-   now points under `.local/share/brain`.
-2. The boot banner's memory count equals N.
-
-If the script is missing (the update did not reach 9.7.2) or either check
-fails: **stop here**. The brain is untouched at its original path; ask the
-maintainer before doing anything else.
-
----
-
-## Phase 2 — Remove the old plugin, keeping its data folder
-
-```bash
-claude plugin uninstall brain --keep-data
-```
-
-`--keep-data` is not optional. It preserves the plugin's data folder — which
-after Phase 1 holds only the inert spare, and on a never-parked install holds
-nothing of value, but there is no reason to delete either.
-
-Expected side effect: the background daemon stops, because the folder it was
-launched from is gone. Memory is offline until Phase 3 finishes. That is
-normal.
-
----
-
-## Phase 3 — Install `entity`
-
-```bash
-claude plugin marketplace add tpac/entity
-claude plugin install entity@anchor
-```
-
-Start a new Claude Code session. First boot builds an isolated runtime and
-downloads the embedding model (a couple of minutes; the banner reports
-progress) and re-installs the background service.
-
-The new plugin finds the existing brain through the same `resolved.env` file
-from Phase 0 — it does not create a fresh one when a brain is already
-recorded there. If the boot banner nevertheless offers a choice about an
-existing brain, pick the option that **connects to the existing brain** at
-the `BRAIN_DB_DIR` you wrote down. Never pick "start fresh".
-
-API key: if it was stored in the old plugin's settings, the old plugin already
-mirrored it to `~/.config/brain/env`, and the new plugin reads it from there.
-If Claude Code asks for a key anyway, enter it in the new plugin's settings.
+If the brain was not parked, there is nothing to do here.
 
 ---
 
 ## Phase 4 — Verify
 
-In a fresh session, all three must hold:
+In a fresh session, all of these must hold:
 
-1. The boot banner's memory count equals N.
-2. The brain tools carry the new prefix: `mcp__plugin_entity_brain__recall`
-   and friends (39 tools).
-3. `/entity:brain` exists as a slash command (the old `/brain:brain` is gone).
+1. **Size.** The boot banner's memory count is **at least N**. A few more
+   than N is expected — the brain keeps encoding across the sessions this
+   migration took. What would signal loss is a count near zero, or one the
+   size of a fresh seed pack (a few dozen). If N was a byte size, the new
+   `brain.db` is at least that large.
+2. **Tools.** The brain tools carry the new prefix:
+   `mcp__plugin_entity_brain__recall` and friends (39 tools).
+3. **Skill.** `/entity:brain` exists as a slash command (the old
+   `/brain:brain` is gone).
+4. **Service** (macOS). The background service points at the new plugin:
 
-If all three hold, the migration is complete. From here on, every release is
-an ordinary `claude plugin update entity`.
+   ```bash
+   grep -A3 ProgramArguments ~/Library/LaunchAgents/com.brain.daemon.plist
+   ```
+
+   The path shown must be inside the `entity` install (the `PLUGIN_ROOT`
+   from Phase 3), not the old plugin's folder.
+
+If all hold, the migration is complete. From here on, every release is an
+ordinary `claude plugin update entity`.
 
 ---
 
@@ -147,13 +169,14 @@ an ordinary `claude plugin update entity`.
 
 Nothing above deletes data, so the way back is short:
 
-- **After Phase 1:** the original brain is still at its old path, renamed as
+- **After Phase 1:** the brain is exactly where it was; `--keep-data` left its
+  folder in place. The old plugin can be reinstalled from its marketplace if
+  you need to pause here.
+- **After Phase 2:** if the new plugin created a fresh brain by mistake, do
+  not use it. Set `BRAIN_DB_DIR` in `~/.config/brain/env` to the brain path
+  from Phase 0 and start a new session.
+- **After Phase 3:** the original brain is still at its old path, renamed as
   a spare beside it. The relocation can be re-run or the spare pointed at.
-- **After Phase 2:** the old plugin can be reinstalled from its marketplace;
-  `--keep-data` left its folder in place.
-- **After Phase 3:** if the new plugin created a fresh brain by mistake, do
-  not use it. Set `BRAIN_DB_DIR` in `~/.config/brain/env` to the path from
-  Phase 0 (or the Phase 1 location) and start a new session.
 
-Bring the failing check's output to the maintainer. The memory count N is the
-fact that settles whether anything was lost.
+Bring the failing check's output to the maintainer. N is the fact that settles
+whether anything was lost.

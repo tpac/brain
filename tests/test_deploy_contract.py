@@ -145,9 +145,11 @@ class TestAdapterNameContainment:
     """
 
     def test_mcp_tool_prefix_contained(self):
-        # The permission entry is the shape's one legitimate home. This exact
-        # file was the miss that motivated the gate.
-        allowed = {'.claude/settings.json'}
+        # The permission entry is the shape's one legitimate home in CODE —
+        # this exact file was the miss that motivated the gate. The migration
+        # guide names the prefix once because its verification step tells the
+        # user what a correct install looks like.
+        allowed = {'.claude/settings.json', 'MIGRATING.md'}
         pattern = re.compile(re.escape(f'mcp__plugin_{PLUGIN_NAME}_'))
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -468,7 +470,10 @@ class TestPublicTreeExport:
                            'build-plugin.sh')
 
     def _run(self, *args, timeout=60):
-        return subprocess.run(['bash', self.SCRIPT, *args],
+        # A developer shell with EXPECT_VERSION exported would turn gate C's
+        # release pin into a spurious drift failure in every export test.
+        env = {k: v for k, v in os.environ.items() if k != 'EXPECT_VERSION'}
+        return subprocess.run(['bash', self.SCRIPT, *args], env=env,
                               capture_output=True, text=True, timeout=timeout)
 
     def test_manifest_list_mode_is_sane(self):
