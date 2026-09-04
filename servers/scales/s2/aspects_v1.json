@@ -259,6 +259,7 @@
       "restates",
       "preferred_over",
       "resolves",
+      "partially_resolves",
       "addresses",
       "consolidated_into",
       "updates",

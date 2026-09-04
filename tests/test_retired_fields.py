@@ -56,8 +56,8 @@ def _op_surfaces():
     when its day comes) is retired here the same way a node field is — add it
     to RETIRED_NODE_FIELDS and every surface must fall silent."""
     from servers.contract import BATCH_OP_SPECS, generate_field_summary
-    from servers.scales.s1.encode_contract import ENCODER_GIST
-    return ([('s1e gist', ENCODER_GIST),
+    from servers.interaction_defaults import INTERACTION_DEFAULTS
+    return ([('s1e gist', INTERACTION_DEFAULTS['s1e_gist'][0]),
              ('field summary', generate_field_summary())]
             + [('brain_batch %s description' % op, spec['description'])
                for op, spec in BATCH_OP_SPECS.items()])

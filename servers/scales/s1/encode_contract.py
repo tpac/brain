@@ -6,7 +6,9 @@ This contract defines:
 - How the node catalog is built (build_node_catalog)
 
 Node formatting uses render_rich_node() from servers.contract.
-Interaction: 's1e' in interactions table. Prompt is learnable.
+Interactions: `s1e` (the system prompt, encoding_prompt.py) and `s1e_gist`
+(the pre-timeline rules, encoding_gist_prompt.py) — both learnable, both read
+through get_interaction_prompt/_config; their config defaults live here.
 """
 
 import os
@@ -175,6 +177,26 @@ S1E_INTERACTION_DEFAULT = {
     'model': 'claude-sonnet-4-6',
 }
 
+# Interaction config default for `s1e_gist` — the operating rules restated
+# just before <timeline> (template: encoding_gist_prompt.py). `enabled` is the
+# one knob: an eval arm or an operator turns the gist off without touching the
+# words (override parameters={'enabled': False}); the assembler subscripts it,
+# so the config is total by construction.
+S1E_GIST_INTERACTION_DEFAULT = {
+    'enabled': True,
+}
+
+
+def validate_s1e_gist_config(config):
+    """Violations for an `s1e_gist` override config: `enabled` must be a
+    bool. A typo'd `"enabled": "false"` is truthy — it would keep the gist on
+    while the operator believes it off, which is exactly the silent shape the
+    resolver's validator door exists to refuse."""
+    enabled = config.get('enabled', True)
+    if not isinstance(enabled, bool):
+        return ["enabled must be true or false, got %r" % (enabled,)]
+    return []
+
 # The encoder's toolset — the brain_mcp tools handed to the S1 encoding
 # agent (encode._get_tool_schemas). Contract-owned so the vocabulary guardrail
 # (tests/test_teaching_vocabulary_sync.py) and the prompt's tool names bind
@@ -241,23 +263,6 @@ PROVENANCE_TAGS = (
 # associated ids are disjoint from the catalog categories by construction
 # (recall excludes them), so they never compete for priority.
 ASSOCIATED_TAG = '[associated]'
-
-# ENCODER_GIST — the operating rules restated at the recency position: the
-# payload's last instruction before the timeline. The system prompt teaches
-# these ~800 lines earlier and the catalog then pushes them another ~1,400
-# lines back; measured (2026-09-02, 30 arm-F runs) the sweep rule under-applies
-# exactly there — situation repaired ~50%, edge descriptions 0/6. Free text,
-# not a tag: guide text is free text, angle brackets mean payload structure.
-ENCODER_GIST = """Before I read the timeline, the rules I encode by:
-- The catalog above is a set of LIVE CLAIMS. Whatever this window falsified — a value, a status line, a plan step, an open question now answered — I revise in EVERY surface that carries it: title, content (`content_edits` in place), situation, question, reasoning, and any edge description. A surface I leave alone keeps asserting the dead value to recall.
-- An `open` the window answered changes type and takes `resolves`; partly answered stays `open`, narrowed, with `partially_resolves`.
-- Old values stay only in `content`, and only where the history is load-bearing — never in title, situation, or question.
-- New AND useful earns a node: facts, decisions, corrections (assumed / reality / pattern), verbatim quotes, mechanisms, moments; dated ones carry `event_time` resolved to ISO against the conversation's date. What the catalog already holds I revise or connect by id, never mint again.
-- Every node: situation in trigger register, reasoning, a question where a real asking exists, edges with a specific why.
-- Nothing I write inherits turn numbers or "today".
-"""
-
-
 
 def _filter_noise_relations(nodes_map, brain):
     """Drop noise-aspect relations from each catalog node's connections (lived

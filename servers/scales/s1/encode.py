@@ -102,6 +102,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # K-provenance stamp, resolved at the same moment as the template so the
     # delta trace records the K this run actually used.
     enc_stamp = brain.get_interaction_stamp('s1e')
+    # The gist is its own K (`s1e_gist`, read in _build_user_content); its
+    # stamp rides the same delta so a run's provenance names both texts.
+    gist_stamp = brain.get_interaction_stamp('s1e_gist')
     # Per-version config rides in the interaction's parameters JSON (the
     # K-store): `effort` maps to the API's output_config.effort; `model`
     # picks the encoder model. Lets an effort or model change ship as a
@@ -345,6 +348,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             interaction_version=enc_stamp['version'],
             interaction_fingerprint=enc_stamp['fingerprint'],
             interaction_source=enc_stamp['source'],
+            gist_interaction_version=gist_stamp['version'],
+            gist_interaction_fingerprint=gist_stamp['fingerprint'],
+            gist_interaction_source=gist_stamp['source'],
             stop_counter=counter,
         )
         dispatch_fn('trace_append', {
@@ -1000,9 +1006,14 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
         if scout_legend:    # explains the <scout_notes> inside the timeline
             body += "%s\n" % scout_legend
-        # The gist — last instruction before the timeline (encode_contract).
-        from servers.scales.s1.encode_contract import ENCODER_GIST
-        body += ENCODER_GIST + "\n"
+        # The gist — the last instruction before the timeline, its own K
+        # (`s1e_gist`): read through the resolver so an override can edit it
+        # or turn it off (`enabled`), and its fingerprint says what the
+        # encoder actually read. Config is total by construction — subscript.
+        if brain.get_interaction_config('s1e_gist')['enabled']:
+            gist = brain.get_interaction_prompt('s1e_gist')
+            if gist:
+                body += gist.rstrip('\n') + "\n\n"
         # `now=` stamp (view policy): the absolute anchor that makes every
         # relative label below invertible — and the current-time declaration
         # the encoder's date resolution never had (only the scouts got one).

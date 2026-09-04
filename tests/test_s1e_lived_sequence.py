@@ -143,13 +143,17 @@ _NOW = datetime(2026, 6, 29, 14, 5, tzinfo=timezone.utc)   # 14h after the fixtu
 
 
 def _assembly_brain():
-    """_StubBrain + the three doors _build_user_content knocks on beyond the
-    renderer (continuity notes, session arc, failed-encode residue), all empty
-    — so the assembled body is the timeline section alone."""
+    """_StubBrain + the doors _build_user_content knocks on beyond the
+    renderer: continuity notes, session arc, failed-encode residue (all
+    empty) and the interaction resolver serving code defaults — so the
+    assembled body is the gist and the timeline section."""
+    from servers.interaction_defaults import INTERACTION_DEFAULTS
     brain = _StubBrain(EPISODES)
     brain.journal_notes = lambda **kw: []
     brain.session_context_for = lambda sid: ''
     brain.query_traces = lambda **kw: {'events': []}
+    brain.get_interaction_prompt = lambda name: INTERACTION_DEFAULTS[name][0]
+    brain.get_interaction_config = lambda name: dict(INTERACTION_DEFAULTS[name][1])
     return brain
 
 

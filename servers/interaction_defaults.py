@@ -43,7 +43,10 @@ from .recall_expansion_prompt import (
     SYSTEM_PROMPT as _RECALL_EXPANSION_PROMPT,
     RECALL_EXPANSION_INTERACTION_DEFAULT)
 from .recall_laf import DEFAULT_CONFIG as _RECALL_LAF_DEFAULT
-from .scales.s1.encode_contract import S1E_INTERACTION_DEFAULT
+from .scales.s1.encode_contract import (
+    S1E_GIST_INTERACTION_DEFAULT, S1E_INTERACTION_DEFAULT,
+    validate_s1e_gist_config)
+from .scales.s1.encoding_gist_prompt import SYSTEM_PROMPT as _S1E_GIST_PROMPT
 from .scales.s1.encoding_prompt import SYSTEM_PROMPT as _S1E_PROMPT
 from .scales.s1.scouts.contract import (
     SCOUT_FACTS_INTERACTION_DEFAULT,
@@ -68,6 +71,7 @@ from .trace_contract import TRACE_RECORDING_NORMAL
 # name → (template, config). Config-only interactions carry '' templates.
 INTERACTION_DEFAULTS = {
     's1e':                   (_S1E_PROMPT, S1E_INTERACTION_DEFAULT),
+    's1e_gist':              (_S1E_GIST_PROMPT, S1E_GIST_INTERACTION_DEFAULT),
     'surface':               (_SURFACE_PROMPT, SURFACE_INTERACTION_DEFAULT),
     's1_scout_quote':        (_QUOTE_PROMPT, SCOUT_QUOTE_INTERACTION_DEFAULT),
     's1_scout_temporal':     (_TEMPORAL_PROMPT, SCOUT_TEMPORAL_INTERACTION_DEFAULT),
@@ -94,6 +98,7 @@ INTERACTION_DEFAULTS = {
 # must never become the running K, and must never crash a read path.
 INTERACTION_VALIDATORS = {
     'scopes': validate_scopes_config,
+    's1e_gist': validate_s1e_gist_config,
 }
 
 

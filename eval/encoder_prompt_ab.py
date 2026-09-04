@@ -752,11 +752,11 @@ def main():
                          'one — for candidates that EDIT existing text rather '
                          'than append. Isolated copy only, same as --s1e-patch.')
     ap.add_argument('--gist-file',
-                    help='splice THIS file\'s text instead of the contract\'s '
-                         'ENCODER_GIST (implies --gist) — for A/B-ing a gist '
-                         'candidate before it is promoted into the contract.')
+                    help='splice THIS file\'s text instead of the `s1e_gist` '
+                         'code default (implies --gist) — for A/B-ing a gist '
+                         'candidate before it is promoted into the default.')
     ap.add_argument('--gist', action='store_true',
-                    help='splice encode_contract.ENCODER_GIST into the frozen '
+                    help='splice the `s1e_gist` code default into the frozen '
                          'capture directly before its <timeline> line — the '
                          'payload-level reminder production assembly emits; a '
                          'capture predating it needs the splice to be same-'
@@ -831,7 +831,8 @@ def main():
             with open(cap_path) as f:
                 captured_raw = f.read()
             if args.gist or args.gist_file:
-                from servers.scales.s1.encode_contract import ENCODER_GIST
+                from servers.interaction_defaults import INTERACTION_DEFAULTS
+                ENCODER_GIST = INTERACTION_DEFAULTS['s1e_gist'][0]
                 if args.gist_file:
                     with open(args.gist_file) as f:
                         ENCODER_GIST = f.read().rstrip('\n') + '\n'

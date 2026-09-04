@@ -809,9 +809,13 @@ def test_lived_body_carries_legend_and_no_trailing_report():
     outputs = {'facts': _scout_env('facts', [
         {'handle': 'PT = Sarah', 'evidence_turns': ['turn-2'],
          'evidence_quote': 'PT with Sarah at Riverside'}])}
+    from servers.interaction_defaults import INTERACTION_DEFAULTS
     brain = _ProvBrainFull(_EPS, _SURF, _ENC, [], {})
     brain.session_context_for = lambda sid: ''
     brain.journal_notes = lambda **kw: []
+    # the resolver doors, serving code defaults (the gist rides the body)
+    brain.get_interaction_prompt = lambda name: INTERACTION_DEFAULTS[name][0]
+    brain.get_interaction_config = lambda name: dict(INTERACTION_DEFAULTS[name][1])
     # 2 user turns → the timeline windows to _EPS's LAST two turns (u7, u8);
     # the note must cite a turn inside that window to render.
     msgs = [

@@ -148,6 +148,14 @@ CONTENT_EDITS_SCHEMA = {
     "description": ("Deprecated alias of `content: [{old, new}, ...]`; "
                     "passing both is an error."),
 }
+# Deprecated revise-field aliases, alias → the field it stands for. The
+# vocabulary guardrail (tests/test_teaching_vocabulary_sync.py) exempts these
+# keys from the taught set — an alias is advertised and described as
+# deprecated, and taught nowhere on purpose; brain.revise carries the
+# write-side normalization of each (content_edits → content swaps). Retiring
+# one = drop its schema + its normalization + its entry here, and add the name
+# to tests/test_retired_fields.RETIRED_NODE_FIELDS.
+REVISE_FIELD_ALIASES = {'content_edits': 'content'}
 
 # Shared item schema for connect_to entries — one source for the
 # remember/remember_batch/revise schemas AND brain_batch's remember + revise
