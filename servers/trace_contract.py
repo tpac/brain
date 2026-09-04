@@ -188,34 +188,81 @@ REF_TYPES = {
 #                        last_user_activity reset this turn)
 #   self_message        inbound msg from another stream            no  (planned)
 #                        (anchor↔anchor)
+#   thalamus_delivery   the brain's own due items rendered into    no  (planned)
+#                        this session (channels/delivery.py)
 #   heartbeat           /watch wakeup re-arm, no real input        no  (never)
 #                        (no prompt + empty inbox)
 #
-# "conversational" means BOTH: (a) the turn counts toward the S1 Scribe's
-# integration CADENCE — derived live from these traces by
-# turns_since_last_encode() (counts s0 user_message turns since the last encode),
-# which the Scribe gates on (>= ENCODE_EVERY). This is distinct from stop_counter,
-# the per-stop SEQUENCE number that advances on EVERY stop (incl. heartbeats) so
-# chain IDs stay unique. And (b) the encoder reads it via get_session_turns.
-# Non-conversational turns are still written to S0 (for observability) but never
-# drive or feed encoding.
+# The dial governs TWO things, both timeline-side:
+#   (a) the encoder's conversation window — get_session_turns selects
+#       CONVERSATIONAL_REF_TYPES, derived below, so a True row's turns enter
+#       the timeline as their own incoming side (the trace's metadata.content
+#       carries the delivered block; channels/delivery.py stamps it);
+#   (b) reaction classification — the stop right after a delivery-block
+#       (post_response_common's delivery-continuation branch) records the
+#       response as a real assistant_message iff any delivered ref_type is
+#       True here; otherwise it stays a heartbeat. Flipping a row therefore
+#       makes the incoming message AND the reaction appear together.
+# The dial does NOT govern the S1 Scribe's CADENCE: turns_since_last_encode
+# counts s0 user_message rows only (dal_logs.conversational_turns_since,
+# hardcoded ref_type), so a flipped correspondent enters the conversation
+# cleanly without ticking encode cadence. Cadence is also distinct from
+# stop_counter, the per-stop SEQUENCE number that advances on EVERY stop
+# (incl. heartbeats) so chain IDs stay unique. Non-conversational turns are
+# still written to S0 (for observability) but never drive or feed encoding.
 #
-# anchor↔anchor encoding is a PLANNED capability, switched OFF today. The single
-# dial to enable it is below: flip self_message to True. heartbeat stays False
-# forever.
+# anchor↔anchor and brain↔anchor encoding are PLANNED capabilities, switched
+# OFF until the encoder prompt is taught the correspondent elements. The
+# single dial per correspondent is below. heartbeat stays False forever.
 S0_CONVERSATIONAL_INCOMING = {
     "user_message": True,
-    "self_message": False,   # recorded today; flip to True to encode anchor↔anchor turns
-    "heartbeat":    False,   # a wakeup re-arm is never a turn
+    "self_message": False,        # another stream of me — flip to include anchor↔anchor turns
+    "thalamus_delivery": False,   # the brain's own items — flip to include brain↔anchor turns
+    "heartbeat":    False,        # a wakeup re-arm is never a turn
 }
 
 # Flat ref_type set the encoder's conversation window (dal.get_session_turns)
 # selects: the conversational incoming types + the assistant response side.
-# DERIVED from S0_CONVERSATIONAL_INCOMING so there is exactly one dial — flipping
-# a type there updates both the Scribe counter gate and the encoder whitelist.
+# DERIVED from S0_CONVERSATIONAL_INCOMING so there is exactly one dial. This
+# whitelist binds at IMPORT; the classification half (arms_continuation,
+# below) reads the dict live so tests can simulate a flip — in production
+# both move together, because a flip is a source edit + daemon restart
+# (deploy semantics, like every contract constant), never a runtime mutation.
 CONVERSATIONAL_REF_TYPES = tuple(
     rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
 ) + ("assistant_message",)
+
+def arms_continuation(traced_ref_types):
+    """The dial's classification consumer, named: a Stop-blocking delivery of
+    these (traced) incoming ref_types arms a reaction stamp iff any of them
+    is a dial-on correspondent. Reads the dial dict LIVE by design — a test
+    simulates a flip by patch.dict'ing one row; in production the dict only
+    changes with a source edit + restart, so this and the import-frozen
+    timeline whitelist move together at deploy time."""
+    return any(S0_CONVERSATIONAL_INCOMING.get(rt, False)
+               for rt in traced_ref_types)
+
+
+# The window measures the WHOLE continuation turn — armed at the end of the
+# blocked Stop, compared at the start of the next one — not the resume
+# latency (the counter match already restricts to the very next Stop). So it
+# must accommodate a continuation that runs a test suite or an agent chain,
+# while still refusing an abandoned one: ESC fires no Stop, freezing counter
+# and stamp, and a /watch wakeup HOURS later would otherwise claim the
+# reaction. Wall-clock: hooks are off the grain axis.
+DELIVERY_REACTION_WINDOW_MIN = 60
+
+
+# Operator dialogue — the two ref_types that ARE the operator↔Anchor
+# exchange. Presence (focus / recency ranking / recent_msgs), the
+# recall_episodes conversation default, the LAF trace matrix, and the
+# dual-store trace chain are PINNED here, deliberately NOT dial-derived: a
+# correspondent flipped on in the dial enters the encoder timeline (and its
+# embed lockstep) WITHOUT changing what "the conversation" means to
+# presence, episodes, or scoring. Flipped correspondents stay reachable
+# there explicitly (recall_episodes ref_type='self_message' /
+# 'thalamus_delivery' — the same opt-in convention as tool_result).
+OPERATOR_DIALOGUE_REF_TYPES = ("user_message", "assistant_message")
 
 # The "said + did" timeline: conversation plus tool activity. What the S1
 # encoder's lived timeline reads and what the embed queue eagerly embeds —

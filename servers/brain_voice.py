@@ -444,8 +444,10 @@ class BrainVoice:
             dctx = session_ctx or (
                 brain.get_or_create_session(session_id) if session_id else None)
             if dctx:
-                from servers.channels.delivery import deliver, BOOT
-                delivery_block = deliver(brain, dctx, BOOT)
+                # Boot never arms a continuation stamp (nothing blocks at a
+                # passive moment), so the traced ref_types are unused here.
+                from .channels.delivery import deliver, BOOT
+                delivery_block, _ = deliver(brain, dctx, BOOT)
         except Exception as e:
             brain._log_error('boot_delivery_failed', e,
                              'render_boot_v2: delivery leg raised — boot continues without it')

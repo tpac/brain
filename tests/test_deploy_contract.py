@@ -162,9 +162,11 @@ class TestAdapterNameContainment:
     """
 
     def test_mcp_tool_prefix_contained(self):
-        # The permission entry is the shape's one legitimate home. This exact
-        # file was the miss that motivated the gate.
-        allowed = {'.claude/settings.json'}
+        # The permission entry is the shape's one legitimate home in CODE —
+        # this exact file was the miss that motivated the gate. The migration
+        # guide names the prefix once because its verification step tells the
+        # user what a correct install looks like.
+        allowed = {'.claude/settings.json', 'MIGRATING.md'}
         pattern = re.compile(re.escape(f'mcp__plugin_{PLUGIN_NAME}_'))
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -185,11 +187,12 @@ class TestAdapterNameContainment:
 
     def test_repo_slug_contained(self):
         # The GitHub slug belongs in the manifest (homepage/repository), in
-        # the README's install command (users have to be told where to install
-        # from), and in gate B's allowlist entry that names that README string
-        # — nowhere else in shipped code. Also catches /Users/<owner>/<name>
-        # personal paths, which double as a scrub-grep (5.1) early warning.
-        allowed = {'.claude-plugin/plugin.json', 'README.md',
+        # the two install commands users are handed (README, and the migration
+        # guide an old-plugin user gives to Claude on its own), and in gate B's
+        # allowlist entries naming those strings — nowhere else in shipped
+        # code. Also catches /Users/<owner>/<name> personal paths, which double
+        # as a scrub-grep (5.1) early warning.
+        allowed = {'.claude-plugin/plugin.json', 'README.md', 'MIGRATING.md',
                    'scripts/export-public-tree.sh'}
         pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
         leaks = set(_files_matching(pattern)) - allowed
@@ -580,7 +583,10 @@ class TestPublicTreeExport:
                           'scripts', 'export-public-tree.sh')
 
     def _run(self, *args, timeout=60):
-        return subprocess.run(['bash', self.SCRIPT, *args],
+        # A developer shell with EXPECT_VERSION exported would turn gate C's
+        # release pin into a spurious drift failure in every export test.
+        env = {k: v for k, v in os.environ.items() if k != 'EXPECT_VERSION'}
+        return subprocess.run(['bash', self.SCRIPT, *args], env=env,
                               capture_output=True, text=True, timeout=timeout)
 
     def test_manifest_list_mode_is_sane(self):
@@ -703,7 +709,7 @@ class TestPublicTreeExport:
 
     # Bumping this is the point: a new allowlist entry is a deliberate,
     # reviewable line in a diff, never a quiet way to turn a red gate green.
-    ALLOWLIST_SIZE = 16
+    ALLOWLIST_SIZE = 17
 
     def test_allowlist_cannot_grow_quietly(self):
         """The one way to make gate B green WITHOUT fixing the leak is to add

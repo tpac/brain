@@ -63,14 +63,19 @@ def _resolve_time_bound(value):
         raise ValueError('time bound %r %s' % (value, e))
 
 
-def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
+def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None,
+              content=None, ref_id=''):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
-    chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id).
-    The S0 turn events differ only in event_type / ref_type / summary /
-    metadata; everything else is turn-fixed. Routing them all through here
-    keeps session_id from being dropped — the self_message append once
-    omitted it, leaving cross-stream deliveries unattributable to the
-    recipient session.
+    chain (ctx.s0_chain()), scale ('s0'), the session (ctx.session_id) — and
+    the stored-content cap: pass the turn's full text as `content` and it
+    lands in metadata['content'] capped LOUDLY at the pipeline store limit
+    (a marker names the dropped count — never a silent slice, per the
+    standing truncation rule), so the timeline's sides can neither drift
+    apart nor get cut invisibly. The S0 turn events differ only in
+    event_type / ref_type / summary / metadata / ref_id; everything else is
+    turn-fixed. Routing them all through here keeps session_id from being
+    dropped — the self_message append once omitted it, leaving cross-stream
+    deliveries unattributable to the recipient session.
 
     Callers: the hooks (daemon_hooks) and the delivery leg (channels/
     delivery.py). Call it by BARE NAME — test_trace_contract_sync resolves
@@ -79,10 +84,17 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
 
     Returns the appended trace_event id (hook_recall passes the current
     prompt's id to get_session_turns as exclude_trace_id)."""
+    if content:
+        from .pipeline_contract import PIPELINE as _PL
+        from .loud_truncation import cap_text_loud
+        metadata = dict(metadata or {})
+        metadata['content'] = cap_text_loud(
+            content, _PL['assistant_response_store'],
+            marker='…[+%d chars truncated at trace store]')
     return brain._trace_dal.append(
         chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
         event_type=event_type, ref_type=ref_type, summary=summary,
-        metadata=metadata)
+        metadata=metadata, ref_id=ref_id)
 
 
 class BrainTracesMixin:
@@ -523,7 +535,9 @@ class BrainTracesMixin:
         older_than is left as-is (no forced floor).
 
         ref_type: a str (one type) or a list (several). UNSET → the conversation
-        default, sourced from the trace_contract dial (CONVERSATIONAL_REF_TYPES)
+        default, PINNED to operator dialogue (OPERATOR_DIALOGUE_REF_TYPES —
+        deliberately not the dial: flipped correspondents like self_message /
+        thalamus_delivery stay opt-in via explicit ref_type, like tool_result)
         at s0 — so the default tracks the contract and can't drift, and
         non-conversational s0 traffic (tool_result, heartbeat, structural
         deltas) stays out of the common query. Pass ref_type='tool_result' for
@@ -545,7 +559,7 @@ class BrainTracesMixin:
                  candidate cap). Truthiness works for both; only the dict
                  form carries coverage details (and triggers the MCP banner).
         """
-        from .trace_contract import CONVERSATIONAL_REF_TYPES
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES
         # Honest limit (mirrors filter_nodes): the signature default is a
         # bounded page (EPISODE_DEFAULT_LIMIT), and EXPLICIT limit=None is the
         # opt-in for unbounded (all episodes in the window — internal window
@@ -567,7 +581,7 @@ class BrainTracesMixin:
         if ref_type:
             ref_types = [ref_type] if isinstance(ref_type, str) else list(ref_type)
         elif scale == 's0':
-            ref_types = list(CONVERSATIONAL_REF_TYPES)
+            ref_types = list(OPERATOR_DIALOGUE_REF_TYPES)
         else:
             ref_types = None
         common = dict(
@@ -657,7 +671,11 @@ class BrainTracesMixin:
         N turns. No timestamp resolution, no JSONL fallback (historic
         center-on-a-moment lookups are get_conversation_around's job).
 
-        Returns: [{role, content, timestamp, trace_id, judge_output}]
+        Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
+            ref_type: the CORRESPONDENT axis (user_message = operator,
+                      self_message = a stream, thalamus_delivery = the brain)
+                      passed through from get_session_turns — the encoder's
+                      render keys speaker elements on it.
             trace_id: 8-char hex id from trace_events (v29) — used by S1 encoder
                       to populate source_refs via `[trace:<hex>]` inline markers.
             judge_output: surface selection from S1R for the user turn (if any).
@@ -683,6 +701,7 @@ class BrainTracesMixin:
             out = []
             for t in turns:
                 row = {'role': t['role'],
+                       'ref_type': t.get('ref_type', ''),
                        'trace_id': t.get('trace_id'),
                        'content': t.get('content', ''),
                        'timestamp': t.get('timestamp', ''),
@@ -767,7 +786,7 @@ class BrainTracesMixin:
         Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
         first. `updated_at` is the last real-turn time; `focus` is that
         session's latest conversational turn — user_message OR assistant_message
-        per trace_contract.CONVERSATIONAL_REF_TYPES, excluding the wake-envelope
+        per trace_contract.OPERATOR_DIALOGUE_REF_TYPES, excluding the wake-envelope
         marker (raw — render layer trims it).
         """
         from .clock import iso_cutoff
@@ -902,7 +921,12 @@ class BrainTracesMixin:
                 with_judge_output=False,
             )
             if turns:
-                return [{'role': t['role'], 'content': t.get('content', ''),
+                # Same passthrough contract as get_conversation: ref_type is
+                # the correspondent axis — dropping it here would render every
+                # correspondent as the operator in historic lookups.
+                return [{'role': t['role'], 'ref_type': t.get('ref_type', ''),
+                          'trace_id': t.get('trace_id'),
+                          'content': t.get('content', ''),
                           'timestamp': t.get('timestamp', '')} for t in turns]
         except Exception:
             pass

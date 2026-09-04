@@ -93,8 +93,11 @@ ALLOWLIST=(
   "README.md:Tom Pachys"
   ".claude-plugin/plugin.json:Tom Pachys"
   ".claude-plugin/marketplace.json:Tom Pachys"
-  # the publish target itself — the GitHub org the plugin is installed from
+  # the publish target itself — the GitHub org the plugin is installed from;
+  # the migration guide repeats the install command because it is the one
+  # file an old-plugin user hands to Claude without reading anything else
   "README.md:tpac/entity"
+  "MIGRATING.md:tpac/entity"
   ".claude-plugin/plugin.json:github.com/tpac"
   ".claude-plugin/marketplace.json:github.com/tpac"
   # the legacy adoption rung (~/AgentsContext/brain) is shipped behavior:
@@ -299,7 +302,7 @@ while IFS= read -r f; do _copy "$f"; done < <(./build-plugin.sh --list)
 # extras: the public-repo face + the test suite (D-8: runtime + tests ship).
 # LICENSES/ is NOT listed here — it ships in the package manifest above, which
 # stays the one owner of "what ships". Copying it twice only inflated $_count.
-for f in README.md CONTRIBUTING.md; do _copy "$f"; done
+for f in README.md CONTRIBUTING.md MIGRATING.md; do _copy "$f"; done
 while IFS= read -r f; do _copy "$f"; done < <(git ls-files tests)
 say "materialized $_count files -> $OUT"
 

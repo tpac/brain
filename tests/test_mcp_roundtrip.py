@@ -524,10 +524,12 @@ class TestMCPRoundTrip(BrainTestBase):
                 _resolve_time_bound(junk)
 
     def test_recall_episodes_ref_type_dial_optin_firehose(self):
-        """Default ref_type lens is the trace-contract conversational DIAL
-        (CONVERSATIONAL_REF_TYPES) — so it drops tool_result AND heartbeat /
-        structural noise, not a hardcoded tool_result list. A single ref_type
-        opts into one lens; a list is the interleaved said+did firehose."""
+        """Default ref_type lens is PINNED to operator dialogue
+        (OPERATOR_DIALOGUE_REF_TYPES — deliberately NOT the dial, Option A):
+        tool_result, heartbeat, structural noise, AND brain/stream deliveries
+        stay out of the default even when a correspondent is enabled for
+        encoding. Everything else is opt-in: a single ref_type opts into one
+        lens; a list is the interleaved said+did firehose."""
         sess = 'roundtrip-tr-sess'
         msg = self.brain._trace_dal.append(
             chain_id='roundtrip-tr', scale='s0', event_type='K',
@@ -540,16 +542,32 @@ class TestMCPRoundTrip(BrainTestBase):
         beat = self.brain._trace_dal.append(
             chain_id='roundtrip-tr', scale='s0', event_type='K',
             ref_type='heartbeat', summary='watch re-arm', session_id=sess)
+        dlv = self.brain._trace_dal.append(
+            chain_id='roundtrip-tr', scale='s0', event_type='K',
+            ref_type='thalamus_delivery', ref_id='stop',
+            summary='delivered 1 thalamus item(s) at stop', session_id=sess)
 
-        # Default = conversational dial: user_message in; tool_result AND
-        # heartbeat out (proves it's the contract dial, not a tool_result hardcode).
-        default = {e["id"] for e in self._dispatch(
-            "recall_episodes", {"session_id": sess, "limit": 50})["episodes"]}
+        # Default = operator dialogue only: user_message in; tool_result,
+        # heartbeat, and the delivery all out — even with the dial flipped
+        # (the pin is what keeps "what we said" stable across a flip).
+        from unittest import mock
+        from servers import trace_contract as tc
+        with mock.patch.dict(tc.S0_CONVERSATIONAL_INCOMING,
+                             {'thalamus_delivery': True}):
+            default = {e["id"] for e in self._dispatch(
+                "recall_episodes", {"session_id": sess, "limit": 50})["episodes"]}
         self.assertIn(msg, default)
         self.assertNotIn(tool, default)
-        self.assertNotIn(beat, default,
-                         "default dropped only tool_result, not heartbeat — "
-                         "it isn't sourced from the conversational dial")
+        self.assertNotIn(beat, default)
+        self.assertNotIn(dlv, default,
+                         "a delivery entered the default lens — the episodes "
+                         "default must be pinned, not dial-derived (Option A)")
+        # The delivery stays reachable by explicit opt-in.
+        dlvs = {e["id"] for e in self._dispatch(
+            "recall_episodes", {"session_id": sess,
+                                "ref_type": "thalamus_delivery",
+                                "limit": 50})["episodes"]}
+        self.assertEqual(dlvs, {dlv})
         # Single opt-in lens.
         tools = {e["id"] for e in self._dispatch(
             "recall_episodes", {"session_id": sess, "ref_type": "tool_result",

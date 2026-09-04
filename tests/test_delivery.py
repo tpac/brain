@@ -43,9 +43,17 @@ class TestDeliver(DeliveryBase):
         # A boot delivery must be joinable to the S0 stream — the boot leg
         # writes the same thalamus_delivery K event the Stop leg does.
         thalamus.file(self.brain, 'test', 'a due notice', for_whom='all')
-        block = delivery.deliver(self.brain, self._ctx('S1'), delivery.BOOT)
+        block, shown = delivery.deliver(self.brain, self._ctx('S1'), delivery.BOOT)
         self.assertIn('a due notice', block)
-        self.assertTrue(self._traces('S1', 'thalamus_delivery'))
+        self.assertEqual(shown, ('thalamus_delivery',))
+        events = self._traces('S1', 'thalamus_delivery')
+        self.assertTrue(events)
+        # The trace carries the rendered block — the content a dial-on
+        # correspondent surfaces as the turn's incoming side — and the moment
+        # as its ref_id (indexed: the boot-prelude vs Stop-turn discriminator).
+        meta = events[0].get('metadata') or {}
+        self.assertIn('a due notice', meta.get('content', ''))
+        self.assertEqual(events[0].get('ref_id'), 'boot')
 
     def test_boot_does_not_drain_the_courier(self):
         # The courier declines the passive moment — the tap must SURVIVE for
@@ -54,7 +62,7 @@ class TestDeliver(DeliveryBase):
         signal.send(self.brain, from_session='other',
                     address=self_contract.address_for_stream('S2'),
                     body='a tap for stop')
-        block = delivery.deliver(self.brain, self._ctx('S2'), delivery.BOOT)
+        block, _ = delivery.deliver(self.brain, self._ctx('S2'), delivery.BOOT)
         self.assertNotIn('a tap for stop', block)
         self.assertEqual(len(signal.peek_inbox(self.brain, 'S2')), 1)
 
@@ -63,17 +71,18 @@ class TestDeliver(DeliveryBase):
                     address=self_contract.address_for_stream('S3'),
                     body='stream speech first')
         thalamus.file(self.brain, 'test', 'brain item second', for_whom='all')
-        block = delivery.deliver(self.brain, self._ctx('S3'), delivery.STOP)
+        block, shown = delivery.deliver(self.brain, self._ctx('S3'), delivery.STOP)
         self.assertIn('stream speech first', block)
         self.assertIn('brain item second', block)
         self.assertLess(block.index('stream speech first'),
                         block.index('brain item second'))
+        self.assertEqual(shown, ('self_message', 'thalamus_delivery'))
         self.assertTrue(self._traces('S3', 'self_message'))
         self.assertTrue(self._traces('S3', 'thalamus_delivery'))
 
     def test_nothing_due_is_empty(self):
         self.assertEqual(
-            delivery.deliver(self.brain, self._ctx('S4'), delivery.STOP), '')
+            delivery.deliver(self.brain, self._ctx('S4'), delivery.STOP), ('', ()))
 
     def test_no_trace_when_nothing_shows(self):
         delivery.deliver(self.brain, self._ctx('S5'), delivery.BOOT)
@@ -88,24 +97,28 @@ class TestDeliver(DeliveryBase):
         orig = delivery.SOURCES
         delivery.SOURCES = (broken, delivery.THALAMUS)
         try:
-            block = delivery.deliver(self.brain, self._ctx('S6'), delivery.STOP)
+            block, _ = delivery.deliver(self.brain, self._ctx('S6'), delivery.STOP)
         finally:
             delivery.SOURCES = orig
         self.assertIn('survives the crash', block)
 
-    def test_trace_failure_keeps_the_block(self):
+    def test_trace_failure_keeps_the_block_but_drops_the_stamp(self):
         # Sources ledger/consume inside render — a trace-write failure after
         # that must cost the trace, never the block: a dropped block would
-        # leave items marked delivered that nobody ever saw.
+        # leave items marked delivered that nobody ever saw. And the failed
+        # source must NOT ride the returned traced set: a stamped reaction
+        # whose incoming row doesn't exist is a turn with no incoming side.
         thalamus.file(self.brain, 'test', 'ledgered then shown', for_whom='all')
         orig = delivery._s0_trace
         delivery._s0_trace = lambda *a, **k: (_ for _ in ()).throw(
             RuntimeError('trace substrate down'))
         try:
-            block = delivery.deliver(self.brain, self._ctx('S8'), delivery.BOOT)
+            block, traced = delivery.deliver(
+                self.brain, self._ctx('S8'), delivery.BOOT)
         finally:
             delivery._s0_trace = orig
         self.assertIn('ledgered then shown', block)
+        self.assertEqual(traced, ())
         self.assertFalse(self._traces('S8', 'thalamus_delivery'))
 
     def test_composite_over_budget_warns_and_still_delivers(self):
@@ -114,7 +127,7 @@ class TestDeliver(DeliveryBase):
         orig = delivery.SOURCES
         delivery.SOURCES = (big,)
         try:
-            block = delivery.deliver(self.brain, self._ctx('S7'), delivery.STOP)
+            block, _ = delivery.deliver(self.brain, self._ctx('S7'), delivery.STOP)
         finally:
             delivery.SOURCES = orig
         self.assertGreater(len(block), delivery.COMPOSITE_WARN)  # warn, no cap

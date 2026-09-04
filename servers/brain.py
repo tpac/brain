@@ -1142,7 +1142,12 @@ class Brain(
                 # (interrupt/disconnect) and belongs in the encode as-is.
                 last = self.get_conversation(sid, limit=1,
                                              with_judge_output=False)
-                five_plus = bool(last) and last[0].get('role') == 'assistant'
+                # ref_type, not role: role maps every incoming correspondent
+                # to 'user', so a dial-on delivery row would read as an
+                # unanswered question and stall the trigger (a boot delivery
+                # never gets a reaction).
+                five_plus = bool(last) and (
+                    last[0].get('ref_type') == 'assistant_message')
             tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):
                 continue
@@ -1264,6 +1269,12 @@ class Brain(
                 # embeddings/ids are the SessionContext defaults).
                 ctx = SessionContext(session_id=sid)
             ctx.boot_time = self.now()
+            # A delivery continuation cannot survive a boot/resume — the
+            # blocked turn's process is gone (same per-boot reasoning as
+            # fatigue). Disarm so a resumed session's first stop can never
+            # classify as a days-old delivery's reaction.
+            ctx.last_delivery_stop = -1
+            ctx.last_delivery_armed_at = ''
             # cwd/branch/worktree are session IDENTITY (where this stream works),
             # fed in from the boot hook and stamped through the session object's
             # single env mutator. Surfaced via session_env_for / peek.

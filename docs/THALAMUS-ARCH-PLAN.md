@@ -1,6 +1,134 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-09-01 — Step 8 SHIPPED as channels/delivery.py; queue resumes at Step 10 ◀ ACTIVE ARC
+## §2026-09-03 — Turns & voices SUBSTRATE built (dial-gated, zero exposure) ◀ ACTIVE ARC
+
+Tom's ruling: a Stop-block continuation IS a new turn whose incoming side is
+the delivered message — "informative in the form of brain msg or other
+stream msg." This section builds the structural half; the ENCODER half
+(teaching the prompt the correspondent elements, then flipping) belongs to
+the encoder stream's session and is deliberately not touched here.
+
+**Built, all riding existing substrate** (no new tables, no new write paths):
+- `deliver()` stamps each source's rendered block into its trace content
+  (capped loudly in `_s0_trace`, the one cap site) with the moment as the
+  trace's `ref_id`, and returns `(composite, traced_ref_types)` — traced
+  sources only;
+- the dial (`trace_contract.S0_CONVERSATIONAL_INCOMING`) gains
+  `thalamus_delivery: False` — the brain is a first-class, flippable
+  correspondent; the comment states what the dial actually governs
+  (encoder timeline + embed lockstep + the continuation stamp; NEVER the
+  Scribe cadence, hardcoded to `user_message` in
+  `conversational_turns_since`, and NEVER presence/episodes — see round 2);
+- `SessionContext.last_delivery_stop` (persisted like `last_recall_stop`):
+  the Stop hook stamps it when a dial-on, traced correspondent blocks, and
+  `post_response_common` classifies that stop as the delivery turn's
+  REACTION — a real `assistant_message` — then consumes the stamp;
+  dial-off (today) never stamps, so behavior is bit-identical;
+- `get_session_turns` AND `get_conversation` rows carry `ref_type` — the
+  correspondent axis (operator / stream / brain) for the encoder session
+  to render;
+- **chain model settled by the new-turn ruling**: the delivery K OPENS the
+  successor chain and the reaction completes it there — incoming K +
+  assistant delta on one chain, the same shape as an operator turn. This
+  supersedes §2026-09-01 delta #5 (the `increment=False` plumbing was
+  removed; `post_response_common` increments unconditionally again).
+
+**Pre-merge review round 2 (5 opus finders) falsified the substrate's
+central claim and drove a fix pass.** The dial's derived tuple also fed
+presence (focus/recency/recent_msgs), `recall_episodes`' default lens, the
+LAF trace matrix, and the dual-store trace chain — a flip would have made
+roster focus read "delivered 1 notice at stop" and let deliveries outrank
+work. **Tom's ruling (Option A): scopes split.** New
+`OPERATOR_DIALOGUE_REF_TYPES` (user/assistant, deliberately not
+dial-derived) now pins presence, episodes default, LAF, and the trace
+chain; only `get_session_turns`, the embed lockstep (SAID_AND_DID), and
+the continuation stamp ride the dial. `recall_episodes`' MCP description
+states the contract (default = operator dialogue; deliveries opt-in via
+ref_type — the tool_result convention) — NOTE it lives in brain_mcp.py and
+reaches sessions at the next redeploy, which is FROZEN pending the 5.2
+rename; it rides that. Other round-2 fixes: `ref_type` now flows through
+`get_conversation` (it was dropped by the row whitelist — the deliverable
+was inert for the actual encoder path); the continuation stamp is gated at
+the hook over TRACED sources only and CONSUMED the moment its stop passes
+(no stale-match days later); the gate binds to the import-frozen tuple so
+both dial halves flip together; `_s0_trace` gained the one `content=` cap
+site (three per-site spellings collapsed); delivery traces carry
+the moment marker (boot prelude vs Stop turn — the boot-ask/first-prompt
+chain collision is the encoder session's render decision, marker
+provided; round 3 moved it to `ref_id`); `last_delivery_refs` collapsed
+away;
+tests patch the frozen tuple instead of mutating the dial dict (the old
+restore-to-literal would have rewritten a flipped production default
+mid-suite).
+
+**Round-3 review (8 opus finders, high effort, recall-biased) — 10 verified
+findings, 9 fixed, 1 ruled to this checklist.** The fixes: the stamp is
+armed inside the delivery try via `trace_contract.arms_continuation`
+(named predicate over the dial dict) with a wall-clock freshness window
+(`DELIVERY_REACTION_WINDOW_MIN` — an ESC'd continuation fires no Stop, so
+counter and stamp freeze; the window stops a later wakeup claiming it) and
+disarmed on boot/resume (`reset_session_activity` — a continuation cannot
+survive a boot); classification is a 2-line read-and-clear (the prior
+consume block was provably dead); the content cap is LOUD
+(`cap_text_loud` in `_s0_trace`, marker names the dropped count; the
+assistant-side pre-cap deleted); the moment rides `ref_id` (indexed —
+`query_traces(ref_type=…, ref_id='boot')`), not an unregistered metadata
+key; the synthetic 'reacted with actions only' phrase is gone (a summary
+fallback becomes turn CONTENT downstream — no fabricated speech in the
+dialogue lane); three missed dial-riders pinned (LAF's moment stack
+filters rows to operator dialogue, `scribe_due`'s five-plus gate keys on
+ref_type, `eval/laf/composition_probe` repointed so the gating eval
+measures production's corpus); `ref_type` flows through
+`_conversation_by_session` too and is shape-tested at the DAL; Option A is
+now guarded (operator ⊆ conversational subset test; the episodes-default
+test rewritten — it asserted the superseded dial contract and would have
+argued for undoing the split — and extended to prove a delivery stays out
+of the default even flipped-on, reachable only by explicit ref_type);
+`recall_episodes`' top-level blurb aligned with its parameter text.
+
+FLIP-DAY CHECKLIST (the encoder session's, beyond the prompt):
+- **BLOCKER — `encode._lived_turns` grouping** (encode.py:1168): a flipped
+  delivery episode matches no branch, so it is dropped AND the following
+  reaction `assistant_message` OVERWRITES the previous operator turn's real
+  reply — a fabricated exchange; `_window_n_turns` (counts role=='user')
+  simultaneously diverges from `_lived_turns`' turn count. Both must learn
+  the correspondent rows before any flip. (Deliberately untouched here —
+  encoder files belong to the encoder stream.)
+- **RULED to checklist (Tom, 2026-09-03): reaction rows in pinned scopes.**
+  On flip, reaction `assistant_message` rows enter presence focus/recency,
+  the episodes default (as orphan replies), LAF and the dual-store — the
+  rows cannot exist until the flip, so the filter design (summary-marker à
+  la WAKE_ENVELOPE, or accept) is the flip session's call.
+- teach `embed_queue._render_trace_for_embedding` (and
+  `trace_contract.render_trace`) speaker branches for self_message /
+  thalamus_delivery — today both fall through to a ref_type literal,
+  splitting the dialogue embedding neighborhood;
+- decide the boot-prelude render from the delivery trace's `ref_id`
+  ('boot' vs 'stop');
+- `encode.py:387`-area docstring still names the pre-ref_type
+  get_conversation shape (encoder file — same boundary);
+- then flip the dial row + restart, behind `s1_encode_eval`.
+
+NEXT-ARC THREAD (Tom, 2026-09-03, from a live encoder prompt): **the fourth
+correspondent — the HARNESS.** Claude Code's own injections
+(system-reminders, worktree notices, mid-turn interjection envelopes)
+arrive INSIDE user_message content, so the timeline attributes machine
+prose to the operator ("the harness speaks through Tom's mouth").
+`is_machine_turn` covers only whole-turn wake envelopes; a system-reminder
+glued to a real prompt is fused. Substrate shape when picked up: split
+harness blocks out of the user content at the trace boundary (hook_recall)
+into their own s0 K row — a fourth incoming ref_type on the dial
+(dial-off like the others) — so the encoder can render a system voice
+distinct from the operator. Render half = encoder stream; split half =
+this arc's successor. Not built here (scope: turns-and-voices substrate).
+
+Exposure: NOTHING reaches the model or the encoder until a dial row flips —
+the flip is the encoder session's move, after the prompt is taught and
+eval-gated (`s1_encode_eval`; attribution/containment must be measured).
+
+---
+
+## §2026-09-01 — Step 8 SHIPPED as channels/delivery.py; queue resumed at Step 10
 
 **Step 8 shipped** per rulings id:7c7e805c (Thalamus owns NO transport) and
 id:bb0513ae (the msgs layer is the last mile; sources opt into moments by
@@ -25,9 +153,10 @@ pass**; the declared behavior deltas after it:
    `… via Stop block`; no consumer parses it — verified);
 4. the boot error key `boot_thalamus_failed` is replaced by per-source
    `<source>_delivery_boot` + leg-level `boot_delivery_failed` (no readers);
-5. the Stop delivery trace lands on the chain of the turn it blocked — the
-   pre-existing off-by-one (increment before delivery) is fixed via
-   `post_response_common(increment=False)` + hook-owned increment;
+5. ~~the Stop delivery trace lands on the chain of the turn it blocked~~
+   SUPERSEDED by §2026-09-03: the new-turn ruling reversed this — the
+   delivery K deliberately OPENS the successor chain (the delivery turn),
+   and the `increment=False` plumbing was removed;
 6. boot delivery no longer dies with the Frame: its ctx resolves in its own
    try, so a Frame failure can't silently suppress an ask.
 Review ordering fix worth naming: sources ledger/consume inside render, so
