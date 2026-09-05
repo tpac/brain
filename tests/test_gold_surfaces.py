@@ -133,6 +133,27 @@ def test_rewriting_a_surface_that_still_asserts_the_stale_value_is_not_repair():
     assert not t['pass']
 
 
+def test_a_disconnect_on_the_pair_is_not_an_edge_assertion():
+    """A disconnect carries source_id+target_id but asserts nothing. Counted
+    as an edge it entered the pair with an empty why — and an empty why never
+    carries the stale token, so an UNREPAIRED edge scored as repaired."""
+    ops = [{'op': 'revise', 'node_id': 'd827d22f', 'title': 'now 9.7.2',
+            'content': 'now 9.7.2', 'situation': 'now 9.7.2',
+            'connect_to': [{'target': '15bbfd64', 'relation': 'gaps_in',
+                            'why': 'both manifests still say 9.6.0'}]},
+           {'op': 'disconnect', 'source_id': 'd827d22f', 'target_id': '15bbfd64',
+            'relation': 'noise'}]
+    t = score_gold(GOLD, _log(ops), CORR)['targets'][0]
+    assert t['surfaces']['edge:15bbfd64'] is False, t['surfaces']
+    # and on its own it writes no edge surface at all
+    alone = [{'op': 'revise', 'node_id': 'd827d22f', 'title': 't', 'content': 'c',
+              'situation': 's'},
+             {'op': 'disconnect', 'source_id': 'd827d22f', 'target_id': '15bbfd64',
+              'relation': 'gaps_in'}]
+    t = score_gold(GOLD, _log(alone), CORR)['targets'][0]
+    assert t['surfaces']['edge:15bbfd64'] is False and t['surface_score'] == '3/4'
+
+
 def test_content_may_keep_the_old_value_as_history():
     """E17: history rides in `content` and only there — a patch writing
     '9.7.2 (was 9.6.0)' is correct and must not be scored as unrepaired."""

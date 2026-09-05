@@ -51,6 +51,19 @@ Steps 1, 2, 3 can run in parallel sessions. 4, 5, 6 wait on rulings.
 
 ## Step 1 — Fix the harness where the code review confirmed it lies
 
+**Done 2026-09-05.** `edge_entries` emits a connect entry for `kind(op) ==
+'connect'` only; `--gist` is a flag and `--gist-file FILE` the override door;
+arm F reads `get_interaction_effective('s1e_gist')` once and strips the slot
+when `enabled` is false; `score_swap_fidelity` runs `contract.apply_swaps` per
+field and checks `connect_to` why/relation swaps against the stored edge
+(`stored_edges`, read through GraphDAL as `brain.revise` resolves the pair);
+`_corr_rels_offline` reads the per-operator working aspects file
+(`aspect_store.aspects_json_path` — the copy an IsolatedBrain snapshots, so
+offline and live read one membership); the guardrail's tool rows match
+description prose. Re-score: 0 gold numbers moved across the 11 baseline
+dumps (`ops3/*-v41gist`, `ops5/*-shape`, both golds). The findings, kept for
+the record:
+
 **Problem.** Five confirmed defects in the step-4 scorer, each of which can score
 a cell wrong: (a) `eval/encoder_ops.edge_entries` treats any op carrying
 `source_id`+`target_id` as an asserted edge, so a `disconnect` overwrites the

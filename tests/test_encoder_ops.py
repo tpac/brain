@@ -90,6 +90,10 @@ def test_edge_entries_read_target_or_title_and_swap_new_text():
     # a why-less edge is still an edge (empty why), never dropped
     (z,) = edge_entries({'op': 'remember', 'connect_to': [{'target': 'c' * 8, 'relation': 'r'}]})
     assert z['why'] == ''
+    # a disconnect removes an edge and asserts none — no entry, so it can
+    # never blank out the pair's real why in the surfaces scorer
+    assert edge_entries({'op': 'disconnect', 'source_id': 'a' * 8,
+                         'target_id': 'b' * 8, 'relation': 'x'}) == []
 
 
 def test_revise_surfaces_and_text_carry_new_values_only():
@@ -107,11 +111,16 @@ def test_revise_surfaces_and_text_carry_new_values_only():
     assert revise_surfaces(alias) == {'content': 'b'}
 
 
-def test_score_arm_counts_ops_by_kind():
-    """The 2026-09-03 defect: connects and disconnects counted as creates,
-    archives as revises (30 of 77 dumps carried a wrong `creates`)."""
+def _harness():
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
-    from eval.encoder_prompt_ab import score_arm
+    import eval.encoder_prompt_ab as harness
+    return harness
+
+
+def test_score_arm_counts_ops_by_kind():
+    """kind() decides, not key presence: a connect or disconnect is not a
+    create, an archive is not a revise."""
+    score_arm = _harness().score_arm
     log = {'reads': [], 'rounds': 1, 'final_text': '',
            'usage': {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0},
            'writes': [{'tool': 'brain_batch', 'args': {'operations': [
@@ -124,3 +133,75 @@ def test_score_arm_counts_ops_by_kind():
                 'relation': 'x'}]}}]}
     s = score_arm(log, set(), {})
     assert (s['creates'], s['revises'], s['connects'], s['archives']) == (1, 1, 1, 2)
+
+
+def test_gist_flag_never_swallows_a_capture_path():
+    """`--gist` is a flag: a capture path written after it is a capture, not
+    a gist override file. `--gist-file FILE` is the override door and implies
+    the splice."""
+    build_parser = _harness().build_parser
+    a = build_parser().parse_args(['--gist', 'payloads/x/000-prompt.md', '--arms', 'F'])
+    assert a.gist is True and a.gist_file is None
+    assert a.captures == ['payloads/x/000-prompt.md']
+    b = build_parser().parse_args(['--gist-file', 'gist_b.md', 'payloads/x/000-prompt.md'])
+    assert b.gist is False and b.gist_file == 'gist_b.md'
+    assert b.captures == ['payloads/x/000-prompt.md']
+
+
+def test_splice_gist_fills_or_strips_the_slot():
+    """Enabled: the effective text sits between the last block closer and
+    <timeline>, whatever the capture carried there. Disabled: the slot is
+    empty — byte-for-byte what production assembles with `enabled: false`."""
+    splice_gist = _harness().splice_gist
+    cap = '<node_catalog>\nnodes\n</node_catalog>\n\nold gist words\n\n<timeline now="x">\n…'
+    filled, replaced = splice_gist(cap, 'NEW GIST')
+    assert filled == '<node_catalog>\nnodes\n</node_catalog>\nNEW GIST\n\n<timeline now="x">\n…'
+    assert replaced == len('old gist words')
+    stripped, replaced = splice_gist(cap, None)
+    assert stripped == '<node_catalog>\nnodes\n</node_catalog>\n<timeline now="x">\n…'
+    assert replaced == len('old gist words')
+    assert splice_gist(filled, 'NEW GIST') == (filled, len('NEW GIST'))   # idempotent
+    assert splice_gist('no timeline here', 'g') == (None, 0)
+
+
+def test_swap_fidelity_refuses_like_production_on_fields_and_edges():
+    """The advisory uses contract.apply_swaps — the primitive brain.revise
+    applies — so its refusals are production's: exactly-once matching, in
+    order, a failure fails the field. connect_to swaps are checked against
+    the stored edge (why → description, relation → an active row), resolved
+    the way brain.revise resolves the edge."""
+    score_swap_fidelity = _harness().score_swap_fidelity
+    stored = {'d827d22f': {'id': 'd827d22f' + '0' * 24, 'title': 'brain/9.6.0',
+                           'content': 'say 9.6.0 here and 9.6.0 there',
+                           '_metadata': {'reasoning': 'measured at 9.6.0'}}}
+    edges = {frozenset(('d827d22f', '15bbfd64')):
+             {'gaps_in': 'both manifests still say 9.6.0'}}
+    ops = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+            'title': {'old': '9.6.0', 'new': '9.7.2'},                   # lands
+            'reasoning': [{'old': 'at 9.6.0', 'new': 'at 9.7.2'}],       # lands (KV field)
+            'content': [{'old': '9.6.0', 'new': '9.7.2'}],               # ambiguous — two places
+            'situation': {'old': 'a', 'new': 'b'},                       # nothing stored
+            'connect_to': [
+                {'target': '15bbfd64', 'why': {'old': 'still say 9.6.0',
+                                               'new': 'moved to 9.7.2'}},      # lands: one relation
+                {'target': '15bbfd64', 'relation': {'old': 'blocks', 'new': 'gaps_in'}},  # no such row
+                {'target': '15bbfd64', 'relation': 'gaps_in',
+                 'why': {'old': 'both manifests', 'new': 'both manifests'}},    # old == new
+                {'target': 'cccccccc', 'why': {'old': 'a', 'new': 'b'}},         # no edge
+                {'target': '15bbfd64', 'relation': 'gaps_in', 'why': 'bare text is not a swap'}]}]
+    rows = score_swap_fidelity(ops, stored, edges)
+    by_field = {}
+    for r in rows:
+        by_field.setdefault(r['field'], []).append(r['error'])
+    assert set(by_field) == {'content', 'situation', 'connect_to:15bbfd64', 'connect_to:cccccccc'}
+    assert 'matches 2 places' in by_field['content'][0]
+    assert by_field['situation'] == ['no stored value to swap into']
+    assert by_field['connect_to:cccccccc'] == ['no edge between the pair to swap into']
+    assert len(by_field['connect_to:15bbfd64']) == 2
+    assert "no active relation 'blocks'" in by_field['connect_to:15bbfd64'][0]
+    assert 'identical' in by_field['connect_to:15bbfd64'][1]
+    # a later op patches what the earlier one produced — the why swap landed
+    later = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+              'connect_to': [{'target': '15bbfd64',
+                              'why': {'old': 'moved to 9.7.2', 'new': 'at 9.7.2'}}]}]
+    assert score_swap_fidelity(ops + later, stored, edges) == rows

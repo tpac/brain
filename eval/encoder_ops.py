@@ -1,10 +1,7 @@
 """Op-dump reading for the encoder A/B tools — ONE reader for the ops an
 encoder run emits, shared by eval/encoder_prompt_ab.py (behavior + gold
 scoring) and eval/encoder_ops_shape.py (shape metrics), so the two never count
-the same dump differently. The 2026-09-03 review found score_arm counting
-connects as creates and archives as revises while the shape scorer dropped
-why-less edges and never saw remember_batch's batch-level connect_to
-(docs/REVISE-SHAPE-SPEC.md §8 row 10).
+the same dump differently (docs/REVISE-SHAPE-SPEC.md §8 row 10).
 
 Swap-aware: on revise a field is its new value or `{old, new}` swaps
 (contract.REVISE_RULE); every text this module returns is the NEW text. The
@@ -107,7 +104,9 @@ def edge_entries(op):
     {via, source, target, relation, why}: `connect_to` on a remember (source
     None — the node has no id yet) or on a revise/absorb (source = the node's
     id), the `relations: [{relation, why}]` form one entry per relation, and a
-    standalone connect (`description` is its why). Relation and why are new
+    standalone connect (`description` is its why). A `disconnect` removes an
+    edge and asserts none — it yields no entry, so it can never stand in for
+    (or blank out) the pair's real why in a scorer. Relation and why are new
     text (swap-aware); the target is read through contract.connect_to_target,
     so the deprecated `title` key still counts."""
     out = []
@@ -124,7 +123,7 @@ def edge_entries(op):
                         'target': target,
                         'relation': new_text(r.get('relation')),
                         'why': new_text(r.get('why'))})
-    if k == 'connect' or ('source_id' in op and 'target_id' in op):
+    if k == 'connect':
         out.append({'via': 'connect',
                     'source': str(op.get('source_id') or '')[:8],
                     'target': str(op.get('target_id') or ''),

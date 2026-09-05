@@ -61,6 +61,8 @@ from encoder_prompt_reassembly import (  # noqa: E402  (path set above)
     strip_scout_blocks, turn_count)
 from encoder_ops import (  # noqa: E402  the one op-dump reader, shared with encoder_ops_shape
     edge_entries, kind, new_text, ops_of, revise_surfaces, revise_text, swaps_of)
+from servers.contract import (apply_swaps, connect_to_target, is_swap,  # noqa: E402
+                              is_swap_list)
 
 # (label, view_policy, window_aligned, aged_content_chars)
 #   -1 = the policy's own config — body whole since arm D shipped as the
@@ -449,6 +451,7 @@ def score_arm(log, aged_ids, index, brain=None):
     _stored = stored_nodes(
         brain, [str(o.get('node_id') or o.get('survivor_id') or '')
                 for o in revise_ops]) if brain else {}
+    _edges = stored_edges(brain, revise_ops, _stored) if brain else {}
     return {
         'rounds': log['rounds'],
         'reads': len(log['reads']),
@@ -461,7 +464,7 @@ def score_arm(log, aged_ids, index, brain=None):
         'usage': log['usage'],
         'shape': score_shape(created_ops),
         'partial_view': score_partial_view(revise_ops, _stored, aged_ids),
-        'swap_fidelity': score_swap_fidelity(revise_ops, _stored),
+        'swap_fidelity': score_swap_fidelity(revise_ops, _stored, _edges),
         'journal_chars': len(log['final_text']),
     }
 
@@ -533,37 +536,110 @@ def _hex_ids(v):
     return set()
 
 
-def score_swap_fidelity(revises, stored):
+def stored_edges(brain, revises, stored):
+    """{frozenset((node8, target8)): {relation: description}} for every pair
+    a revise's `connect_to` addresses — the edge brain.revise would resolve,
+    read through GraphDAL the way it does (get_edge_id checks both
+    directions). Targets are resolved to full ids by the same read
+    stored_nodes uses."""
+    want = {}
+    for op in revises:
+        nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
+        for e in edge_entries(op):
+            if e['via'] == 'connect_to' and e['source']:
+                want.setdefault(nid, set()).update(_hex_ids(e['target']))
+    if not want:
+        return {}
+    targets = {t for ts in want.values() for t in ts}
+    nodes = dict(stored, **stored_nodes(brain, targets - set(stored)))
+    out = {}
+    for nid, ts in want.items():
+        for t in ts:
+            a, b = (nodes.get(nid) or {}).get('id'), (nodes.get(t) or {}).get('id')
+            eid = brain._graph.get_edge_id(a, b) if a and b else None
+            if eid:
+                out[frozenset((nid, t))] = {
+                    r['relation']: r.get('description') or ''
+                    for r in brain._graph.get_relations(eid)}
+    return out
+
+
+def score_swap_fidelity(revises, stored, edges):
     """Would each swap have LANDED? Harness writes are intercepted and
     synthesized as successes, so a swap whose `old` doesn't match the stored
-    value exactly once looks fine here but fails loudly in production
-    (contract.apply_swaps) — on every field that takes swaps, not only
-    content. `matches` is the count apply_swaps would report; 'no stored
-    value' is the swap-on-empty-field error. Advisory when the isolated copy
-    has drifted past the capture (stored values moved) — read misses
-    alongside the run's date before trusting them."""
+    value exactly once looks fine here but fails loudly in production. The
+    same refusals from the same primitive (contract.apply_swaps: non-empty
+    `old`, `old != new`, exactly one match, applied in order — a failure
+    fails the field), on every node field that takes swaps AND on
+    `connect_to`: a `why` swap patches the stored edge description, a
+    `relation` swap renames an active relation, the row resolved as
+    brain.revise resolves it (a bare relation names it; absent means the
+    pair's one relation). `edges` is stored_edges' shape. Rows are
+    {id, field, error}; advisory when the isolated copy has drifted past the
+    capture (stored values moved) — read misses alongside the run's date
+    before trusting them."""
     rows = []
     evolving = {nid: dict(n) for nid, n in stored.items()}
+    live = {pair: dict(rels) for pair, rels in edges.items()}
+
+    def miss(nid, field, error):
+        rows.append({'id': nid, 'field': field, 'error': error})
+
     for op in revises:
         nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
         node = evolving.get(nid)
-        if node is None:
-            continue
-        for field, swaps in swaps_of(op).items():
-            cur = stored_field(node, field)
-            if not isinstance(cur, str) or not cur:
-                rows.append({'id': nid, 'field': field, 'edit': None,
-                             'matches': 'no stored value'})
+        if node is not None:
+            for field, swaps in swaps_of(op).items():
+                cur = stored_field(node, field)
+                if not isinstance(cur, str) or not cur:
+                    miss(nid, field, 'no stored value to swap into')
+                    continue
+                new, err = apply_swaps(cur, swaps, field)
+                if err:
+                    miss(nid, field, err)
+                    continue
+                node[field] = new   # a later op patches what this one produced
+        for c in (op.get('connect_to') or []):
+            if not isinstance(c, dict):
                 continue
-            for i, e in enumerate(swaps):
-                o = str(e.get('old') or '')
-                n = cur.count(o) if o else 0
-                if n == 1:
-                    cur = cur.replace(o, str(e.get('new') or ''), 1)
+            items = [r for r in (c.get('relations') or []) if isinstance(r, dict)] or [c]
+            for r in items:
+                rel, why = r.get('relation'), r.get('why', r.get('description'))
+                rel_swap = (rel[0] if is_swap_list(rel) and len(rel) == 1
+                            else rel if is_swap(rel) else None)
+                why_swap = why if is_swap(why) or is_swap_list(why) else None
+                if not rel_swap and not why_swap:
+                    continue    # bare values are not swaps
+                target = str(connect_to_target(c) or '')
+                label = 'connect_to:%s' % (target[:8] or '?')
+                pair = next((frozenset((nid, t)) for t in _hex_ids(target)
+                             if frozenset((nid, t)) in live), None)
+                if pair is None:
+                    miss(nid, label, 'no edge between the pair to swap into')
+                    continue
+                active = live[pair]
+                if rel_swap:
+                    row = rel_swap.get('old')
+                    if row not in active:
+                        miss(nid, label, 'no active relation %r to rename (has: %s)'
+                             % (row, sorted(active)))
+                        continue
+                elif isinstance(rel, str) and rel:
+                    row = rel if rel in active else None
                 else:
-                    rows.append({'id': nid, 'field': field, 'edit': i,
-                                 'matches': n})
-            node[field] = cur   # a later op patches what an earlier one produced
+                    row = next(iter(active)) if len(active) == 1 else None
+                if row is None:
+                    miss(nid, label, 'relation %r is not on the edge (has: %s) — '
+                         'a why swap needs a row to patch' % (rel, sorted(active)))
+                    continue
+                if why_swap:
+                    new, err = apply_swaps(active.get(row) or '', why_swap, 'why')
+                    if err:
+                        miss(nid, label, err)
+                        continue
+                    active[row] = new
+                if rel_swap:
+                    active[rel_swap['new']] = active.pop(row)
     return rows
 
 
@@ -706,7 +782,8 @@ def splice_gist(captured, gist):
     the slot production assembly fills. Whatever free text already sits
     between the last closing block tag and the <timeline line IS the
     capture's gist (any wording — an older default, a candidate) and is
-    replaced, so the splice is idempotent and never doubles. Returns
+    replaced, so the splice is idempotent and never doubles. `gist=None`
+    strips the slot — what a disabled `s1e_gist` assembles to. Returns
     (new_capture, replaced_chars); (None, 0) when the capture has no
     <timeline line."""
     m = re.search(r'^<timeline', captured, re.M)
@@ -715,17 +792,20 @@ def splice_gist(captured, gist):
     closers = list(GIST_SLOT_CLOSERS.finditer(captured, 0, m.start()))
     start = closers[-1].end() if closers else m.start()
     slot = captured[start:m.start()]
-    return (captured[:start] + gist + '\n\n' + captured[m.start():],
-            len(slot.strip()))
+    filled = gist + '\n\n' if gist is not None else ''
+    return captured[:start] + filled + captured[m.start():], len(slot.strip())
 
 
 def _corr_rels_offline():
-    """The correction-relation vocabulary without a brain: the repo's
-    aspects_v1.json through the registry's own door (from_dict), so offline
-    re-scoring reads the same membership the live scorer does."""
+    """The correction-relation vocabulary without a brain: the per-operator
+    WORKING aspects file (aspect_store.aspects_json_path) through the
+    registry's own door (from_dict). The working copy, not the repo seed,
+    because it is the file an IsolatedBrain snapshots — so a re-score reads
+    the same membership the live scorer read when the dump was scored; the
+    seed can lag the S2 aspect unit's classifications."""
     from servers.aspects import AspectRegistry
-    path = os.path.join(ROOT, 'servers', 'scales', 's2', 'aspects_v1.json')
-    with open(path) as f:
+    from servers.aspect_store import aspects_json_path
+    with open(aspects_json_path()) as f:
         data = {k: v for k, v in json.load(f).items() if not k.startswith('_')}
     reg = AspectRegistry.from_dict(None, data)
     return set(reg.relations_in(['correction_improvement']))
@@ -783,7 +863,7 @@ def rescore(dump_paths, gold_path):
     return moved
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument('captures', nargs='*',
                     help='payloads/<date>/<chain>/000-prompt.md (not needed '
@@ -813,23 +893,32 @@ def main():
                     help='complete s1e template to run instead of the active '
                          'one — for candidates that EDIT existing text rather '
                          'than append. Isolated copy only, same as --s1e-patch.')
-    ap.add_argument('--gist', nargs='?', const=True, default=None, metavar='FILE',
+    ap.add_argument('--gist', action='store_true',
                     help='arm F: make the frozen capture carry the EFFECTIVE '
-                         '`s1e_gist` text directly before its <timeline> line '
-                         '— production assembly emits it there, so a capture '
-                         'predating the gist needs the splice to be same-state '
+                         '`s1e_gist` as production assembly would — its text '
+                         'directly before the <timeline> line while the '
+                         'interaction is enabled, the slot stripped when it is '
+                         'not — so a capture predating the gist is same-state '
                          '(a capture already carrying one is re-spliced, never '
-                         'doubled). With FILE, that text is first deployed as '
-                         'an `s1e_gist` override on the ISOLATED copy '
-                         '(tests/interaction_override), so assembled arms and '
-                         'the K stamp read it too; the live daemon is never '
-                         'touched.')
+                         'doubled). A flag, never an option: a capture path '
+                         'after it must not be readable as its value.')
+    ap.add_argument('--gist-file', metavar='FILE',
+                    help='deploy FILE as an `s1e_gist` override on the ISOLATED '
+                         'copy first (tests/interaction_override), so assembled '
+                         'arms and the K stamp read it too; implies --gist. The '
+                         'live daemon is never touched.')
     ap.add_argument('--rescore', nargs='+', metavar='DUMP.json',
                     help='offline: re-run score_gold over saved --dump-ops '
                          'files against --gold and print stored vs recomputed '
                          'scores — the check that a scorer change moved no '
                          'number. No brain, no spend.')
+    return ap
+
+
+def main():
+    ap = build_parser()
     args = ap.parse_args()
+    splice_f = args.gist or bool(args.gist_file)
     if args.rescore:
         if not args.gold:
             ap.error('--rescore needs --gold')
@@ -844,18 +933,18 @@ def main():
     # calls out, so it stays keyless.
     with IsolatedBrain(cleanup=True, load_env=args.behavior) as env:
         brain = env.brain
-        if isinstance(args.gist, str):
+        if args.gist_file:
             # A gist candidate rides the standard override door on the ISOLATED
             # copy — assembled arms read it through the resolver and the K
             # stamp names it; arm F splices the same effective text below.
             from interaction_override import override_interaction
-            with open(args.gist) as f:
+            with open(args.gist_file) as f:
                 gist_candidate = f.read().rstrip('\n') + '\n'
             if not gist_candidate.strip():
-                raise SystemExit('--gist %s is empty' % args.gist)
+                raise SystemExit('--gist-file %s is empty' % args.gist_file)
             ver = override_interaction(brain, 's1e_gist', template=gist_candidate)
             print('[gist] s1e_gist override v%d from %s (isolated copy only)'
-                  % (ver, args.gist))
+                  % (ver, args.gist_file))
         # Both arms read the EFFECTIVE prompt through the resolver. The override
         # row (get_interaction) is absent on a pointer-less brain, which would
         # make --s1e-template report the base as 0 chars and hand --s1e-patch an
@@ -917,19 +1006,30 @@ def main():
             chain, _short, _stop = parse_chain(cap_path)
             with open(cap_path) as f:
                 captured_raw = f.read()
-            if args.gist:
-                gist_text = (brain.get_interaction_prompt('s1e_gist') or '').rstrip('\n')
-                if not gist_text:
+            if splice_f:
+                # ONE resolution — template, config and stamp from the same
+                # row — and the same gate production assembly applies: an
+                # `enabled: false` override empties the slot rather than
+                # splicing the words it turned off.
+                eff = brain.get_interaction_effective('s1e_gist')
+                st = eff['stamp']
+                gist_text = (eff['template'] or '').rstrip('\n')
+                if eff['config']['enabled'] and not gist_text:
                     raise SystemExit('--gist: the effective s1e_gist is empty '
                                      '— nothing to splice')
-                captured_raw, replaced = splice_gist(captured_raw, gist_text)
+                captured_raw, replaced = splice_gist(
+                    captured_raw, gist_text if eff['config']['enabled'] else None)
                 if captured_raw is None:
                     raise SystemExit('--gist: no <timeline line in %s' % cap_path)
-                st = brain.get_interaction_stamp('s1e_gist')
-                print('[gist] %s before <timeline>: %d chars of s1e_gist %s (%s v%s)'
-                      % ('replaced %d chars' % replaced if replaced else 'spliced',
-                         len(gist_text), st['fingerprint'], st['source'],
-                         st['version']))
+                if eff['config']['enabled']:
+                    print('[gist] %s before <timeline>: %d chars of s1e_gist %s (%s v%s)'
+                          % ('replaced %d chars' % replaced if replaced else 'spliced',
+                             len(gist_text), st['fingerprint'], st['source'],
+                             st['version']))
+                else:
+                    print('[gist] s1e_gist DISABLED (%s v%s) — slot before '
+                          '<timeline> stripped (%d chars)'
+                          % (st['source'], st['version'], replaced))
             captured = strip_scout_blocks(captured_raw)
             # Arm F needs none of the session's stored state; keep gold items
             # runnable on captures whose messages have aged out of the copy.
@@ -1030,11 +1130,13 @@ def main():
                                      ' '.join('%s=%.0f%%' % (f[:4], 100 * sh[f])
                                               for f in RICH_FIELDS)))
                         for pf in s['swap_fidelity']:
-                            print('       SWAP-WOULD-FAIL id:%s %s edit %s '
-                                  'matches=%s (advisory if the copy drifted '
-                                  'past the capture)'
-                                  % (pf['id'], pf['field'], pf['edit'],
-                                     pf['matches']))
+                            # first sentence of the production refusal — the
+                            # rest teaches the agent the fix, not the reader
+                            print('       SWAP-WOULD-FAIL id:%s %s — %s '
+                                  '(advisory if the copy drifted past the '
+                                  'capture)'
+                                  % (pf['id'], pf['field'],
+                                     pf['error'].split('. ', 1)[0]))
                         for pv in s['partial_view']:
                             print('       PARTIAL-VIEW revise id:%s aged=%s '
                                   '%d→%d chars, kept %s lines (%.0f%% dropped)'

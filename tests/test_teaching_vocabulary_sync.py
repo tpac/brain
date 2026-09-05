@@ -12,7 +12,6 @@ there (or a deprecated alias in contract.REVISE_FIELD_ALIASES) is exempt from
 the taught set here, so retiring `content_edits` is one registry edit — that
 scan then enforces its absence on every surface this file checks presence on.
 """
-import json
 import os
 import re
 import sys
@@ -38,16 +37,33 @@ GIST = INTERACTION_DEFAULTS['s1e_gist'][0]
 # when the gist does — one allowlist, not three.
 GIST_OPEN_VOCABULARY = {'resolves', 'partially_resolves', 'open'}
 
+def _descriptions(schema):
+    """Every `description` string in a tool or op spec, at any depth — the
+    prose a model reads. A schema KEY is not a mention: matched as whole-tool
+    JSON, a property taught itself by existing, and the check was tautological."""
+    out = []
+    if isinstance(schema, dict):
+        for k, v in schema.items():
+            if k == 'description' and isinstance(v, str):
+                out.append(v)
+            else:
+                out.extend(_descriptions(v))
+    elif isinstance(schema, list):
+        for v in schema:
+            out.extend(_descriptions(v))
+    return out
+
+
 # Every surface that teaches the revise vocabulary, evaluated once. Tool
-# surfaces are the whole tool as JSON — a schema property IS a mention (T2:
-# schemas teach), and stringifying dict VALUES alone hid 10 of 21 field names.
+# surfaces are their description prose (tool + every property), not the
+# schema's keys.
 SURFACES = [
     ('s1e prompt', SYSTEM_PROMPT),
     ('gist', GIST),
     ('field summary', generate_field_summary()),
-    ('MCP revise', json.dumps(TOOLS['revise'])),
-    ('MCP revise_batch', json.dumps(TOOLS['revise_batch'])),
-    ('brain_batch revise spec', json.dumps(BATCH_OP_SPECS['revise'])),
+    ('MCP revise', '\n'.join(_descriptions(TOOLS['revise']))),
+    ('MCP revise_batch', '\n'.join(_descriptions(TOOLS['revise_batch']))),
+    ('brain_batch revise spec', '\n'.join(_descriptions(BATCH_OP_SPECS['revise']))),
 ]
 
 
