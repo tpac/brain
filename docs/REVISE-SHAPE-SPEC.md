@@ -171,10 +171,13 @@ fails (3).
    edges" paragraph in `_BRAIN_BATCH_DESCRIPTION`, L2 a gist bullet naming the
    Edges line's text as the node's own claim. **Edge 0/3 — 0/30 across every
    arm.** `connect_to` on 1 of 13 revise ops, and that one targets a same-batch
-   sibling by title (refused on revise). What L1 moved: standalone `connect`
-   ops 2.6/run → 0.0 (every baseline connect had a NEW node as source — the
-   pattern the description already forbade; they now ride `connect_to` on the
-   remember). Other surfaces, hand-adjudicated: canonical 3, 0, 3 of 4 (run 2
+   sibling by title (refused on revise). What L1 correlated with: standalone
+   `connect` ops 2.6/run → 0.0 — every baseline connect sat in a SECOND write
+   round with a just-returned new-node id as source (the just-created-sibling
+   pattern, not the forbidden not-yet-existing id); under L1 the five runs
+   finished in one round with those edges inside the remember's `connect_to`.
+   Fragile: the interview probe's own encodes on the same stack produced the
+   second round again. Other surfaces, hand-adjudicated: canonical 3, 0, 3 of 4 (run 2
    never picked up 9.7.2); run-44 run 1 propagated NOT SOUND but the deletion
    to 0/4 (scorer 2/4 on `content_any` token leniency) and minted the twin,
    run 2 VOID (read 338cf9ad + 78983ba6 live) yet revised 78983ba6 by id
