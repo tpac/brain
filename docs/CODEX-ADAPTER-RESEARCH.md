@@ -8,12 +8,12 @@ opinion, block on Stop only) and S2 (`.codex-plugin/plugin.json`,
 d5c1793 after two code reviews; the daemon restart + `./redeploy.sh` that make
 them live in Claude Code ran 2026-09-05 (safety hook verified as a warning).
 Ruling that shaped them: the brain informs, it never gates. S4 (signed identity
-stamp, §5.1) is built: `hooks/scripts/stamp-caller-session.sh` registered in
-`hooks.codex.json` only, sign/verify + secret in `servers/dispatch_common.py`,
-proxy rule in `brain_mcp._stamp_caller_session`, `tests/test_caller_stamp.py`.
-Not yet: the live empirical pass (§6) on Tom's ChatGPT desktop app — E5 is the
-stamp's first live check. Handoff node in the brain: search "HANDOFF — Codex
-adapter".
+stamp, §5.1) is on main at 2a86970 after two review passes:
+`hooks/scripts/stamp-caller-session.sh` registered in `hooks.codex.json` only,
+sign/verify + secret in `servers/dispatch_common.py`, proxy rule in
+`brain_mcp._stamp_caller_session`, `tests/test_caller_stamp.py`. Not yet: the
+live empirical pass (§6) on Tom's ChatGPT desktop app — E5 is the stamp's first
+live check. Brain milestone: 387a4a05.
 
 Can Anchor run inside ChatGPT's Codex mode as a second host, with hooks? What is
 there, what is missing, and how each gap closes. Researched 2026-09-05 against
