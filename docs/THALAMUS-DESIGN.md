@@ -201,13 +201,26 @@ boot → resolve → ledger + trace verified. Deploy is two-step — daemon rest
 (`servers/*`) AND `./redeploy.sh` + new session (`brain_mcp.py`) — before any
 behavioral test can run.
 
-**Phase 2 — producers.** `remind` into consolidation's and the Scribe's
-toolsets; the journal-view join; retire `journals-escalation`, the `open ×5`
-promotion, and the standing-items renderer **in the same commit as their
-replacement**. Then measure the two behavioral unknowns: do encoders file
-sanely (spam / under-use), and does Anchor drain and answer.
-`bridge_proposals` died built-but-unused (id:bfc6d106) — delivery alone is not
-success.
+**Phase 2 — producers, S1 first (plan Step 13).** The Scribe reaches its own
+live session at Stop through the review block it already writes: two addressed
+verbs, `tell` (a notice) and `ask` (needs an answer), in the same
+`verb · subject · note` grammar. The journal component routes them to the door
+at harvest as the non-LLM entrance (source = the binding's encoding_source,
+target = the binding's session); they are items, never journal notes. The
+encoder's next run sees their fate by render-join in `continuity()` — delivered,
+answered, dismissed, rejected — never by a note written back (id:defbdf8b,
+id:e63c41dd). Directed asks deliver at Stop (broadcast asks stay boot-only).
+The `remind` tool stays in encoder toolsets for the mid-run case. Built dark
+(no encoder writes the verbs until the S1 review paragraph ships, eval-gated),
+then measured over a window: filed per run, rejected at the door, delivered
+latency, answered vs dismissed — `bridge_proposals` died built-but-unused
+(id:bfc6d106), delivery alone is not success.
+
+**Phase 2b — widen, and retire the boot channel.** `remind` for the S2 units'
+mid-run asks; retire `journals-escalation`, the `open ×5` promote nudge, and
+the standing-items renderer **in the same commit as their replacement**.
+Deliberately after S1 proves the loop (Tom, 2026-09-05: "keep S2 as is in boot
+for the moment").
 
 **Phase 2.5 — the Prompt moment and the first assist** (plan Step 12): the
 third delivery moment, the assist mechanism, the clock re-anchor, and the door

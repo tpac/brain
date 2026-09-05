@@ -1,5 +1,19 @@
 # Thalamus — architecture review plan (2026-08-29)
 
+## §2026-09-05 — Steps 10–11 CLOSED; Phase 2 reordered: S1 through the Thalamus first (Step 13)
+
+Steps 10(b) and 11 shipped (d01a9e7, c97531d; merges 56c7bd6, feaab95) — the
+numbered review queue is empty. Tom's rulings this session reshape what comes
+next: the first real Thalamus consumer is the **S1 Scribe speaking to its own
+live session at Stop**, not boot ("boot requires something different"); S2's
+escalation nodes stay in boot for now; the Scribe's entrance is the review
+block it already writes (two addressed verbs), with the `remind` tool kept for
+mid-run asks; directed asks deliver at Stop; a filing leaves a trace on the run
+chain. Spec: **Step 13**. Step 12 (Prompt moment) is independent and can land
+before or after. The fourth-correspondent split (`env_message`) is NOT a
+Thalamus step; it parks behind both — its resolved shape is recorded in the
+§2026-09-03 NEXT-ARC THREAD below and in id:d8d38db2.
+
 ## §2026-09-03 — Turns & voices SUBSTRATE built (dial-gated, zero exposure) ◀ ACTIVE ARC
 
 Tom's ruling: a Stop-block continuation IS a new turn whose incoming side is
@@ -863,3 +877,133 @@ lands first — no hard dependency.
 **Named, not included.** Queued kinds riding the Prompt moment (cadence
 ruling); `recall_episodes` bound echo (same shape as the door echo); the boot
 Frame's conversation-time "Now" (untouched, grain-side).
+
+---
+
+## Step 13 — S1 through the Thalamus: addressed verbs in the review block
+
+**Problem.** The Thalamus was built so the S1 Scribe could speak to the live
+session it encodes — at Stop, not boot (Tom, 2026-09-05; rulings id:8aa9f183).
+Today the Scribe has no way to: `remind` is not in its toolset, the door stamps
+every filing `source='anchor'`, a directed ask is rejected (asks are boot-only),
+and the door leaves no trace when an item is filed. Meanwhile the Scribe already
+writes messages — into its own journal, where only its next run reads them
+within a three-run window ("next session should revise this node to SHIPPED
+once Tom says go", 2026-09-04). The message exists; the reader is wrong.
+
+**Target state.** The review block gains two addressed verbs in the grammar it
+already has, and the journal component routes them to the door:
+
+```
+## Review
+friction · 1ca943af · turn-row projection built in two places, drift risk
+tell     · segment 6.a · you are proceeding on "I wonder if", not a yes — confirm first
+ask      · 7e6decd2 · milestone says merge pending; it merged as 56c7bd6 — revise, or leave?
+```
+
+- **(a) Contract, dark.** `trace_contract.JOURNAL_ADDRESSED_TAGS = ('tell',
+  'ask')`. The parser needs NO change — a 3-field line with tag `tell` already
+  parses as `(tag, subject, note)`. `render_journal_review_block(addressed=False)`
+  gains the S1-only paragraph (admission test: *would the session, or Tom, act
+  differently in the next hour if they knew? → tell/ask; would only your next run
+  care? → journal*; plain language for a reader with none of your context; one
+  line per subject, don't re-assert). S2 bindings keep today's text.
+- **(b) Write door returns, journal component routes.** `write_journal_notes`
+  skips addressed notes and returns them (`{'addressed': [...]}` beside
+  `written`/`malformed`) — the traces layer never imports a channel.
+  `JournalBinding.harvest()` files each through `thalamus.file(brain,
+  source=<binding's encoding_source>, body=note, needs_answer=(tag=='ask'),
+  for_whom=<binding.session_id>, dedup_key=subject if 8-hex else None,
+  refs=[subject] if 8-hex, session_id=…)` — the non-LLM entrance of
+  id:7e9870ce. A binding without a session (S2) writes them as plain notes and
+  warns `journal_addressed_unbound` — S2 stays as is. A door rejection is a loud
+  warning `journal_addressed_rejected` AND the line is kept as a journal note so
+  the residue survives and the encoder reads the rejection next run. A
+  `resolved · <subject>` whose subject matches this source's open `dedup_key`
+  also calls `thalamus.withdraw(source, dedup_key=subject)` — the encoder's
+  existing verb closes its own item.
+- **(c) Door.** (i) `ASK_MOMENTS` becomes per-audience: a directed ask (one
+  session) delivers at Stop; a broadcast ask stays boot-only; `file()` drops the
+  directed-ask rejection for that case and `pull(via='stop')` admits directed
+  asks. (ii) `list_items(brain, source='', target_session='', include_closed=…)`
+  — the by-source read the join needs (one parameter, not a new function).
+  (iii) **Budget key.** `MAX_OPEN_PER_SOURCE` keys on `source` alone; the
+  Scribe's `encoding_source` is shared by every session's runs, so eight open
+  items would be a global cap across sessions. For directed items the key is
+  `(source, target_session)`. Decide here; name it in the contract comment.
+- **(d) Trace the filing.** `("s1", "delta")` gains `thalamus_filed`; the door,
+  handed a `run_chain`, writes one row (ref_id = item id; metadata: tag,
+  subject, note, target) through the traces door — the symmetry `journal_note`
+  rows already have. The trace guardrail's writer-file list gains
+  `channels/thalamus/thalamus.py`. An item's life is then joinable across
+  scales: filed (s1 Δ, run chain) → delivered (s0 K `thalamus_delivery`, the
+  session's chain, ref_id=stop) → answered (item state; the resolve call in the
+  session's own tool trail).
+- **(e) Feedback by render-join, never write-back.** `thalamus_contract.
+  render_producer_view(items)` renders the unit's items with live state — filed
+  by run, delivered ×N at moment, answered: <text>, dismissed, expired,
+  rejected. `JournalBinding.continuity()` appends it after the residue notes,
+  from `list_items(source=…, target_session=…, include_closed=True)` bounded to
+  the continuity window. No `delivered` mark ever enters the journal
+  (id:e63c41dd, id:defbdf8b).
+- **(f) Prompt, eval-gated, the only encoder-visible change.** Ship (a)–(e)
+  DARK first — with the paragraph absent no encoder writes the verbs, behavior
+  is bit-identical. Then the S1 review paragraph: read the whole S1 prompt +
+  review block first (id:71eeff20 discipline), run `eval/s1_encode_eval.py`
+  before/after, `tests/test_s1e_residue.py` green, then restart.
+- **(g) Measure, one week.** From traces + ledger: `thalamus_filed` per
+  `encoding_run`; `journal_addressed_rejected` count; delivered latency
+  (filed → ledger row); answered vs dismissed; dedup updates vs inserts.
+  Kill criteria: zero filings in the window (unused — the `bridge_proposals`
+  death, id:bfc6d106) or dismissed > answered (noise). Either way the number
+  decides Phase 2b, not the build.
+
+**Timeline representation.** In the receiving session's S0 timeline the
+Scribe's message is the brain speaking at a Stop (`thalamus_delivery`, the
+Scribe named inside the block) followed by the session's reaction. The dial is
+off, so the encoder does not see that turn yet; after the voices flip it reads
+its own tell arriving and what the session did — the loop closes inside the
+lived sequence. Until then its only feedback is (e).
+
+**Files & call sites.** `servers/trace_contract.py` (tags, review paragraph,
+REF_TYPES); `servers/brain_traces.py` (`write_journal_notes` return shape);
+`servers/scales/journal.py` (`harvest` routing, `continuity` join);
+`servers/channels/thalamus/thalamus.py` (`file` run_chain + trace, `pull`
+directed asks, `list_items` filters, budget key), `thalamus_contract.py`
+(`ASK_MOMENTS` by audience, `render_producer_view`); `servers/scales/s1/encode.py`
+(binding passes `addressed=True`). Tests: `test_journal_notes.py`,
+`test_journal_component.py`, `test_journal_lifecycle.py`, `test_s1e_residue.py`,
+`test_thalamus.py` (directed ask at Stop; budget key; list filters; filed
+trace), `test_trace_contract_sync.py` (new ref_type + writer file),
+`test_delivery.py`.
+
+**Verification.** `./dev pytest tests/ -k "journal or residue or thalamus or
+delivery or trace_contract" -q`, tier checked with `--collect-only | grep`.
+Dark ship: a Scribe run on an isolated brain with no paragraph writes zero
+items and zero `thalamus_filed` rows. Lit: one real session — a `tell` lands at
+the next Stop as a brain block naming the Scribe; the next Scribe run's
+continuity shows it delivered; `query_traces(ref_type='thalamus_filed')` and
+`query_traces(ref_type='thalamus_delivery', ref_id='stop')` join on the item id.
+
+**Blast radius.** (a)–(e) dark: `write_journal_notes` return gains a key; the
+door's directed-ask semantics change for directed items only; a new ref_type;
+one list-read parameter; a budget-key change. (f) changes what the Scribe is
+told — encoder-visible, hence the eval gate. S2 units, boot, the `remind` MCP
+tool, and the escalation channel are untouched.
+
+**Respects.** Two orthogonal state machines (id:e63c41dd); render-annotation
+over write-back (id:defbdf8b, forced by id:8a170558); pull model (id:1448610f);
+Thalamus owns no transport (id:7c7e805c); contract/mechanics split (id:35ef74e8);
+one door, three entrances (id:7e9870ce — BENT for the Scribe's end-of-run,
+low-volume shape: a one-run-late rejection costs nothing; the tool stays for
+mid-run asks, named in id:8aa9f183).
+
+**Depends on.** Nothing shipped is a blocker. Rebase-aware with Step 12 in
+`thalamus.py`/`thalamus_contract.py` (`pull`, `MOMENTS`) — land in either order,
+merge main between. Sub-step order: (c) → (d) → (b) → (e) → (a) dark → (f) →
+(g); each is cold-startable and separately testable.
+
+**Named, not included.** Event-conditioned items ("when Tom says go" — the
+`on_topic` moment, Phase 3); S2 producers and the boot-legacy retirement (Phase
+2b); the voices dial flip (encoder stream); the `env_message` split (not a
+Thalamus step).
