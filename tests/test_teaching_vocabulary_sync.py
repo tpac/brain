@@ -20,9 +20,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from servers.contract import (BATCH_OP_SPECS, CONNECT_TO_ITEM_SCHEMA,  # noqa: E402
-                              REVISE_FIELD_ALIASES, REVISE_RULE, SWAP_SCHEMA,
-                              generate_field_summary, get_swap_fields,
-                              get_writable_fields)
+                              REF_SWAP, REVISE_FIELD_ALIASES, REVISE_RULE,
+                              SWAP_SCHEMA, generate_field_summary,
+                              get_swap_fields, get_writable_fields)
 from servers.interaction_defaults import INTERACTION_DEFAULTS  # noqa: E402
 from servers.scales.s1.encode_contract import ENCODING_TOOLS  # noqa: E402
 from servers.scales.s1.encoding_prompt import SYSTEM_PROMPT  # noqa: E402
@@ -166,8 +166,10 @@ def test_every_swap_field_is_value_or_swap_on_the_mcp_revise_surfaces():
     )
     swap_fields = get_swap_fields()
     for surface, props in props_by_surface:
+        # the swap is referenced, so the tool must also carry its definition
+        assert TOOLS[surface]['inputSchema']['$defs']['swap'] == SWAP_SCHEMA, surface
         for f in swap_fields:
-            assert SWAP_SCHEMA in props.get(f, {}).get('anyOf', []), \
+            assert REF_SWAP in props.get(f, {}).get('anyOf', []), \
                 '%s.%s is not value-or-swap' % (surface, f)
         for f, spec in get_writable_fields().items():
             if f in swap_fields:

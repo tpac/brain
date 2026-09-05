@@ -71,6 +71,17 @@ SWAP_SCHEMA = {
 }
 SWAP_LIST_SCHEMA = {"type": "array", "items": SWAP_SCHEMA}
 
+# The reference forms. A tool schema states each shared shape ONCE under its
+# root `$defs` and points at it from every field that takes it — forty inline
+# copies of the swap object cost ~8K chars per encoder round for information
+# the agent has after the first, and the generation-shape probe scores the
+# reference form identical to inline. attach_defs() (below, after the shapes
+# it registers) adds to a tool the definitions it actually references.
+REF_SWAP = {"$ref": "#/$defs/swap"}
+REF_SWAP_LIST = {"type": "array", "items": REF_SWAP}
+REF_CONNECT_TO_ITEM = {"$ref": "#/$defs/connect_to_item"}
+REF_REVISE_CONNECT_TO_ITEM = {"$ref": "#/$defs/revise_connect_to_item"}
+
 
 def is_swap(value):
     """`{old, new}` — one in-place swap (REVISE_RULE)."""
@@ -131,8 +142,9 @@ def apply_swaps(stored, value, field):
 def swappable(prop):
     """A text field's revise-time schema: `string | swap | swap[]`, keeping
     the field's own description. Applied to every get_swap_fields() spec
-    wherever a revise surface is generated."""
-    out = {"anyOf": [{"type": "string"}, SWAP_SCHEMA, SWAP_LIST_SCHEMA]}
+    wherever a revise surface is generated. The swap is a `$ref` — the tool
+    carrying the field gets the definition from attach_defs()."""
+    out = {"anyOf": [{"type": "string"}, REF_SWAP, REF_SWAP_LIST]}
     if prop.get("description"):
         out["description"] = prop["description"]
     return out
@@ -144,7 +156,7 @@ def swappable(prop):
 # tests/test_retired_fields.py) once the encoder's op dumps show zero uses
 # across a full A/B round.
 CONTENT_EDITS_SCHEMA = {
-    **SWAP_LIST_SCHEMA,
+    **REF_SWAP_LIST,
     "description": ("Deprecated alias of `content: [{old, new}, ...]`; "
                     "passing both is an error."),
 }
@@ -269,6 +281,50 @@ def _revise_connect_to_item_schema():
 
 REVISE_CONNECT_TO_ITEM_SCHEMA = _revise_connect_to_item_schema()
 
+# The shapes a tool schema may point at with `$ref` — keyed by the name after
+# `#/$defs/`. The registry attach_defs() draws from; a pointer to a name not
+# here is a build-time error, never a dangling reference the model meets.
+SCHEMA_DEFS = {
+    "swap": SWAP_SCHEMA,
+    "connect_to_item": CONNECT_TO_ITEM_SCHEMA,
+    "revise_connect_to_item": REVISE_CONNECT_TO_ITEM_SCHEMA,
+}
+
+
+def referenced_defs(schema):
+    """Names of every `#/$defs/<name>` a schema points at, transitively
+    through the definitions themselves (revise_connect_to_item points at
+    swap). Raises on a pointer with no registry entry — a dangling `$ref`
+    would otherwise ship silently and leave the model a field it cannot
+    fill."""
+    found, todo = set(), [schema]
+    while todo:
+        node = todo.pop()
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str):
+                name = ref[len("#/$defs/"):] if ref.startswith("#/$defs/") else None
+                if name not in SCHEMA_DEFS:
+                    raise ValueError("schema points at an unregistered definition %r" % ref)
+                if name not in found:
+                    found.add(name)
+                    todo.append(SCHEMA_DEFS[name])
+            todo.extend(node.values())
+        elif isinstance(node, list):
+            todo.extend(node)
+    return found
+
+
+def attach_defs(schema):
+    """A tool's inputSchema with `$defs` holding exactly the shapes it
+    references — unchanged when it references none. Applied once per tool
+    when the tool list is built."""
+    names = referenced_defs(schema)
+    if not names:
+        return schema
+    return {**schema, "$defs": {n: SCHEMA_DEFS[n] for n in sorted(names)}}
+
+
 BATCH_OP_SPECS = {
     "remember": {
         "required": ["type", "title", "content"],
@@ -286,7 +342,7 @@ BATCH_OP_SPECS = {
             "content": {"type": "string", "description": "Rich content"},
             "connect_to": {"type": "array", "description":
                            "Typed edges to siblings/catalog — see tool description",
-                           "items": CONNECT_TO_ITEM_SCHEMA},
+                           "items": REF_CONNECT_TO_ITEM},
         },
     },
     "revise": {
@@ -311,7 +367,7 @@ BATCH_OP_SPECS = {
             "connect_to": {"type": "array", "description":
                            "This node's edges to change or add — an entry per "
                            "target; see the item shape",
-                           "items": REVISE_CONNECT_TO_ITEM_SCHEMA},
+                           "items": REF_REVISE_CONNECT_TO_ITEM},
             "content_edits": CONTENT_EDITS_SCHEMA,
         },
     },

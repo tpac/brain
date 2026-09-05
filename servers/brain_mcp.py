@@ -117,11 +117,10 @@ def _generate_remember_schema():
     }
 
 
-# CONNECT_TO_ITEM_SCHEMA moved to contract.py (2026-06-12 code review #1):
-# brain_batch's remember branch (BATCH_OP_SPECS) needs the same item shape,
-# and contract.py cannot import brain_mcp. Single source, aliased here for
-# the existing remember_batch references.
-from servers.contract import CONNECT_TO_ITEM_SCHEMA as _CONNECT_TO_ITEM_SCHEMA
+# The connect_to item shape is the contract's (brain_batch's remember branch
+# needs the same one, and contract.py cannot import brain_mcp); tools point at
+# it with `$ref` and attach_defs() gives each tool the definition once.
+from servers.contract import REF_CONNECT_TO_ITEM, attach_defs
 
 
 def _generate_remember_batch_schema():
@@ -150,7 +149,7 @@ def _generate_remember_batch_schema():
             "id — duplicate-title `remember` + connect_to would resolve to the new "
             "sibling (NEW wins) and leave the catalog version stale."
         ),
-        "items": _CONNECT_TO_ITEM_SCHEMA,
+        "items": REF_CONNECT_TO_ITEM,
     }
     # Per-node connect_to is the only edge surface. The old `auto_connect`
     # default fired pairwise empty-description `related_to` edges every batch;
@@ -177,7 +176,7 @@ def _generate_remember_batch_schema():
                 },
                 "connect_to": {
                     "type": "array",
-                    "items": _CONNECT_TO_ITEM_SCHEMA,
+                    "items": REF_CONNECT_TO_ITEM,
                     "description": (
                         "Batch-level: applies the same edge from EVERY created node to one "
                         "catalog target. Siblings excluded. For per-node edges, use node-level connect_to."
@@ -846,7 +845,10 @@ def _build_tools():
         raise  # Still crash — but now we've left evidence
 
 
-TOOLS = _build_tools()
+# Each tool carries under `$defs` exactly the contract shapes its schema
+# points at (the swap object, the connect_to items) — stated once per tool,
+# referenced from every field, never inlined forty times.
+TOOLS = [dict(t, inputSchema=attach_defs(t["inputSchema"])) for t in _build_tools()]
 
 
 # ── MCP tool-search: keep the hot-path tools eager for every install ──
