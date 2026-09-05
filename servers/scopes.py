@@ -223,18 +223,19 @@ def build_veil(brain, policy: ScopePolicy, session_scope) -> frozenset:
 
 def scrub_node(node, veil) -> None:
     """Remove walled entries from a node dict's cross-node attachments, in
-    place — connections (id+title lines) and _corrections (which carry the
-    corrector's FULL content, reasoning and raw quotes; matched on the full
-    `node_id` field — the display `id` is an 8-char short form the veil
-    can't match). The node itself was already admitted; this stops its
-    EDGES from carrying walled payload across the wall."""
+    place — connections and communities (id+title lines) and _corrections
+    (which carry the corrector's FULL content, reasoning and raw quotes;
+    matched on the full `node_id` field — the display `id` is an 8-char
+    short form the veil can't match). The node itself was already admitted;
+    this stops its EDGES from carrying walled payload across the wall."""
     if not veil or not isinstance(node, dict):
         return
-    conns = node.get('connections')
-    if isinstance(conns, list):
-        node['connections'] = [e for e in conns
-                               if not isinstance(e, dict)
-                               or e.get('id') not in veil]
+    for key in ('connections', 'communities'):
+        entries = node.get(key)
+        if isinstance(entries, list):
+            node[key] = [e for e in entries
+                         if not isinstance(e, dict)
+                         or e.get('id') not in veil]
     corrections = node.get('_corrections')
     if isinstance(corrections, list):
         node['_corrections'] = [

@@ -243,6 +243,9 @@ S1_NODE_CONFIG = {
     # s2:*) — noise to the encoder, which shouldn't reason about who wrote a node.
     # render_rich_node defaults show_encoding_source=True, so hide it explicitly.
     'show_encoding_source': False,
+    # The encoder is community-blind by design (community nodes are skipped
+    # from the catalog; S2CE owns placement) — no Communities line either.
+    'show_communities': False,
 }
 
 # Provenance tags for the widened catalog (Piece 3), in PRIORITY order — a node in

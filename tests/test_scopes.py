@@ -375,10 +375,15 @@ class TestReviewFixes(BrainTestBase):
         node = {
             'connections': [{'id': self.client_node, 'title': 'walled'},
                             {'id': self.brain_node, 'title': 'fine'}],
+            # a walled community's title would leak through the
+            # Communities line exactly like a walled neighbor's through Edges
+            'communities': [{'id': self.client_node, 'title': 'walled community'},
+                            {'id': self.brain_node, 'title': 'fine'}],
             '_corrections': [{'id': self.client_node[:8],
                               'node_id': self.client_node,
                               'content': 'THE WALLED FULL TEXT'}],
         }
         scrub_node(node, frozenset({self.client_node}))
         assert [c['id'] for c in node['connections']] == [self.brain_node]
+        assert [c['id'] for c in node['communities']] == [self.brain_node]
         assert node['_corrections'] == []

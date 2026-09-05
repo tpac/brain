@@ -234,6 +234,36 @@ class TestFormatNode(BrainTestBase):
         self.assertNotIn('co_anchored', out)
         self.assertIn('this extends "Peer" — the semantic claim', out)
 
+    def test_communities_ride_as_their_own_line_where_a_format_opts_in(self):
+        """Community membership is a `communities` attachment on the canonical
+        pull and renders as ONE `Communities:` line — never as edge lines
+        (community_member is noise-excluded from connections). Off by default
+        and for the encoder catalog; on for Anchor's get_nodes formats and
+        the recall surface Anchor reads."""
+        from servers.contract import GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT
+        from servers.scales.s1.encode_contract import S1_NODE_CONFIG
+        from servers.scales.s1.surface_contract import (
+            SURFACE_ARC_FORMAT, HAIKU_FORMAT, resolve_surface_format)
+        nid = self._make_node(title='Member')
+        comm = self._make_node(type='community', title='A community')
+        self._add_edge(comm, nid, relation='community_member', weight=0.9)
+        node = self.brain.get_node(nid)
+        self.assertEqual(node['communities'], [{'id': comm, 'title': 'A community'}])
+        self.assertEqual(node['connections'], [])
+        line = '  Communities: "A community" (id:%s)' % comm[:8]
+        self.assertNotIn('Communities:', render_rich_node(node))
+        self.assertNotIn('Communities:', render_rich_node(node, S1_NODE_CONFIG))
+        for cfg in (GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT, HAIKU_FORMAT,
+                    resolve_surface_format(SURFACE_ARC_FORMAT, 1000)):
+            out = render_rich_node(node, cfg)
+            self.assertIn(line, out)
+            self.assertNotIn('community_member', out)
+        # a node in no community renders no empty line
+        lonely = self._make_node(title='Lonely')
+        self.assertEqual(self.brain.get_node(lonely)['communities'], [])
+        self.assertNotIn('Communities:', render_rich_node(
+            self.brain.get_node(lonely), GET_NODES_SMALL_FORMAT))
+
     def test_edge_lines_one_per_relation_descriptions_whole(self):
         """A pair carrying several relations renders one line per relation,
         each with its own description untruncated — a reader may copy it

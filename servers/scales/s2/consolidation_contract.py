@@ -101,6 +101,9 @@ CONSOLIDATION_NODE_FORMAT = {
     'edge_limit': 0,
     'metadata_limit': 300,      # Full metadata — reasoning, raw quotes
     'time_format': 'relative',
+    # The cluster block prints one Communities line per cluster
+    # (_format_clusters) — the rich node block does not repeat it.
+    'show_communities': False,
 }
 
 

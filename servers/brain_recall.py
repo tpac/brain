@@ -478,6 +478,16 @@ class BrainRecallMixin:
             conns.sort(key=lambda x: x.get('weight', 0), reverse=True)
             nodes[nid]['connections'] = conns
 
+        # ── 6. Community membership — Tom's exception to the noise hide
+        # (2026-09-05): Anchor and the recall surface want to know which
+        # communities a node sits in, but not as edge lines competing for
+        # the Edges cut. It rides as its own attachment, [{id, title}], and
+        # renders as a `Communities:` line where a format opts in
+        # (cfg show_communities); the encoder catalog stays community-blind.
+        communities_by_node = self._graph.get_communities_for(found_ids)
+        for nid in found_ids:
+            nodes[nid]['communities'] = communities_by_node.get(nid, [])
+
         # ── Return: keyed by the REQUESTED id. A redirected request gets a
         # per-request SHALLOW COPY of the survivor carrying its own
         # REDIRECTED_FROM_KEY (`node['id']` names the survivor); the

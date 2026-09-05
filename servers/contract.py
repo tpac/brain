@@ -777,6 +777,7 @@ GET_NODES_BALANCED_FORMAT = {
     'edge_limit': 6,            # relations matter — keep top 6
     'metadata_limit': 250,
     'time_format': 'relative',
+    'show_communities': True,   # Anchor's pull: placement as a line, not edges
 }
 
 # Compact: for 11+ node batches (S2 community encoder coherence checks)
@@ -785,6 +786,7 @@ GET_NODES_COMPACT_FORMAT = {
     'edge_limit': 4,
     'metadata_limit': 200,
     'time_format': 'relative',
+    'show_communities': True,
 }
 
 # Small-batch default (<=3 nodes, rich=false): the de-stuffed drill view.
@@ -798,6 +800,7 @@ GET_NODES_SMALL_FORMAT = {
     'metadata_limit': 300,
     'correction_render': 'balanced',
     'time_format': 'relative',
+    'show_communities': True,
 }
 
 # Full: the rich=true opt-in for get_node/get_nodes — the deliberate
@@ -811,6 +814,7 @@ GET_NODES_FULL_FORMAT = {
     'metadata_limit': 400,
     'correction_render': 'heavy',
     'time_format': 'relative',
+    'show_communities': True,
 }
 
 # The skinny node shape returned by NodeDAL.filter_nodes (dal.py:2038-2040)
@@ -828,14 +832,14 @@ REDIRECTED_FROM_KEY = '_redirected_from'
 
 # What the canonical pull (Brain.get_node) attaches on top of the bare DB row:
 # the KV block, the two fields promoted out of it to top-level, the correction
-# chain, the edges, and — when the requested id was absorbed — the redirect
-# marker. `canonicalize_results` overlays exactly these onto a recall result,
-# so a result carries the same shape whichever recall door the caller came
-# through. Keep in sync with get_node's assembly — the parity test
-# (tests/test_recall_door_parity.py) fails if get_node grows an attachment
-# this tuple doesn't name.
+# chain, the edges, the community membership, and — when the requested id was
+# absorbed — the redirect marker. `canonicalize_results` overlays exactly
+# these onto a recall result, so a result carries the same shape whichever
+# recall door the caller came through. Keep in sync with get_node's assembly
+# — the parity test (tests/test_recall_door_parity.py) fails if get_node
+# grows an attachment this tuple doesn't name.
 CANONICAL_ATTACHMENT_KEYS = ('_metadata', 'situation', 'project',
-                             '_corrections', 'connections',
+                             '_corrections', 'connections', 'communities',
                              REDIRECTED_FROM_KEY)
 
 
@@ -1369,6 +1373,18 @@ def render_rich_node(node, config=None):
         mode=cfg.get('correction_render', 'lean'),
         content_limit_heavy=max(meta_limit, 400),
         meta_limit_heavy=meta_limit))
+
+    # Community membership — its own line, never an edge line: community
+    # edges are noise-excluded from `connections` (they carry no claim and
+    # were taking 27% of top-5 slots), and the readers who still want the
+    # placement — Anchor's pulls, the recall surface — opt in here. Off by
+    # default: the encoder catalog is community-blind by design, and the
+    # consolidation cluster block prints its own Communities line.
+    if cfg.get('show_communities') and node.get('communities'):
+        lines.append('  Communities: %s' % ', '.join(
+            '"%s" (id:%s)' % ((c.get('title') or '?')[:100],
+                              (c.get('id') or '?')[:8])
+            for c in node['communities']))
 
     # Edges — one grammar for every reader, owned by render_edge_lines.
     edge_limit = cfg.get('edge_limit', 5)
