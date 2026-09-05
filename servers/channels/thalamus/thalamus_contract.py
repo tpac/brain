@@ -248,6 +248,19 @@ def render_item(item):
 
 
 _HEAD = '🧠 from the brain (thalamus) — %d item(s)'
+# The reader's standing instruction, the mirror of the self-channel's note
+# line. An item's render is a work order addressed to the entity (id, verb,
+# exit call); a human hears only the question and its stakes — the envelope
+# leaking into the operator channel is the defect this line prevents
+# (brain node 3e549ac4). The second line names the read routes so an item
+# is explorable without guessing at tools.
+_HEAD_NOTE = (
+    '   — to the operator, say it in plain words: what is asked and why it '
+    'matters; never the id, the moment, or the producer.\n'
+    '     Explore: get_nodes(↳ refs) or recall(the question) for context · '
+    'thalamus_list for the queue · '
+    "recall_episodes(ref_type='thalamus_delivery') for who saw it · "
+    'thalamus_resolve to act.')
 
 
 def render_block(items, overflow=0, cap=BLOCK_MAX):
@@ -267,9 +280,10 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
     # kept count — the head must claim what the block SHOWS, never what
     # was fetched (head, tail, ledger, and pull's count all say `kept`).
     body, kept, dropped = compose_block_loud(
-        items, render_item, cap, reserved=len(_HEAD % len(items)))
+        items, render_item, cap,
+        reserved=len(_HEAD % len(items)) + len(_HEAD_NOTE))
     head = _HEAD % kept
     tail = dropped + max(0, overflow)
     if tail:
         body += '\n\n(+%d more due — thalamus_list shows them)' % tail
-    return '%s\n\n%s' % (head, body), kept
+    return '%s\n%s\n\n%s' % (head, _HEAD_NOTE, body), kept

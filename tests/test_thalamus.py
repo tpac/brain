@@ -662,6 +662,21 @@ class TestRender(ThalamusBase):
         self.assertIn('— %d item(s)' % n, block)
         self.assertIn('(+%d more due' % (4 - n), block)
 
+    def test_block_head_carries_relay_note(self):
+        """The reader's standing instruction sits between the head and the
+        first item — plain words to the operator, never id/moment/producer —
+        and names the read routes; it is reserved from the budget."""
+        self._file('note')
+        block, _ = thalamus.pull(self.brain, S1, via='boot')
+        head, rest = block.split('\n', 1)
+        self.assertIn('— 1 item(s)', head)
+        self.assertTrue(rest.startswith(tc._HEAD_NOTE + '\n\n• th_'))
+        for phrase in ('plain words', 'never the id, the moment, or the producer',
+                       'thalamus_list', "recall_episodes(ref_type='thalamus_delivery')",
+                       'thalamus_resolve'):
+            self.assertIn(phrase, tc._HEAD_NOTE)
+        self.assertLessEqual(len(block), tc.BLOCK_MAX)
+
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')
         thalamus.pull(self.brain, S1, via='boot')
