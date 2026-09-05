@@ -469,13 +469,24 @@ class BrainRecallMixin:
 
         for nid in found_ids:
             conns = connections_by_owner.get(nid, [])
-            # Sort by aggregate weight, set 'relation' to highest-weight relation for compat
+            # Order: weight desc, then the relation's created_at desc. Weights
+            # are flat in practice (0.5/0.6 everywhere, id:abbb5b26), so
+            # without the second key the top-N cut every reader applies is a
+            # tie broken by SQL row order — the newest claim is the better
+            # tie-break: it is the one most likely written with the node's
+            # current shape in view. 'relation'/'description' = the top
+            # relation, for compat.
+            def _rel_key(r):
+                return (r.get('weight') or 0, r.get('created_at') or '')
             for c in conns:
-                rels = sorted(c['relations'], key=lambda r: r.get('weight', 0), reverse=True)
+                rels = sorted(c['relations'], key=_rel_key, reverse=True)
                 c['relations'] = rels
                 c['relation'] = rels[0]['relation'] if rels else 'related'
                 c['description'] = rels[0]['description'] if rels else ''
-            conns.sort(key=lambda x: x.get('weight', 0), reverse=True)
+            conns.sort(key=lambda x: (x.get('weight') or 0,
+                                      max((r.get('created_at') or ''
+                                           for r in x['relations']), default='')),
+                       reverse=True)
             nodes[nid]['connections'] = conns
 
         # ── 6. Community membership — Tom's exception to the noise hide

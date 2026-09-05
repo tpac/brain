@@ -778,6 +778,7 @@ GET_NODES_BALANCED_FORMAT = {
     'metadata_limit': 250,
     'time_format': 'relative',
     'show_communities': True,   # Anchor's pull: placement as a line, not edges
+    'show_edge_total': True,    # a cut reads "Edges (6 of 9)"
 }
 
 # Compact: for 11+ node batches (S2 community encoder coherence checks)
@@ -801,6 +802,7 @@ GET_NODES_SMALL_FORMAT = {
     'correction_render': 'balanced',
     'time_format': 'relative',
     'show_communities': True,
+    'show_edge_total': True,
 }
 
 # Full: the rich=true opt-in for get_node/get_nodes — the deliberate
@@ -1390,10 +1392,11 @@ def render_rich_node(node, config=None):
     edge_limit = cfg.get('edge_limit', 5)
     all_conns = node.get('connections', [])
     connections = all_conns[:edge_limit]
-    # Edge-total indicator (opt-in via show_edge_total — encoder catalog): when
-    # the limit truncates, say so — '(5 of 23)' tells the reader how connected
-    # the node really is (the DAL pull is uncapped and noise-excluded, so the
-    # total is honest). Default off: legacy renders keep the bare header.
+    # Edge-total indicator (opt-in via show_edge_total — the encoder catalog
+    # and Anchor's small/balanced pulls): when the limit truncates, say so —
+    # '(5 of 23)' tells the reader how connected the node really is (the DAL
+    # pull is uncapped and noise-excluded, so the total is honest). Default
+    # off: legacy renders keep the bare header.
     edges_header = '  Edges:'
     if cfg.get('show_edge_total') and len(all_conns) > len(connections):
         edges_header = '  Edges (%d of %d):' % (len(connections), len(all_conns))

@@ -264,6 +264,43 @@ class TestFormatNode(BrainTestBase):
         self.assertNotIn('Communities:', render_rich_node(
             self.brain.get_node(lonely), GET_NODES_SMALL_FORMAT))
 
+    def test_flat_weights_break_ties_by_relation_recency_and_the_cut_says_so(self):
+        """Weights are flat in production (0.5/0.6 everywhere), so the top-N
+        cut used to be a tie broken by SQL row order. get_node orders equal
+        weights by the relation's created_at, newest first, and Anchor's
+        small/balanced formats say when the cut dropped edges: 'Edges (6 of 7)'.
+        (The encoder catalog says it too, through the view policy's cfg —
+        pinned in test_encoder_view.)"""
+        from servers.contract import GET_NODES_SMALL_FORMAT, GET_NODES_BALANCED_FORMAT
+        hub = self._make_node(title='Hub')
+        spokes = [self._make_node(title='Spoke %d' % i) for i in range(7)]
+        for i, s in enumerate(spokes):
+            self._add_edge(hub, s, relation='extends', weight=0.6,
+                           description='claim %d' % i)
+            # stamp the relation's birth: spoke 0 oldest ... spoke 6 newest
+            self.brain.conn.execute(
+                "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
+                "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
+                ('2026-01-%02dT00:00:00+00:00' % (i + 1), hub, s))
+        self.brain.conn.commit()
+        node = self.brain.get_node(hub)
+        self.assertEqual([c['id'] for c in node['connections']], spokes[::-1])
+        out = render_rich_node(node, GET_NODES_BALANCED_FORMAT)     # limit 6
+        self.assertIn('  Edges (6 of 7):', out)
+        self.assertIn('claim 6', out)
+        self.assertNotIn('claim 0', out)          # the oldest is the one cut
+        # a limit that does not cut (8) keeps the bare header
+        self.assertIn('  Edges:\n', render_rich_node(node, GET_NODES_SMALL_FORMAT))
+        # a higher weight still wins over recency
+        heavy = self._make_node(title='Heavy')
+        self._add_edge(hub, heavy, relation='grounds', weight=0.9, description='heavy')
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
+            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
+            ('2020-01-01T00:00:00+00:00', hub, heavy))
+        self.brain.conn.commit()
+        self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], heavy)
+
     def test_edge_lines_one_per_relation_descriptions_whole(self):
         """A pair carrying several relations renders one line per relation,
         each with its own description untruncated — a reader may copy it
