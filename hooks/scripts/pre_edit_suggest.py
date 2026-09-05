@@ -1,21 +1,20 @@
 """PreToolUse(Edit|Write) — surfaces brain rules/suggestions before edits.
 Thin client: sends hook_pre_edit to daemon, falls back to direct Python.
-Output: JSON {"decision":"approve","reason":"..."}.
+Output: hookSpecificOutput.additionalContext when there is something to
+surface, otherwise nothing (see hook_common.emit_hook_output).
 """
-import sys, os, json, time
+import sys, os, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, is_debug_mode, run_hook
-
-APPROVE = json.dumps({"decision": "approve"})
+from hook_common import (get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error,
+                         brain_debug, emit_hook_output, tool_target_file, run_hook)
 
 hook_input = get_hook_input()
 tool_input = hook_input.get("tool_input", {})
-file_path = tool_input.get("file_path", "")
+file_path = tool_target_file(tool_input)
 tool_name = hook_input.get("tool_name", "Edit")
 
 if not file_path:
-    print(APPROVE)
     sys.exit(0)
 
 filename = os.path.basename(file_path)
@@ -24,7 +23,6 @@ filename = os.path.basename(file_path)
 skip_exts = [".log", ".map", ".lock", ".json"]
 if any(filename.endswith(ext) for ext in skip_exts) and filename != "package.json":
     brain_debug("suggest: skipped %s (non-source)" % filename)
-    print(APPROVE)
     sys.exit(0)
 
 t0 = time.time()
@@ -42,13 +40,10 @@ def main():
                 j = result["json"]
                 reason = j.get("reason", "")
                 brain_debug("suggest: %s → %d chars, %dms" % (filename, len(reason), latency))
-                print(json.dumps(j))
+                emit_hook_output("PreToolUse", j)
             else:
                 brain_debug("suggest: %s → no rules, %dms" % (filename, latency))
-                print(APPROVE)
-        else:
-            print(APPROVE)
     else:
-        print(json.dumps({"decision": "approve", "reason": daemon_unavailable_error("pre_edit_suggest")}))
+        emit_hook_output("PreToolUse", {"additionalContext": daemon_unavailable_error("pre_edit_suggest")})
 
-run_hook("pre_edit_suggest", main, on_error=lambda: print(APPROVE))
+run_hook("pre_edit_suggest", main)

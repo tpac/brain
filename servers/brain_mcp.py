@@ -895,11 +895,27 @@ def make_error(request_id, code, message):
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
+# Server-wide guidance the host may hand the model alongside the tool list.
+# Codex reads it (first 512 chars self-contained, per its docs); Claude Code
+# stores and never reads it, so on that host it is inert. Behavioral guidance
+# only — identity lives in the boot injection, not here.
+SERVER_INSTRUCTIONS = (
+    "brain is the assistant's persistent memory across sessions. Recall before "
+    "answering about past work, decisions, or people: `recall` for what is known, "
+    "`recall_episodes` for what was actually said. Keep what should outlive this "
+    "session with `remember` (decisions, corrections, lessons), each with a "
+    "`situation` line saying when it applies. If a memory proves stale, `revise` "
+    "it rather than adding a duplicate. Memory is accumulated experience, not a "
+    "verdict: lean on it and update it when proven wrong."
+)
+
+
 def handle_initialize(request_id):
     return make_response(request_id, {
         "protocolVersion": PROTOCOL_VERSION,
         "capabilities": {"tools": {}},
-        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
+        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        "instructions": SERVER_INSTRUCTIONS,
     })
 
 

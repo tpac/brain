@@ -3,7 +3,7 @@
 Eliminates repeated boilerplate: path setup, Brain import, input parsing,
 daemon connection helpers, error logging. Every hook .py file imports this.
 """
-import sys, os, json, traceback, sqlite3
+import sys, os, re, json, traceback, sqlite3
 from datetime import datetime, timezone
 
 # ── Path setup ──
@@ -180,9 +180,10 @@ def run_hook(name, fn, on_error=None):
     """Single error boundary for a hook script — the standard every hook runs through.
 
     Runs fn() (the hook body). If it raises, logs ONCE to hook_errors (via
-    log_hook_error, the canonical hook-side sink) and invokes on_error() for the
-    hook's fail-safe output — e.g. a PreToolUse hook printing its `approve`
-    decision so the tool isn't blocked by the hook's own crash.
+    log_hook_error, the canonical hook-side sink) and invokes on_error() for any
+    fail-safe output the hook still owes. Most hooks owe none: exit 0 with no
+    stdout reads as "nothing to report" on every host (see emit_hook_output),
+    so a crashed PreToolUse hook simply doesn't block the tool.
 
     Catches Exception only — SystemExit/KeyboardInterrupt propagate, so a hook's
     own `sys.exit(0)` skip-path (and Ctrl-C) still work. Never re-raises: a
@@ -257,6 +258,103 @@ def get_hook_input():
         if env_sid:
             data["session_id"] = env_sid
     return data
+
+
+# ── Host tool-input shapes ──
+# Codex's file tool is apply_patch: its PreToolUse/PostToolUse input is
+# {"command": <patch text>} with no file_path — the target sits in the patch
+# header. Claude Code sends file_path directly. One resolver for every hook that
+# keys on the edited file, so the two hosts never diverge per script.
+_PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+
+
+def tool_target_file(tool_input):
+    """The file an Edit/Write/apply_patch call targets, or "" when there is none.
+    A multi-file patch resolves to its first file — the daemon's rule lookup is
+    single-file."""
+    if not isinstance(tool_input, dict):
+        return ""
+    path = tool_input.get("file_path", "")
+    if path:
+        return path
+    m = _PATCH_FILE_RE.search(tool_input.get("command", "") or "")
+    return m.group(1).strip() if m else ""
+
+
+# ── Hook stdout contract ──
+# The ONE writer of a hook script's stdout. Two hosts read it — Claude Code and
+# Codex — against strict per-event JSON schemas, so the daemon protocol
+# ({decision, reason} / {additionalContext}) is translated to the host wire in
+# exactly one place. The brain informs, it never gates: a block is honored only
+# on Stop, where it is how a pending self-message is delivered (the host
+# continues the turn with the reason as its next prompt). Printing
+# `{"decision":"approve"}` is never right — Codex rejects it as invalid output
+# (hook run FAILED), and on Claude Code it meant "allow, skip the permission
+# prompt", a decision a memory plugin must not make for its user.
+
+_BLOCKING_EVENTS = ("Stop",)
+
+
+def _as_text(value):
+    """Coerce a payload field to text. The daemon sends strings; anything else
+    is a daemon-side bug we still want to SEE (as text), not a crash that
+    swallows the whole output."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = json.dumps(value, ensure_ascii=False, default=str)
+    return value.strip()
+
+
+def emit_hook_output(hook_event_name, payload):
+    """Write this hook's stdout for `hook_event_name` from a decision payload.
+
+    `payload` keys (any subset, or None): `decision` ("approve" | "block"),
+    `reason`, `additionalContext`.
+
+      nothing / approve with no text       → no output ("no opinion" on both hosts)
+      additionalContext, or approve+reason  → {"hookSpecificOutput": {…, "additionalContext"}}
+                                             (Stop: Codex's Stop schema has no
+                                             context channel — dropped, logged)
+      block on Stop                         → {"decision": "block", "reason"}
+      block on any other event, an unknown  → logged to hook_errors (warning);
+      decision, a non-dict payload            the text is still emitted as context
+
+    Both hosts reject a block without a non-empty reason, so one is supplied.
+    Flushes stdout so a caller may os._exit() right after.
+    """
+    def _warn(msg):
+        log_hook_error(_get_hook_name(), msg, "emit_hook_output(%s)" % hook_event_name, level="warning")
+
+    if payload is not None and not isinstance(payload, dict):
+        _warn("non-dict hook payload (%s) — nothing to emit" % type(payload).__name__)
+        payload = {}
+    payload = payload or {}
+    decision = payload.get("decision")
+    reason = _as_text(payload.get("reason"))
+    context = _as_text(payload.get("additionalContext"))
+    if decision and decision not in ("approve", "block"):
+        _warn("unknown hook decision %r — emitted as context, not a decision" % (decision,))
+        decision = None
+    if decision == "block" and hook_event_name not in _BLOCKING_EVENTS:
+        _warn("block on %s — the brain informs, it never gates; emitted as context" % hook_event_name)
+        decision = None
+    out = None
+    if decision == "block":
+        out = {"decision": "block", "reason": reason or "blocked by a brain hook"}
+    else:
+        text = context or reason
+        if text:
+            if hook_event_name == "Stop":
+                _warn("Stop context dropped (%d chars): Codex's Stop schema has no additionalContext channel" % len(text))
+            else:
+                out = {"hookSpecificOutput": {
+                    "hookEventName": hook_event_name,
+                    "additionalContext": text,
+                }}
+    if out is not None:
+        sys.stdout.write(json.dumps(out))
+        sys.stdout.flush()
 
 
 def daemon_unavailable_error(hook_name=None):
