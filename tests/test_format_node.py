@@ -193,6 +193,40 @@ class TestFormatNode(BrainTestBase):
         edge_lines2 = [l for l in out2.split('\n') if l.startswith('    [')]
         self.assertEqual(len(edge_lines2), 2)
 
+    def test_edge_line_age_is_the_relations_not_the_neighbors(self):
+        """The age in an edge line's bracket is when THIS relation was written,
+        never the neighbor node's age — which used to sit there unlabeled and
+        read as the edge's."""
+        nid = self._make_node(title='Owner')
+        old_nbr = self._make_node(title='Ancient neighbor')
+        self.brain.conn.execute("UPDATE nodes SET created_at = ? WHERE id = ?",
+                                ('2020-01-01T00:00:00+00:00', old_nbr))
+        self._add_edge(nid, old_nbr, relation='grounds', description='written today')
+        out = self._render(nid)   # absolute dates
+        edge_line = next(l for l in out.split('\n') if l.startswith('    [') and 'grounds' in l)
+        self.assertNotIn('2020', edge_line)
+        from servers.clock import iso_now
+        self.assertIn(iso_now()[:10], edge_line)
+
+    def test_edge_lines_one_per_relation_descriptions_whole(self):
+        """A pair carrying several relations renders one line per relation,
+        each with its own description untruncated — a reader may copy it
+        verbatim as a swap's `old`."""
+        nid = self._make_node(title='Owner')
+        nbr = self._make_node(title='Neighbor')
+        long_desc = 'x' * 250 + ' the load-bearing tail'
+        self._add_edge(nid, nbr, relation='extends', description=long_desc)
+        self._add_edge(nid, nbr, relation='grounds', description='second claim')
+        out = self._render(nid)
+        edge_lines = [l for l in out.split('\n') if l.startswith('    [')]
+        self.assertEqual(len(edge_lines), 2)
+        self.assertTrue(any(l.endswith(' — ' + long_desc) for l in edge_lines), edge_lines)
+        self.assertTrue(any(l.endswith(' — second claim') for l in edge_lines))
+        self.assertTrue(all(' | ' not in l for l in edge_lines))
+        # incoming direction still reads actor-first
+        out_nbr = self._render(nbr)
+        self.assertIn('"Owner" extends this — ' + long_desc, out_nbr)
+
     def test_differential_project_mark_on_mismatch(self):
         """cfg['scope']: foreign project renders the ⚠ mark, the generic
         'Project:' KV line is suppressed."""

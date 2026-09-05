@@ -241,6 +241,26 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         self.assertNotIn(reversed_line, text)
         self.assertEqual(text.count('supersedes →'), 1)
 
+    def test_edge_data_arrives_whole_with_the_relations_age(self):
+        """The decoder used to cut descriptions to 80 and titles to 60 chars
+        before the encoder ever saw them — a description a reader copies as
+        a swap's `old` has to arrive whole, and the edge line's age is the
+        relation's, so the loader carries it."""
+        a = self._node('member')
+        b = self._node('a neighbor title long enough to have been cut at sixty characters by the old loader', type='fact')
+        long_desc = 'd' * 120 + ' — the tail past eighty that used to vanish'
+        self.brain.connect_typed(a, b, relation='extends', weight=0.6,
+                                 description=long_desc, encoding_source='test')
+        data = self._decoder()._load_edge_data([a])
+        (edge,) = data[a][b]
+        self.assertEqual(edge['description'], long_desc)
+        self.assertEqual(edge['title'], self.brain.get_node(b)['title'])
+        self.assertTrue(edge.get('created_at'))
+        # and the encoder's External block renders it whole, in the one grammar
+        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: {b: data[a][b]}, })])
+        self.assertIn('this extends "%s' % edge['title'][:100], text)
+        self.assertIn(' — ' + long_desc, text)
+
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
         old = self._node('opener old')

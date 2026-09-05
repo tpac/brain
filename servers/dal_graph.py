@@ -47,6 +47,8 @@ EDGE_ROW_SHAPE = {
     'edge_description':   'str — relation description',
     'weight':             'float — edge-aggregate weight',
     'direction':          "str — 'outgoing' | 'incoming' from queried node",
+    'edge_created_at':    'str ISO — when the pair was first connected',
+    'relation_created_at': 'str ISO — when THIS relation (its description) was written',
     # Optional (present on richer methods)
     'last_accessed':      'str ISO',
     'access_count':       'int',
@@ -290,7 +292,8 @@ class GraphDAL:
                 n.locked, n.emotion, n.emotion_label,
                 er.relation, er.weight, er.description,
                 e.last_strengthened, e.co_access_count, e.edge_id,
-                CASE WHEN e.source_id IN ({owner_ph}) THEN 'outgoing' ELSE 'incoming' END as direction
+                CASE WHEN e.source_id IN ({owner_ph}) THEN 'outgoing' ELSE 'incoming' END as direction,
+                e.created_at, er.created_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id IN ({owner_ph}) THEN e.target_id ELSE e.source_id END
@@ -315,6 +318,7 @@ class GraphDAL:
                 'edge_description': r[15], 'last_strengthened': r[16],
                 'co_access_count': r[17], 'edge_id': r[18],
                 'direction': r[19],
+                'edge_created_at': r[20], 'relation_created_at': r[21],
             })
         return result
 
@@ -343,8 +347,12 @@ class GraphDAL:
 
         Returns dict {owner_id: [connection_dict, ...]} where each
         connection_dict has:
-            id, type, title, created_at, revised_at, confidence, locked,
-            weight, direction, relations: [{relation, description, weight}, ...]
+            id, type, title, created_at, revised_at, confidence, locked
+                (the NEIGHBOR node's fields — created_at is the neighbor's age),
+            weight, direction, edge_created_at (when the pair was connected),
+            relations: [{relation, description, weight, created_at}, ...]
+                (created_at is when THAT relation's description was written —
+                the age an edge line renders).
 
         Raises ValueError on empty node_ids.
         """
@@ -381,7 +389,8 @@ class GraphDAL:
                    n1.id, n1.type, n1.title, n1.created_at, n1.revised_at,
                    n1.confidence, n1.locked,
                    n2.id, n2.type, n2.title, n2.created_at, n2.revised_at,
-                   n2.confidence, n2.locked
+                   n2.confidence, n2.locked,
+                   e.created_at, er.created_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n1 ON n1.id = e.target_id
@@ -414,20 +423,21 @@ class GraphDAL:
             n2 = {'id': row[13], 'type': row[14], 'title': row[15],
                   'created_at': row[16], 'revised_at': row[17],
                   'confidence': row[18], 'locked': row[19] == 1}
+            edge_created, rel_created = row[20], row[21]
             relation_entry = {'relation': rel, 'description': desc,
-                              'weight': rel_weight}
+                              'weight': rel_weight, 'created_at': rel_created}
 
             if src in owner_set and tgt != src:
                 entry = grouped[src].setdefault(n1['id'], {
                     **n1, 'weight': agg_weight, 'direction': 'outgoing',
-                    'relations': [],
+                    'edge_created_at': edge_created, 'relations': [],
                 })
                 entry['relations'].append(relation_entry)
 
             if tgt in owner_set and src != tgt:
                 entry = grouped[tgt].setdefault(n2['id'], {
                     **n2, 'weight': agg_weight, 'direction': 'incoming',
-                    'relations': [],
+                    'edge_created_at': edge_created, 'relations': [],
                 })
                 entry['relations'].append(relation_entry)
 

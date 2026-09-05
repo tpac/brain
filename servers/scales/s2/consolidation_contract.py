@@ -90,7 +90,11 @@ CLUSTER_REQUIRED_FIELDS = {
 
 CONSOLIDATION_NODE_FORMAT = {
     'content_limit': 600,       # More depth than community (300)
-    'edge_limit': 5,            # Full edge context
+    # Edges render ONCE per cluster, in the Intra-cluster and External blocks
+    # (_format_clusters) — every edge, with direction and the whole
+    # description. The rich node block therefore shows none: two renders of
+    # the same edge in two shapes is what the reader had before.
+    'edge_limit': 0,
     'metadata_limit': 300,      # Full metadata — reasoning, raw quotes
     'time_format': 'relative',
 }

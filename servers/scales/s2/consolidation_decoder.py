@@ -876,8 +876,12 @@ class ConsolidationDecoder(IntegrationUnit):
         (S2 community detection manages placement on the next run).
 
         Returns {member_id: {neighbor_id: [edge_dicts]}} where each
-        edge_dict has relation/description/title/type/direction — the
-        nested shape the encoder's _format_clusters expects.
+        edge_dict has relation/description/title/type/direction plus
+        created_at (the relation's) and edge_created_at (the pair's) — the
+        nested shape the encoder's _format_clusters expects. Nothing is
+        truncated here: the encoder renders these through the one edge
+        renderer, and a description a reader might copy as a swap's `old`
+        has to arrive whole.
         """
         ids = list(node_ids)
         if not ids:
@@ -894,10 +898,12 @@ class ConsolidationDecoder(IntegrationUnit):
                     edges[member][nbr_id] = []
                 edges[member][nbr_id].append({
                     'relation': r['relation'],
-                    'description': (r.get('edge_description') or '')[:80],
-                    'title': (r['title'] or '')[:60],
+                    'description': r.get('edge_description') or '',
+                    'title': r['title'] or '',
                     'type': r['type'],
                     'direction': r['direction'],
+                    'created_at': r.get('relation_created_at'),
+                    'edge_created_at': r.get('edge_created_at'),
                 })
         return dict(edges)
 

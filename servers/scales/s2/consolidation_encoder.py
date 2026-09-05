@@ -227,7 +227,7 @@ class ConsolidationEncoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _format_clusters(self, clusters):
-        from servers.contract import render_rich_node
+        from servers.contract import render_edge_lines, render_rich_node
         from .consolidation_contract import (
             CONSOLIDATION_NODE_FORMAT, CLUSTER_REQUIRED_FIELDS,
             suppression_relations)
@@ -410,11 +410,16 @@ class ConsolidationEncoder(IntegrationUnit):
                         'node %s metadata skipped in cluster rendering' % nid[:8])
 
                 # External edges — every edge to a non-cluster-member
-                # neighbor, with direction, relation, and description.
-                # The encoder reads these to reason about ABSORB migration:
-                # survivor keeps its own, the peer's outgoing edges migrate
-                # via the survivor's connections list, and incoming edges
-                # migrate via separate `connect` ops from the neighbor.
+                # neighbor, in the one edge grammar every reader gets
+                # (render_edge_lines: direction by word order, the relation's
+                # age, the description whole). The encoder reads these to
+                # reason about ABSORB migration: survivor keeps its own, the
+                # peer's outgoing edges migrate via the survivor's connections
+                # list, and incoming edges migrate via separate `connect` ops
+                # from the neighbor. These lines are the node's ONLY edge
+                # render in this prompt — CONSOLIDATION_NODE_FORMAT sets
+                # edge_limit 0 so the rich block above does not show the same
+                # edges a second time in a second shape.
                 edge_details = cluster.get('edge_details', {}).get(nid, {})
                 external = {nbr: es for nbr, es in edge_details.items()
                             if nbr not in cluster['nodes']}
@@ -422,16 +427,18 @@ class ConsolidationEncoder(IntegrationUnit):
                     total = sum(len(es) for es in external.values())
                     lines.append('      External edges (%d):' % total)
                     for nbr_id, edges_list in external.items():
-                        for e in edges_list:
-                            arrow = '→' if e.get('direction') == 'outgoing' else '←'
-                            desc = e.get('description', '')
-                            desc_str = ' — %s' % desc if desc else ''
-                            lines.append('        %s %s [%s] "%s" (%s)%s' % (
-                                arrow, nbr_id[:8],
-                                e.get('type', '?'),
-                                e.get('title', '?')[:50],
-                                e.get('relation', '?'),
-                                desc_str))
+                        first = edges_list[0]
+                        entry = {'id': nbr_id, 'type': first.get('type', '?'),
+                                 'title': first.get('title', ''),
+                                 'direction': first.get('direction'),
+                                 'edge_created_at': first.get('edge_created_at'),
+                                 'relations': [
+                                     {'relation': e.get('relation', '?'),
+                                      'description': e.get('description', ''),
+                                      'created_at': e.get('created_at')}
+                                     for e in edges_list]}
+                        lines.extend(render_edge_lines(
+                            entry, CONSOLIDATION_NODE_FORMAT, indent='        '))
 
             lines.append('')
 

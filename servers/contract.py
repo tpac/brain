@@ -1144,6 +1144,68 @@ def scope_marks(node, scope, meta=None):
     return lines
 
 
+def _fmt_node_time(ts, cfg):
+    """A timestamp the way a render config asks for it: relative ('3w ago';
+    time_now = the as-of instant for replay-safe callers, time_fine = sub-day
+    steps for the encoder catalog) or the bare date. None when empty."""
+    if not ts:
+        return None
+    if cfg.get('time_format') == 'relative':
+        from servers.pipeline_contract import _relative_time
+        return _relative_time(ts, now=cfg.get('time_now'),
+                              fine=cfg.get('time_fine', False))
+    return str(ts)[:10]
+
+
+def render_edge_lines(conn, cfg=None, indent='    '):
+    """The one edge render for LLM readers — the lines under a node's Edges.
+    Every reader that shows a node's edges (the encoder catalog, the recall
+    surface, Anchor's get_node, the S2 units) calls this, so the grammar
+    cannot drift between them.
+
+    `conn` is a get_connections_bulk entry — one neighbor, grouped: id, type,
+    title, direction, edge_created_at, relations: [{relation, description,
+    created_at}]. One line per relation:
+
+        [type id:xxxxxxxx <age>] this <relation> "<neighbor title>" — <description>
+        [type id:xxxxxxxx <age>] "<neighbor title>" <relation> this — <description>
+
+    the second form for an incoming edge (the neighbor is the actor). The age
+    is the RELATION's created_at — when this claim was written — falling back
+    to the pair's; never the neighbor node's age, which used to sit in this
+    slot unlabeled. The description is never truncated: a reader may copy it
+    verbatim as a swap's `old`, and a cut copy fails the exactly-once match.
+    The neighbor title is cut at cfg edge_title_limit (default 100) — it is
+    the neighbor's own field, not something this line is for editing.
+
+    edge_style='oneline' is the selection-grade surface: direction, relation
+    and title only; no description, id or age (those are injection payload).
+    """
+    cfg = cfg or {}
+    title_limit = cfg.get('edge_title_limit', 100)
+    title = (conn.get('title') or '')[:title_limit]
+    incoming = conn.get('direction') == 'incoming'
+    rels = conn.get('relations') or [{'relation': conn.get('relation', ''),
+                                      'description': conn.get('description', ''),
+                                      'created_at': None}]
+    if cfg.get('edge_style') == 'oneline':
+        r = rels[0]
+        rel = r.get('relation') or 'related'
+        short = title[:80]
+        return [indent + ('"%s" %s this' % (short, rel) if incoming
+                          else 'this %s "%s"' % (rel, short))]
+    lines = []
+    tag_head = '[%s id:%s' % (conn.get('type', '?'), (conn.get('id') or '?')[:8])
+    for r in rels:
+        rel = r.get('relation') or 'related'
+        age = _fmt_node_time(r.get('created_at') or conn.get('edge_created_at'), cfg) or '?'
+        desc = r.get('description') or ''
+        head = ('"%s" %s this' % (title, rel)) if incoming else ('this %s "%s"' % (rel, title))
+        lines.append('%s%s %s] %s%s' % (indent, tag_head, age, head,
+                                        ' — %s' % desc if desc else ''))
+    return lines
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -1157,15 +1219,7 @@ def render_rich_node(node, config=None):
     use_relative = cfg.get('time_format') == 'relative'
 
     def _fmt_time(ts):
-        if not ts:
-            return None
-        if use_relative:
-            from servers.pipeline_contract import _relative_time
-            # time_now: the as-of instant (replay-safe callers pass conversation
-            # time); time_fine: sub-day '3h ago' steps (the encoder catalog).
-            return _relative_time(ts, now=cfg.get('time_now'),
-                                  fine=cfg.get('time_fine', False))
-        return str(ts)[:10]
+        return _fmt_node_time(ts, cfg)
 
     # Header — individual parts are opt-out via cfg flags (defaults preserve
     # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
@@ -1308,10 +1362,7 @@ def render_rich_node(node, config=None):
         content_limit_heavy=max(meta_limit, 400),
         meta_limit_heavy=meta_limit))
 
-    # Edges — direction as natural language for contextless LLM understanding.
-    # Title gets 100 chars (was 60) — the "why" description is the load-bearing
-    # signal, and a 60-char title truncation often dropped the meaningful tail
-    # ("Always used together: 'Tom correction: don't mak..." vs full).
+    # Edges — one grammar for every reader, owned by render_edge_lines.
     edge_limit = cfg.get('edge_limit', 5)
     all_conns = node.get('connections', [])
     connections = all_conns[:edge_limit]
@@ -1329,49 +1380,10 @@ def render_rich_node(node, config=None):
         # reason to go look.
         lines.append('  Edges (%d, not shown — get_nodes for them):'
                      % len(all_conns))
-    if connections and cfg.get('edge_style') == 'oneline':
-        # Selection-grade edge render: direction + relation + target title only.
-        # No description, no id, no timestamps — those are injection payload
-        # (the full style below). One line per edge, top relation only.
+    if connections:
         lines.append(edges_header)
         for e in connections:
-            title = e.get('title', '')[:80]
-            rels = e.get('relations') or []
-            rel = (rels[0].get('relation') if rels else e.get('relation', '')) or 'related'
-            if e.get('direction') == 'incoming':
-                lines.append('    "%s" %s this' % (title, rel))
-            else:
-                lines.append('    this %s "%s"' % (rel, title))
-    elif connections:
-        lines.append(edges_header)
-        for e in connections:
-            target_id = e.get('id', '?')[:8]
-            time_str = _fmt_time(e.get('created_at')) or '?'
-            title = e.get('title', '')[:100]
-            ntype = e.get('type', '?')
-            incoming = e.get('direction') == 'incoming'
-
-            relations = e.get('relations', [])
-            if relations and len(relations) > 1:
-                rel_strs = []
-                for r in relations:
-                    rel = r.get('relation', '')
-                    desc = ' — %s' % r['description'] if r.get('description') else ''
-                    if incoming:
-                        rel_strs.append('"%s" %s this%s' % (title, rel, desc))
-                    else:
-                        rel_strs.append('this %s "%s"%s' % (rel, title, desc))
-                lines.append('    [%s id:%s %s] %s' % (
-                    ntype, target_id, time_str, ' | '.join(rel_strs)))
-            else:
-                rel = e.get('relation', '')
-                desc = ' — %s' % e.get('description', '') if e.get('description') else ''
-                if incoming:
-                    lines.append('    [%s id:%s %s] "%s" %s this%s' % (
-                        ntype, target_id, time_str, title, rel, desc))
-                else:
-                    lines.append('    [%s id:%s %s] this %s "%s"%s' % (
-                        ntype, target_id, time_str, rel, title, desc))
+            lines.extend(render_edge_lines(e, cfg))
 
     return '\n'.join(lines)
 
