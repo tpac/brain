@@ -1,6 +1,6 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-09-03) — **5.7 BUILT and dry-run green; the push waits on Tom (e-mail domain, repo, go). 5.9 is unowned.**
+## §ACTIVE ARC (2026-09-05) — **5.7 BUILT and dry-run green; 5.9 opt-in export DONE; the push waits on Tom (e-mail domain, repo, go).**
 
 **5.7 built 2026-09-03/04 — `scripts/release.sh`, `install-smoke.sh`,
 `upgrade-smoke.sh` (harness `smoke-lib.sh`), NOT published.** One command,
@@ -25,7 +25,8 @@ the command itself, two of them welding it shut; all ten fixed and
 re-verified. Detail in the 5.7 item. **Waiting on Tom:** the public
 committer e-mail (a domain to be opened — the command requires one
 explicitly and scrubs it), `tpac/entity` creation, and the `--publish` go.
-**5.9 (opt-in export) is still unowned and should land before publish day.**
+**5.9 (opt-in export) landed 2026-09-05** — `build-plugin.sh` names every
+shipped path by literal or shape; the export materializes `--list-public`.
 
 **5.2 landed 2026-09-03.** Both manifests read `entity` / `anchor` / `0.9.0`;
 the 15 product-name sites (`boot-brain.sh`, `setup.html`) say **Entity**; the
@@ -57,7 +58,8 @@ also scans `\btpac\b` and `\bex\.co\b|\bexco\b`. Detail in the 5.3 item.
 
 **Tom's standing directive, 2026-09-01:** *"i want things that are released to
 the public repo to be opt in not opt out so we dont accidentally launch personal
-stuff."* Measured: 413 of 429 public files arrive by opt-out. New item **5.9**.
+stuff."* Measured: 413 of 429 public files arrive by opt-out. Item **5.9** —
+done 2026-09-05.
 
 **Deliberately NOT done, and this is a ruling not a gap:** the ~487
 dated/removal-verb comment lines. They carry no personal data and no broken
@@ -74,7 +76,7 @@ class, and two of the items below are bigger than they look.
 | 1 | **The encoder's system prompt says `"I am Anchor"`** — 3 occurrences in `encoding_prompt.py`'s `SYSTEM_PROMPT`, so every install's encoder claims that name. Eval-gated: a prompt change, not a comment edit | 5.3 → the Anchor inventory |
 | 2 | **`Anchor` across 62 files / 203 occurrences** (re-measured post-rename 2026-09-03: **150 in 55 shipped files** — the real blocker — and 53 in 7 never-ship files) — comments, docstrings, prompt/rubric files. Tom ruled it a deliberate one-at-a-time sweep with him engaged, NOT a mechanical pass | same table |
 | 3 | **`encoding_source='anchor'`** — 41 data-model literals + the lock gate's `startswith('anchor')`. Rename target recorded as `interactive`/`session` | same, final paragraph |
-| 4 | **The public tree is opt-out** — 413 of 429 files ship because nothing said no | **5.9** |
+| 4 | ~~The public tree is opt-out~~ — **closed by 5.9** (2026-09-05): every shipped path is named by literal or shape; a tracked file nothing names does not ship | **5.9** |
 | 5 | ~~Nothing covers what the release step adds~~ — **closed by 5.7**: author name asserted equal to the manifest's, e-mail + commit/tag messages through gate B, publish URL by equality; committer identity asserted on the git objects. Repo *description* is set on GitHub, outside the command | **5.7** |
 | 6 | **The v30 slug-map collapse is lossy** for 9 local pre-v30 copies, four of them Tom's own backups | 5.3 → the ⚠ note |
 | 7 | 116 dangling `docs/`/`eval/` references | 5.3 → the split table |
@@ -129,8 +131,7 @@ were false:
 1. ~~**5.3 comment audit**~~ — **gated half DONE + ratcheted 2026-09-01.** The
    ungated ~487 dated/removal-verb lines are a ruling, not a gap (see 5.3).
 2. ~~**5.2 rename + D-10**~~ — **DONE 2026-09-03** (see the arc head).
-3. **5.9 opt-in export** — before the first push, since the first push is the
-   one that can leak. Not a gate on 5.2; a gate on 5.7.
+3. ~~**5.9 opt-in export**~~ — **DONE 2026-09-05** (see the item).
 4. **5.7 release command → publish** — the one-way door. Must include an
    **install smoke test**: the suite runs *inside* the export tree, so it
    cannot catch a file that ships, is never imported by tests, and is needed
@@ -1428,9 +1429,8 @@ the fix-forward notice and the would-be push commands, nothing pushed.
 **What is left before the door opens — all Tom's:** the public committer
 e-mail (Tom will open a domain; anything with his name or handle trips gate B
 by design, so the address either is name-free or gets a deliberate allowlist
-entry), `gh repo create tpac/entity`, and the `--publish` go. And **5.9** —
-unowned — should land first, since it exists to prevent the accidental-launch
-class. The first REAL upgrade test runs at 0.9.1 with 0.9.0's public tree as
+entry), `gh repo create tpac/entity`, and the `--publish` go. **5.9** landed
+2026-09-05, so the export is opt-in before the first push. The first REAL upgrade test runs at 0.9.1 with 0.9.0's public tree as
 `RELEASE_PREVIOUS`. Follow-on worth its own item: run the suite inside the
 smoke's freshly bootstrapped runtime rather than the dev venv, so the tests
 see the dependency set a new user actually resolves. **The exported tree
@@ -1472,40 +1472,51 @@ worry was the wrong worry, and "the official directory" is not submittable.**
   conformance defect) so the grant is legible wherever the entry is rendered.
 Only once the self-hosted marketplace has real installs. Mechanics in §10.1. *S.*
 
-**5.9 The public tree is OPT-OUT. Tom ruled 2026-09-01 that it must be OPT-IN.**
-*"I want things that are released to the public repo to be opt in not opt out so
-we don't accidentally launch personal stuff."* Measured 2026-09-01: **413 of the
-429 public files arrive without anything having said yes to them.**
+**5.9 The public tree is OPT-IN — DONE 2026-09-05.** Tom's ruling: *"I want
+things that are released to the public repo to be opt in not opt out so we
+don't accidentally launch personal stuff."* `build-plugin.sh` stays the ONE
+owner of "what ships" and names every path — by literal or by shape — through
+`git ls-files` pathspecs; a tracked file nothing names does not ship, and an
+untracked file cannot ship even when its shape matches. `--list` is the
+package; `--list-public` adds the public-repo extras (README, CONTRIBUTING,
+MIGRATING, the suite) and is what `scripts/export-public-tree.sh` materializes
+before its denylist and gates. The export's interface is unchanged (5.7
+consumes only its exit code).
 
-| Path | How files are chosen | |
-|---|---|---|
-| `servers/ hooks/ skills/ dashboard/ bin/` | `git ls-files <dir>` minus a few `grep -v` filters | **opt-out** |
-| `tests/` | `git ls-files tests` (224) minus a 15-entry denylist → 189 land | **opt-out** |
-| root | hand-listed (`README.md`, `CONTRIBUTING.md`) | opt-in |
+| Path | Named by |
+|---|---|
+| root, `LICENSES/` | literal (`LICENSE`, the three manifests, `.mcp.json`, `requirements.txt`); `LICENSES/*.md` |
+| `servers/` | shape `**/*.py` minus `/archive/`; `aspects_v1.json` by literal |
+| `hooks/` | the two manifests by literal; `scripts/*.sh`, `*.py`, `*.plist`, `brain-*` launchers by shape |
+| `dashboard/` | shapes `**/*.py`, `*.js`, `*.css`, `*.html` |
+| `skills/` | shapes `*/SKILL.md`, `*/references/*.md` |
+| `tests/` | shapes `test_*.py`, `integration/test_*.py`; seven infrastructure modules by literal |
 
-Committing a tracked file into `servers/` or `tests/` ships it on the next
-release with nothing asking. The only thing between that and a leak is gate B,
-which knows five patterns. **This is the mechanism behind the 67→69 drift** —
-not a fluke, the design working as built.
+Shapes cover CODE only, and each is backed by an existing reachability test
+(a shipped `hooks/scripts` file must be wired; a shipped `servers/` module must
+be imported from an entrypoint) — the reason a hand-list of modules is not
+used is that the last one rotted 62 files behind reality. Data, docs,
+fixtures, harnesses and new subdirectories are the shapes personal material
+has actually taken, and none of them is a shape the manifest knows. A literal
+that matches nothing fails the build, so a named path cannot rot silently.
+`tests/` ships code only (`test_public_manifest_extends_package` pins it).
 
-Note the tension `build-plugin.sh` already records: `git ls-files` was chosen
-*deliberately* so an untracked scratch DB or secret can never ship. That
-argument holds for untracked files and says nothing about tracked ones. The
-opt-in question is only about the tracked set.
+Enforced by `TestPublicTreeExport::test_new_tracked_file_does_not_ship_until_named`:
+a sandbox git repo with one file per named shape plus seventeen tracked files
+nothing names (a session-log fixture, a gold corpus, a bench harness, dev
+notes, a new `tests/` subdirectory, an extensionless non-`brain-*` launcher,
+…) and one untracked shape match; the REAL export runs over it and the output
+must equal the named set exactly.
 
-Scoping notes for whoever takes this:
-- A literal 429-entry manifest rots — but it fails SAFE (a forgotten entry
-  means a missing file, which breaks loudly at install, not a silent leak).
-- The cheaper shape is per-directory opt-in: each shipped directory names an
-  explicit include-list or an include-pattern, so adding a file is a
-  one-line manifest edit rather than an automatic consequence of `git add`.
-- `tests/` is the highest-risk directory (189 files by subtraction, and the
-  denylist there is 15 entries of remembered exceptions).
-- Whatever lands needs its own test: a new tracked file under a shipped
-  directory must NOT appear in the export until something names it.
-Not a publish blocker on its own — gate B still catches the known patterns —
-but it is the reason the ratchets below exist, and it should land before the
-repo takes outside contributors. *M.*
+Export count 440 → **434**. The six files that shipped only by subtraction
+and are no longer named: `tests/bench_identifier_split.py`, `run_all.py`,
+`metrics.py`, `transcript_parser.py` (harnesses and helpers with no shipped
+importer), `golden_dataset_conversation_cases.json` (consumed only by a
+denylisted benchmark), `TEST-STANDARDS.md` (a dev note whose run
+instructions point at a harness that does not ship). The 15 `tests/`
+denylist entries are no longer what keeps anything out; the copy filter
+binds on one entry (`tests/test_deploy_contract.py` matches the suite shape
+and is the gate itself), the rest remain as gate A's result check. *Was M.*
 
 ---
 
@@ -1517,7 +1528,7 @@ repo takes outside contributors. *M.*
 2.x onboarding  (independent of Phase 1)
 3.1 ──► 3.2     (3.1 first; 3.3 deferred)
 4.1             (independent; needs the 127.0.0.1 guard)
-DONE: 5.0 · 5.0a · 5.0b · 5.1 · 5.4 · 5.6 · 9.7.2
+DONE: 5.0 · 5.0a · 5.0b · 5.1 · 5.4 · 5.6 · 5.9 · 9.7.2
 
 (1) free deletions ──┐   (RELOCATE the 2 eval-only contracts into eval/,
                      │    gate self-exemption, legacy-rung allowlist,
