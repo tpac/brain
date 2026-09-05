@@ -15,8 +15,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from servers.contract import (connect_to_target, is_swap, is_swap_list,  # noqa: E402
-                              unwrap_operations)
+from servers.contract import (connect_to_target, connect_to_why, is_swap,  # noqa: E402
+                              is_swap_list, unwrap_operations)
 
 # The node surfaces a revise can write besides content — the field-coverage
 # instrument reads which of them an op touched.
@@ -107,8 +107,10 @@ def edge_entries(op):
     standalone connect (`description` is its why). A `disconnect` removes an
     edge and asserts none — it yields no entry, so it can never stand in for
     (or blank out) the pair's real why in a scorer. Relation and why are new
-    text (swap-aware); the target is read through contract.connect_to_target,
-    so the deprecated `title` key still counts."""
+    text (swap-aware); the target is read through contract.connect_to_target
+    and the why through contract.connect_to_why, so the deprecated `title`
+    key and the `description` alias count the way the write path counts
+    them."""
     out = []
     k = kind(op)
     src = (str(op.get('node_id') or op.get('survivor_id') or '')[:8]
@@ -122,7 +124,7 @@ def edge_entries(op):
             out.append({'via': 'connect_to', 'source': src or None,
                         'target': target,
                         'relation': new_text(r.get('relation')),
-                        'why': new_text(r.get('why'))})
+                        'why': new_text(connect_to_why(r))})
     if k == 'connect':
         out.append({'via': 'connect',
                     'source': str(op.get('source_id') or '')[:8],

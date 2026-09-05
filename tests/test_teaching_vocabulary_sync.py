@@ -37,33 +37,23 @@ GIST = INTERACTION_DEFAULTS['s1e_gist'][0]
 # when the gist does — one allowlist, not three.
 GIST_OPEN_VOCABULARY = {'resolves', 'partially_resolves', 'open'}
 
-def _descriptions(schema):
-    """Every `description` string in a tool or op spec, at any depth — the
-    prose a model reads. A schema KEY is not a mention: matched as whole-tool
-    JSON, a property taught itself by existing, and the check was tautological."""
-    out = []
-    if isinstance(schema, dict):
-        for k, v in schema.items():
-            if k == 'description' and isinstance(v, str):
-                out.append(v)
-            else:
-                out.extend(_descriptions(v))
-    elif isinstance(schema, list):
-        for v in schema:
-            out.extend(_descriptions(v))
-    return out
-
-
-# Every surface that teaches the revise vocabulary, evaluated once. Tool
-# surfaces are their description prose (tool + every property), not the
-# schema's keys.
+# The prose surfaces that teach the revise vocabulary, evaluated once — a
+# field is taught here when its name appears in the text.
 SURFACES = [
     ('s1e prompt', SYSTEM_PROMPT),
     ('gist', GIST),
     ('field summary', generate_field_summary()),
-    ('MCP revise', '\n'.join(_descriptions(TOOLS['revise']))),
-    ('MCP revise_batch', '\n'.join(_descriptions(TOOLS['revise_batch']))),
-    ('brain_batch revise spec', '\n'.join(_descriptions(BATCH_OP_SPECS['revise']))),
+]
+
+# The tool surfaces: a field is taught here when its OWN property carries a
+# description. A schema key alone is not teaching (the model gets no
+# guidance), and a mention inside another property's prose is not either
+# (the rule's sentence lists five field names — every one would pass).
+TOOL_PROPS = [
+    ('MCP revise', TOOLS['revise']['inputSchema']['properties']),
+    ('MCP revise_batch',
+     TOOLS['revise_batch']['inputSchema']['properties']['revisions']['items']['properties']),
+    ('brain_batch revise spec', BATCH_OP_SPECS['revise']['properties']),
 ]
 
 
@@ -168,7 +158,9 @@ def test_every_revise_spec_field_is_taught_on_every_surface():
     assert fields, 'revise spec has no teachable fields — did the contract move?'
     silent = [(name, f) for f in fields for name, text in SURFACES
               if not _names(text, f)]
-    assert not silent, 'revise fields the contract offers but a surface never names: %s' % silent
+    silent += [(name, f) for f in fields for name, props in TOOL_PROPS
+               if not (props.get(f) or {}).get('description')]
+    assert not silent, 'revise fields the contract offers but a surface never teaches: %s' % silent
 
 
 def test_every_swap_field_is_value_or_swap_on_the_mcp_revise_surfaces():

@@ -47,9 +47,9 @@ EDGE_ROW_SHAPE = {
     'edge_description':   'str — relation description',
     'weight':             'float — edge-aggregate weight',
     'direction':          "str — 'outgoing' | 'incoming' from queried node",
-    'edge_created_at':    'str ISO — when the pair was first connected',
-    'relation_created_at': 'str ISO — when THIS relation (its description) was written',
     # Optional (present on richer methods)
+    'edge_created_at':    'str ISO — when the pair was first connected (get_neighbors_bulk)',
+    'relation_created_at': 'str ISO — when THIS relation was first written (get_neighbors_bulk)',
     'last_accessed':      'str ISO',
     'access_count':       'int',
     'emotion':            'float',

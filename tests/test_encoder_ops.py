@@ -94,6 +94,10 @@ def test_edge_entries_read_target_or_title_and_swap_new_text():
     # never blank out the pair's real why in the surfaces scorer
     assert edge_entries({'op': 'disconnect', 'source_id': 'a' * 8,
                          'target_id': 'b' * 8, 'relation': 'x'}) == []
+    # `description` is the write path's alias of `why` on a connect_to entry
+    (w,) = edge_entries({'op': 'remember', 'connect_to': [
+        {'target': 'd' * 8, 'relation': 'r', 'description': 'the alias why'}]})
+    assert w['why'] == 'the alias why'
 
 
 def test_revise_surfaces_and_text_carry_new_values_only():
@@ -111,8 +115,10 @@ def test_revise_surfaces_and_text_carry_new_values_only():
     assert revise_surfaces(alias) == {'content': 'b'}
 
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
+
+
 def _harness():
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'eval'))
     import eval.encoder_prompt_ab as harness
     return harness
 
@@ -153,14 +159,19 @@ def test_splice_gist_fills_or_strips_the_slot():
     <timeline>, whatever the capture carried there. Disabled: the slot is
     empty — byte-for-byte what production assembles with `enabled: false`."""
     splice_gist = _harness().splice_gist
+    # production: "<node_catalog>…</node_catalog>\n\n" + gist + "\n\n" + <timeline
     cap = '<node_catalog>\nnodes\n</node_catalog>\n\nold gist words\n\n<timeline now="x">\n…'
     filled, replaced = splice_gist(cap, 'NEW GIST')
-    assert filled == '<node_catalog>\nnodes\n</node_catalog>\nNEW GIST\n\n<timeline now="x">\n…'
+    assert filled == '<node_catalog>\nnodes\n</node_catalog>\n\nNEW GIST\n\n<timeline now="x">\n…'
     assert replaced == len('old gist words')
     stripped, replaced = splice_gist(cap, None)
-    assert stripped == '<node_catalog>\nnodes\n</node_catalog>\n<timeline now="x">\n…'
+    assert stripped == '<node_catalog>\nnodes\n</node_catalog>\n\n<timeline now="x">\n…'
     assert replaced == len('old gist words')
     assert splice_gist(filled, 'NEW GIST') == (filled, len('NEW GIST'))   # idempotent
+    # production: scout legend + "\n" + gist — no blank line after that closer
+    legend = '</scout_legend>\nold words\n\n<timeline now="x">\n…'
+    assert splice_gist(legend, 'G') == ('</scout_legend>\nG\n\n<timeline now="x">\n…', len('old words'))
+    assert splice_gist(legend, None) == ('</scout_legend>\n<timeline now="x">\n…', len('old words'))
     assert splice_gist('no timeline here', 'g') == (None, 0)
 
 
@@ -205,3 +216,29 @@ def test_swap_fidelity_refuses_like_production_on_fields_and_edges():
               'connect_to': [{'target': '15bbfd64',
                               'why': {'old': 'moved to 9.7.2', 'new': 'at 9.7.2'}}]}]
     assert score_swap_fidelity(ops + later, stored, edges) == rows
+
+
+def test_swap_fidelity_edge_corners_match_production():
+    """A relation swap LIST of any length but one is a refusal in production
+    ('a relation takes one swap'), not a bare relation; `description` is the
+    write path's alias of `why`; and a revise on a node the copy no longer
+    holds says nothing about its edges — skipped whole, no spurious rows."""
+    h = _harness()
+    stored = {'d827d22f': {'id': 'd827d22f' + '0' * 24, 'title': 't', 'content': 'c',
+                           'connections': [{'id': '15bbfd64' + '0' * 24, 'relations': [
+                               {'relation': 'gaps_in', 'description': 'both manifests still say 9.6.0'}]}]}}
+    edges = h.stored_edges(stored)
+    assert edges == {frozenset(('d827d22f', '15bbfd64')): {'gaps_in': 'both manifests still say 9.6.0'}}
+    two = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+            'connect_to': [{'target': '15bbfd64',
+                            'relation': [{'old': 'gaps_in', 'new': 'blocks'}, {'old': 'x', 'new': 'y'}],
+                            'why': {'old': 'still say 9.6.0', 'new': 'moved to 9.7.2'}}]}]
+    (row,) = h.score_swap_fidelity(two, stored, edges)
+    assert 'one swap' in row['error']
+    alias = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+              'connect_to': [{'target': '15bbfd64', 'description': {'old': 'still say 9.6.0',
+                                                                    'new': 'moved to 9.7.2'}}]}]
+    assert h.score_swap_fidelity(alias, stored, edges) == []          # lands, via the alias
+    gone = [{'op': 'revise', 'node_id': 'zzzzzzzz', 'reason': 'r',
+             'connect_to': [{'target': '15bbfd64', 'why': {'old': 'a', 'new': 'b'}}]}]
+    assert h.score_swap_fidelity(gone, stored, edges) == []           # node absent → skipped whole

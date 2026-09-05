@@ -11,7 +11,7 @@ from .brain_constants import TYPE_CONFIDENCE
 from .dal import VectorDAL
 from .dal_graph import ABSORB_EXCLUDED_RELATIONS
 from .clock import iso_cutoff, iso_now
-from .contract import (ALL_FIELDS, apply_swaps, connect_to_target, is_swap,
+from .contract import (ALL_FIELDS, apply_swaps, connect_to_target, connect_to_why, is_swap,
                        is_swap_list, validate_swaps)
 from .brain_constants import (
     ENRICHMENT_NEIGHBOR_COUNT,
@@ -2066,7 +2066,7 @@ class BrainRememberMixin:
                     if not isinstance(r, dict):
                         continue
                     rel = r.get('relation', 'related')
-                    desc = r.get('why', r.get('description', ''))
+                    desc = connect_to_why(r) or ''
                     relation_pairs.append((rel, desc))
                 if not relation_pairs:
                     reason = "connect_to relations array is empty or malformed"
@@ -2076,7 +2076,7 @@ class BrainRememberMixin:
                     return None, [], reason
             else:
                 rel = entry.get('relation', 'related')
-                desc = entry.get('why', entry.get('description', ''))
+                desc = connect_to_why(entry) or ''
                 relation_pairs = [(rel, desc)]
         else:
             reason = ("connect_to entry must be str or dict, got %s"
@@ -2370,14 +2370,13 @@ class BrainRememberMixin:
                 continue
 
             if isinstance(entry.get('relations'), list):
-                pairs = [(r.get('relation'), r.get('why', r.get('description')))
+                pairs = [(r.get('relation'), connect_to_why(r))
                          for r in entry['relations'] if isinstance(r, dict)]
                 if not pairs:
                     fail(label, 'connect_to relations array is empty or malformed')
                     continue
             else:
-                pairs = [(entry.get('relation'),
-                          entry.get('why', entry.get('description')))]
+                pairs = [(entry.get('relation'), connect_to_why(entry))]
 
             edge_id = gdal.get_edge_id(node_id, target_id)
             for rel, why in pairs:

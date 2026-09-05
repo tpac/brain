@@ -69,7 +69,6 @@ SWAP_SCHEMA = {
         "new": {"type": "string", "description": "Replacement text"},
     },
 }
-SWAP_LIST_SCHEMA = {"type": "array", "items": SWAP_SCHEMA}
 
 # The reference forms. A tool schema states each shared shape ONCE under its
 # root `$defs` and points at it from every field that takes it — forty inline
@@ -248,6 +247,16 @@ def connect_to_target(entry):
     if not isinstance(entry, dict):
         return entry
     return entry.get('target') or entry.get('title', '')
+
+
+def connect_to_why(entry):
+    """The why a connect_to entry (or one of its `relations` items) carries —
+    `why`, or its alias `description` (the name the standalone `connect` op
+    and the edge table use). The one place the alias is known; the write
+    path and every scorer read it through here."""
+    if not isinstance(entry, dict):
+        return None
+    return entry.get('why', entry.get('description'))
 
 
 def _revise_connect_to_item_schema():
@@ -1171,19 +1180,21 @@ def render_edge_lines(conn, cfg=None, indent='    '):
         [type id:xxxxxxxx <age>] "<neighbor title>" <relation> this — <description>
 
     the second form for an incoming edge (the neighbor is the actor). The age
-    is the RELATION's created_at — when this claim was written — falling back
-    to the pair's; never the neighbor node's age, which used to sit in this
-    slot unlabeled. The description is never truncated: a reader may copy it
-    verbatim as a swap's `old`, and a cut copy fails the exactly-once match.
-    The neighbor title is cut at cfg edge_title_limit (default 100) — it is
-    the neighbor's own field, not something this line is for editing.
+    is the RELATION's created_at — when this relation was first written;
+    a description repaired in place keeps that date (edge_relations has no
+    updated_at) — falling back to the pair's created_at. The description is
+    never truncated: a reader may copy it verbatim as a swap's `old`, and a
+    cut copy fails the exactly-once match. The neighbor title is cut at 100
+    chars — it is the neighbor's own field, not something this line is for
+    editing.
 
+    `cfg` merges over NODE_FORMAT_DEFAULTS like render_rich_node's, so a
+    direct caller (the S2 units) and a rich-node render agree on defaults.
     edge_style='oneline' is the selection-grade surface: direction, relation
     and title only; no description, id or age (those are injection payload).
     """
-    cfg = cfg or {}
-    title_limit = cfg.get('edge_title_limit', 100)
-    title = (conn.get('title') or '')[:title_limit]
+    cfg = {**NODE_FORMAT_DEFAULTS, **(cfg or {})}
+    title = (conn.get('title') or '')[:100]
     incoming = conn.get('direction') == 'incoming'
     rels = conn.get('relations') or [{'relation': conn.get('relation', ''),
                                       'description': conn.get('description', ''),
@@ -1218,9 +1229,6 @@ def render_rich_node(node, config=None):
     nid = node.get('id', '?')
     use_relative = cfg.get('time_format') == 'relative'
 
-    def _fmt_time(ts):
-        return _fmt_node_time(ts, cfg)
-
     # Header — individual parts are opt-out via cfg flags (defaults preserve
     # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
     parts = ["id:%s" % nid[:8]]
@@ -1242,8 +1250,8 @@ def render_rich_node(node, config=None):
     if cfg.get('show_encoding_source', True):
         if node.get('encoding_source'):
             parts.append("src:%s" % node['encoding_source'])
-    created_rel = _fmt_time(node.get('created_at'))
-    revised_rel = _fmt_time(node.get('revised_at'))
+    created_rel = _fmt_node_time(node.get('created_at'), cfg)
+    revised_rel = _fmt_node_time(node.get('revised_at'), cfg)
     if revised_rel and created_rel and revised_rel != created_rel:
         parts.append("created %s, revised %s" % (created_rel, revised_rel))
     elif created_rel:

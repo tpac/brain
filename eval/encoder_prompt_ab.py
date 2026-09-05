@@ -61,8 +61,8 @@ from encoder_prompt_reassembly import (  # noqa: E402  (path set above)
     strip_scout_blocks, turn_count)
 from encoder_ops import (  # noqa: E402  the one op-dump reader, shared with encoder_ops_shape
     edge_entries, kind, new_text, ops_of, revise_surfaces, revise_text, swaps_of)
-from servers.contract import (apply_swaps, connect_to_target, is_swap,  # noqa: E402
-                              is_swap_list)
+from servers.contract import (apply_swaps, connect_to_target, connect_to_why,  # noqa: E402
+                              is_swap, is_swap_list)
 
 # (label, view_policy, window_aligned, aged_content_chars)
 #   -1 = the policy's own config — body whole since arm D shipped as the
@@ -451,7 +451,7 @@ def score_arm(log, aged_ids, index, brain=None):
     _stored = stored_nodes(
         brain, [str(o.get('node_id') or o.get('survivor_id') or '')
                 for o in revise_ops]) if brain else {}
-    _edges = stored_edges(brain, revise_ops, _stored) if brain else {}
+    _edges = stored_edges(_stored)
     return {
         'rounds': log['rounds'],
         'reads': len(log['reads']),
@@ -536,31 +536,22 @@ def _hex_ids(v):
     return set()
 
 
-def stored_edges(brain, revises, stored):
-    """{frozenset((node8, target8)): {relation: description}} for every pair
-    a revise's `connect_to` addresses — the edge brain.revise would resolve,
-    read through GraphDAL the way it does (get_edge_id checks both
-    directions). Targets are resolved to full ids by the same read
-    stored_nodes uses."""
-    want = {}
-    for op in revises:
-        nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-        for e in edge_entries(op):
-            if e['via'] == 'connect_to' and e['source']:
-                want.setdefault(nid, set()).update(_hex_ids(e['target']))
-    if not want:
-        return {}
-    targets = {t for ts in want.values() for t in ts}
-    nodes = dict(stored, **stored_nodes(brain, targets - set(stored)))
+def stored_edges(stored):
+    """{frozenset((node8, neighbor8)): {relation: description}} for every
+    edge the stored revise targets carry — read off the `connections` the
+    canonical pull already attached to each node (every relation on the pair,
+    with its description), so the fidelity check needs no second read and no
+    reach into the DAL."""
     out = {}
-    for nid, ts in want.items():
-        for t in ts:
-            a, b = (nodes.get(nid) or {}).get('id'), (nodes.get(t) or {}).get('id')
-            eid = brain._graph.get_edge_id(a, b) if a and b else None
-            if eid:
-                out[frozenset((nid, t))] = {
-                    r['relation']: r.get('description') or ''
-                    for r in brain._graph.get_relations(eid)}
+    for nid, node in stored.items():
+        for conn in node.get('connections') or ():
+            nbr = str(conn.get('id') or '')[:8]
+            if not nbr:
+                continue
+            rels = conn.get('relations') or [{'relation': conn.get('relation'),
+                                              'description': conn.get('description')}]
+            out[frozenset((nid, nbr))] = {r['relation']: r.get('description') or ''
+                                          for r in rels if r.get('relation')}
     return out
 
 
@@ -574,7 +565,9 @@ def score_swap_fidelity(revises, stored, edges):
     `connect_to`: a `why` swap patches the stored edge description, a
     `relation` swap renames an active relation, the row resolved as
     brain.revise resolves it (a bare relation names it; absent means the
-    pair's one relation). `edges` is stored_edges' shape. Rows are
+    pair's one relation; a relation swap is exactly one {old, new}). Ops on a
+    node the copy no longer holds are skipped whole — a missing node says
+    nothing about its edges. `edges` is stored_edges' shape. Rows are
     {id, field, error}; advisory when the isolated copy has drifted past the
     capture (stored values moved) — read misses alongside the run's date
     before trusting them."""
@@ -588,30 +581,37 @@ def score_swap_fidelity(revises, stored, edges):
     for op in revises:
         nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
         node = evolving.get(nid)
-        if node is not None:
-            for field, swaps in swaps_of(op).items():
-                cur = stored_field(node, field)
-                if not isinstance(cur, str) or not cur:
-                    miss(nid, field, 'no stored value to swap into')
-                    continue
-                new, err = apply_swaps(cur, swaps, field)
-                if err:
-                    miss(nid, field, err)
-                    continue
-                node[field] = new   # a later op patches what this one produced
+        if node is None:
+            continue
+        for field, swaps in swaps_of(op).items():
+            cur = stored_field(node, field)
+            if not isinstance(cur, str) or not cur:
+                miss(nid, field, 'no stored value to swap into')
+                continue
+            new, err = apply_swaps(cur, swaps, field)
+            if err:
+                miss(nid, field, err)
+                continue
+            node[field] = new   # a later op patches what this one produced
         for c in (op.get('connect_to') or []):
             if not isinstance(c, dict):
                 continue
+            target = str(connect_to_target(c) or '')
+            label = 'connect_to:%s' % (target[:8] or '?')
             items = [r for r in (c.get('relations') or []) if isinstance(r, dict)] or [c]
             for r in items:
-                rel, why = r.get('relation'), r.get('why', r.get('description'))
-                rel_swap = (rel[0] if is_swap_list(rel) and len(rel) == 1
-                            else rel if is_swap(rel) else None)
+                rel, why = r.get('relation'), connect_to_why(r)
                 why_swap = why if is_swap(why) or is_swap_list(why) else None
+                rel_swap = None
+                if is_swap_list(rel):
+                    if len(rel) != 1:
+                        miss(nid, label, 'a relation takes one swap {old, new}, not a list')
+                        continue
+                    rel_swap = rel[0]
+                elif is_swap(rel):
+                    rel_swap = rel
                 if not rel_swap and not why_swap:
                     continue    # bare values are not swaps
-                target = str(connect_to_target(c) or '')
-                label = 'connect_to:%s' % (target[:8] or '?')
                 pair = next((frozenset((nid, t)) for t in _hex_ids(target)
                              if frozenset((nid, t)) in live), None)
                 if pair is None:
@@ -783,8 +783,11 @@ def splice_gist(captured, gist):
     between the last closing block tag and the <timeline line IS the
     capture's gist (any wording — an older default, a candidate) and is
     replaced, so the splice is idempotent and never doubles. `gist=None`
-    strips the slot — what a disabled `s1e_gist` assembles to. Returns
-    (new_capture, replaced_chars); (None, 0) when the capture has no
+    strips the slot — what a disabled `s1e_gist` assembles to. The blank
+    lines the capture carries between the closer and the slot's text are
+    kept: production emits one after every block but the scout legend, so
+    keeping them is what makes both paths byte-identical to assembly.
+    Returns (new_capture, replaced_chars); (None, 0) when the capture has no
     <timeline line."""
     m = re.search(r'^<timeline', captured, re.M)
     if not m:
@@ -792,20 +795,26 @@ def splice_gist(captured, gist):
     closers = list(GIST_SLOT_CLOSERS.finditer(captured, 0, m.start()))
     start = closers[-1].end() if closers else m.start()
     slot = captured[start:m.start()]
-    filled = gist + '\n\n' if gist is not None else ''
+    lead = re.match(r'\n*', slot).group(0)
+    filled = lead + (gist + '\n\n' if gist is not None else '')
     return captured[:start] + filled + captured[m.start():], len(slot.strip())
 
 
 def _corr_rels_offline():
     """The correction-relation vocabulary without a brain: the per-operator
     WORKING aspects file (aspect_store.aspects_json_path) through the
-    registry's own door (from_dict). The working copy, not the repo seed,
-    because it is the file an IsolatedBrain snapshots — so a re-score reads
-    the same membership the live scorer read when the dump was scored; the
-    seed can lag the S2 aspect unit's classifications."""
+    registry's own door (from_dict) — the file an IsolatedBrain snapshots,
+    so a re-score reads the membership the live scorer read when the dump
+    was scored (the seed can lag the S2 aspect unit's classifications). On a
+    machine where no registry has ever loaded (fresh checkout, CI, an empty
+    BRAIN_DB_DIR) the working copy does not exist yet and the repo seed is
+    the only membership there is."""
     from servers.aspects import AspectRegistry
-    from servers.aspect_store import aspects_json_path
-    with open(aspects_json_path()) as f:
+    from servers.aspect_store import SEED_ASPECTS_JSON_PATH, aspects_json_path
+    path = aspects_json_path()
+    if not os.path.exists(path):
+        path = SEED_ASPECTS_JSON_PATH
+    with open(path) as f:
         data = {k: v for k, v in json.load(f).items() if not k.startswith('_')}
     reg = AspectRegistry.from_dict(None, data)
     return set(reg.relations_in(['correction_improvement']))
