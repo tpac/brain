@@ -271,7 +271,24 @@ importers.
 
 ## Step 7 — Edge render cleaning (2026-09-05, before the next encoder eval)
 
-**State.** `contract.render_edge_lines` is the one edge grammar for every LLM
+**State (2026-09-05, after the cleaning commits).** (a)–(e) are on the branch:
+`get_node` passes `structural_exclusions` and `_filter_noise_relations` is gone
+(bc2e16c); community membership is a `communities` attachment and a
+`Communities:` line for Anchor's formats, SURFACE_ARC/FACT and HAIKU_FORMAT —
+off for the encoder, the consolidation node block and HAIKU_FORMAT_LEAN, which
+is ablation-measured (e6de5ff); ties break by relation `created_at` and
+GET_NODES_SMALL/BALANCED show the edge total — the encoder already does via
+the view policy cfg, and the control arm stays byte-identical (test_encoder_view)
+(c07c622); one header per node in the cluster block (bed9510);
+the three aspect names are out of the noise seed and a curation test refuses
+them (4659bd7). The ten live rows using aspect names as relations were folded
+into their pairs' `community_member` relation on 2026-09-05. Re-measured on an
+isolated copy: noise top-5 slots 28% → 0; d827d22f 9 → 5 connections with
+15bbfd64 in the top 5; nodes with >5 semantic edges 3,196 (of 9,351 with any).
+**Open:** (f) below; the install's working copy still lists the four names
+under noise (seed removals do not propagate — `reconcile_working_copy`).
+
+`contract.render_edge_lines` is the one edge grammar for every LLM
 reader (f716faf); the line's age is the relation's `created_at`; no reader
 truncates a description; consolidation loads edges grouped per owner and
 shows each once (ae6bc58); the healer examples match the live grammar

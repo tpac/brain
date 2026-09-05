@@ -3,14 +3,15 @@
 Status: ruled by Tom 2026-09-03. **Every §4 row is done and committed on the
 branch** `claude/sweet-lichterman-ba9854` (contract + write path, tool layer,
 gist interaction + guardrail, harness, prompt rows, shared `$defs` shapes, the
-plan-step-1 harness fixes, the two edge levers L1/L2), unmerged — the daemon
-runs main; Tom ruled the deploy is one merge, together, never the tool-layer
-half first. Two edge cells have a number (§6 step 3): the edge surface is
-0/30 across every arm while every other surface held or improved; merge is
-Tom's gate. The vocabulary guardrail is GREEN. Handoff: brain `f4989ab7`
-(boot self-test, verify-before-use, gates, the inventory of open encoder
-improvements); working set outside git at
-`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-2.md`.
+plan-step-1 harness fixes, the two edge levers L1/L2, the render unification
+and the edge-render cleaning — `REVISE-SHAPE-ARCH-PLAN.md` Step 7), unmerged —
+the daemon runs main; Tom ruled the deploy is one merge, together, never the
+tool-layer half first ("all at once", 2026-09-05). Four edge cells have a
+number (§6 step 3): the edge surface is 0/36 across every arm while every other
+surface held or improved; merge is Tom's gate. The vocabulary guardrail is
+GREEN. Handoff: brain `92e4f8ff` (boot self-test, verify-before-use, gates);
+working set outside git at
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-3.md`.
 **Before any prompt row is edited: the full read of `SYSTEM_PROMPT` with a
 per-section audit artifact (brain id:71eeff20) — Tom's condition for the
 prompt half.**
