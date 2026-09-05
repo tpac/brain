@@ -104,11 +104,20 @@ Marketplaces **[doc][src]**: `$REPO_ROOT/.agents/plugins/marketplace.json`,
 `~/.agents/plugins/marketplace.json` (personal). Add with
 `codex plugin marketplace add <path | owner/repo | git-url>`. Install copies
 the plugin to `~/.codex/plugins/cache/$MARKETPLACE/$PLUGIN/$VERSION/`
-(`$VERSION` = `local` for local sources) and **loads from the cache copy**.
-After changing a local plugin: update the directory the marketplace entry
-points to, restart the app (or start a new CLI session). Enable state and
-per-plugin MCP policy live in `~/.codex/config.toml` under
-`plugins."<name>@<marketplace>".mcp_servers.<server>`.
+(`$VERSION` = the manifest's `version` — `anchor-dev/entity/0.9.0/`
+**[measured]**) and **loads from the cache copy**. The copy is the source
+directory WHOLESALE — no `.gitignore`, no manifest filter **[measured]**: a
+marketplace pointed at this checkout copied 122,533 files / 9.9 GB (`.git/`,
+`conversations/`, `venv/`), and copies interrupted mid-way are left as
+`cache/$MARKETPLACE/plugin-install-*/` staging trees with no manifest. So the
+marketplace source is the packaged tree at `dist/codex/entity` (`redeploy.sh`
+refreshes it; `scripts/codex-install.sh` does package → marketplace → install
+→ verify). A personal marketplace's `source.path` resolves relative to its
+root, `$HOME` **[measured]** — an absolute path yields zero plugins, silently.
+After changing a local plugin, re-install (the script does remove + add) and
+start a new session. Enable state and per-plugin MCP policy live in
+`~/.codex/config.toml` under `plugins."<name>@<marketplace>"` (`enabled =
+true` is written by `plugin add` **[measured]**).
 
 Plugin name rule: lowercase kebab-case — `entity` qualifies. `userConfig` and
 other unknown manifest keys are not part of the Legacy schema **[src]**; whether
@@ -391,12 +400,13 @@ the stance text should be model-neutral, or the daemon takes a `host` on
 
 ### 5.7 G7 — Install, redeploy, runtime
 
-Dev loop: marketplace entry → `codex plugin marketplace add` (or the desktop
-app's Personal tab) → install → **trust hooks** (`/hooks`) → new session.
-Redeploy: refresh the directory the marketplace points at, restart. The venv
-bootstrap writes into `$PLUGIN_ROOT/venv`, i.e. into the cache copy; whether a
-refresh preserves it is **[untested]** — if not, every update pays the 60–90 s
-cold bootstrap. Relocating the runtime to `PLUGIN_DATA` (`CLAUDE_PLUGIN_DATA`
+Dev loop: `scripts/codex-install.sh` (package → `dist/codex/entity` →
+personal marketplace → `codex plugin add` → verify) → **trust hooks** in the
+app → new session. Redeploy: run the script again (it removes and re-adds, so
+the cache copy is the current package) and start a new session. The venv
+bootstrap writes into `$PLUGIN_ROOT/venv`, i.e. into the cache copy; a
+remove + add discards it, so every update pays the 60–90 s cold bootstrap
+until the runtime moves to `PLUGIN_DATA` (S7). Relocating the runtime to `PLUGIN_DATA` (`CLAUDE_PLUGIN_DATA`
 under CC) fixes both hosts and is already noted as deferred in
 `runtime-state.sh`.
 
@@ -452,7 +462,7 @@ Each step runs cold in its own session.
 
 | # | Step | Depends on | Size |
 |---|---|---|---|
-| S0 | Install Codex CLI (or use Codex mode); personal marketplace → repo | — | Tom |
+| S0 | Codex mode installed; personal marketplace → the packaged tree via `scripts/codex-install.sh` (never the repo: the install copies the source wholesale) | — | done 2026-09-05 |
 | S1 | Output hygiene (§5.2) in shared scripts + daemon handlers + `HOOKS.md`; tests | — | ½ day |
 | S2 | `hooks/hooks.codex.json` (§5.5) + `.codex-plugin/plugin.json` (§5.4) + deploy-contract lockstep/allowlists (§5.8) | S1 | ½ day |
 | S3 | Codex `mcpServers` object with launcher resolution, `startup_timeout_sec`, `env_vars`, `instructions` (§5.3) | S2 | ½ day + E4 |

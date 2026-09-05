@@ -161,6 +161,26 @@ Coming from the old `brain` plugin? Follow [MIGRATING.md](MIGRATING.md) —
 the rename means it is not an in-place update. You can add your API key in the plugin's settings
 when Claude Code asks, or set `ANTHROPIC_API_KEY` in your shell.
 
+### Codex (ChatGPT desktop, Codex mode)
+
+Entity ships a Codex manifest too (`.codex-plugin/plugin.json`, hooks in
+`hooks/hooks.codex.json`). The `codex` CLI lives inside the app at
+`/Applications/ChatGPT.app/Contents/Resources/codex` if it is not on your PATH.
+
+```bash
+codex plugin marketplace add tpac/entity
+codex plugin add entity@anchor
+```
+
+Then trust the plugin's hooks when Codex asks, and open a new Codex chat. Codex
+runs plugins from a cache copy, so the first session bootstraps the runtime
+there (60–90 s); the brain's tools appear from the second session.
+
+Working from a checkout? Codex copies a plugin's source directory wholesale, so
+never point a marketplace at the repo itself. `scripts/codex-install.sh`
+packages the tree, points your personal marketplace
+(`~/.agents/plugins/marketplace.json`) at it, installs, and verifies.
+
 ## Where your memories live — and what survives
 
 A fresh brain is created at `~/.local/share/brain/` (`$XDG_DATA_HOME`),
