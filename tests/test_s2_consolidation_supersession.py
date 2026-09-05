@@ -282,6 +282,27 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: data[a]})])
         self.assertIn('"member of cluster two" depends_on this — cluster two leans on cluster one', text)
 
+    def test_edge_loader_excludes_noise_like_get_node(self):
+        """The loader applies the registry's structural_exclusions — the same
+        set get_node uses — so community_member and the other plumbing
+        relations are neither rendered as External edges nor offered to the
+        encoder as migration candidates. Community placement still reaches
+        the cluster block, through _load_community_membership."""
+        a = self._node('member')
+        comm = self._node('a community', type='community')
+        peer = self._node('a peer', type='fact')
+        self.brain.connect_typed(comm, a, relation='community_member', weight=0.9,
+                                 encoding_source='test')
+        self.brain.connect_typed(a, peer, relation='co_anchored', weight=0.9,
+                                 description='shared episodic anchor', encoding_source='test')
+        self.brain.connect_typed(a, peer, relation='extends', weight=0.5,
+                                 description='the semantic claim', encoding_source='test')
+        data = self._decoder()._load_edge_data([a])
+        self.assertEqual(set(data[a]), {peer})
+        self.assertEqual([r['relation'] for r in data[a][peer]['relations']], ['extends'])
+        self.assertEqual(self._decoder()._load_community_membership([a]),
+                         {a: [{'id': comm, 'title': 'a community'}]})
+
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
         old = self._node('opener old')

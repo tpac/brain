@@ -484,9 +484,12 @@ additive-only stays correct — it *widens* what additive can express).
 > Tom refined it 2026-07-28: graph DYNAMICS keep conducting through community edges — conduction
 > is not visibility. Both policies now exist, derived at `AspectRegistry._adopt`:
 > · `brain.aspects.structural_exclusions` = `relations_in(['noise'])` — full noise, for read
->   exclusion. THE REMAINING WORK OF THIS STEP: swap the DAL defaults + `get_node` reads onto it
->   (hiding drops `community_member`, 7,237 edges, from default connection renders — deliberate;
->   impact-analyzed SAFE, S2 machinery uses dedicated queries). Flip the `dal_graph.py:63` comment.
+>   exclusion. APPLIED (branch `claude/sweet-lichterman-ba9854`, 2026-09-05): `get_node` passes it
+>   to `get_connections_bulk`, so every reader of a node's `connections` is noise-free without a
+>   filter of its own (the encoder catalog's `_filter_noise_relations` is deleted), and
+>   consolidation's `_load_edge_data` passes the same set. Community membership reaches readers
+>   that want it (Anchor, the recall surface) as a `Communities:` line, not as edge lines —
+>   `docs/REVISE-SHAPE-ARCH-PLAN.md` Step 7. The DAL itself keeps no default.
 > · `brain.aspects.traversal_exclusions` = noise − {community_member} — ALREADY LIVE (2026-07-28)
 >   at `pipeline_contract.traverse`, spread activation (`surface_contract`), and MCP
 >   `graph_expand`; the `TRAVERSE_EXCLUDED_EDGES` / `EXCLUDED_EDGE_TYPES` literals are deleted.
@@ -515,8 +518,8 @@ is to read both.
 
 **The trap:** a maintainer told to "source the noise set from the taxonomy" will do it, silently pull
 `community_member` (7,237 edges) into `DEFAULT_EXCLUDED_RELATIONS`, and drop community context out
-of every `get_connections_bulk` read. `consolidation_decoder.py:783-786` depends on the current
-behavior.
+of every `get_connections_bulk` read. (Resolved by the ruling above: hidden as edge lines,
+carried as a `Communities:` line; consolidation reads placement from `_load_community_membership`.)
 
 **Target state.** Name the second concept — a non-routable `structural_plumbing` aspect
 (`routable: false` per Step 4, following the shipped `survivor_lineage` pattern), or derive the
@@ -689,12 +692,13 @@ write path — verify `tests/test_spread_activation.py` and one live `connect` r
 **Problem.** `brain.py:333-340` wraps registry construction in `try/except`, prints a warning, and
 leaves `self.aspects` **unset** — deliberately, so consumers get a loud `AttributeError`. Two
 consumers then defeat that: `fetch_tools.py:729` guards with `hasattr(brain, 'aspects')`, and
-`encode_contract._filter_noise_relations` (`:163-166`) catches `AttributeError` and returns
-unfiltered. Both are commented as test-stub tolerance.
+`encode_contract._dedup_correction_relations` catches `AttributeError` and returns unfiltered.
+Both are commented as test-stub tolerance. (`get_node`'s noise exclusion reads
+`self.aspects.structural_exclusions` unguarded — there a failed registry IS loud.)
 
-So a real registry failure degrades to "aspect lookup returns None" and "the S1 encoder sees
-unfiltered plumbing edges and learns to imitate them" — with no error anywhere. The intended
-loudness is designed in at `brain.py` and cancelled downstream.
+So a real registry failure degrades to "aspect lookup returns None" and "the S1 encoder's
+correction dedup silently skips" — with no error anywhere. The intended loudness is designed in
+at `brain.py` and cancelled downstream.
 
 **Target state.** Pick one and make it consistent. Either assign an empty registry on failure (then
 the `AttributeError` contract is real and both guards can go), or make the test stubs carry a real
@@ -702,7 +706,8 @@ the `AttributeError` contract is real and both guards can go), or make the test 
 removes the production tolerance rather than legitimizing it.
 
 **Files & call sites.** `servers/brain.py:333-340`, `servers/scales/s1/fetch_tools.py:729`,
-`servers/scales/s1/encode_contract.py:163-166`, plus whichever test stubs need a real registry.
+`servers/scales/s1/encode_contract.py` (`_dedup_correction_relations`), plus whichever test stubs
+need a real registry.
 
 **Verification.** `tests/test_s1_data_assembly.py`, `tests/test_fetch_tools.py`,
 `tests/test_aspect_registry_wired.py`. Add a test that a failed registry surfaces rather than

@@ -871,9 +871,11 @@ class ConsolidationDecoder(IntegrationUnit):
     def _load_edge_data(self, node_ids):
         """Load typed edges per node via GraphDAL.
 
-        community_member is kept so the encoder sees thematic neighborhood
-        signals as first-class edges — it's context, not a migration target
-        (S2 community detection manages placement on the next run).
+        Same read exclusion as get_node — the registry's structural_exclusions
+        (the noise aspect): community_member and the other plumbing relations
+        are not edges the encoder should read or migrate. Community placement
+        reaches the cluster block through _load_community_membership's
+        `Communities:` line instead.
 
         Returns {member_id: {neighbor_id: connection}} where connection is a
         GraphDAL.get_connections_bulk entry unchanged — id, type, title,
@@ -891,7 +893,8 @@ class ConsolidationDecoder(IntegrationUnit):
         if not ids:
             return {}
         # archived=0 is the DAL default (v25).
-        grouped = self.brain._graph.get_connections_bulk(ids)
+        grouped = self.brain._graph.get_connections_bulk(
+            ids, exclude_relations=self.brain.aspects.structural_exclusions)
         return {member: {c['id']: c for c in conns}
                 for member, conns in grouped.items()}
 

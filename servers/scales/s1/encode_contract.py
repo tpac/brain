@@ -264,51 +264,17 @@ PROVENANCE_TAGS = (
 # (recall excludes them), so they never compete for priority.
 ASSOCIATED_TAG = '[associated]'
 
-def _filter_noise_relations(nodes_map, brain):
-    """Drop noise-aspect relations from each catalog node's connections (lived
-    arm only). The noise aspect (aspects_v1.json) is the single source for
-    structural-only relations with no semantic claim — community_member,
-    co_anchored, and the legacy S2 markers. The encoder
-    shouldn't read (or learn to imitate) plumbing edges.
-
-    Multi-relation aware: a connection survives when ANY non-noise relation
-    remains; the compat fields (relation/description = top-weight survivor)
-    re-derive so render_rich_node shows a semantic verb, never a structural one.
-    A stub brain without `aspects` degrades quietly to unfiltered (tests)."""
-    try:
-        noise = set(brain.aspects.relations_in(['noise']))
-    except AttributeError:
-        return
-    if not noise:
-        return
-    for node in nodes_map.values():
-        conns = node.get('connections')
-        if not conns:
-            continue
-        kept = []
-        for c in conns:
-            rels = [r for r in (c.get('relations') or ())
-                    if r.get('relation') not in noise]
-            if rels:
-                c['relations'] = rels
-                c['relation'] = rels[0].get('relation') or c.get('relation')
-                c['description'] = rels[0].get('description') or ''
-                kept.append(c)
-            elif not c.get('relations') and c.get('relation') not in noise:
-                kept.append(c)   # bare single-relation shape (no relations list)
-        node['connections'] = kept
-
-
 def _dedup_correction_relations(nodes_map, brain):
     """Drop correction-aspect relations from a node's rendered connections when
     the node's ⚠ correction block already carries that counterpart (view
     policy only). The ⚠ render is the privileged form — direction-explicit,
     corrector content inline, immune to edge_limit — so the same relationship
     in the Edges list is pure duplication (found live: f3302000 rendered its
-    supersedes→9ae6820a both ways). Multi-relation aware like the noise
-    filter: a connection survives when any NON-correction relation remains
-    (supersedes often rides with extends). Aspect source of truth:
-    correction_improvement in aspects_v1.json. Stub brains degrade quietly."""
+    supersedes→9ae6820a both ways). Multi-relation aware: a connection
+    survives when any NON-correction relation remains (supersedes often rides
+    with extends). Aspect source of truth: correction_improvement in
+    aspects_v1.json. Stub brains degrade quietly. (Noise relations never
+    reach here — get_node excludes them for every reader.)"""
     try:
         corr_rels = set(brain.aspects.relations_in(['correction_improvement']))
     except AttributeError:
@@ -410,10 +376,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
     """
     conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
-    # Lived-arm gate, captured BEFORE the `or {}` normalization below: extra_ids
-    # is only ever non-None on the lived arm, and the noise-edge filter rides it
-    # (control arm renders unfiltered — byte-identical to the long-standing path).
-    lived_arm = extra_ids is not None
     # Node ids are 8-char hex (v29), so these match the full ids the trace
     # streams carry.
     surfaced_ids = surfaced_ids_of(judge_outputs)
@@ -496,8 +458,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # each. brain.get_node(list) is the batch form.
     fetch_ids = list(catalog_ids) + assoc_order
     rich_map = brain.get_node(fetch_ids) if fetch_ids else {}
-    if lived_arm:
-        _filter_noise_relations(rich_map, brain)
     if view_policy:
         _dedup_correction_relations(rich_map, brain)
     # Loop-invariant: one scoped cfg per tier for the whole catalog (can be

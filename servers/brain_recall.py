@@ -456,11 +456,16 @@ class BrainRecallMixin:
 
         # ── 5. Batch fetch all connections via GraphDAL (v25) ──
         # DAL centralizes: archived=0 default, direction detection,
-        # per-neighbor relation grouping. No default relation exclusion —
-        # noise hiding for the encoder view lives in encode_contract's
-        # _filter_noise_relations (aspect-owned read-exclusion for get_node
-        # is a deferred design, not implemented).
-        connections_by_owner = self._graph.get_connections_bulk(found_ids)
+        # per-neighbor relation grouping. The DAL holds no policy; the read
+        # exclusion is the registry's `structural_exclusions` — the full
+        # noise aspect (id:49d734ad: flat reads hide, graph dynamics keep
+        # conducting through `traversal_exclusions`). Every reader of a
+        # node's connections — Anchor, the recall surface, the encoder
+        # catalog, the healer, consolidation — gets the same exclusion here,
+        # so none of them re-filters. Community membership is not lost to
+        # readers that want it: it rides as its own `communities` attachment.
+        connections_by_owner = self._graph.get_connections_bulk(
+            found_ids, exclude_relations=self.aspects.structural_exclusions)
 
         for nid in found_ids:
             conns = connections_by_owner.get(nid, [])

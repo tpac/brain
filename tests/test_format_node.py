@@ -208,6 +208,32 @@ class TestFormatNode(BrainTestBase):
         from servers.clock import iso_now
         self.assertIn(iso_now()[:10], edge_line)
 
+    def test_get_node_excludes_noise_relations_for_every_reader(self):
+        """The read exclusion lives in get_node (registry structural_exclusions
+        = the noise aspect), so every reader of `connections` — Anchor, the
+        recall surface, the encoder catalog, the healer, consolidation — is
+        noise-free without a filter of its own. A pair that carries a noise
+        relation AND a semantic one keeps the semantic line; a pair that is
+        noise only disappears; the compat `relation` is never a noise verb."""
+        self.assertIn('community_member', self.brain.aspects.structural_exclusions)
+        nid = self._make_node(title='Member')
+        comm = self._make_node(type='community', title='A community')
+        peer = self._make_node(title='Peer')
+        self._add_edge(comm, nid, relation='community_member', weight=0.9)
+        self._add_edge(nid, peer, relation='co_anchored', weight=0.9,
+                       description='shared episodic anchor')
+        self._add_edge(nid, peer, relation='extends', weight=0.5,
+                       description='the semantic claim')
+        node = self.brain.get_node(nid)
+        self.assertEqual([c['id'] for c in node['connections']], [peer])
+        (conn,) = node['connections']
+        self.assertEqual([r['relation'] for r in conn['relations']], ['extends'])
+        self.assertEqual(conn['relation'], 'extends')
+        out = render_rich_node(node)
+        self.assertNotIn('community_member', out)
+        self.assertNotIn('co_anchored', out)
+        self.assertIn('this extends "Peer" — the semantic claim', out)
+
     def test_edge_lines_one_per_relation_descriptions_whole(self):
         """A pair carrying several relations renders one line per relation,
         each with its own description untruncated — a reader may copy it
