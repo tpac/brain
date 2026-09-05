@@ -269,6 +269,53 @@ importers.
 
 **Depends on.** None. **Ruling needed:** delete vs derive.
 
+## Step 7 — Edge render cleaning (2026-09-05, before the next encoder eval)
+
+**State.** `contract.render_edge_lines` is the one edge grammar for every LLM
+reader (f716faf); the line's age is the relation's `created_at`; no reader
+truncates a description; consolidation loads edges grouped per owner and
+shows each once (ae6bc58); the healer examples match the live grammar
+(bdfe8a8). Reviewed and fixed (brain a92554b0).
+
+**Problem, measured (brain abbb5b26).** Noise exclusion runs only in the S1
+encoder catalog; `get_node` loads connections with none, so Anchor, the
+recall surface, the healer and consolidation see noise. 36% of active
+relations are noise-aspect; they hold 27% of every node's top-5 slots; 32%
+of >5-edge nodes lose a semantic edge to a noise one. Weights are flat
+(0.5/0.6), so the top-N cut is a tie broken by row order — the 15bbfd64 edge
+the revise-shape arc is about is 8th of 9 on the live node and does not
+render. The noise list still holds four aspect NAMES as relations (bug
+40e7125a; one live row). Consolidation prints each node's header twice.
+`edge_relations` has no `updated_at`, so a repaired description keeps its
+birth date on the line.
+
+**Target state.** (a) `get_node` passes `brain.aspects.structural_exclusions`
+to `get_connections_bulk`; `_filter_noise_relations` goes; consolidation's
+loader passes the same set. (b) Tom's exception: community membership
+reaches readers as a `Communities: "title" (id)` line (get_node attaches it
+via `GraphDAL.get_communities_for`; cfg `show_communities` on for Anchor and
+the recall surface, off for the encoder and consolidation) — decision
+3144a746 superseded. (c) Ties broken by relation `created_at` desc;
+`show_edge_total` on for the encoder and Anchor. (d) One header per node in
+the cluster block. (e) The four aspect names out of the noise seed. (f)
+**Ruling:** `updated_at` on `edge_relations`, or stamp on description change.
+Then re-measure the three numbers.
+
+**Files.** `servers/brain_recall.py` (get_node connections), `servers/contract.py`
+(render_rich_node, formats), `servers/scales/s1/encode_contract.py`
+(`_filter_noise_relations`, `S1_NODE_CONFIG`), `servers/scales/s1/surface_contract.py`
+(HAIKU formats), `servers/scales/s2/consolidation_decoder.py` / `_encoder.py` /
+`_contract.py`, `servers/scales/s2/aspects_v1.json`, `servers/schema.py` (f).
+
+**Verification.** `tests/test_format_node.py`, `test_edge_render_paths.py`,
+`test_s2_consolidation_supersession.py`, `test_encoder_view.py`,
+`test_aspects*.py`; the measurement script in the working set; a rendered
+d827d22f through every reader's config.
+
+**Depends on.** Nothing on this branch. **Respects.** 49d734ad (reads hide,
+traversal carries), 52cdf2b9 (noise wins on dual membership). **Ruling
+needed:** (f); the tie-break rule if not recency.
+
 ## Considered, not recommended
 
 - **Two module identities for `eval/encoder_ops.py`** (`eval.encoder_ops` in
