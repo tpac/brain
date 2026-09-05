@@ -1,5 +1,16 @@
 # Codex Adapter — Research
 
+## § State — 2026-09-05
+
+S1 (host-portable hook stdout: `hook_common.emit_hook_output`, silence = no
+opinion, block on Stop only) and S2 (`.codex-plugin/plugin.json`,
+`hooks/hooks.codex.json`, newest-install MCP launcher, gates) are on main at
+d5c1793 after two code reviews. Ruling that shaped them: the brain informs, it
+never gates (the safety hook's block became a warning). Not yet: S4 signed
+identity stamp (§5.1), the live empirical pass (§6) on Tom's ChatGPT desktop
+app, and the daemon restart + `./redeploy.sh` that make the merged code live in
+Claude Code. Handoff node in the brain: search "HANDOFF — Codex adapter".
+
 Can Anchor run inside ChatGPT's Codex mode as a second host, with hooks? What is
 there, what is missing, and how each gap closes. Researched 2026-09-05 against
 the official docs (learn.chatgpt.com, developers.openai.com/plugins) and the
