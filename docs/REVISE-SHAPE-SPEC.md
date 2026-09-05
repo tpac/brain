@@ -1,16 +1,16 @@
 # Revise shape — value or swap, edges via `connect_to`
 
-Status: ruled by Tom 2026-09-03. **Steps 1–5 are committed on the branch**
-(`2ad74aa` contract + write path; `a932bac` tool layer; `c1a66df` gist
-interaction + guardrail; `50032ba` harness; the prompt rows, 2026-09-04),
-unmerged — the daemon runs main and nothing deploys until the edge cell (§6
-step 3) has a number; Tom ruled the deploy is one merge, together, never the
-tool-layer half first. The §4 table marks each surface **done** or still owed.
-The vocabulary guardrail is GREEN through the prompt rows.
-**Handoff for the next session: brain `71ce490b`** (boot self-test,
-verify-before-use, gates — the six unruled recommendations are listed there);
-working set outside git at
-`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session.md`.
+Status: ruled by Tom 2026-09-03. **Every §4 row is done and committed on the
+branch** `claude/sweet-lichterman-ba9854` (contract + write path, tool layer,
+gist interaction + guardrail, harness, prompt rows, shared `$defs` shapes, the
+plan-step-1 harness fixes, the two edge levers L1/L2), unmerged — the daemon
+runs main; Tom ruled the deploy is one merge, together, never the tool-layer
+half first. Two edge cells have a number (§6 step 3): the edge surface is
+0/30 across every arm while every other surface held or improved; merge is
+Tom's gate. The vocabulary guardrail is GREEN. Handoff: brain `f4989ab7`
+(boot self-test, verify-before-use, gates, the inventory of open encoder
+improvements); working set outside git at
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-2.md`.
 **Before any prompt row is edited: the full read of `SYSTEM_PROMPT` with a
 per-section audit artifact (brain id:71eeff20) — Tom's condition for the
 prompt half.**
@@ -164,11 +164,30 @@ fails (3).
    2, 1 — the first 4/4 on that item), twin 2/2 (baseline 2/3). Shape: content
    swaps 91%, full rewrites 0%, id-form targets 92% (81%), fields/revise 2.5
    (2.4), connects/run 3.2 (1.2); source_refs item-dependent (canonical 0/18 vs
-   5/23, run-44 7/9 vs 2/15). Finding: brain id:9a9e35c1. Candidate next
-   levers, unrun: a "revise + edges"
-   sentence in `_BRAIN_BATCH_DESCRIPTION` (its prose still frames connect_to as
-   remember's); rendering the catalog Edges line so the why reads as the node's
-   own claim (E19); a gist bullet naming the Edges line's text as mine to swap.
+   5/23, run-44 7/9 vs 2/15). Finding: brain id:9a9e35c1.
+   **Two-lever cell 2026-09-05 (branch 95d12fa; K s1e=265128878479,
+   s1e_gist=b4a8b12c1af5; dumps `ab_2026-09-01_03/ops6/`; scorer fixed
+   first — plan step 1, 0 gold numbers moved on re-score):** L1 a "revise +
+   edges" paragraph in `_BRAIN_BATCH_DESCRIPTION`, L2 a gist bullet naming the
+   Edges line's text as the node's own claim. **Edge 0/3 — 0/30 across every
+   arm.** `connect_to` on 1 of 13 revise ops, and that one targets a same-batch
+   sibling by title (refused on revise). What L1 moved: standalone `connect`
+   ops 2.6/run → 0.0 (every baseline connect had a NEW node as source — the
+   pattern the description already forbade; they now ride `connect_to` on the
+   remember). Other surfaces, hand-adjudicated: canonical 3, 0, 3 of 4 (run 2
+   never picked up 9.7.2); run-44 run 1 propagated NOT SOUND but the deletion
+   to 0/4 (scorer 2/4 on `content_any` token leniency) and minted the twin,
+   run 2 VOID (read 338cf9ad + 78983ba6 live) yet revised 78983ba6 by id
+   rather than minting — the first run in any arm to do so. Shape: content
+   swaps 92% (92%), full rewrites 8% (one, in the VOID run), fields/revise 2.8
+   (2.2), touches title 46% (31%) / situation 77% (62%), source_refs on
+   creates 61% (26%; canonical 14/22 vs 0/18, run-44 3/6 vs 7/9 — but 5/9 and
+   6/9 of the canonical refs did not resolve in the turn index), id-form
+   targets 82% (92% — sibling titles on new nodes), edges/create 1.96 (2.26),
+   retention unchanged. The tool-description lever moved edge CREATION, not
+   edge REPAIR. Remaining: the E19 render lever (the why as the node's own
+   field), and Tom's call (2026-09-05): probe the encoder for why before
+   another lever.
 4. Only then the cross-prompt census (verb→op mismatches, surfaces named vs
    ops that reach them, example coverage of ops) over every registered
    default — the vocabulary it checks is what steps 1–2 change.
