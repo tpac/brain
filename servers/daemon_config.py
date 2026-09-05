@@ -10,6 +10,8 @@ import sys
 import time
 import hashlib
 
+from servers.brain_constants import user_config_dir
+
 # ─── Force CPU-only BEFORE any downstream import ───
 # On macOS Apple Silicon, CoreML/Metal XPC connections cause SIGABRT in
 # background/daemon processes that lack GPU context. DAEMON_CPU_ENV is the SINGLE
@@ -202,14 +204,6 @@ def brain_tmp_dir() -> str:
     (mcp-crash, diagnose) — those want a fixed, findable location too.
     """
     return os.environ.get('BRAIN_TMP_DIR', '/tmp')
-
-
-def user_config_dir() -> str:
-    """`${XDG_CONFIG_HOME:-~/.config}` — the root of the brain's user-owned
-    files (`brain/env`, `brain/resolved.env`, `brain/hook-secret`). The Python
-    half of the shell resolver's spelling (api-key-env.sh); one accessor so the
-    readers of one directory cannot split."""
-    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
 
 
 def _read_env_file_key(path: str, key: str):

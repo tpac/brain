@@ -15,6 +15,8 @@ import os
 import re
 from typing import Any, Dict, Callable, Optional, NamedTuple
 
+from servers.brain_constants import user_config_dir
+
 
 # Reserved arg key: the calling session's identity, stamped by the MCP proxy
 # (brain_mcp.daemon_send) on every tool call it can attribute, under its OWN
@@ -43,9 +45,10 @@ CALLER_SIG_KEY = "_caller_sig"
 # The name every host adapter registers the proxy's MCP server under (the
 # tests pin the adapters to it — the service layer never reads a manifest).
 # Hosts name its tools `mcp__<server>__<tool>`; Claude Code prefixes a plugin's
-# servers as `plugin_<plugin>_<server>`.
+# servers as `plugin_<plugin>_<server>` (plugin names are kebab-case), and no
+# other shape may match — `mcp__second_brain__x` is somebody else's server.
 BRAIN_MCP_SERVER = "brain"
-_BRAIN_TOOL_RE = re.compile(r"^mcp__(?:.*_)?%s__" % re.escape(BRAIN_MCP_SERVER))
+_BRAIN_TOOL_RE = re.compile(r"^mcp__(?:plugin_[A-Za-z0-9-]+_)?%s__" % re.escape(BRAIN_MCP_SERVER))
 
 
 def is_brain_tool(tool_name):
@@ -55,10 +58,7 @@ def is_brain_tool(tool_name):
 
 
 def hook_secret_path():
-    """`<user config dir>/brain/hook-secret`, beside the user env knob. The dir
-    is daemon_config's; imported lazily so its import-time work stays off the
-    hook's hot path until a stamp is actually signed."""
-    from servers.daemon_config import user_config_dir
+    """`<user config dir>/brain/hook-secret`, beside the user env knob."""
     return os.path.join(user_config_dir(), "brain", "hook-secret")
 
 
@@ -75,14 +75,16 @@ def _hook_secret():
     created on first use by whichever side asks first. Published by hard-linking
     a fully written temp file onto the path, so the name never exists with
     partial content and the loser of a hook/proxy race on a fresh install reads
-    the winner's key. An existing empty file is a broken install, not a key."""
+    the winner's key. The temp name is pid-unique and truncated on open, so a
+    leftover from a crashed writer is overwritten, never tripped over. An
+    existing empty file is a broken install, not a key."""
     path = hook_secret_path()
     data = _read_secret(path)
     if data is None:
         import secrets
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         tmp = "%s.%d.tmp" % (path, os.getpid())
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "wb") as f:
             f.write(secrets.token_hex(32).encode("ascii") + b"\n")
         try:
@@ -173,12 +175,9 @@ def _pop_session_ctx(brain, args):
     if args.pop(CALLER_SIG_KEY, None) is not None:
         # The proxy strips the signature before dispatch; a stray one means a
         # client bypassed it. Loud, and never into a node's KV.
-        try:
-            brain._log_error('caller_sig_leaked',
-                             ValueError('%s reached the daemon' % CALLER_SIG_KEY),
-                             'a client sent the hook signature past the MCP proxy')
-        except Exception:
-            pass
+        brain._log_error('caller_sig_leaked',
+                         ValueError('%s reached the daemon' % CALLER_SIG_KEY),
+                         'a client sent the hook signature past the MCP proxy')
     if not sid:
         return None, args
     try:

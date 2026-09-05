@@ -45,11 +45,31 @@ class TestBrainToolPredicate(unittest.TestCase):
             self.assertIn(dc.BRAIN_MCP_SERVER, json.load(f)["mcpServers"], ".codex-plugin/plugin.json")
 
     def test_matches_both_hosts_namings_and_nothing_else(self):
-        for name in ("mcp__brain__recall", "mcp__plugin_x_brain__recall", "mcp__brain__self_send"):
+        for name in ("mcp__brain__recall", "mcp__plugin_x_brain__recall",
+                     "mcp__plugin_my-plugin2_brain__recall", "mcp__brain__self_send"):
             self.assertTrue(dc.is_brain_tool(name), name)
-        for name in ("Bash", "apply_patch", "mcp__github__brain", "mcp__brainy__x",
-                     "mcp__notbrain__x", "brain__recall", "", None, 3):
+        # Somebody else's server whose name merely contains or ends in "brain",
+        # a foreign tool called "brain", and non-MCP tools are all refused.
+        for name in ("Bash", "apply_patch", "mcp__github__brain", "mcp__github__brain__issue",
+                     "mcp__second_brain__recall", "mcp__brainy__x", "mcp__notbrain__x",
+                     "brain__recall", "", None, 3):
             self.assertFalse(dc.is_brain_tool(name), name)
+
+    def test_hook_path_never_imports_the_daemon_config(self):
+        # The hook signs on every brain tool call; daemon_config fingerprints
+        # servers/ at import (tens of ms). The config dir comes from the leaf
+        # constants module, so the hot path must stay clear of daemon_config.
+        code = ("import sys; from servers import dispatch_common as dc; dc.hook_secret_path(); "
+                "print('servers.daemon_config' in sys.modules)")
+        out = subprocess.run([sys.executable, "-c", code], cwd=_ROOT, capture_output=True,
+                             text=True, timeout=60, env={**os.environ, "XDG_CONFIG_HOME": self._tmp()})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "False", "hook_secret_path pulled in servers.daemon_config")
+
+    def _tmp(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        return d
 
 
 class _TmpSecret(unittest.TestCase):
@@ -106,9 +126,9 @@ class TestSignVerify(_TmpSecret):
 
     def test_lost_create_race_reads_the_winner(self):
         # Hook and proxy both find no secret on a fresh install; the loser of
-        # the publish must sign under the winner's secret, not its own — and
-        # the winner's file is complete before its name exists (link, not
-        # create-then-write), so the loser never reads a half-written key.
+        # the publish must sign under the winner's secret, not its own. The
+        # winner's file is complete before its name exists, so the loser can
+        # never read a half-written key.
         path = dc.hook_secret_path()
 
         def racing_link(src, dst):

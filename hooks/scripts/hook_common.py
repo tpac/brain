@@ -369,8 +369,7 @@ def strip_caller_stamp(tool_input):
     every tool call."""
     if not isinstance(tool_input, dict):
         return tool_input
-    return {k: v for k, v in tool_input.items()
-            if not (isinstance(k, str) and k.startswith("_caller_"))}
+    return {k: v for k, v in tool_input.items() if not k.startswith("_caller_")}
 
 
 def emit_updated_input(hook_event_name, tool_name, updated_input):

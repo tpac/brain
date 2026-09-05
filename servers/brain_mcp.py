@@ -373,7 +373,8 @@ def _build_revise_batch_schema():
 # session_id. CALLER_SESSION_KEY is the single source of truth (servers.
 # dispatch_common); the daemon's identity handlers read it via caller_session().
 # Importing it here keeps the wire key from drifting across the proxy boundary.
-from servers.dispatch_common import CALLER_SESSION_KEY, CALLER_SIG_KEY, verify_caller_session
+from servers.dispatch_common import (CALLER_SESSION_KEY, CALLER_SIG_KEY, BRAIN_MCP_SERVER,
+                                     verify_caller_session)
 
 
 def _stamp_caller_session(args, note=None):
@@ -480,7 +481,7 @@ def ensure_daemon_running():
 
 # ── MCP Protocol ──
 
-SERVER_NAME = "brain"
+SERVER_NAME = BRAIN_MCP_SERVER
 SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
 

@@ -302,34 +302,30 @@ unreliable. Last-booted-session fallback — the last-writer-wins bug removed
 2026-05-17.
 
 **Built (2026-09-05) [ours].** `hooks/scripts/stamp-caller-session.sh` →
-`stamp_caller_session.py` (matcher `mcp__brain__.*` in `hooks.codex.json`; a
-non-MCP tool name or a payload without `session_id` emits nothing, the latter
-logged). `servers/dispatch_common.py` owns `CALLER_SIG_KEY`, `hook_secret_path`,
-`sign_caller_session`, `verify_caller_session`; the secret is created on first
-use by whichever side asks first, O_EXCL so a hook/proxy race on a fresh
-install converges on one key. `brain_mcp._stamp_caller_session`: env wins →
-verified stamp → scrub; the signature never reaches the daemon; an unattributed
-tool call is noted once per reason per proxy process in `hook_errors`
-(`mcp_caller_identity`, warning) — pings stay headless by design. Codex-only:
-Claude Code keeps the env var (decision fa0f5f5a), which the manifest sync
-test's `CODEX_ONLY_HANDLERS` states and checks. `hook_common.emit_updated_input`
-is the one writer of the rewrite shape and refuses any tool that is not the
-brain's own (`dispatch_common.is_brain_tool`), so a widened matcher cannot
-turn it into an auto-approve of a user's tool. `post_tool_trace.py` strips the
-pair (`hook_common.strip_caller_stamp`) before recording a tool input — a
-zero-argument brain call would otherwise land the full signature in a trace
-the model can recall and replay. Limits, stated: the secret is a 0600 file
+`stamp_caller_session.py`, matcher `mcp__brain__.*` in `hooks.codex.json`
+only — Claude Code keeps the env var (decision fa0f5f5a), which the manifest
+sync test's `CODEX_ONLY_HANDLERS` states and checks. Owners:
+`servers/dispatch_common.py` (`CALLER_SIG_KEY`, `is_brain_tool`,
+`hook_secret_path`, sign/verify; the secret is created on first use by
+whichever side asks first and published atomically, so a hook/proxy race
+converges on one key), `brain_mcp._stamp_caller_session` (env wins → verified
+stamp → scrub; a broken secret degrades to an unattributed call; gaps noted
+once per reason per proxy process in `hook_errors`, `mcp_caller_identity`),
+`hook_common.emit_updated_input` (the one writer of the rewrite shape; refuses
+any tool that is not the brain's own) and `hook_common.strip_caller_stamp`
+(the trace hook drops the pair before recording — a zero-argument brain call
+would otherwise land the full signature in a recallable, replayable trace).
+Details per hook: `hooks/HOOKS.md`. Limits, stated: the secret is a 0600 file
 under the agent's own uid, so the pair defeats accidental identity keys, not a
-determined same-user forger — the proxy's once-per-process note is the control
-that matters; and the hook resolves the config dir under `$SHELL -lc` while the
-proxy runs on Codex's cleared env, so an `XDG_CONFIG_HOME` exported only in a
-dotfile splits the two secrets (every call unattributed, one warning per
-proxy). Cost **[measured]**: 99–117 ms per brain call for the shim, ~60 % of it
-the resolver chain a hook that never opens the brain does not need; E5 decides
-whether to register it bare like `post_tool_trace.py` (~40–60 ms) against the
-CLAUDE.md rule that hook shims source `resolve-brain-db.sh`. Tests:
-`tests/test_caller_stamp.py` (sign/verify, provisioning, proxy rule, the shim
-end to end into the proxy). Still **[untested]** live: E5.
+determined same-user forger — the proxy's note is the control that matters;
+and the hook resolves the config dir under `$SHELL -lc` while the proxy runs on
+Codex's cleared env, so an `XDG_CONFIG_HOME` exported only in a dotfile splits
+the two secrets (every call unattributed, one warning per proxy). Cost
+**[measured]**: 99–117 ms per brain call for the shim, ~60 % of it the resolver
+chain a hook that never opens the brain does not need; E5 decides whether to
+register it bare like `post_tool_trace.py` (~40–60 ms) against the CLAUDE.md
+rule that hook shims source `resolve-brain-db.sh`. Tests:
+`tests/test_caller_stamp.py`. Still **[untested]** live: E5.
 
 ### 5.2 G2 — Hook output hygiene (host-neutral fix)
 

@@ -3,7 +3,19 @@ brain — Shared Constants
 
 Constants used across multiple brain mixin modules.
 Extracted to avoid circular imports (mixins can't import from brain.py).
+This module imports nothing from the brain, so per-tool-call hooks can
+reach it without paying for the daemon's config import.
 """
+import os
+
+
+def user_config_dir() -> str:
+    """`${XDG_CONFIG_HOME:-~/.config}` — the root of the brain's user-owned
+    files (`brain/env`, `brain/resolved.env`, `brain/hook-secret`). The Python
+    half of the shell resolver's spelling (api-key-env.sh); one accessor so the
+    readers of one directory cannot split."""
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+
 
 # ═══════════════════════════════════════════════════════════════
 # CONSTANTS: Decay rates by node type (hours until weight halves)

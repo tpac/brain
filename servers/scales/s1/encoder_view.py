@@ -238,17 +238,17 @@ PATH_KEEP_SEGMENTS = 3
 def action_mode(tool_name):
     """'full' | 'stub' | 'drop' for a tool_result line. Keys on the raw tool
     name the trace metadata carries (`mcp__<server>__<tool>` — post_tool_trace
-    records CC's name verbatim), matching any brain MCP server registration
-    (plugin or user-scope). Non-brain and unknown tools render full."""
+    records the host's name verbatim); which names are the brain's own is
+    dispatch_common.is_brain_tool's call, on either host. Non-brain and unknown
+    tools render full."""
+    from ...dispatch_common import is_brain_tool
     name = str(tool_name or '')
-    if not name.startswith('mcp__'):
+    if not is_brain_tool(name):
         return 'full'
-    parts = name.split('__')
-    if len(parts) < 3 or 'brain' not in parts[1]:
-        return 'full'
-    if parts[-1] in DROPPED_ACTION_TOOLS:
+    tool = name.split('__')[-1]
+    if tool in DROPPED_ACTION_TOOLS:
         return 'drop'
-    if parts[-1] in STUBBED_ACTION_TOOLS:
+    if tool in STUBBED_ACTION_TOOLS:
         return 'stub'
     return 'full'
 
