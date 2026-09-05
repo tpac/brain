@@ -187,10 +187,21 @@ fails (3).
    creates 61% (26%; canonical 14/22 vs 0/18, run-44 3/6 vs 7/9 — but 5/9 and
    6/9 of the canonical refs did not resolve in the turn index), id-form
    targets 82% (92% — sibling titles on new nodes), edges/create 1.96 (2.26),
-   retention unchanged. The tool-description lever moved edge CREATION, not
-   edge REPAIR. Remaining: the E19 render lever (the why as the node's own
-   field), and Tom's call (2026-09-05): probe the encoder for why before
-   another lever.
+   retention unchanged. Tom's call (2026-09-05): probe the encoder for why
+   before another lever. **Interview probe ×3 (id:4c52b82c):** the rule is
+   read at the top and never runs as a procedure while writing the revise;
+   the sweep is a stale-string scan over the labeled fields and the Edges
+   block sits outside it; "past the ` — `" ambiguous 3/3. **Arms W and R
+   (ops7, id:dba506dd):** W = the probes' L2 rewrite
+   (`eval/candidate_prompts/gist_c_edge_why.md`, override on the isolated
+   copy) — edge 0/3; R = W + every edge why rendered as its own `why:` line
+   under the edge (182 lines, capture saved as `ops7/000-prompt.render.md`) —
+   edge 0/3, `connect_to` on 0/8 revise ops. **0/36 across every arm.** The
+   Edges SECTION is the sweep boundary, not the line grammar. Remaining,
+   unruled: a write-boundary check in `brain.revise` (scan the node's edge
+   descriptions for the removed `old`, return the repairing `connect_to`
+   entry as a warning); the worked example (template, Tom's gate); the why
+   rendered among the node's fields, outside the Edges block.
 4. Only then the cross-prompt census (verb→op mismatches, surfaces named vs
    ops that reach them, example coverage of ops) over every registered
    default — the vocabulary it checks is what steps 1–2 change.

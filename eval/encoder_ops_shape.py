@@ -44,6 +44,8 @@ ARMS = [  # (label, glob) — order = table order
     ('v9+gistB',     'ops4/*-v9gistB/*.json'),
     ('shape+gist',   'ops5/*-shape/*.json'),     # the revise-shape branch: prompt rows + s1e_gist + tool layer
     ('levers',       'ops6/*-levers/*.json'),    # + L1 brain_batch "revise + edges" sentence + L2 gist Edges-line bullet
+    ('wording',      'ops7/*-wording/*.json'),   # levers + gist_c (L2 rewritten as the interview probes said)
+    ('render',       'ops7/*-render/*.json'),    # wording + every edge why rendered as its own `why:` line
 ]
 MERGE = {'v41 rep': 'v41', 'v42 rep': 'v42'}
 GENERIC = {'related', 'related_to'}
