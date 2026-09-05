@@ -1,6 +1,11 @@
 # Thalamus — architecture review plan (2026-08-29)
 
-## §2026-09-05 — Steps 10–11 CLOSED; Phase 2 reordered: S1 through the Thalamus first (Step 13)
+## §2026-09-05 — Steps 10–11 CLOSED; Phase 2 reordered: S1 through the Thalamus first (Step 13) ◀ ACTIVE ARC
+
+**Read first:** handoff id:49c719af (the letter, with its boot self-test), rulings
+id:8aa9f183, then § Step 13 below. Locked: S1 first, review-block entrance,
+render-join feedback, directed asks at Stop, filing traced. Open: the budget key
+inside Step 13(c); the S1 review paragraph wording (eval-gated, Tom's nod).
 
 Steps 10(b) and 11 shipped (d01a9e7, c97531d; merges 56c7bd6, feaab95) — the
 numbered review queue is empty. Tom's rulings this session reshape what comes
@@ -14,7 +19,7 @@ before or after. The fourth-correspondent split (`env_message`) is NOT a
 Thalamus step; it parks behind both — its resolved shape is recorded in the
 §2026-09-03 NEXT-ARC THREAD below and in id:d8d38db2.
 
-## §2026-09-03 — Turns & voices SUBSTRATE built (dial-gated, zero exposure) ◀ ACTIVE ARC
+## §2026-09-03 — Turns & voices SUBSTRATE built (dial-gated, zero exposure)
 
 Tom's ruling: a Stop-block continuation IS a new turn whose incoming side is
 the delivered message — "informative in the form of brain msg or other
