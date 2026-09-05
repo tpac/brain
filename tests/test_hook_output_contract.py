@@ -5,10 +5,13 @@ marks a run FAILED for `{"decision":"approve"}` on UserPromptSubmit / PreToolUse
 and for plain text on Stop; on Claude Code that approve meant "allow, skip the
 permission prompt" — a decision a memory plugin must not make. So "nothing to
 say" is silence, a block is honored only on Stop (self-message delivery),
-`hook_common.emit_hook_output` is the single writer, and this locks (1) its
-event-by-event mapping, (2) that it stays loud on shapes it does not recognise,
-and (3) that no hook entrypoint — Python OR shell shim — writes a decision shape
-around it. Pure unit + file inspection — no brain, no daemon.
+`hook_common.emit_hook_output` is the single writer of what the brain SAYS and
+`hook_common.emit_updated_input` the single writer of the one tool input it
+REWRITES (the caller-identity stamp on the brain's own MCP tools), and this
+locks (1) the event-by-event mapping of both, (2) that they stay loud on shapes
+they do not recognise, and (3) that no hook entrypoint — Python OR shell shim —
+writes a decision or rewrite shape around them. Pure unit + file inspection —
+no brain, no daemon.
 """
 import contextlib
 import glob
@@ -128,6 +131,70 @@ class TestEmitMapping(unittest.TestCase):
                 self.assertNotIn("permissionDecision", out, (event, payload))
 
 
+def _emit_updated(event, updated, tool_name="mcp__brain__recall"):
+    buf = io.StringIO()
+    logged = []
+    with mock.patch.object(hook_common, "log_hook_error",
+                           lambda *a, **k: logged.append((a, k))), \
+            contextlib.redirect_stdout(buf):
+        hook_common.emit_updated_input(event, tool_name, updated)
+    return buf.getvalue(), logged
+
+
+class TestEmitUpdatedInput(unittest.TestCase):
+    def test_pretooluse_rewrite_shape(self):
+        # Both hosts: `allow` + `updatedInput` replaces the tool's arguments.
+        out, logged = _emit_updated("PreToolUse", {"query": "q", "_caller_session": "s"})
+        self.assertEqual(json.loads(out), {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "updatedInput": {"query": "q", "_caller_session": "s"}}})
+        self.assertEqual(logged, [])
+
+    def test_only_pretooluse_carries_a_rewrite(self):
+        for event in ("UserPromptSubmit", "PostToolUse", "Stop", "SessionStart"):
+            out, logged = _emit_updated(event, {"a": 1})
+            self.assertEqual(out, "", event)
+            self.assertEqual(len(logged), 1, event)
+            self.assertEqual(logged[0][1].get("level"), "warning", event)
+
+    def test_only_brain_tools_are_rewritten(self):
+        # The `allow` is the brain approving its OWN tools; a widened matcher
+        # must not turn the writer into an auto-approve of a user's tool.
+        for tool in ("Bash", "apply_patch", "mcp__github__create_issue", "mcp__brainy__x", "", None):
+            out, logged = _emit_updated("PreToolUse", {"a": 1}, tool_name=tool)
+            self.assertEqual(out, "", tool)
+            self.assertEqual(len(logged), 1, tool)
+            self.assertIn("refused", logged[0][0][1], tool)
+        for tool in ("mcp__brain__recall", "mcp__plugin_x_brain__remember"):
+            out, logged = _emit_updated("PreToolUse", {"a": 1}, tool_name=tool)
+            self.assertIn('"updatedInput"', out, tool)
+            self.assertEqual(logged, [], tool)
+
+    def test_non_dict_input_is_logged_not_emitted(self):
+        for bad in (None, "x", ["a"], 3):
+            out, logged = _emit_updated("PreToolUse", bad)
+            self.assertEqual(out, "", bad)
+            self.assertEqual(len(logged), 1, bad)
+            self.assertIn("non-dict", logged[0][0][1])
+
+
+class TestStripCallerStamp(unittest.TestCase):
+    def test_drops_only_the_reserved_pair(self):
+        from servers.dispatch_common import CALLER_SESSION_KEY, CALLER_SIG_KEY
+        # Both keys share the prefix the stripper keys on — the convention the
+        # trace hook relies on without importing the owner.
+        self.assertTrue(CALLER_SESSION_KEY.startswith("_caller_"))
+        self.assertTrue(CALLER_SIG_KEY.startswith("_caller_"))
+        stripped = hook_common.strip_caller_stamp(
+            {"query": "q", "_x": 1, CALLER_SESSION_KEY: "s", CALLER_SIG_KEY: "0" * 64})
+        self.assertEqual(stripped, {"query": "q", "_x": 1})
+
+    def test_non_dict_passes_through(self):
+        for v in (None, "patch text", ["a"], 7):
+            self.assertEqual(hook_common.strip_caller_stamp(v), v)
+
+
 class TestToolTargetFile(unittest.TestCase):
     def test_claude_code_shape(self):
         self.assertEqual(hook_common.tool_target_file({"file_path": "a/b.py"}), "a/b.py")
@@ -171,11 +238,14 @@ class TestScriptsRouteThroughEmitter(unittest.TestCase):
             self.assertNotIn("APPROVE", src, "%s keeps an APPROVE constant" % name)
 
     def test_no_script_hand_rolls_hook_json(self):
-        # The hookSpecificOutput envelope is composed in exactly one place. The
-        # needle is the quoted JSON key, so a docstring may still NAME the field.
+        # The hookSpecificOutput envelope, and the permission/rewrite keys inside
+        # it, are composed in exactly one module. The needles are the quoted JSON
+        # keys, so a docstring may still NAME the fields.
         for name, src in self.sources.items():
-            self.assertNotIn('"hookSpecificOutput"', src,
-                             "%s builds hook JSON itself — route it through emit_hook_output" % name)
+            for needle in ('"hookSpecificOutput"', '"permissionDecision"', '"updatedInput"'):
+                self.assertNotIn(needle, src,
+                                 "%s spells %s itself — route it through hook_common's emitters"
+                                 % (name, needle))
 
 
 if __name__ == "__main__":

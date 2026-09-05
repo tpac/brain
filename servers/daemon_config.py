@@ -204,6 +204,14 @@ def brain_tmp_dir() -> str:
     return os.environ.get('BRAIN_TMP_DIR', '/tmp')
 
 
+def user_config_dir() -> str:
+    """`${XDG_CONFIG_HOME:-~/.config}` — the root of the brain's user-owned
+    files (`brain/env`, `brain/resolved.env`, `brain/hook-secret`). The Python
+    half of the shell resolver's spelling (api-key-env.sh); one accessor so the
+    readers of one directory cannot split."""
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+
+
 def _read_env_file_key(path: str, key: str):
     """Read one KEY=value from a config file that shell consumers SOURCE —
     so tolerate the shell grammar the same file is written in: optional
@@ -241,8 +249,7 @@ def _resolve_daemon_port() -> int:
     launched through brain-env.sh (the MCP server — CC spawns it with a bare
     env), then to the uid formula. A malformed value warns and uses the
     formula instead of crash-looping the daemon under KeepAlive."""
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     raw = (os.environ.get("BRAIN_DAEMON_PORT")
            or _read_env_file_key(os.path.join(xdg, 'brain', 'env'),
                                  'BRAIN_DAEMON_PORT'))
@@ -298,8 +305,7 @@ def _validate_instance_env() -> None:
     # formula when the var is unset, so every shell-launched process arrives
     # here with production's port already "set". Refuse production's VALUE —
     # the formula and the user env file are the two sources production reads.
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     prod_port = (_read_env_file_key(os.path.join(xdg, 'brain', 'env'),
                                     'BRAIN_DAEMON_PORT')
                  or str(47200 + (os.getuid() % 100)))
@@ -349,8 +355,7 @@ def resolve_db_dir(trust_env: bool = True) -> str:
     d = os.environ.get('BRAIN_DB_DIR')
     if d and trust_env:
         return d
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     cfg = _read_env_file_key(os.path.join(xdg, 'brain', 'env'), 'BRAIN_DB_DIR')
     if cfg and os.path.isfile(os.path.join(cfg, 'brain.db')):
         return cfg

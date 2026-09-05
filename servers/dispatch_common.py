@@ -9,16 +9,109 @@ Node ids are exact 8-char hex everywhere — there is no prefix resolution
 step at the dispatch layer; misses are the owning brain method's to report.
 """
 
+import hashlib
+import hmac
+import os
+import re
 from typing import Any, Dict, Callable, Optional, NamedTuple
 
 
 # Reserved arg key: the calling session's identity, stamped by the MCP proxy
-# (brain_mcp.daemon_send) on EVERY tool call under its OWN name — never as
-# `session_id`. Identity handlers (attribution / per-session state) resolve the
-# caller via caller_session(); cross-session FILTER reads (recall_episodes,
-# query_traces) read the caller-supplied `session_id` only, so an absent scope
-# means "all streams" by design — never the calling session.
+# (brain_mcp.daemon_send) on every tool call it can attribute, under its OWN
+# name — never as `session_id`. Identity handlers (attribution / per-session
+# state) resolve the caller via caller_session(); cross-session FILTER reads
+# (recall_episodes, query_traces) read the caller-supplied `session_id` only,
+# so an absent scope means "all streams" by design — never the calling session.
 CALLER_SESSION_KEY = "_caller_session"
+
+# Reserved arg key: the HMAC that lets the proxy trust a `_caller_session` it
+# did not write itself. On a host that hands the MCP proxy no session identity
+# (Codex passes no thread id to stdio servers), a PreToolUse hook — which does
+# receive `session_id` — signs it and rewrites the tool input with both keys
+# (hooks/scripts/stamp_caller_session.py). The proxy verifies and strips the
+# signature before dispatch (brain_mcp._stamp_caller_session); _pop_session_ctx
+# drops and logs a stray one so it never lands in a node's KV.
+#
+# Threat model: the model writing identity keys by accident or on a whim. The
+# secret is a 0600 file under the same uid the agent's shell runs as, so the
+# pair raises the cost of a forgery, it does not make one impossible — the
+# once-per-process note in the proxy is the control that matters. Both reserved
+# keys share the `_caller_` prefix; hook_common.strip_caller_stamp leans on it
+# to keep the pair out of tool traces without importing this module.
+CALLER_SIG_KEY = "_caller_sig"
+
+# The name every host adapter registers the proxy's MCP server under (the
+# tests pin the adapters to it — the service layer never reads a manifest).
+# Hosts name its tools `mcp__<server>__<tool>`; Claude Code prefixes a plugin's
+# servers as `plugin_<plugin>_<server>`.
+BRAIN_MCP_SERVER = "brain"
+_BRAIN_TOOL_RE = re.compile(r"^mcp__(?:.*_)?%s__" % re.escape(BRAIN_MCP_SERVER))
+
+
+def is_brain_tool(tool_name):
+    """True for one of the brain's own MCP tools on either host — the only
+    tools a hook may approve and rewrite; never a user's tool."""
+    return isinstance(tool_name, str) and _BRAIN_TOOL_RE.match(tool_name) is not None
+
+
+def hook_secret_path():
+    """`<user config dir>/brain/hook-secret`, beside the user env knob. The dir
+    is daemon_config's; imported lazily so its import-time work stays off the
+    hook's hot path until a stamp is actually signed."""
+    from servers.daemon_config import user_config_dir
+    return os.path.join(user_config_dir(), "brain", "hook-secret")
+
+
+def _read_secret(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        return None
+
+
+def _hook_secret():
+    """The per-install signing secret: 32 random bytes as hex, mode 0600,
+    created on first use by whichever side asks first. Published by hard-linking
+    a fully written temp file onto the path, so the name never exists with
+    partial content and the loser of a hook/proxy race on a fresh install reads
+    the winner's key. An existing empty file is a broken install, not a key."""
+    path = hook_secret_path()
+    data = _read_secret(path)
+    if data is None:
+        import secrets
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = "%s.%d.tmp" % (path, os.getpid())
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(secrets.token_hex(32).encode("ascii") + b"\n")
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            pass  # lost the race — the winner's key is the key
+        finally:
+            os.unlink(tmp)
+        data = _read_secret(path)
+    if not data:
+        raise RuntimeError("hook secret at %s is empty — delete it to regenerate" % path)
+    return data
+
+
+def sign_caller_session(session_id):
+    """HMAC-SHA256 (hex) of the session id under the install's hook secret.
+    Raises when the secret cannot be read or made — signing has nothing to
+    degrade to."""
+    return hmac.new(_hook_secret(), session_id.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_caller_session(session_id, signature):
+    """True only for a (session_id, signature) pair this install's hook produced.
+    Malformed inputs are False; a broken secret file raises, which the proxy
+    turns into an unattributed call plus a note."""
+    if not (isinstance(session_id, str) and session_id and isinstance(signature, str)):
+        return False
+    return hmac.compare_digest(sign_caller_session(session_id).encode("ascii"),
+                               signature.encode("utf-8"))
 
 
 def caller_session(args):
@@ -77,6 +170,15 @@ def _pop_session_ctx(brain, args):
     sid = caller_session(args)
     args.pop('session_id', None)
     args.pop(CALLER_SESSION_KEY, None)
+    if args.pop(CALLER_SIG_KEY, None) is not None:
+        # The proxy strips the signature before dispatch; a stray one means a
+        # client bypassed it. Loud, and never into a node's KV.
+        try:
+            brain._log_error('caller_sig_leaked',
+                             ValueError('%s reached the daemon' % CALLER_SIG_KEY),
+                             'a client sent the hook signature past the MCP proxy')
+        except Exception:
+            pass
     if not sid:
         return None, args
     try:

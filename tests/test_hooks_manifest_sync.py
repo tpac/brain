@@ -4,11 +4,13 @@ hooks/hooks.json is the Claude Code manifest; hooks/hooks.codex.json is the
 Codex projection of it — same commands, only the event set and per-host handler
 fields differ. Two files that share seven identical handlers drift silently, so
 this locks BOTH directions: every Codex handler is backed by a CC handler (same
-command, a subset of its tool names), and every CC handler on a shared event is
-projected into the Codex file (minus the tool names that only exist on Claude
-Code). Plus the two Codex-specific constraints — SessionEnd within Codex's 3 s
-cap, and the injecting hooks lifting Codex's ~2,500-token spill limit — and
-timeout parity everywhere else. Pure file inspection.
+command, a subset of its tool names) unless it is a declared Codex-only handler
+(CODEX_ONLY_HANDLERS, each naming the Claude Code mechanism that replaces it),
+and every CC handler on a shared event is projected into the Codex file (minus
+the tool names that only exist on Claude Code). Plus the two Codex-specific
+constraints — SessionEnd within Codex's 3 s cap, and the injecting hooks
+lifting Codex's ~2,500-token spill limit — and timeout parity everywhere else.
+Pure file inspection.
 """
 import json
 import os
@@ -29,6 +31,17 @@ CC_ONLY_EVENTS = {"WorktreeCreate", "WorktreeRemove", "ConfigChange", "StopFailu
 # (matched via the Agent alias), and search/fetch are hosted tools that skip the
 # hook path entirely.
 CC_ONLY_TOOL_NAMES = ("Read", "Glob", "Grep", "WebSearch", "WebFetch", "NotebookEdit")
+
+# Handlers that exist ONLY in the Codex projection, keyed by script name, each
+# with the Claude Code mechanism that makes it unnecessary there. An entry here
+# is a statement, and it is checked: the script must be registered in
+# hooks.codex.json and absent from hooks.json, or the entry is stale.
+CODEX_ONLY_HANDLERS = {
+    "stamp-caller-session.sh":
+        "Claude Code hands the MCP proxy CLAUDE_CODE_SESSION_ID; Codex passes stdio "
+        "MCP servers no thread id, so a PreToolUse hook signs session_id into the "
+        "brain tool input (decision fa0f5f5a keeps Claude Code on the env var)",
+}
 
 # Codex caps SessionEnd (and Interrupt) handlers at 3 seconds.
 CODEX_SESSION_END_MAX_TIMEOUT = 3
@@ -51,6 +64,10 @@ def _handlers(events, event):
         for group in events.get(event, [])
         for handler in group["hooks"]
     }
+
+
+def _codex_only(command):
+    return any(name in command for name in CODEX_ONLY_HANDLERS)
 
 
 def _alternatives(matcher):
@@ -104,11 +121,31 @@ class TestHooksManifestSync(unittest.TestCase):
         for event in self.cx:
             cc = _handlers(self.cc, event)
             for matcher, command, _timeout in _handlers(self.cx, event):
+                if _codex_only(command):
+                    continue
                 self.assertTrue(
                     any(c == command and _covers(m, matcher) for m, c, _t in cc),
                     "%s handler %r under matcher %r has no backing handler in hooks.json — "
-                    "the Codex manifest is a projection (same command, a subset of the tool names)"
+                    "the Codex manifest is a projection (same command, a subset of the tool "
+                    "names); a deliberately Codex-only handler goes in CODEX_ONLY_HANDLERS"
                     % (event, command, matcher))
+
+    def test_codex_only_handlers_are_registered_and_absent_from_cc(self):
+        # The allowlist stays armed: a name nothing registers guards nothing,
+        # and a name hooks.json also carries is not Codex-only any more.
+        cx_commands = {c for event in self.cx for _m, c, _t in _handlers(self.cx, event)}
+        cc_commands = {c for event in self.cc for _m, c, _t in _handlers(self.cc, event)}
+        for name, why in CODEX_ONLY_HANDLERS.items():
+            self.assertTrue(any(name in c for c in cx_commands),
+                            "CODEX_ONLY_HANDLERS names %r but hooks.codex.json does not register it" % name)
+            self.assertFalse(any(name in c for c in cc_commands),
+                             "%r is registered in hooks.json too — drop it from CODEX_ONLY_HANDLERS "
+                             "(the entry claims: %s)" % (name, why))
+            # Timeout parity is skipped for it, so pin the one thing parity gave.
+            for event in self.cx:
+                for _m, c, t in _handlers(self.cx, event):
+                    if name in c:
+                        self.assertIsNotNone(t, "%s must carry an explicit timeout" % name)
 
     def test_cc_handlers_are_projected_to_codex(self):
         # CC ⊆ Codex (minus CC-only tools): every handler hooks.json registers on
@@ -142,6 +179,8 @@ class TestHooksManifestSync(unittest.TestCase):
                 continue
             cc = {c: t for _m, c, t in _handlers(self.cc, event)}
             for _matcher, command, timeout in _handlers(self.cx, event):
+                if _codex_only(command):
+                    continue
                 self.assertEqual(timeout, cc.get(command),
                                  "%s handler %r: Codex timeout %r != Claude Code timeout %r"
                                  % (event, command, timeout, cc.get(command)))

@@ -6,8 +6,11 @@
 
 Hook stdout is read by two hosts — Claude Code and Codex (ChatGPT's Codex mode) —
 and both parse it against strict per-event JSON schemas. `hook_common.emit_hook_output`
-is the single writer: scripts hand it the daemon's `{decision, reason}` and never
-print a decision themselves.
+is the single writer of what the brain says: scripts hand it the daemon's
+`{decision, reason}` and never print a decision themselves. Its one sibling,
+`hook_common.emit_updated_input`, writes the one tool input the brain rewrites
+(PreToolUse `permissionDecision: allow` + `updatedInput`, the caller-identity
+stamp on the brain's own MCP tools).
 
 | Event | Model-visible channel | Block | Nothing to say |
 |-------|-----------------------|-------|----------------|
@@ -26,12 +29,13 @@ plugin has no business deciding for its user.
 
 Two manifests, one set of scripts: `hooks.json` (Claude Code) and
 `hooks.codex.json` (Codex — the shared events only, `additionalContextLimit: 0`
-on the two injecting hooks, SessionEnd within Codex's 3 s cap).
-`tests/test_hooks_manifest_sync.py` keeps them in step.
+on the two injecting hooks, SessionEnd within Codex's 3 s cap, plus the
+Codex-only identity stamp). `tests/test_hooks_manifest_sync.py` keeps them in
+step.
 
 ---
 
-## Registered Hooks (13 total)
+## Registered Hooks
 
 ### 1. SessionStart → `boot-brain.sh` (15s)
 - **Purpose:** Boot brain, print context + consciousness signals
@@ -56,6 +60,13 @@ on the two injecting hooks, SessionEnd within Codex's 3 s cap).
 - **Output:** `additionalContext` with the brain's safety context (critical brain-tracked resources, matching warnings); nothing when the command is clean. Never blocks.
 - **What Claude sees:** Safety warnings and critical node matches, alongside the command's result
 - **Status:** ✅ WORKING
+
+### 6. PreToolUse(mcp__brain__*) → `stamp-caller-session.sh` (5s, Codex only)
+- **Purpose:** Attribute brain MCP calls on a host that gives the proxy no session identity. Codex hands stdio MCP servers no thread id, so the hook signs the `session_id` it receives (HMAC-SHA256, secret at `~/.config/brain/hook-secret`) and rewrites the tool input with `_caller_session` + `_caller_sig`; the proxy accepts the pair only when it verifies and strips the signature before dispatch. No daemon call.
+- **Output:** `hookSpecificOutput.permissionDecision: allow` + `updatedInput` (the brain permitting its own tools — the emitter refuses any other tool name); nothing for a payload without `session_id` or a dict `tool_input` (logged)
+- **What Claude sees:** Nothing — the rewrite happens before the call; `post_tool_trace.py` strips the pair before recording the input, so no trace ever carries a replayable signature
+- **Not on Claude Code:** the proxy reads `CLAUDE_CODE_SESSION_ID` there (decision fa0f5f5a); an unattributed call is noted once per proxy process in `hook_errors`
+- **Status:** ✅ BUILT — live under Codex still to verify (E5)
 
 ### 7. Stop → `post-response-track.sh` (5s)
 - **Purpose:** Record the turn (S0 traces) and deliver pending self-messages
@@ -106,7 +117,7 @@ on the two injecting hooks, SessionEnd within Codex's 3 s cap).
 | Status | Count | Hooks |
 |--------|-------|-------|
 | ✅ Working | 7 | boot, recall, pre-edit, pre-bash, post-response-track, stop-failure, session-end |
-| ⚠️ Partial | 1 | worktree-context (verify) |
+| ⚠️ Partial | 2 | worktree-context (verify), stamp-caller-session (built, Codex E5 pending) |
 | ❌ Dead output | 2 | config-change, post-bash-host |
 
 **2 hooks produce output that Claude never sees.**

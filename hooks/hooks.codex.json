@@ -49,6 +49,16 @@
             "timeout": 8
           }
         ]
+      },
+      {
+        "matcher": "mcp__brain__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/stamp-caller-session.sh\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "Stop": [
