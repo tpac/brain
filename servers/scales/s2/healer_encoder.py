@@ -291,16 +291,15 @@ class HealerEncoder(IntegrationUnit):
                     lines.extend(corr_lines)
 
             # Connections — the one edge grammar (render_edge_lines): every
-            # relation on the pair, the description whole. A 60-char cut of
-            # the description was context the healer could not use.
+            # relation on the pair, the description whole.
             connections = node.get('connections', [])
             if connections:
                 from servers.contract import render_edge_lines
+                from .healer_contract import HEALER_EDGE_FORMAT
                 lines.append('')
                 lines.append('CONNECTIONS (%d):' % len(connections))
                 for conn in connections[:8]:
-                    lines.extend(render_edge_lines(
-                        conn, {'time_format': 'relative'}, indent='  '))
+                    lines.extend(render_edge_lines(conn, HEALER_EDGE_FORMAT, indent='  '))
 
             # Conversation context
             conversation = p.get('conversation', [])
