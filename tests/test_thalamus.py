@@ -94,12 +94,14 @@ class TestFile(ThalamusBase):
     def test_empty_body_rejects(self):
         self.assertFalse(self._file('  ')['filed'])
 
-    def test_directed_ask_rejects_as_undeliverable(self):
-        # Asks render at boot only, and a nameable session has already booted —
-        # a directed ask would wait out its window and dead-letter, guaranteed.
+    def test_directed_ask_files_and_targets(self):
+        # A nameable session has already booted, so a directed ask is only
+        # deliverable because its moment is Stop (TestPull pins the moment).
         r = self._file('judge this?', needs_answer=True, for_whom=S1)
-        self.assertFalse(r['filed'])
-        self.assertIn('self_send', r['error'])
+        self.assertTrue(r['filed'])
+        _, audience, needs_answer, _, _, target = self._row(r['id'])
+        self.assertEqual((audience, needs_answer, target),
+                         (tc.AUDIENCE_FIRST, 1, S1))
 
     def test_expires_before_when_rejects(self):
         r = self._file(when='3d', expires='1d')
@@ -213,6 +215,23 @@ class TestFile(ThalamusBase):
         thalamus.resolve(self.brain, first, dismiss=True)
         self.assertTrue(self._file('fits again')['filed'])
 
+    def test_budget_keys_on_source_and_target_session(self):
+        """One producer string serves every session's runs (the Scribe's
+        encoder:sonnet), so directed items are budgeted per (source,
+        target_session): a session at its cap starves neither another
+        session nor the producer's broadcast slots, and vice versa."""
+        for i in range(tc.MAX_OPEN_PER_SOURCE):
+            self.assertTrue(self._file('s1 %d' % i, for_whom=S1)['filed'])
+        r = self._file('s1 over', for_whom=S1)
+        self.assertFalse(r['filed'])
+        self.assertIn('budget', r['error'])
+        self.assertIn(S1[:8], r['error'])
+        self.assertTrue(self._file('s2 fits', for_whom=S2)['filed'])
+        self.assertTrue(self._file('broadcast fits')['filed'])
+        for i in range(tc.MAX_OPEN_PER_SOURCE - 1):
+            self.assertTrue(self._file('broadcast %d' % i)['filed'])
+        self.assertFalse(self._file('broadcast over')['filed'])
+
     def test_live_now_requires_filing_session(self):
         r = self._file(for_whom='live')
         self.assertFalse(r['filed'])
@@ -289,13 +308,26 @@ class TestPull(ThalamusBase):
         _, n3 = thalamus.pull(self.brain, S2, via='boot')
         self.assertEqual(n3, 1)
 
-    def test_ask_boot_only(self):
+    def test_broadcast_ask_boot_only(self):
         r = self._file('decide X?', needs_answer=True)
         _, n_stop = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n_stop, 0)
         block, n_boot = thalamus.pull(self.brain, S1, via='boot')
         self.assertEqual(n_boot, 1)
         self.assertIn('thalamus_resolve("%s"' % r['id'], block)
+
+    def test_directed_ask_stop_only_and_only_its_target(self):
+        """The Scribe asking the session it just encoded: Stop, not boot
+        (the named session has already had its boot), and never another
+        session."""
+        r = self._file('revise, or leave?', needs_answer=True, for_whom=S1)
+        _, n_boot = thalamus.pull(self.brain, S1, via='boot')
+        self.assertEqual(n_boot, 0)
+        _, n_other = thalamus.pull(self.brain, S2, via='stop')
+        self.assertEqual(n_other, 0)
+        block, n_stop = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n_stop, 1)
+        self.assertIn('thalamus_resolve("%s", answer=' % r['id'], block)
 
     def test_future_deliver_at_not_due_yet(self):
         self._file('later', when='1w')
@@ -546,6 +578,16 @@ class TestVocabulary(ThalamusBase):
             'omitting the column would be undeliverable' % (default,
                                                             tc.AUDIENCES))
 
+    def test_ask_moments_cover_every_audience_with_real_moments(self):
+        """ASK_MOMENTS is keyed by audience: an audience without an entry
+        would make its asks due at NO moment (the directed-ask dead-letter
+        of 2026-09-01, id:178f4727, reborn), and a moment outside MOMENTS
+        would never be pulled."""
+        self.assertEqual(set(tc.ASK_MOMENTS), set(tc.AUDIENCES))
+        for moments in tc.ASK_MOMENTS.values():
+            self.assertTrue(moments)
+            self.assertTrue(set(moments) <= set(tc.MOMENTS))
+
     def test_kind_is_one_derivation_for_verb_and_span(self):
         self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
         self.assertEqual(tc.kind_of({'deliver_at': '2027-01-01T00:00:00+00:00'}),
@@ -676,6 +718,25 @@ class TestRender(ThalamusBase):
                        'thalamus_resolve'):
             self.assertIn(phrase, tc._HEAD_NOTE)
         self.assertLessEqual(len(block), tc.BLOCK_MAX)
+
+    def test_list_items_filters_by_source_and_target(self):
+        """The producer's own-items read behind the journal continuity
+        join: one producer, one directed recipient, closed items on request."""
+        a = self._file('for s1', source='encoder:sonnet', for_whom=S1)
+        self._file('for s2', source='encoder:sonnet', for_whom=S2)
+        self._file('broadcast', source='encoder:sonnet')
+        self._file('other producer', source='anchor', for_whom=S1)
+        ids = lambda **kw: {i['id'] for i in
+                            thalamus.list_items(self.brain, **kw)['items']}
+        self.assertEqual(len(ids(source='encoder:sonnet')), 3)
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1),
+                         {a['id']})
+        self.assertEqual(len(ids(target_session=S1)), 2)
+        thalamus.resolve(self.brain, a['id'], dismiss=True)
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1),
+                         set())
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1,
+                             include_closed=True), {a['id']})
 
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')

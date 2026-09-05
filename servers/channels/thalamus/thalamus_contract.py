@@ -81,16 +81,31 @@ def default_audience(needs_answer):
 VIA_BOOT = _BOOT.name
 VIA_STOP = _STOP.name
 MOMENTS = (VIA_BOOT, VIA_STOP)
-ASK_MOMENTS = (VIA_BOOT,)  # asks deliver at boot only — an architecture
-                           # question arriving mid-thread trains
-                           # reflex-deferral; at boot there is no thread
+# Asks deliver at moments chosen by their AUDIENCE. A broadcast ask (every
+# session) renders at boot only — an architecture question arriving
+# mid-thread trains reflex-deferral; at boot there is no thread. A directed
+# ask (one named session) renders at that session's Stop: the Scribe asking
+# the session it just encoded IS mid-thread by design, and a session you can
+# name has already had its one boot — boot-only would dead-letter it.
+ASK_MOMENTS = {AUDIENCE_EVERY: (VIA_BOOT,),
+               AUDIENCE_FIRST: (VIA_STOP,)}
 
 
 # ═══════════════════════════════════════════════════════════════
 # CAPS & WINDOWS  —  policy as data. Volume is owned HERE, not by producer
 # discretion (v1's fatal finding #2 — brain node 6789e133).
 # ═══════════════════════════════════════════════════════════════
-MAX_OPEN_PER_SOURCE = 8    # file() REJECTS (loudly, synchronously) at the cap
+MAX_OPEN_PER_SOURCE = 8    # file() REJECTS (loudly, synchronously) at the cap.
+                           # Keyed on (source, target_session): a broadcast
+                           # item counts against its producer's global slots
+                           # (target_session ''), a directed item against the
+                           # producer's slots FOR THAT SESSION — the cap
+                           # protects a reader from one producer's flood, and
+                           # the Scribe's source (`encoder:sonnet`) is one
+                           # string for every session's runs (the
+                           # encoding_source grammar has no session slot), so
+                           # a source-only key would let one busy session
+                           # starve every other (Tom, 2026-09-05)
 PULL_MAX_ITEMS = 5         # per render moment (boot / stop), overflow named
 BLOCK_MAX = 4000           # whole injected block — loud cap, mirror of the
                            # self-channel RECEIVED_BLOCK_MAX discipline

@@ -23,8 +23,9 @@ def _handle_remind(brain, args, graph_changes):
     args.for_whom     = ''/None (default), 'live' (broadcast to live streams
                         now via the courier), 'all' (every session in window),
                         or a full session UUID (directed).
-    args.needs_answer = ask semantics: boot-only delivery, renders per session
-                        until answered, loud expiry.
+    args.needs_answer = ask semantics: renders per session until answered
+                        (broadcast at boot, directed at that session's Stop),
+                        loud expiry.
     args.refs         = node ids, resolved at render.
     args.dedup_key    = producer-owned identity; repeat updates, not inserts.
     """

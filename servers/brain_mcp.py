@@ -710,7 +710,7 @@ def _build_tools():
          "what": {"type": "string", "description": "The body — written for a reader with none of this session's context: plain words, no node ids as the subject, no internal vocabulary. It may be relayed to a human verbatim."},
          "when": {"type": "string", "description": "When it becomes due: relative shorthand ('30m','2h','3d','1w'), an ISO timestamp, or omit/'now' for next opportunity."},
          "for_whom": {"type": "string", "description": "Audience: omit for the default (asks → every session until answered; else → first session after due). 'live' = one-shot broadcast to live streams now. 'all' = every session in the window. A full session UUID = that session only."},
-         "needs_answer": {"type": "boolean", "description": "Ask semantics: delivered at session boot only, stays up until thalamus_resolve(answer=…), expiry is loud (dead-letter logged).", "default": False},
+         "needs_answer": {"type": "boolean", "description": "Ask semantics: stays up until thalamus_resolve(answer=…), expiry is loud (dead-letter logged). Delivered at session boot; a directed ask (for_whom = a session UUID) delivers at that session's next Stop instead.", "default": False},
          "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids for context — resolved to id · title at render."},
          "dedup_key": {"type": "string", "description": "Producer-owned identity: re-filing the same (source, dedup_key) updates the open item instead of duplicating it."}}}},
 

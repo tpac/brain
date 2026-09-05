@@ -133,14 +133,6 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
         # stay open forever and die silently at expiry.
         return _reject('thalamus.file: internal audience %r is not one of %s'
                        % (audience, tc.AUDIENCES))
-    if needs_answer and target_session:
-        # Undeliverable by construction: asks render at BOOT only, boot fires
-        # once per fresh session, and a UUID you can name has already had its
-        # boot — the item would wait out its window and dead-letter, guaranteed.
-        return _reject(
-            'thalamus.file: a directed ask cannot deliver — asks render at '
-            'boot only and the named session has already booted; use '
-            'self_send to reach a live stream, or file for_whom=\'all\'')
     if expires_at and deliver_at and expires_at <= deliver_at:
         # window_for anchors the DEFAULT window at deliver_at exactly to
         # prevent expiry-before-due; an explicit `expires` must meet the same
@@ -252,18 +244,21 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
                 return _ok(id=existing[0], updated=True, rearmed=changed,
                            route='queue')
 
+        # Budget key = (source, target_session) — see MAX_OPEN_PER_SOURCE.
         # expires_at filter: expired-but-unswept items must not wedge a
         # producer at its cap while being invisible to delivery.
         open_count = conn.execute(
             'SELECT COUNT(*) FROM thalamus_items WHERE source = ? '
-            'AND state = ? AND expires_at > ?',
-            (source, tc.STATE_OPEN, now)).fetchone()[0]
+            'AND target_session = ? AND state = ? AND expires_at > ?',
+            (source, target_session, tc.STATE_OPEN, now)).fetchone()[0]
         if open_count >= tc.MAX_OPEN_PER_SOURCE:
             return _reject(
-                'thalamus budget: %r has %d open items (cap %d) — '
+                'thalamus budget: %r has %d open items%s (cap %d) — '
                 'resolve, update (same dedup_key), or withdraw before '
                 'filing new ones; thalamus_list shows them'
-                % (source, open_count, tc.MAX_OPEN_PER_SOURCE))
+                % (source, open_count,
+                   ' for session %s' % target_session[:8] if target_session
+                   else '', tc.MAX_OPEN_PER_SOURCE))
 
         item_id = _insert_item(
             conn, source=source, body=body, refs=refs_json, audience=audience,
@@ -279,14 +274,17 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
 def _due_filter(session_id, via, now):
     """The due predicate — WHERE clause + params, shared by pull()'s fetch and
     its overflow count so the two cannot drift (the signal._PENDING_INBOX_SQL
-    pattern). Asks (needs_answer) are due at tc.ASK_MOMENTS only."""
+    pattern). Asks (needs_answer) are due at their audience's
+    tc.ASK_MOMENTS only."""
     sql = (' WHERE state = ?'
            ' AND (deliver_at IS NULL OR deliver_at <= ?)'
            ' AND expires_at > ?'
            " AND (target_session = '' OR target_session = ?)")
     params = [tc.STATE_OPEN, now, now, session_id]
-    if via not in tc.ASK_MOMENTS:
-        sql += ' AND needs_answer = 0'
+    for audience, moments in tc.ASK_MOMENTS.items():
+        if via not in moments:
+            sql += ' AND NOT (needs_answer = 1 AND audience = ?)'
+            params.append(audience)
     # The ledger is append-only across re-arms: only CURRENT-epoch rows
     # block delivery — a defer bumps the item's armed_epoch, so prior
     # generations' deliveries stay as history without suppressing the re-arm.
@@ -359,9 +357,8 @@ def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count of items actually shown. Writes the ledger at
     render for exactly those items (INSERT OR IGNORE: the PK makes re-render
-    idempotent per session and epoch). Asks (needs_answer)
-    deliver at BOOT ONLY — an architecture question arriving mid-thread
-    trains reflex-deferral; at boot there is no thread to protect.
+    idempotent per session and epoch). Asks (needs_answer) deliver at their
+    audience's tc.ASK_MOMENTS — broadcast at boot only, directed at Stop.
 
     The caller owns tracing (channels/delivery.py holds the chain at both
     moments); the ledger here is the delivery-policy record. Two sessions
@@ -410,11 +407,23 @@ def pull(brain, session_id, via):
     return block, kept
 
 
-def list_items(brain, include_closed=False, limit=50):
+def list_items(brain, include_closed=False, limit=50, source='',
+               target_session=''):
     """The pullable view — open items (default) with their delivery counts,
-    newest first. include_closed adds terminal items for audit."""
-    where, params = ('', []) if include_closed else ('WHERE state = ?',
-                                                     [tc.STATE_OPEN])
+    newest first. include_closed adds terminal items for audit; `source` /
+    `target_session` narrow to one producer / one directed recipient (the
+    producer's own-items read behind the journal continuity join)."""
+    clauses, params = [], []
+    if not include_closed:
+        clauses.append('state = ?')
+        params.append(tc.STATE_OPEN)
+    if source:
+        clauses.append('source = ?')
+        params.append(source)
+    if target_session:
+        clauses.append('target_session = ?')
+        params.append(target_session)
+    where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
     rows = brain.logs_conn.execute(
         'SELECT %s,'
         ' (SELECT COUNT(*) FROM thalamus_deliveries d'

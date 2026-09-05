@@ -18,9 +18,10 @@ plain words** — the question and its stakes, never an id, a moment, or the
 producer (id:3e549ac4).
 
 **Locked:** S1 first; review-block entrance; render-join feedback, never
-write-back; directed asks at Stop; filing traced; S2 boot channel untouched.
-**Open:** the budget key inside Step 13(c); the S1 review paragraph wording
-(eval-gated, Tom's nod).
+write-back; directed asks at Stop; filing traced; S2 boot channel untouched;
+budget key = (source, target_session) — "consumers of thalamus will dictate
+that" (Tom, id:1dda87c2). **Shipped:** 13(h) b573f76, 13(c) (see ledger).
+**Open:** the S1 review paragraph wording (eval-gated, Tom's nod).
 
 Step 12 (Prompt moment) is independent — land in either order, merge main
 between. The fourth-correspondent split (`env_message`) is NOT a Thalamus step;
@@ -259,8 +260,12 @@ ask      · 7e6decd2 · milestone says merge pending; it merged as 56c7bd6 — r
   (iii) **Budget key.** `MAX_OPEN_PER_SOURCE` keys on `source` alone; the
   Scribe's `encoding_source` is `encoder:sonnet` for every session's runs and
   the grammar allows one colon, so eight open items would be a global cap. For
-  directed items the key is `(source, target_session)`. Decide here; name it in
-  the contract comment.
+  directed items the key is `(source, target_session)` — RULED (Tom,
+  2026-09-05, id:1dda87c2), named in the contract comment beside the cap.
+  **(c) SHIPPED** — `ASK_MOMENTS` is a per-audience map, the door rejection
+  is gone, `_due_filter` excludes each audience's asks at its off-moments,
+  `list_items(source=, target_session=)`, budget predicate adds
+  `target_session`; id:178f4727 revised to superseded.
 - **(d) Trace the filing.** `("s1", "delta")` gains `thalamus_filed`; the door,
   handed a `run_chain`, writes one row (ref_id = item id; metadata: tag,
   subject, note, target) through the traces door — the symmetry `journal_note`
