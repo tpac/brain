@@ -93,6 +93,7 @@ ALLOWLIST=(
   "README.md:Tom Pachys"
   ".claude-plugin/plugin.json:Tom Pachys"
   ".claude-plugin/marketplace.json:Tom Pachys"
+  ".codex-plugin/plugin.json:Tom Pachys"
   # the publish target itself — the GitHub org the plugin is installed from;
   # the migration guide repeats the install command because it is the one
   # file an old-plugin user hands to Claude without reading anything else
@@ -100,6 +101,7 @@ ALLOWLIST=(
   "MIGRATING.md:tpac/entity"
   ".claude-plugin/plugin.json:github.com/tpac"
   ".claude-plugin/marketplace.json:github.com/tpac"
+  ".codex-plugin/plugin.json:github.com/tpac"
   # the legacy adoption rung (~/AgentsContext/brain) is shipped behavior:
   # existing brains at the pre-plugin default must stay reachable
   "hooks/scripts/resolve-brain-db.sh:AgentsContext"
@@ -272,7 +274,9 @@ cd "$REPO"
 # ── Gate C first — cheapest, and nothing should be built on a drifted pair.
 _pv="$(python3 -c 'import json;print(json.load(open(".claude-plugin/plugin.json"))["version"])')"
 _mv="$(python3 -c 'import json;print(json.load(open(".claude-plugin/marketplace.json"))["plugins"][0]["version"])')"
+_cv="$(python3 -c 'import json;print(json.load(open(".codex-plugin/plugin.json"))["version"])')"
 [ "$_pv" = "$_mv" ] || fail "version (gate C) — plugin.json=$_pv marketplace.json=$_mv must agree (/plugin update compares them)"
+[ "$_pv" = "$_cv" ] || fail "version (gate C) — .claude-plugin=$_pv .codex-plugin=$_cv must agree (Codex reads its manifest first)"
 if [ -n "${EXPECT_VERSION:-}" ] && [ "$_pv" != "$EXPECT_VERSION" ]; then
   fail "version (gate C) — manifests read $_pv but this release expects $EXPECT_VERSION"
 fi

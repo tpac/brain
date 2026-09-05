@@ -1,0 +1,39 @@
+{
+  "name": "entity",
+  "version": "0.9.0",
+  "description": "Persistent identity for an AI assistant — a self-healing knowledge graph that survives across sessions, learns from every conversation, and surfaces the right memory at the right moment. The substrate an identity accumulates into, not a RAG store.",
+  "keywords": [
+    "identity",
+    "memory",
+    "knowledge-graph",
+    "persistent",
+    "semantic",
+    "embeddings",
+    "self-correction",
+    "hooks",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.codex.json",
+  "mcpServers": {
+    "brain": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "root=\"${CODEX_HOME:-$HOME/.codex}/plugins/cache\"; best=; for d in \"$root\"/*/entity/*/; do [ -x \"$d/hooks/scripts/mcp-launch.sh\" ] || continue; { [ -z \"$best\" ] || ! [ \"$best\" -nt \"$d\" ]; } && best=\"$d\"; done; [ -n \"$best\" ] || { echo \"[brain-mcp] no installed entity plugin under $root\" >&2; exit 1; }; exec \"$best/hooks/scripts/mcp-launch.sh\""
+      ],
+      "env": { "PYTHONUNBUFFERED": "1" },
+      "env_vars": ["CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "BRAIN_DB_DIR"],
+      "startup_timeout_sec": 40
+    }
+  },
+  "interface": {
+    "displayName": "Entity",
+    "shortDescription": "Persistent identity for an AI assistant, grown on a self-healing knowledge graph.",
+    "longDescription": "Entity gives the assistant a memory that survives across sessions: it wakes up with its history at session start, recalls the right memories before each reply, records every turn, and learns from corrections. Runs a local daemon; nothing leaves the machine except the assistant's own API calls.",
+    "developerName": "Tom Pachys",
+    "category": "Other",
+    "websiteUrl": "https://github.com/tpac/entity"
+  }
+}

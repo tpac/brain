@@ -29,6 +29,10 @@ FILES=(
   # `claude plugin marketplace add <unzip-dir>` works with no repo access
   # (source "./" resolves to the unzip dir itself).
   .claude-plugin/marketplace.json
+  # The Codex host reads this manifest FIRST (before .claude-plugin/) and
+  # treats it as the whole manifest, so the same package installs on both
+  # hosts; hooks/hooks.codex.json ships with hooks/ below.
+  .codex-plugin/plugin.json
   .mcp.json
   requirements.txt
   # servers/ ships in FULL via `git ls-files servers` below — do NOT hand-list.

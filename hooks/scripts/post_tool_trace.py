@@ -10,7 +10,7 @@ import socket
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import run_hook
+from hook_common import run_hook, tool_target_file
 
 
 def _build_summary(tool_name, tool_input):
@@ -31,6 +31,8 @@ def _build_summary(tool_name, tool_input):
         return "Glob: %s" % tool_input.get("pattern", "")
     elif tool_name == "Grep":
         return "Grep: %s in %s" % (tool_input.get("pattern", ""), tool_input.get("path", "."))
+    elif tool_name == "apply_patch":
+        return "apply_patch: %s" % tool_target_file(tool_input)
     elif tool_name == "Agent":
         return "Agent: %s" % (tool_input.get("description", "") or "")[:150]
     elif tool_name == "WebSearch":

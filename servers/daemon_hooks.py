@@ -771,9 +771,11 @@ def hook_pre_edit(brain, args, graph_changes):
 
 
 def hook_pre_bash_safety(brain, args, graph_changes):
-    """PreToolUse(Bash) — safety check for destructive commands.
+    """PreToolUse(Bash) — safety context for destructive commands.
 
-    Returns JSON {"decision":"approve"|"block","reason":"..."}.
+    Returns JSON {"decision":"approve","reason":"..."} — the brain informs the
+    model about critical brain-tracked resources and matching warnings; it never
+    blocks the command (the host's own permission rules decide).
     """
     command = args.get("command", "")
 
@@ -800,10 +802,10 @@ def hook_pre_bash_safety(brain, args, graph_changes):
             lines.append("  [%s] %s" % (cm.get("type", "?"), title))
             lines.append("    %s" % content)
             lines.append("")
-        lines.append("Review the above before proceeding. This command has been BLOCKED.")
+        lines.append("Review the above before proceeding.")
         lines.append("[/BRAIN]")
 
-        return {"json": {"decision": "block", "reason": "\n".join(lines)}}
+        return {"json": {"decision": "approve", "reason": "\n".join(lines)}}
 
     elif warnings:
         lines = ["[BRAIN] \u26a0\ufe0f WARNING: Destructive command detected. Relevant brain context:"]

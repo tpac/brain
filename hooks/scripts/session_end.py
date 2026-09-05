@@ -13,14 +13,19 @@ the original single-session daemon consolidation, cf4d140.)
 import sys, os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, run_hook
+from hook_common import get_hook_input, daemon_call_raw, run_hook
 
 hook_input = get_hook_input()
 
 def main():
-    if daemon_available():
-        daemon_call_raw("hook_session_end", {"session_id": hook_input.get("session_id", "")}, timeout=30.0)
-    else:
-        daemon_unavailable_error("session_end")
+    # Codex caps SessionEnd handlers at 3 s and SIGKILLs the process group past
+    # it — a killed hook never reaches a loud failure path. One call, budgeted
+    # inside that cap: a transport failure is logged by daemon_call_raw itself,
+    # while a busy daemon is NOT an outage — no liveness probe here, because a
+    # short probe reads a loaded daemon as down and would trigger recovery
+    # against a healthy process shared with other live sessions. The
+    # daemon-side work (discard_session_context + save) completes once the
+    # request is sent, even if this process is killed before the reply.
+    daemon_call_raw("hook_session_end", {"session_id": hook_input.get("session_id", "")}, timeout=2.5)
 
 run_hook("session_end", main)

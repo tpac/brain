@@ -105,6 +105,11 @@ def _load_json(rel_path):
 
 PLUGIN = _load_json('.claude-plugin/plugin.json')
 MARKETPLACE = _load_json('.claude-plugin/marketplace.json')
+# The Codex host's manifest. Codex discovers `.codex-plugin/plugin.json` BEFORE
+# `.claude-plugin/plugin.json` and treats whichever it finds first as THE
+# manifest (same "Legacy" format, not an overlay) — so it must be complete and
+# stay in lockstep with the CC one.
+CODEX_PLUGIN = _load_json('.codex-plugin/plugin.json')
 PLUGIN_NAME = PLUGIN['name']
 OWNER = re.search(r'github\.com/([^/]+)', PLUGIN['repository']).group(1)
 
@@ -152,6 +157,35 @@ class TestVersionLockstep:
             f"{self.EXPECTED_VERSION!r} — bump EXPECTED_VERSION in the same "
             'commit as the manifests, or the export ships the wrong version')
 
+    def test_codex_manifest_in_lockstep(self):
+        assert CODEX_PLUGIN['name'] == PLUGIN_NAME, (
+            f".codex-plugin/plugin.json names {CODEX_PLUGIN['name']!r}, "
+            f".claude-plugin/plugin.json names {PLUGIN_NAME!r} — one plugin, one name")
+        assert CODEX_PLUGIN['version'] == PLUGIN['version'], (
+            f"version drift: .codex-plugin={CODEX_PLUGIN['version']!r} "
+            f".claude-plugin={PLUGIN['version']!r}")
+        # The product copy is one text shown on two hosts' listings.
+        for key in ('description', 'keywords'):
+            assert CODEX_PLUGIN[key] == PLUGIN[key], (
+                f'{key} differs between the Codex and Claude Code manifests — '
+                'the two listings must describe the same plugin')
+        # Codex resolves manifest paths relative to the plugin root and requires
+        # the `./` prefix; a dangling path silently drops that component.
+        for key in ('skills', 'hooks'):
+            rel = CODEX_PLUGIN[key]
+            assert rel.startswith('./'), f'{key} must be a ./-prefixed path, got {rel!r}'
+            assert os.path.exists(os.path.join(REPO, rel)), f'{key} points at a missing path: {rel}'
+        assert 'brain' in CODEX_PLUGIN['mcpServers'], (
+            'the Codex manifest must declare the brain MCP server inline — '
+            'Legacy plugins get no ${CLAUDE_PLUGIN_ROOT} expansion in .mcp.json')
+        # The launcher finds the plugin in Codex's cache by NAME; an adapter
+        # rename (D-11) that updates `name` but not the glob leaves the Codex
+        # host with no MCP server and only a stderr line to say so.
+        launcher = ' '.join(CODEX_PLUGIN['mcpServers']['brain']['args'])
+        assert f'/{PLUGIN_NAME}/' in launcher, (
+            f'the Codex MCP launcher must locate the cache dir by the manifest name '
+            f'{PLUGIN_NAME!r}; its args do not mention it')
+
 
 class TestAdapterNameContainment:
     """Every occurrence of an adapter-name shape sits in a small allowlist.
@@ -192,8 +226,8 @@ class TestAdapterNameContainment:
         # allowlist entries naming those strings — nowhere else in shipped
         # code. Also catches /Users/<owner>/<name> personal paths, which double
         # as a scrub-grep (5.1) early warning.
-        allowed = {'.claude-plugin/plugin.json', 'README.md', 'MIGRATING.md',
-                   'scripts/export-public-tree.sh'}
+        allowed = {'.claude-plugin/plugin.json', '.codex-plugin/plugin.json',
+                   'README.md', 'MIGRATING.md', 'scripts/export-public-tree.sh'}
         pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -201,9 +235,9 @@ class TestAdapterNameContainment:
 
 
 class TestHostNeutrality:
-    """D-11: the service layer must not know it runs under Claude Code.
+    """D-11: the service layer must not know which host it runs under.
 
-    servers/ may reference the CC manifest only for the embedder block. The
+    servers/ may reference a host manifest only for the embedder block. The
     day a service name derives from plugin.json, the rename hazard returns.
     `servers/embedder.py` IS the embedder block, so it is exempt wholesale;
     any other servers/ file must keep each manifest reference within an
@@ -214,7 +248,7 @@ class TestHostNeutrality:
     CONTEXT_LINES = 2
 
     def test_servers_reference_manifest_only_for_embedder(self):
-        pattern = re.compile(r'plugin\.json|\.claude-plugin')
+        pattern = re.compile(r'plugin\.json|\.claude-plugin|\.codex-plugin')
         leaks = []
         for rel in SCOPE:
             if not rel.startswith('servers/') or rel == self.EMBEDDER_FILE:
@@ -238,7 +272,7 @@ class TestHostNeutrality:
         # (Caught live: daemon_launch.py hardcoded a marketplace install path
         # as an interpreter candidate; the manifest-ref check above was blind
         # to it because install paths never mention plugin.json.)
-        pattern = re.compile(r'\.claude/plugins|plugins/marketplaces')
+        pattern = re.compile(r'\.claude/plugins|plugins/marketplaces|\.codex/plugins')
         leaks = [
             rel for rel in SCOPE
             if rel.startswith(('servers/', 'dashboard/')) and pattern.search(_read(rel))
@@ -593,6 +627,8 @@ class TestPublicTreeExport:
         files = _manifest()
         assert len(files) > 100, 'manifest suspiciously small'
         assert '.claude-plugin/plugin.json' in files
+        assert '.codex-plugin/plugin.json' in files, 'the package must install on the Codex host too'
+        assert 'hooks/hooks.codex.json' in files
         leaked = [f for f in files
                   if f.startswith(('docs/', 'eval/', 'scripts/'))]
         assert not leaked, f'dev-only paths in the package manifest: {leaked}'
@@ -709,7 +745,10 @@ class TestPublicTreeExport:
 
     # Bumping this is the point: a new allowlist entry is a deliberate,
     # reviewable line in a diff, never a quiet way to turn a red gate green.
-    ALLOWLIST_SIZE = 17
+    # 19: the Codex manifest (.codex-plugin/plugin.json) carries the same
+    # author attribution and repository URL already allowed for the Claude
+    # Code manifest — two entries, same rationale as theirs.
+    ALLOWLIST_SIZE = 19
 
     def test_allowlist_cannot_grow_quietly(self):
         """The one way to make gate B green WITHOUT fixing the leak is to add

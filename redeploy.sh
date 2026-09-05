@@ -37,7 +37,7 @@ cd "$REPO"
 #    bin/uv) are NOT in the package and survive — bin/ is mixed (ships launchers,
 #    holds the runtime uv), so it is left to unzip -o overlay, not pruned.
 #    ${PLUGIN:?} guards against an empty var turning this into `rm -rf /…`.
-for _d in servers hooks skills dashboard data .claude-plugin; do
+for _d in servers hooks skills dashboard data .claude-plugin .codex-plugin; do
   rm -rf "${PLUGIN:?}/$_d"
 done
 unzip -o -q "$REPO/brain.plugin" -d "$PLUGIN"
@@ -85,5 +85,5 @@ cat <<'EOF'
   MCP-surface or wiring changes — START A NEW SESSION:
     • servers/brain_mcp.py             (resident MCP proxy, loaded once per session)
     • contract.py tool/field schemas   (tool list is fixed at the session handshake)
-    • hooks/hooks.json, .mcp.json, .claude-plugin/plugin.json (read at session/plugin load)
+    • hooks/hooks*.json, .mcp.json, .claude-plugin/ and .codex-plugin/ manifests (read at session/plugin load)
 EOF
