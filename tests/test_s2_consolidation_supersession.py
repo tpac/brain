@@ -221,14 +221,18 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
     def test_intra_cluster_edge_rendered_with_direction(self):
         old = self._node('opener old')
         new = self._node('opener new')
-        # Production shape (get_neighbors_bulk): an intra-cluster edge is
-        # assigned to its SOURCE member only, direction='outgoing'. The
-        # target member has NO mirror entry.
+        # Production shape (get_connections_bulk, grouped per owner): the
+        # intra-cluster edge appears under BOTH members, outgoing from the
+        # actor and incoming on the target — the render must show it once.
         edge_details = {
-            new: {old: [{'relation': 'supersedes', 'description': 'newer opener',
-                         'title': 'opener old', 'type': 'handoff',
-                         'direction': 'outgoing'}]},
-            old: {},
+            new: {old: {'id': old, 'title': 'opener old', 'type': 'handoff',
+                        'direction': 'outgoing',
+                        'relations': [{'relation': 'supersedes',
+                                       'description': 'newer opener'}]}},
+            old: {new: {'id': new, 'title': 'opener new', 'type': 'handoff',
+                        'direction': 'incoming',
+                        'relations': [{'relation': 'supersedes',
+                                       'description': 'newer opener'}]}},
         }
         text = self._encoder()._format_clusters([self._cluster(old, new, edge_details)])
 
@@ -252,14 +256,31 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         self.brain.connect_typed(a, b, relation='extends', weight=0.6,
                                  description=long_desc, encoding_source='test')
         data = self._decoder()._load_edge_data([a])
-        (edge,) = data[a][b]
-        self.assertEqual(edge['description'], long_desc)
-        self.assertEqual(edge['title'], self.brain.get_node(b)['title'])
-        self.assertTrue(edge.get('created_at'))
+        conn = data[a][b]
+        (rel,) = conn['relations']
+        self.assertEqual(rel['description'], long_desc)
+        self.assertEqual(conn['title'], self.brain.get_node(b)['title'])
+        self.assertTrue(rel.get('created_at'))
         # and the encoder's External block renders it whole, in the one grammar
-        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: {b: data[a][b]}, })])
-        self.assertIn('this extends "%s' % edge['title'][:100], text)
+        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: {b: conn}})])
+        self.assertIn('this extends "%s' % conn['title'][:100], text)
         self.assertIn(' — ' + long_desc, text)
+
+    def test_edge_between_members_of_two_clusters_reaches_both(self):
+        """The decoder loads edges for every cluster's ids at once. An edge
+        whose endpoints sit in two different clusters must appear under BOTH
+        owners — the flat loader gave it to the source only, and with the
+        rich block's edges off the target member rendered edge-blind."""
+        a = self._node('member of cluster one')
+        n = self._node('member of cluster two', type='fact')
+        self.brain.connect_typed(n, a, relation='depends_on', weight=0.6,
+                                 description='cluster two leans on cluster one',
+                                 encoding_source='test')
+        data = self._decoder()._load_edge_data([a, n])
+        self.assertEqual(data[a][n]['direction'], 'incoming')
+        self.assertEqual(data[n][a]['direction'], 'outgoing')
+        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: data[a]})])
+        self.assertIn('"member of cluster two" depends_on this — cluster two leans on cluster one', text)
 
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
@@ -268,12 +289,12 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         outsider = self._node('elsewhere', type='fact')
         edge_details = {
             new: {
-                old: [{'relation': 'supersedes', 'description': '',
-                       'title': 'opener old', 'type': 'handoff',
-                       'direction': 'outgoing'}],
-                outsider: [{'relation': 'extends', 'description': '',
-                            'title': 'elsewhere', 'type': 'fact',
-                            'direction': 'outgoing'}],
+                old: {'id': old, 'title': 'opener old', 'type': 'handoff',
+                      'direction': 'outgoing',
+                      'relations': [{'relation': 'supersedes', 'description': ''}]},
+                outsider: {'id': outsider, 'title': 'elsewhere', 'type': 'fact',
+                           'direction': 'outgoing',
+                           'relations': [{'relation': 'extends', 'description': ''}]},
             },
             old: {},
         }

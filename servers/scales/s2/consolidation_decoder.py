@@ -875,37 +875,25 @@ class ConsolidationDecoder(IntegrationUnit):
         signals as first-class edges — it's context, not a migration target
         (S2 community detection manages placement on the next run).
 
-        Returns {member_id: {neighbor_id: [edge_dicts]}} where each
-        edge_dict has relation/description/title/type/direction plus
-        created_at (the relation's) and edge_created_at (the pair's) — the
-        nested shape the encoder's _format_clusters expects. Nothing is
-        truncated here: the encoder renders these through the one edge
-        renderer, and a description a reader might copy as a swap's `old`
+        Returns {member_id: {neighbor_id: connection}} where connection is a
+        GraphDAL.get_connections_bulk entry unchanged — id, type, title,
+        direction, edge_created_at, relations: [{relation, description,
+        weight, created_at}] — the shape contract.render_edge_lines reads,
+        so the encoder passes it through without reshaping. Grouped per
+        owner: an edge whose BOTH endpoints are in `node_ids` appears under
+        each of them with its own direction (the flat loader assigns such an
+        edge to its source only, which left the target member edge-blind
+        when its neighbor sat in another cluster of the same run). Nothing
+        is truncated: a description a reader might copy as a swap's `old`
         has to arrive whole.
         """
         ids = list(node_ids)
         if not ids:
             return {}
-
-        per_member = self.brain._graph.get_neighbors_bulk(ids)
         # archived=0 is the DAL default (v25).
-
-        edges = defaultdict(dict)
-        for member, flat_rows in per_member.items():
-            for r in flat_rows:
-                nbr_id = r['id']
-                if nbr_id not in edges[member]:
-                    edges[member][nbr_id] = []
-                edges[member][nbr_id].append({
-                    'relation': r['relation'],
-                    'description': r.get('edge_description') or '',
-                    'title': r['title'] or '',
-                    'type': r['type'],
-                    'direction': r['direction'],
-                    'created_at': r.get('relation_created_at'),
-                    'edge_created_at': r.get('edge_created_at'),
-                })
-        return dict(edges)
+        grouped = self.brain._graph.get_connections_bulk(ids)
+        return {member: {c['id']: c for c in conns}
+                for member, conns in grouped.items()}
 
     def _has_correction_edge(self, node_ids):
         """Check if any correction edge exists between cluster members.

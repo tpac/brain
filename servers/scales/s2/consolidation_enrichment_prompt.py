@@ -90,7 +90,7 @@ Same three nodes, opposite outcome: the claim test separates "one shared noun" f
   - Similarity scores (content cosine and title cosine — two independent dimensions)
   - Full node content, situation, reasoning, metadata
   - Behavioral evidence: co-recall, judge preference, query coverage, catalog blindness
-  - **External edges** per node, with direction arrow (→ outgoing, ← incoming), relation, description, and neighbor. These tell you what each node means in context.
+  - **External edges** per node, one line per relation in the node's own Edges grammar: `[type id:xxxxxxxx <age>] this <relation> "<neighbor>" — <description>` when the node is the actor, `[type id:xxxxxxxx <age>] "<neighbor>" <relation> this — <description>` when the neighbor acts on it. The age is the relation's; the description is whole. These tell you what each node means in context.
   - **Intra-cluster edges** — every edge BETWEEN cluster members, rendered `actor → relation → target`. Supersession and correction direction lives here — read it before choosing a survivor.
   - Community membership (thematic neighborhood)
   - Locked / critical status

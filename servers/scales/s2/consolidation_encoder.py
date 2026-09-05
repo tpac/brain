@@ -329,16 +329,16 @@ class ConsolidationEncoder(IntegrationUnit):
             intra_lines = []
             all_details = cluster.get('edge_details', {})
             for nid in cluster['nodes']:
-                for nbr_id, edges_list in all_details.get(nid, {}).items():
+                for nbr_id, conn in all_details.get(nid, {}).items():
                     if nbr_id not in cluster['nodes']:
                         continue
-                    for e in edges_list:
-                        if e.get('direction') != 'outgoing':
-                            continue
-                        desc = e.get('description', '')
+                    if conn.get('direction') != 'outgoing':
+                        continue
+                    for r in conn.get('relations') or ():
+                        desc = r.get('description', '')
                         desc_str = ' — %s' % desc if desc else ''
                         intra_lines.append('      %s → %s → %s%s' % (
-                            nid[:8], e.get('relation', '?'), nbr_id[:8], desc_str))
+                            nid[:8], r.get('relation', '?'), nbr_id[:8], desc_str))
             if intra_lines:
                 lines.append('    Intra-cluster edges (direction: actor → relation → target):')
                 lines.extend(intra_lines)
@@ -416,29 +416,18 @@ class ConsolidationEncoder(IntegrationUnit):
                 # reason about ABSORB migration: survivor keeps its own, the
                 # peer's outgoing edges migrate via the survivor's connections
                 # list, and incoming edges migrate via separate `connect` ops
-                # from the neighbor. These lines are the node's ONLY edge
-                # render in this prompt — CONSOLIDATION_NODE_FORMAT sets
-                # edge_limit 0 so the rich block above does not show the same
-                # edges a second time in a second shape.
+                # from the neighbor. With CONSOLIDATION_NODE_FORMAT at
+                # edge_limit 0 these lines (plus the Intra block) are the
+                # node's only edge render in this prompt.
                 edge_details = cluster.get('edge_details', {}).get(nid, {})
-                external = {nbr: es for nbr, es in edge_details.items()
+                external = {nbr: conn for nbr, conn in edge_details.items()
                             if nbr not in cluster['nodes']}
                 if external:
-                    total = sum(len(es) for es in external.values())
+                    total = sum(len(c.get('relations') or ()) for c in external.values())
                     lines.append('      External edges (%d):' % total)
-                    for nbr_id, edges_list in external.items():
-                        first = edges_list[0]
-                        entry = {'id': nbr_id, 'type': first.get('type', '?'),
-                                 'title': first.get('title', ''),
-                                 'direction': first.get('direction'),
-                                 'edge_created_at': first.get('edge_created_at'),
-                                 'relations': [
-                                     {'relation': e.get('relation', '?'),
-                                      'description': e.get('description', ''),
-                                      'created_at': e.get('created_at')}
-                                     for e in edges_list]}
+                    for conn in external.values():
                         lines.extend(render_edge_lines(
-                            entry, CONSOLIDATION_NODE_FORMAT, indent='        '))
+                            conn, CONSOLIDATION_NODE_FORMAT, indent='        '))
 
             lines.append('')
 
