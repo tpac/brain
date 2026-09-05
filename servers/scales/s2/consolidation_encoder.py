@@ -359,9 +359,10 @@ class ConsolidationEncoder(IntegrationUnit):
                     flags.append('CRITICAL')
                 flag_str = ' [%s]' % ', '.join(flags) if flags else ''
 
-                lines.append('    --- %s ---' % nid[:8])
-                lines.append('      [%s] "%s"%s' % (
-                    nd.get('type', '?'), nd.get('title', '?'), flag_str))
+                # One header per node: render_rich_node below prints the
+                # `[type] "title" (id:…)` line, so this separator carries
+                # only the id and the flags the rich header lacks (CRITICAL).
+                lines.append('    --- %s ---%s' % (nid[:8], flag_str))
                 lines.append('      recalled=%dx  judged=%dx  src=%s  created=%s' % (
                     recall_count, judge_count,
                     nd.get('encoding_source', '?')[:15],

@@ -303,6 +303,22 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         self.assertEqual(self._decoder()._load_community_membership([a]),
                          {a: [{'id': comm, 'title': 'a community'}]})
 
+    def test_cluster_block_prints_one_header_per_node_keeping_the_flags(self):
+        """render_rich_node prints the `[type] "title" (id:…)` header; the
+        encoder's own `[type] "title"` line above it was a duplicate. The
+        separator keeps the flags the rich header lacks (CRITICAL)."""
+        old = self._node('opener old', locked=True)
+        new = self._node('opener new')
+        cluster = self._cluster(old, new, {old: {}, new: {}})
+        cluster['node_details'][old]['locked'] = True
+        cluster['node_details'][old]['critical'] = True
+        text = self._encoder()._format_clusters([cluster])
+        self.assertEqual(text.count('"opener old"'), 1, text)
+        self.assertEqual(text.count('"opener new"'), 1, text)
+        self.assertIn('    --- %s --- [LOCKED, CRITICAL]' % old[:8], text)
+        self.assertIn('    --- %s ---\n' % new[:8], text)
+        self.assertIn('[handoff] "opener old" (id:%s, locked' % old[:8], text)
+
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
         old = self._node('opener old')
