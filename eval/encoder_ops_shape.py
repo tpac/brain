@@ -43,6 +43,7 @@ ARMS = [  # (label, glob) — order = table order
     ('v41+gistB',    'ops4/*-v41gistB/*.json'),
     ('v9+gistB',     'ops4/*-v9gistB/*.json'),
     ('shape+gist',   'ops5/*-shape/*.json'),     # the revise-shape branch: prompt rows + s1e_gist + tool layer
+    ('levers',       'ops6/*-levers/*.json'),    # + L1 brain_batch "revise + edges" sentence + L2 gist Edges-line bullet
 ]
 MERGE = {'v41 rep': 'v41', 'v42 rep': 'v42'}
 GENERIC = {'related', 'related_to'}
