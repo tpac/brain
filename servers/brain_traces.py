@@ -63,11 +63,32 @@ def _resolve_time_bound(value):
         raise ValueError('time bound %r %s' % (value, e))
 
 
+def stamp_s0_session(metadata, env):
+    """Merge the session stamp (trace_contract.S0_SESSION_STAMP_FIELDS — model,
+    host) into an S0 row's metadata. `env` is a mapping carrying those fields
+    (vars(ctx) on the hook path, session_env_for() on the dispatched path).
+    setdefault semantics — an explicit per-event value wins; an unknown (empty)
+    field is left out rather than stamped blank, so a row from before the value
+    was learned carries no key at all. Returns the metadata unchanged when
+    nothing is known, and unchanged when it is not a dict (None stays None; a
+    non-dict wire payload is the DAL's to warn about, never a raise here — the
+    same posture as TraceDAL._stamp_identity)."""
+    from .trace_contract import S0_SESSION_STAMP_FIELDS
+    stamp = {k: env.get(k, '') for k in S0_SESSION_STAMP_FIELDS if env.get(k, '')}
+    if not stamp or (metadata is not None and not isinstance(metadata, dict)):
+        return metadata
+    metadata = dict(metadata or {})
+    for k, v in stamp.items():
+        metadata.setdefault(k, v)
+    return metadata
+
+
 def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None,
               content=None, ref_id=''):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
-    chain (ctx.s0_chain()), scale ('s0'), the session (ctx.session_id) — and
-    the stored-content cap: pass the turn's full text as `content` and it
+    chain (ctx.s0_chain()), scale ('s0'), the session (ctx.session_id), the
+    session stamp (model/host from ctx, via stamp_s0_session) — and the
+    stored-content cap: pass the turn's full text as `content` and it
     lands in metadata['content'] capped LOUDLY at the pipeline store limit
     (a marker names the dropped count — never a silent slice, per the
     standing truncation rule), so the timeline's sides can neither drift
@@ -91,6 +112,7 @@ def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None,
         metadata['content'] = cap_text_loud(
             content, _PL['assistant_response_store'],
             marker='…[+%d chars truncated at trace store]')
+    metadata = stamp_s0_session(metadata, vars(ctx))
     return brain._trace_dal.append(
         chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
         event_type=event_type, ref_type=ref_type, summary=summary,

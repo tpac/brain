@@ -20,8 +20,9 @@
 #
 # Steps, in order — the first red refuses everything after it. Cheap gates
 # run before the long suite so a red costs seconds, not forty minutes:
-#   preflight    version shape · author identity · predecessor named · publish
-#                preconditions
+#   preflight    version shape · release notes present (CHANGELOG.md has an
+#                entry for <version>) · author identity · predecessor named ·
+#                publish preconditions
 #   export       scripts/export-public-tree.sh → gate A (denylist), B (scrub),
 #                C (version, pinned to <version> via EXPECT_VERSION),
 #                D (credential shapes, forbidden files)
@@ -108,6 +109,11 @@ BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD)"
 DIRTY="$(git -C "$REPO" status --porcelain)"
 printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' \
   || fail "version must be X.Y.Z (got '${VERSION:-}')"
+# The notes are the one release artifact nothing else checks: a changelog
+# rots the moment a release ships without touching it. The heading is the
+# Keep-a-Changelog shape README points readers at; the date is the human's.
+grep -qE "^## \[${VERSION//./\\.}\]" "$REPO/CHANGELOG.md" \
+  || fail "CHANGELOG.md has no entry for $VERSION — write the release notes first (a heading '## [$VERSION] — YYYY-MM-DD')"
 [ -n "${RELEASE_AUTHOR_EMAIL:-}" ] \
   || fail "RELEASE_AUTHOR_EMAIL is not set — the public commit needs an explicit author e-mail (git's configured identity is deliberately not used)"
 case "${RELEASE_PREVIOUS:-}" in

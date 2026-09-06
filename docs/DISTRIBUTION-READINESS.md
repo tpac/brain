@@ -1338,7 +1338,9 @@ and `RELEASE_PREVIOUS` (the previous release's tree, or the word `none` for a
 first release — unset refuses, so the upgrade test can be declined by name
 but never forgotten). Dry-run by default; seven steps, the first red refuses
 everything after it, cheap gates before the long suite:
-  1. **preflight** — `X.Y.Z` shape; author e-mail present and scrubbed through
+  1. **preflight** — `X.Y.Z` shape; `CHANGELOG.md` carries a `## [X.Y.Z]`
+     entry (the notes are the one release artifact no export gate sees);
+     author e-mail present and scrubbed through
      gate B together with the commit and tag messages (`--scrub-only` door);
      author *name* asserted equal to `plugin.json.author` (the manifest's
      allowlist entry vets it); `--publish` additionally needs URL ==
@@ -1429,7 +1431,9 @@ the fix-forward notice and the would-be push commands, nothing pushed.
 **What is left before the door opens — all Tom's:** the public committer
 e-mail (Tom will open a domain; anything with his name or handle trips gate B
 by design, so the address either is name-free or gets a deliberate allowlist
-entry), `gh repo create tpac/entity`, and the `--publish` go. **5.9** landed
+entry), `gh repo create tpac/entity`, the release date in `CHANGELOG.md`'s
+`[0.9.0]` heading (committed on main — the export copies the working tree),
+and the `--publish` go. **5.9** landed
 2026-09-05, so the export is opt-in before the first push. The first REAL upgrade test runs at 0.9.1 with 0.9.0's public tree as
 `RELEASE_PREVIOUS`. Follow-on worth its own item: run the suite inside the
 smoke's freshly bootstrapped runtime rather than the dev venv, so the tests
@@ -1479,7 +1483,7 @@ owner of "what ships" and names every path — by literal or by shape — throug
 `git ls-files` pathspecs; a tracked file nothing names does not ship, and an
 untracked file cannot ship even when its shape matches. `--list` is the
 package; `--list-public` adds the public-repo extras (README, CONTRIBUTING,
-MIGRATING, the suite) and is what `scripts/export-public-tree.sh` materializes
+MIGRATING, CHANGELOG, the suite) and is what `scripts/export-public-tree.sh` materializes
 before its denylist and gates. The export's interface is unchanged (5.7
 consumes only its exit code).
 
@@ -1508,7 +1512,10 @@ notes, a new `tests/` subdirectory, an extensionless non-`brain-*` launcher,
 …) and one untracked shape match; the REAL export runs over it and the output
 must equal the named set exactly.
 
-Export count 440 → **434**. The six files that shipped only by subtraction
+Export count 440 → **435** (434 after the opt-in cut, plus `CHANGELOG.md`,
+rewritten as the public 0.9.x changelog; `scripts/release.sh` refuses a
+release whose version has no entry in it, and `TestVersionLockstep` pins the
+expected version's entry). The six files that shipped only by subtraction
 and are no longer named: `tests/bench_identifier_split.py`, `run_all.py`,
 `metrics.py`, `transcript_parser.py` (harnesses and helpers with no shipped
 importer), `golden_dataset_conversation_cases.json` (consumed only by a

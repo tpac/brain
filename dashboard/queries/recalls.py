@@ -14,6 +14,45 @@ import os
 from ..clock import utc_cutoff
 from ..db import chain_payload_files, logs_db_path, read_payload_pointer
 from ..query import safe_query
+from ._meta import extract_meta_fields, S0_SESSION_STAMP_FIELDS
+
+
+_EMPTY_STAMP = tuple('' for _ in S0_SESSION_STAMP_FIELDS)
+
+
+def _turn_stamps(conn, chain_ids):
+    """The S0 session stamp (model, host) of the TURN each S1 recall chain
+    belongs to, as {s1r_chain_id: (model, host)}. The stamp lives on the S0
+    rows, not on S1 — the recall chain `s1r-<short>-<stop>` and its turn's
+    `s0-<short>-<stop>` share the suffix, so the join is a chain-id rewrite,
+    done for the whole page in ONE query (this feeds a 2s-polled feed). The
+    assistant_message row wins over user_message: at Stop the transcript names
+    THIS turn's model, while the prompt-time row can only carry the previous
+    turn's. Chosen in Python, not SQL — a text predicate on `metadata` would
+    also match the turn's own content. Empty strings for a chain from before
+    the stamp existed."""
+    s0_by_s1 = {c: 's0-' + c[len('s1r-'):] for c in chain_ids
+                if c and c.startswith('s1r-')}
+    out = {c: _EMPTY_STAMP for c in chain_ids}
+    if not s0_by_s1:
+        return out
+    s0_ids = list(s0_by_s1.values())
+    best = {}   # s0 chain → (rank, created_at, stamp)
+    for chain, ref_type, created_at, meta in conn.execute(
+        "SELECT chain_id, ref_type, created_at, metadata FROM trace_events "
+        "WHERE scale = 's0' AND ref_type IN ('assistant_message', 'user_message') "
+        "AND chain_id IN (%s)" % ','.join('?' * len(s0_ids)), s0_ids,
+    ).fetchall():
+        stamp = extract_meta_fields(meta, *S0_SESSION_STAMP_FIELDS)
+        if not any(stamp):
+            continue
+        key = (ref_type == 'assistant_message', created_at or '')
+        if chain not in best or key > best[chain][0]:
+            best[chain] = (key, stamp)
+    for s1, s0 in s0_by_s1.items():
+        if s0 in best:
+            out[s1] = best[s0][1]
+    return out
 
 
 def read_judge_payload(chain_id: str = "", recall_ref: str = "",
@@ -98,6 +137,7 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
         params + [limit],
     ).fetchall()
 
+    stamps = _turn_stamps(conn, [r[1] for r in rows])
     results = []
     for r in rows:
         trace_id = r[0]
@@ -188,6 +228,7 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
         j_prompt, j_output_file = read_judge_payload(
             chain_id, recall_ref, pointer=judge_pointer, scan_chain=False)
         titles = {c['id']: c['title'] for c in candidates}
+        model, host = stamps.get(chain_id, _EMPTY_STAMP)
 
         results.append({
             "id": trace_id,
@@ -218,5 +259,9 @@ def query_recall_log(conn, since_ts: str = '', limit: int = 50, session_id: str 
             "judge_output": j_output_file or judge_output,
             "human_identity": human_identity,
             "agent_identity": agent_identity,
+            # The turn's model/host — the Live card's label for which model
+            # this turn ran on (joined from the S0 row, see _turn_stamps).
+            "model": model,
+            "host": host,
         })
     return results

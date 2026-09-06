@@ -7,7 +7,8 @@ import sys, os, time
 
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
-                         daemon_unavailable_error, brain_debug, emit_hook_output, run_hook)
+                         daemon_unavailable_error, brain_debug, emit_hook_output, run_hook,
+                         turn_model, host_name)
 
 hook_input = get_hook_input()
 
@@ -70,6 +71,10 @@ def main():
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
             "session_id": hook_input.get("session_id", ""),
+            # The S0 session stamp — what produced this turn (see hook_common).
+            # At Stop the transcript's last assistant entry IS this turn's.
+            "model": turn_model(hook_input),
+            "host": host_name(),
         }, timeout=4.0)  # Encoding runs in background thread — hook must return in <5s
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):

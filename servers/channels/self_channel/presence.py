@@ -98,6 +98,8 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
                 entry['cwd'] = pk.get('cwd', '')
                 entry['branch'] = pk.get('branch', '')
                 entry['worktree'] = pk.get('worktree', '')
+                entry['model'] = pk.get('model', '')
+                entry['host'] = pk.get('host', '')
                 entry['session_started_at'] = pk.get('session_started_at', '')
                 entry['pending_inbox_count'] = pk.get('pending_inbox_count', 0)
             live.append(entry)
@@ -114,6 +116,7 @@ def _empty_peek(session_id=''):
     return {'session_id': session_id, 'short': session_id[:8] if session_id else '',
             'focus': '', 'recent_msgs': [], 'turn_count': 0,
             'cwd': '', 'branch': '', 'worktree': '', 'project': '',
+            'model': '', 'host': '',
             'session_started_at': '',
             'last_active_at': '', 'liveness': 'lost', 'pending_inbox_count': 0,
             'found': False}
@@ -149,6 +152,10 @@ def peek(brain, session_id, msg_limit=2):
         'branch': env.get('branch', ''),
         'worktree': env.get('worktree', ''),
         'project': env.get('project', ''),
+        # What the stream rides on right now — the session row mirrors the
+        # latest per-turn value (trace_contract.S0_SESSION_STAMP_FIELDS).
+        'model': env.get('model', ''),
+        'host': env.get('host', ''),
         'session_started_at': act.get('started_at', '') or '',
         'last_active_at': last_active,
         'liveness': liveness,

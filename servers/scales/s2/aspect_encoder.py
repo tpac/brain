@@ -159,6 +159,7 @@ class AspectEncoder(IntegrationUnit):
                        output_tokens=telemetry.get('output_tokens', 0),
                        cache_read_tokens=telemetry.get('cache_read_tokens', 0),
                        cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
+                       model=telemetry.get('model', ''),
                    ))
 
         return {
@@ -193,6 +194,7 @@ class AspectEncoder(IntegrationUnit):
                        output_tokens=telemetry.get('output_tokens', 0),
                        cache_read_tokens=telemetry.get('cache_read_tokens', 0),
                        cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
+                       model=telemetry.get('model', ''),
                    ))
 
     # ─── prompt construction ─────────────────────────────────────────

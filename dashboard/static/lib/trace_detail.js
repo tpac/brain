@@ -146,7 +146,7 @@ const _DELTA_KNOWN = new Set([
   'rejection_skipped', 'journal_entry', 'action_details', 'read_calls',
   'final_text', 'errors', 'created', 'revised', 'archived', 'classifications',
   'elapsed_ms', 'input_tokens', 'output_tokens', 'cache_read_tokens',
-  'cache_creation_tokens', 'truncated', 'interaction_version',
+  'cache_creation_tokens', 'truncated', 'model', 'interaction_version',
   'interaction_fingerprint', 'interaction_source',
   'human_identity', 'agent_identity',
 ]);
@@ -168,6 +168,8 @@ function _runCostLane(ev, m) {
   if (m.output_tokens != null)     cost += _stat('tok out', m.output_tokens);
   if (m.cache_read_tokens)         cost += _stat('cache rd', m.cache_read_tokens);
   if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
+  // Which LLM the run called — what makes the token counts priceable.
+  if (m.model)                     cost += _stat('model', m.model);
   // K provenance: source decides the label — an override shows its version,
   // a default-run shows 'default' (version 0 would render as nothing).
   // Legacy rows (no interaction_source) fall back to the bare version chip.
@@ -362,19 +364,100 @@ export function renderTraceDetail(ev) {
 }
 
 /** Lightweight badges for the COLLAPSED row — data-loss / errors shouldn't
- *  require a click to notice while hardening. Returns '' for clean events. */
-export function collapsedBadges(ev) {
-  const m = parseTraceMeta(ev.metadata);
+ *  require a click to notice while hardening. Returns '' for clean events.
+ *  Takes one event or a RUN of them (a merged group row badges the whole run,
+ *  so a single bad write inside a collapsed run of 40 still shows). */
+export function collapsedBadges(evOrRun) {
+  const evs = Array.isArray(evOrRun) ? evOrRun : [evOrRun];
+  let trunc = 0, errors = 0;
+  for (const ev of evs) {
+    const m = parseTraceMeta(ev.metadata);
+    if (m.truncated) trunc++;
+    if (m.errors && m.errors.length) errors += m.errors.length;
+  }
   let b = '';
-  if (m.truncated) {
+  if (trunc) {
     b += '<span title="write cut mid-tool-call — data loss" style="background:#3a0e0e;'
       + 'border:1px solid #c33;border-radius:2px;color:#ff7777;font-size:9px;font-weight:bold;'
-      + 'padding:0 4px;margin-left:4px">⚠ TRUNC</span>';
+      + 'padding:0 4px;margin-left:4px">⚠ TRUNC' + (trunc > 1 ? ' ×' + trunc : '') + '</span>';
   }
-  if (m.errors && m.errors.length) {
-    b += '<span title="' + escapeHtml(String(m.errors.length)) + ' error(s)" style="background:#2a1a00;'
+  if (errors) {
+    b += '<span title="' + escapeHtml(String(errors)) + ' error(s)" style="background:#2a1a00;'
       + 'border:1px solid #c83;border-radius:2px;color:#ffaa33;font-size:9px;'
-      + 'padding:0 4px;margin-left:4px">' + m.errors.length + ' err</span>';
+      + 'padding:0 4px;margin-left:4px">' + errors + ' err</span>';
   }
   return b;
+}
+
+// ── merged runs ─────────────────────────────────────────────────────────────
+// A write-heavy chain emits ONE event per node / edge / note: an S2 community
+// run lands 40+ identical `edge_relation_revised` rows, an encode 6 identical
+// `node_created` rows. Collapsed into one row per run, the chain reads as what
+// it did instead of a scroll of repeats; the run expands to the same rows,
+// each still individually expandable.
+//
+// A ref_type is mergeable IFF it has a summary here — the map is the registry.
+// Everything else (encoding_run, recall, community_enriched, …) is a
+// once-per-run event whose summary already carries the story: never merged.
+//
+// Keyed by ref_type, unlike this module's payload renderers (see the header's
+// shape-detection rule) — deliberately. "How many of these does one run emit?"
+// is a property of the ref_type, not of the payload: node_created and
+// tool_result carry unrelated shapes and both repeat per item. Copy-only, so an
+// unlisted ref_type just renders its rows individually, never wrongly.
+
+/** "a ×3, b, c" — descending by count, capped. */
+function _tally(values, cap = 4) {
+  const counts = new Map();
+  for (const v of values) {
+    const k = String(v || '?');
+    counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const shown = sorted.slice(0, cap)
+    .map(([k, n]) => k + (n > 1 ? ' ×' + n : '')).join(', ');
+  const rest = sorted.length - cap;
+  return shown + (rest > 0 ? ', +' + rest + ' more' : '');
+}
+
+function _metas(evs) { return evs.map(ev => parseTraceMeta(ev.metadata)); }
+
+const _GROUP_SUMMARY = {
+  node_created: (evs) => {
+    const types = _metas(evs).map(m => m.type).filter(Boolean);
+    return evs.length + ' created' + (types.length ? ' — ' + _tally(types) : '');
+  },
+  node_revised: (evs) => {
+    const ms = _metas(evs);
+    const fields = ms.flatMap(m => (m.deltas || []).map(d => d.field));
+    const nodes = new Set(ms.map(m => m.node_id).filter(Boolean)).size;
+    return (nodes || evs.length) + ' revised'
+      + (fields.length ? ' — ' + fields.length + ' field changes: ' + _tally(fields) : '');
+  },
+  edge_relation_revised: (evs) => {
+    const rels = _metas(evs).map(m => m.relation).filter(Boolean);
+    return evs.length + ' connections' + (rels.length ? ' — ' + _tally(rels) : '');
+  },
+  node_archived: (evs) => evs.length + ' archived',
+  journal_note: (evs) => evs.length + ' journal notes',
+  // No scout_* entry: the muster emits O then K per scout, so scout rows
+  // alternate ref_type and never form a run to merge.
+  // The heaviest run of all: a working turn lands dozens between two messages.
+  // Tallied by tool, so the collapsed row still says what the turn DID.
+  tool_result: (evs) => {
+    const tools = _metas(evs).map(m => String(m.tool || '')
+      .replace(/^mcp__.*__/, '').replace(/^mcp__/, '')).filter(Boolean);
+    return evs.length + ' tool calls' + (tools.length ? ' — ' + _tally(tools, 6) : '');
+  },
+};
+
+/** Can a run of this ref_type collapse into one row? */
+export function isMergeableRefType(refType) {
+  return Object.prototype.hasOwnProperty.call(_GROUP_SUMMARY, refType);
+}
+
+/** One-line headline for a collapsed run. Only reached for a ref_type
+ *  isMergeableRefType accepted, so the lookup always hits. */
+export function groupSummary(run) {
+  return _GROUP_SUMMARY[run[0].ref_type](run);
 }

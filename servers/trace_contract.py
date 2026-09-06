@@ -263,6 +263,22 @@ def arms_continuation(traced_ref_types):
 DELIVERY_REACTION_WINDOW_MIN = 60
 
 
+# ── S0 SESSION STAMP ──
+# Per-session facts every S0 row carries, next to the identity stamp: which
+# model produced the turn and which host runtime the stream rides on
+# ('claude-code' / 'codex'). Unlike human_identity / agent_identity — a
+# process-wide property stamped by TraceDAL from env — these vary PER SESSION
+# and per turn (one daemon serves streams on different models; a stream can
+# switch model mid-session), so they live on the SessionContext and are
+# stamped by the S0 write door (brain_traces.stamp_s0_session) from the ctx
+# the hook resolved. Fed in by the UserPromptSubmit / Stop hooks
+# (hook_common.turn_model / host_name): Codex puts `model` on every hook
+# payload; Claude Code exposes it only in the transcript's assistant entries.
+# The session row mirrors the LATEST value so presence can say which model a
+# stream is on right now; the per-turn truth is the S0 row.
+S0_SESSION_STAMP_FIELDS = ('model', 'host')
+
+
 # Operator dialogue — the two ref_types that ARE the operator↔Anchor
 # exchange. Presence (focus / recency ranking / recent_msgs), the
 # recall_episodes conversation default, the LAF trace matrix, and the
@@ -387,6 +403,11 @@ DELTA_METADATA_SHAPE = {
     'cache_read_tokens':     int,
     'cache_creation_tokens': int,
     'truncated':             int,
+    # The LLM that produced this Δ (the unit's resolved config model, read off
+    # the runner's result) — same key and meaning as the S0 session stamp: the
+    # model behind the row. Makes the token counts priceable and a model A/B
+    # attributable per run without decoding the K fingerprint. '' = unstamped.
+    'model':                 str,
     'interaction_version':   int,
     'interaction_fingerprint': str,
     'interaction_source':      str,
@@ -414,6 +435,7 @@ RUN_TELEMETRY_FIELDS = (
     'elapsed_ms', 'rounds', 'truncated',
     'input_tokens', 'output_tokens',
     'cache_read_tokens', 'cache_creation_tokens',
+    'model',   # the only str: which LLM the run called (see DELTA_METADATA_SHAPE)
 )
 
 
@@ -571,13 +593,16 @@ def build_failed_run_metadata(*, error, stop_counter, inputs_processed,
 
 def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
                         input_tokens=0, output_tokens=0,
-                        cache_read_tokens=0, cache_creation_tokens=0):
+                        cache_read_tokens=0, cache_creation_tokens=0,
+                        model=''):
     """Build the shared agent-run cost block (a flat dict of RUN_TELEMETRY_FIELDS).
 
     Used by build_delta_metadata (encoders) and the Surface K-trace writer.
-    All int, default 0 — `truncated` is a count of rounds cut at max_tokens,
-    `rounds` the number of LLM calls, the rest wall-clock + token spend. Spread
-    flat into the surrounding metadata dict; never nest it.
+    Counts are int, default 0 — `truncated` is a count of rounds cut at
+    max_tokens, `rounds` the number of LLM calls, the rest wall-clock + token
+    spend. `model` is the LLM the run called ('' when unknown) — the runner
+    returns it next to the usage so callers thread it like the token counts.
+    Spread flat into the surrounding metadata dict; never nest it.
     """
     return {
         'elapsed_ms':            int(elapsed_ms or 0),
@@ -587,6 +612,7 @@ def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
         'output_tokens':         int(output_tokens or 0),
         'cache_read_tokens':     int(cache_read_tokens or 0),
         'cache_creation_tokens': int(cache_creation_tokens or 0),
+        'model':                 str(model or ''),
     }
 
 
@@ -601,7 +627,7 @@ def build_delta_metadata(*,
                          classifications=None,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
-                         truncated=0, interaction_version=0,
+                         truncated=0, model='', interaction_version=0,
                          interaction_fingerprint='', interaction_source='',
                          **extras):
     """Build a unified delta trace metadata dict.
@@ -667,7 +693,7 @@ def build_delta_metadata(*,
             elapsed_ms=elapsed_ms, rounds=rounds, truncated=truncated,
             input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens),
+            cache_creation_tokens=cache_creation_tokens, model=model),
         'interaction_version':     int(interaction_version or 0),
         'interaction_fingerprint': str(interaction_fingerprint or ''),
         'interaction_source':      str(interaction_source or ''),

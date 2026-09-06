@@ -1,16 +1,17 @@
 """Generic trace_events query — used by the Traces tab and the S2-on-Live feed.
 
-Surfaces identity (`human_identity` / `agent_identity`) from trace metadata as
-top-level fields so the UI doesn't have to re-parse JSON. Identity stamping
-landed with the trace identity migration (75075eb / 65bf483 / 5cff407): every
-trace now records who was speaking when it was written, and the dashboard had
-no view of it. Now it does.
+Surfaces identity (`human_identity` / `agent_identity`) and the S0 session
+stamp (`model` / `host`) from trace metadata as top-level fields so the UI
+doesn't have to re-parse JSON: every trace records who was speaking when it was
+written, and S0 rows record which model produced the turn on which host.
 """
 
 from ..clock import utc_cutoff
 from ..db import logs_db_path
 from ..query import safe_query
-from ._meta import extract_identity
+from ._meta import extract_meta_fields, S0_SESSION_STAMP_FIELDS
+
+_PROMOTED = ('human_identity', 'agent_identity') + S0_SESSION_STAMP_FIELDS
 
 
 @safe_query('queries.traces', logs_db_path)
@@ -42,12 +43,13 @@ def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 500, sessi
     ).fetchall()
     out = []
     for r in rows:
-        hi, ai = extract_identity(r[7])
-        out.append({
+        row = {
             'id': r[0], 'chain_id': r[1], 'scale': r[2],
             'event_type': r[3], 'ref_type': r[4] or '', 'ref_id': r[5] or '',
             'summary': r[6] or '', 'metadata': r[7], 'session_id': r[8] or '',
             'created_at': r[9], 'interaction_id': r[10],
-            'human_identity': hi, 'agent_identity': ai,
-        })
+        }
+        # One parse per row for every promoted field.
+        row.update(zip(_PROMOTED, extract_meta_fields(r[7], *_PROMOTED)))
+        out.append(row)
     return out

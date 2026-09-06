@@ -78,6 +78,7 @@ class HealerEncoder(IntegrationUnit):
         # Before this, the healer_generated delta omitted them (elapsed_ms=0/
         # output_tokens=0).
         tel_totals = read_usage(None)
+        model = ''   # the LLM the batches called — set from the first successful call
         _t0 = time.time()
 
         # Residue continuity — read ONCE before the loop (a per-batch read
@@ -98,6 +99,8 @@ class HealerEncoder(IntegrationUnit):
             result, call_tel = self._call_llm('s2_healer', user_content,
                                               journal=True)
             sum_usage(tel_totals, call_tel)
+            # sum_usage folds the token counts only; the model rides beside them.
+            model = call_tel.get('model', '') or model
 
             if result is None:
                 errors.append('LLM call failed for batch %d' % batches)
@@ -198,6 +201,7 @@ class HealerEncoder(IntegrationUnit):
                        output_tokens=tel_totals.get('output_tokens', 0),
                        cache_read_tokens=tel_totals.get('cache_read_tokens', 0),
                        cache_creation_tokens=tel_totals.get('cache_creation_tokens', 0),
+                       model=model,
                    ))
 
         return {

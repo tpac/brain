@@ -118,6 +118,13 @@
   border-color: #232338;
   letter-spacing: 0.2px;
 }
+/* Model chip — the S0 session stamp: which model produced the turn. */
+.chip--model {
+  color: #8ab;
+  background: #14202a;
+  border-color: #1f3340;
+  letter-spacing: 0.2px;
+}
 
 /* ── Notification badge (red number bubble on tab labels / buttons) ── */
 
@@ -912,6 +919,9 @@
 .act-src--mcp      { color: var(--role-mcp); }
 .act-src--hook     { color: var(--role-hook); }
 .act-src--internal { color: var(--text-subtle); }
+/* The chip carrying a model id instead of the "turn" word: an identifier, so
+ * no uppercasing, and monospaced like the other stamps. */
+.act-src--model    { text-transform: none; letter-spacing: 0; font-family: var(--font-mono); }
 
 /* The query (or the encoder's prompt line) — what was actually being thought
  * about. Full width under the header, so a row says something collapsed. */

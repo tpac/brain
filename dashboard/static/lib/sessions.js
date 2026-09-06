@@ -111,6 +111,8 @@ export function sessionTooltip(id) {
   if (r.branch) lines.push('branch: ' + r.branch);
   if (r.worktree) lines.push('worktree: ' + r.worktree);
   if (r.cwd) lines.push('cwd: ' + r.cwd.replace(/^\/Users\/[^/]+/, '~'));
+  // Latest model/host the stream rode on (per-turn values live on the traces).
+  if (r.model) lines.push('model: ' + r.model + (r.host ? ' (' + r.host + ')' : ''));
   if (r.turns) lines.push(r.turns + ' turns');
   if (r.events) lines.push(r.events + ' trace events');
   if (r.last) lines.push('last seen ' + relativeTime(r.last));
@@ -168,6 +170,7 @@ export async function refresh() {
         short: s.short, handle: s.handle, first: s.first, last: s.last,
         events: s.events, branch: s.branch, worktree: s.worktree,
         project: s.project, cwd: s.cwd, turns: s.turns,
+        model: s.model, host: s.host,
       });
       changed = true;
     }
@@ -194,6 +197,8 @@ export async function refresh() {
         turns: s.turn_count || prior.turns || 0,
         branch, worktree,
         cwd: s.cwd || prior.cwd || '',
+        model: s.model || prior.model || '',
+        host: s.host || prior.host || '',
         // Same precedence the server's _handle uses: worktree, then the
         // branch tail with the shared `claude/` namespace dropped, then hex.
         handle: prior.handle

@@ -141,6 +141,7 @@ def run_llm_once(client, model, max_tokens, system_prompt, user_content):
         messages=[{"role": "user", "content": user_content}])
     telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
                  'stop_reason': getattr(response, 'stop_reason', None),
+                 'model': model,   # rides with the usage → build_delta_metadata
                  **read_usage(response)}
     raw = response.content[0].text.strip() if response.content else ''
     return raw, telemetry
@@ -800,5 +801,6 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "elapsed_ms": int((time.time() - t0) * 1000),
         # USAGE_FIELDS keys match the four token return keys exactly.
         **usage_total,
+        "model": model,   # which LLM the loop called — threaded into the delta
         "truncations": truncations,
     }
