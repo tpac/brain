@@ -63,6 +63,14 @@ EVENT_TYPES = {
 # delivery for the moment names; this file imports neither, so the constant
 # is reachable from both without a cycle. thalamus_contract re-exports it.
 REF_THALAMUS_DELIVERY = "thalamus_delivery"
+# The filing-side marker — one row on the PRODUCER's run chain per accepted
+# filing (ref_id = item id), the symmetry journal_note rows already have. An
+# item's life is then joinable across scales: filed (s1 Δ, the encoder's
+# chain) → delivered (s0 K thalamus_delivery, the session's chain) → answered
+# (item state). Written by brain_traces.write_thalamus_filed; s1-only while
+# the S1 Scribe is the sole machine producer (an S2 scale fails loudly at the
+# write boundary — S2 stays in boot for now).
+REF_THALAMUS_FILED = "thalamus_filed"
 
 REF_TYPES = {
     # Scale 0: raw exchange
@@ -111,7 +119,8 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the trace is
                                                     # the only surviving record of the node
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
-                         "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
+                         "journal_note",            # S1 Scribe residue — one note (subject=ref_id) per row
+                         REF_THALAMUS_FILED],       # S1 Scribe filed a Thalamus item (ref_id = item id)
 
     # Scale 2: graph integration
     # Fires during idle hook. Operates on S1's accumulated output (the graph).
@@ -304,6 +313,19 @@ CHAIN_PREFIXES = {
     "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=synthesis/meta/etc
     "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
+
+
+def scale_for_chain(chain_id):
+    """The scale a chain id encodes, from its CHAIN_PREFIXES prefix
+    ('s1e-…' → 's1'). A writer handed a run chain by its caller need not be
+    handed the scale too — a second parameter for the same fact drifts (a
+    chain-only call once defaulted the scale to '' and silently lost every
+    row). Raises ValueError on a chain no prefix claims: an unknown chain is
+    a producer bug, not a row."""
+    for key, template in CHAIN_PREFIXES.items():
+        if (chain_id or '').startswith(template.split('{', 1)[0]):
+            return key.split('_', 1)[0]
+    raise ValueError('chain_id %r matches no CHAIN_PREFIXES entry' % (chain_id,))
 
 
 # ── DELTA METADATA SHAPE ──
@@ -709,6 +731,52 @@ JOURNAL_NOTE_METADATA_SHAPE = {
 
 JOURNAL_NOTE_LIMIT = 600   # a note is terse residue, not an essay — capped loud like other delta text
 JOURNAL_TAG_LIMIT = 40     # 'one word' — cap drift loud rather than let a sentence become a grouping key
+
+
+# ═══════════════════════════════════════════════════════
+# THALAMUS_FILED metadata — a producer's filing, on the producer's run chain
+# ═══════════════════════════════════════════════════════
+# ref_id is the item id; the row is the filed→delivered→answered join's first
+# link. Door vocabulary only — the traces layer knows nothing of the journal
+# grammar that produced the filing (subject = dedup_key; ask/notice falls out
+# of needs_answer). `body` is copied so the row outlives a swept item; a
+# dedup re-file rewrites the item's body while earlier rows keep theirs
+# (each row is what THAT run said). `route` is 'queue' or 'live': a live item
+# is courier-delivered and never yields a thalamus_delivery row, so a
+# filed→delivered join filters route='queue'. `filing` names what the door
+# did: 'new' (inserted), 'refresh' (identical re-file, window only),
+# 'rearm' (changed re-file, delivers again).
+THALAMUS_FILED_METADATA_SHAPE = {
+    'source':         str,   # the producer's encoding_source
+    'body':           str,   # the item body, capped loud
+    'target_session': str,   # '' for broadcast, the session UUID when directed
+    'needs_answer':   bool,  # ask (True) vs notice/reminder (False)
+    'dedup_key':      str,   # producer-owned identity, '' when none
+    'route':          str,   # 'queue' | 'live'
+    'filing':         str,   # 'new' | 'refresh' | 'rearm'
+}
+THALAMUS_FILED_BODY_LIMIT = 1500  # mirrors the delivery render's per-item body cap
+THALAMUS_FILINGS = ('new', 'refresh', 'rearm')
+
+
+def build_thalamus_filed_metadata(*, source, body, target_session='',
+                                  needs_answer=False, dedup_key='',
+                                  route='queue', filing='new'):
+    """Build metadata for one thalamus_filed row. Raises ValueError on an
+    unknown `filing` — the three values are the only states the door's dedup
+    logic can produce, and a fourth would be a producer bug."""
+    if filing not in THALAMUS_FILINGS:
+        raise ValueError('thalamus_filed: filing=%r not in %s'
+                         % (filing, THALAMUS_FILINGS))
+    return {
+        'source': source or '',
+        'body': cap_text_loud(body or '', THALAMUS_FILED_BODY_LIMIT),
+        'target_session': target_session or '',
+        'needs_answer': bool(needs_answer),
+        'dedup_key': dedup_key or '',
+        'route': route or 'queue',
+        'filing': filing,
+    }
 
 
 def build_journal_note_metadata(*, note, tag=''):
@@ -1157,7 +1225,9 @@ JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
 # the ops-delta-vs-residue partition; exclusion-style so it stays
 # behavior-preserving (everything that isn't residue still counts) and
 # forward-compatible (add a residue type here, every consumer excludes it).
-RESIDUE_REF_TYPES = ('journal_note',)
+# A Thalamus filing is residue by the same test: it shares the run's chain
+# and event_type='delta' but is not the run's integration delta.
+RESIDUE_REF_TYPES = ('journal_note', REF_THALAMUS_FILED)
 
 
 # Per-mutation ref_types written by the emitter (servers/mutation_emitter.py).
@@ -1573,6 +1643,7 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
+    REF_THALAMUS_FILED:   THALAMUS_FILED_METADATA_SHAPE,  # a producer's filing, on its run chain
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
     # Node lifecycle, written only by servers/mutation_emitter.py. Enforced from
     # the start — these have exactly one producer and one builder each, so there

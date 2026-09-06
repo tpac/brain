@@ -746,6 +746,77 @@ class TestRender(ThalamusBase):
         self.assertEqual(item['deliveries'], 1)
 
 
+class TestFiledTrace(ThalamusBase):
+    """Step 13(d): a filing made from a producer's run leaves ONE
+    `thalamus_filed` delta row on the run chain (ref_id = item id) through
+    the traces door — the filed→delivered→answered join. No chain, no row."""
+
+    CHAIN = 's1e-aaaaaaaa-3'
+
+    def _filed_rows(self, chain=CHAIN):
+        return [e for e in self.brain.query_traces(chain_id=chain)['chain']
+                if e['ref_type'] == 'thalamus_filed']
+
+    def test_run_filing_writes_one_row_on_the_run_chain(self):
+        r = self._file('you are proceeding on "I wonder if", not a yes',
+                       source='encoder:sonnet', for_whom=S1, session_id=S1,
+                       run_chain=self.CHAIN)
+        rows = self._filed_rows()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        # scale is the chain's — derived, never a second parameter
+        self.assertEqual((row['scale'], row['event_type'], row['ref_id'],
+                          row['session_id']),
+                         ('s1', 'delta', r['id'], S1))
+        meta = row['metadata']
+        from servers.trace_contract import THALAMUS_FILED_METADATA_SHAPE
+        # the boundary adds its provenance stamps; the shape's keys all land
+        self.assertTrue(set(THALAMUS_FILED_METADATA_SHAPE) <= set(meta))
+        self.assertEqual((meta['source'], meta['target_session'],
+                          meta['needs_answer'], meta['route'], meta['filing']),
+                         ('encoder:sonnet', S1, False, 'queue', 'new'))
+        self.assertIn('I wonder if', meta['body'])
+
+    def test_no_chain_no_row(self):
+        self._file('interactive remind', session_id=S1)
+        self.assertEqual(
+            self.brain.query_traces(ref_type='thalamus_filed', scale='s1',
+                                    hours=None)['events'], [])
+
+    def test_rejected_filing_leaves_no_row(self):
+        r = self._file('  ', run_chain=self.CHAIN)
+        self.assertFalse(r['ok'])
+        self.assertEqual(self._filed_rows(), [])
+
+    def test_refile_rows_name_what_the_door_did(self):
+        """Three runs, one item: new → refresh (identical re-file, window
+        only) → rearm (changed re-file, delivers again). Each run's row says
+        what THAT run did; the 13(g) dedup-updates-vs-inserts count reads
+        `filing`."""
+        chains = ['s1e-aaaaaaaa-3', 's1e-aaaaaaaa-4', 's1e-aaaaaaaa-5']
+        for chain, body in zip(chains, ('v1', 'v1', 'v2')):
+            self._file(body, dedup_key='7e6decd2', needs_answer=True,
+                       for_whom=S1, run_chain=chain)
+        rows = [self._filed_rows(c) for c in chains]
+        self.assertEqual([len(r) for r in rows], [1, 1, 1])
+        self.assertEqual(len({r[0]['ref_id'] for r in rows}), 1)
+        self.assertEqual([r[0]['metadata']['filing'] for r in rows],
+                         ['new', 'refresh', 'rearm'])
+        self.assertTrue(rows[2][0]['metadata']['needs_answer'])
+        self.assertEqual(rows[2][0]['metadata']['dedup_key'], '7e6decd2')
+
+    def test_unregistered_scale_is_loud_and_never_masks_the_filing(self):
+        """thalamus_filed is s1-only while S2 stays in boot: an s2 chain
+        fails at the write boundary, is logged, and the item still files."""
+        r = self._file('s2 tried', run_chain='s2-20260905-consolidation')
+        self.assertTrue(r['ok'])
+        self.assertEqual(self._filed_rows('s2-20260905-consolidation'), [])
+        n = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type='error' "
+            "AND source = ?", ('thalamus_filed_trace_failed',)).fetchone()[0]
+        self.assertEqual(n, 1)
+
+
 class TestDispatchEnvelope(ThalamusBase):
     """Every handler returns {"ok", ...} — the dispatch_self lesson."""
 
