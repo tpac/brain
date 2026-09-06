@@ -172,11 +172,13 @@ codex plugin marketplace add tpac/entity
 codex plugin add entity@anchor
 ```
 
-Once Entity's tools are connected, ask **“Finish Entity setup.”** The assistant
-checks the installed hooks and offers an in-app confirmation to open Codex's
-own hook review. Review appears in a terminal window; you choose which hooks
-to trust without typing shell commands. Return to the chat and ask to check
-setup again. Accepting the popup only opens review—it does not grant permission.
+Once Entity's tools are connected, ask **“Finish Entity setup.”** One in-app
+confirmation explains Entity-wide tool permission and automatic memory. Accepting
+saves permission for Entity's current and future tools, including memory changes
+and messages, while preserving your individual tool restrictions. If hooks need
+trust, Codex then opens its own review in a terminal window; you choose which
+hooks to trust without typing commands. Return here to check setup. An existing
+connection may need to reload before using the saved tool permission.
 
 Codex runs plugins from a cache copy. Direct marketplace installs may need to
 finish runtime bootstrap and reconnect before tools appear. The checkout

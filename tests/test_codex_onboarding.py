@@ -16,6 +16,12 @@ import codex_onboarding as codex
 from codex_setup import SetupSession
 
 
+def setup_status(hooks=None):
+    status = codex.summarize_hooks({'data': [{'hooks': hooks if hooks is not None else [hook()]}]})
+    status['tool_approval'] = {'plugin_id': 'entity@local', 'mode': 'auto', 'server_enabled': True, 'restricted_tools': []}
+    return status
+
+
 def hook(**changes):
     return {'key': 'entity@local:hooks/hooks.codex.json:stop:0:0',
             'pluginId': 'entity@local', 'source': 'plugin',
@@ -87,9 +93,12 @@ class TestConsent(unittest.TestCase):
         self.session._dispatch = lambda job: job()
         self.addCleanup(self.session.close)
         self.initialize({'protocolVersion': '2025-11-25', 'capabilities': {'elicitation': {'form': {}}}})
-        self.status = patch.object(codex, 'hook_status', return_value=codex.summarize_hooks({'data': [{'hooks': [hook()]}]}))
-        self.status.start()
+        self.status = patch.object(codex, 'setup_status', return_value=setup_status())
+        self.status_mock = self.status.start()
         self.addCleanup(self.status.stop)
+        self.approval = patch.object(codex, 'approve_tools', return_value={'saved': True, 'mode': 'approve'})
+        self.approve = self.approval.start()
+        self.addCleanup(self.approval.stop)
         self.launch = patch.object(codex, 'open_review', return_value={'state': 'review_launched', 'trust_granted': False})
         self.open = self.launch.start()
         self.addCleanup(self.launch.stop)
@@ -103,7 +112,7 @@ class TestConsent(unittest.TestCase):
         return self.sent[-1]['id']
 
     def reply(self, eid, action='accept', value=True):
-        self.session.receive({'id': eid, 'result': {'action': action, 'content': {'open_review': value}}})
+        self.session.receive({'id': eid, 'result': {'action': action, 'content': {'enable_entity': value}}})
 
     def payload(self):
         return json.loads(self.sent[-1]['result']['content'][0]['text'])
@@ -114,14 +123,16 @@ class TestConsent(unittest.TestCase):
         self.reply(eid)
         self.reply(eid)
         self.open.assert_called_once_with()
+        self.approve.assert_called_once_with(plugin_root='/installed/entity', plugin_id='entity@local')
         self.assertEqual(self.sent[-1]['id'], 1)
-        self.assertFalse(self.payload()['trust_granted'])
+        self.assertFalse(self.payload()['hook_trust_granted'])
 
     def test_decline_cancel_false_and_malformed_accept_never_launch(self):
         for action, value in [('decline', True), ('cancel', True), ('accept', False), ('accept', 'true')]:
             self.reply(self.request(), action, value)
             self.assertEqual(self.payload()['state'], 'review_cancelled')
         self.open.assert_not_called()
+        self.approve.assert_not_called()
 
     def test_cancellation_expiry_and_unknown_id_cannot_launch(self):
         eid = self.request()
@@ -133,6 +144,7 @@ class TestConsent(unittest.TestCase):
         self.assertEqual(self.payload()['state'], 'confirmation_expired')
         self.reply(eid)
         self.open.assert_not_called()
+        self.approve.assert_not_called()
 
     def test_no_form_capability_or_old_protocol_does_not_prompt(self):
         for caps, version in [({}, '2025-11-25'), ({'elicitation': {'url': {}}}, '2025-11-25'),
@@ -141,12 +153,14 @@ class TestConsent(unittest.TestCase):
             self.session.start(1, {'action': 'review'})
             self.assertEqual(self.payload()['state'], 'confirmation_unavailable')
         self.open.assert_not_called()
+        self.approve.assert_not_called()
 
     def test_status_never_prompts_and_preserves_identity_evidence(self):
         self.session.start(9, {'action': 'status'}, identity_verified=True)
         self.assertTrue(self.payload()['caller_identity_verified'])
         self.assertEqual(self.payload()['state'], 'review_required')
         self.open.assert_not_called()
+        self.approve.assert_not_called()
 
     def test_second_request_does_not_replace_first_confirmation(self):
         eid = self.request()
@@ -159,7 +173,8 @@ class TestConsent(unittest.TestCase):
     def test_launch_error_is_not_success(self):
         self.open.side_effect = codex.ReviewError('launch unavailable')
         self.reply(self.request())
-        self.assertEqual(self.payload()['state'], 'launch_failed')
+        self.assertEqual(self.payload()['state'], 'setup_incomplete')
+        self.assertTrue(self.payload()['tool_permission']['saved'])
         self.assertTrue(self.sent[-1]['result']['isError'])
 
     def test_inspection_does_not_block_reader_and_cancel_suppresses_its_result(self):
@@ -169,12 +184,12 @@ class TestConsent(unittest.TestCase):
         workers = []
         dispatch = session._dispatch
         session._dispatch = lambda job: workers.append(dispatch(job))
-        status = codex.summarize_hooks({'data': [{'hooks': [hook()]}]})
+        status = setup_status()
         def slow_status(**kwargs):
             entered.set()
             release.wait(3)
             return status
-        with patch.object(codex, 'hook_status', side_effect=slow_status):
+        with patch.object(codex, 'setup_status', side_effect=slow_status):
             try:
                 session.start(1, {'action': 'status'})
                 self.assertTrue(entered.wait(1), 'inspection worker did not start')
@@ -223,10 +238,48 @@ class TestConsent(unittest.TestCase):
         self.assertEqual(len(self.sent), 1)
 
     def test_setup_failure_uses_injected_proxy_logger(self):
-        with patch.object(codex, 'hook_status', side_effect=codex.ReviewError('status unavailable')), \
+        with patch.object(codex, 'setup_status', side_effect=codex.ReviewError('status unavailable')), \
              patch.object(self.session, 'log') as log:
             self.session.start(1, {'action': 'status'})
             log.assert_called_once_with('mcp_setup', 'status unavailable', 'host setup', level='warning')
+
+    def test_tool_permission_is_offered_even_when_hooks_are_trusted(self):
+        self.status_mock.return_value = setup_status([hook(trustStatus='trusted')])
+        self.reply(self.request())
+        self.approve.assert_called_once()
+        self.open.assert_not_called()
+        self.assertTrue(self.payload()['tool_permission']['saved'])
+
+    def test_existing_tool_approval_only_opens_hook_review(self):
+        status = setup_status()
+        status['tool_approval']['mode'] = 'approve'
+        self.status_mock.return_value = status
+        self.reply(self.request())
+        self.approve.assert_not_called()
+        self.open.assert_called_once()
+
+    def test_cancel_before_acceptance_worker_starts_saves_no_permission(self):
+        eid = self.request()
+        jobs = []
+        self.session._dispatch = jobs.append
+        self.reply(eid)
+        self.session.cancel(1)
+        jobs[0]()
+        self.approve.assert_not_called()
+        self.open.assert_not_called()
+
+    def test_model_arguments_cannot_replace_user_confirmation(self):
+        self.session.start(1, {'action': 'review', 'enable_entity': True})
+        self.assertEqual(self.sent[-1]['method'], 'elicitation/create')
+        self.approve.assert_not_called()
+        self.open.assert_not_called()
+
+    def test_failed_permission_write_does_not_launch_hook_review(self):
+        self.approve.side_effect = codex.ReviewError('configuration changed; check again')
+        self.reply(self.request())
+        self.open.assert_not_called()
+        self.assertEqual(self.payload()['state'], 'setup_incomplete')
+        self.assertIsNone(self.payload()['tool_permission'])
 
 
 class TestProxy(unittest.TestCase):
@@ -348,17 +401,17 @@ class TestProxy(unittest.TestCase):
             {'id': 2, 'method': 'tools/call', 'params': {'name': 'setup', 'arguments': {'action': 'review'}}},
             {'id': 3, 'method': 'ping'},
             {'method': 'notifications/cancelled', 'params': {'requestId': 2}},
-            {'id': 'entity-setup-fixed', 'result': {'action': 'accept', 'content': {'open_review': True}}},
+            {'id': 'entity-setup-fixed', 'result': {'action': 'accept', 'content': {'enable_entity': True}}},
         ]
         output = io.StringIO()
         extension = SetupSession(proxy.send, '/installed/entity')
         extension._dispatch = lambda job: job()
         self.addCleanup(extension.close)
-        status = codex.summarize_hooks({'data': [{'hooks': [hook()]}]})
+        status = setup_status()
         with patch.object(proxy, 'ensure_daemon_running', return_value=True), \
              patch.object(proxy, 'check_daemon_fingerprint'), \
              patch.object(proxy, '_health_monitor'), \
-             patch.object(codex, 'hook_status', return_value=status), \
+             patch.object(codex, 'setup_status', return_value=status), \
              patch.object(codex, 'open_review') as launch, \
              patch.object(codex_setup.uuid, 'uuid4') as uid, \
              patch('sys.stdin', io.StringIO('\n'.join(json.dumps(m) for m in messages))), \
@@ -388,17 +441,48 @@ class TestNativeStatus(unittest.TestCase):
             definition.write_text(json.dumps({'hooks': {'Stop': [
                 {'hooks': [{'type': 'command', 'command': '/usr/bin/true'}]}]}}))
             config = home / 'config.toml'
-            original = '[features]\nhooks=true\nplugin_hooks=true\n[plugins."entity@test"]\nenabled=true\n'
+            original = ('# preserve this comment\n[features]\nhooks=true\nplugin_hooks=true\n[plugins."entity@test"]\nenabled=true\n'
+                        '[plugins."entity@test".mcp_servers.brain.tools.recall]\napproval_mode="prompt"\n'
+                        '[plugins."other@test".mcp_servers.brain]\ndefault_tools_approval_mode="prompt"\n')
             config.write_text(original)
             def inspect():
-                return codex.hook_status(codex_home=home, cwd=home, plugin_root=plugin)
+                return codex.setup_status(codex_home=home, cwd=home, plugin_root=plugin)
             untrusted = inspect()
             self.assertEqual(untrusted['state'], 'review_required')
             self.assertEqual(config.read_text(), original, 'Inspection must not persist hook approval')
+            wrong = 'entity@different'
+            with self.assertRaisesRegex(codex.ReviewError, 'installation changed'):
+                codex.approve_tools(plugin_root=plugin, plugin_id=wrong, codex_home=home, cwd=home)
+            self.assertEqual(config.read_text(), original)
+            permission = codex.approve_tools(plugin_root=plugin, plugin_id='entity@test', codex_home=home, cwd=home)
+            self.assertTrue(permission['saved'])
+            approved_config = config.read_text()
+            self.assertNotIn('trusted_hash', approved_config, 'Tool permission must never grant hook trust')
+            self.assertEqual(inspect()['tool_approval']['mode'], 'approve')
+            self.assertEqual(inspect()['tool_approval']['restricted_tools'], ['recall'])
+            import tomllib
+            saved = tomllib.loads(approved_config)
+            self.assertEqual(saved['plugins']['other@test']['mcp_servers']['brain']['default_tools_approval_mode'], 'prompt')
+            self.assertIn('# preserve this comment', approved_config)
+            call = codex._Client.call
+            before_race = approved_config.replace('"approve"', '"auto"')
+            self.assertNotEqual(before_race, approved_config)
+            config.write_text(before_race)
+            concurrent = before_race.replace('"prompt"', '"auto"')
+            self.assertNotEqual(concurrent, before_race)
+            def changed_after_read(client, method, params):
+                result = call(client, method, params)
+                if method == 'config/read' and params.get('includeLayers'):
+                    config.write_text(concurrent)
+                return result
+            with patch.object(codex._Client, 'call', new=changed_after_read):
+                with self.assertRaises(codex.ReviewError):
+                    codex.approve_tools(plugin_root=plugin, plugin_id='entity@test', codex_home=home, cwd=home)
+            self.assertEqual(config.read_text(), concurrent, 'A stale write must preserve the concurrent edit')
             item = untrusted['hooks'][0]
             # Test fixture only: simulate Codex's saved user decision in this
             # throwaway home. Production adapter has no configuration writer.
-            config.write_text(original + '\n[hooks.state.' + json.dumps(item['key']) + ']\ntrusted_hash=' + json.dumps(item['currentHash']) + '\n')
+            config.write_text(approved_config + '\n[hooks.state.' + json.dumps(item['key']) + ']\ntrusted_hash=' + json.dumps(item['currentHash']) + '\n')
             trusted = inspect()
             self.assertTrue(trusted['trust_complete'])
             self.assertFalse(trusted['runtime_verified'])

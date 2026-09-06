@@ -1,9 +1,9 @@
-"""Codex-owned hook review: inspect definitions and open the native review UI.
+"""Codex setup: inspect hooks, save consented tool policy, open native review.
 
-No Entity imports, brain access, hook execution, trust writes, or approval
-keystrokes. A trusted definition is not proof of a working memory pipeline.
-The MCP caller owns elicitation and must get consent before open_review().
+No Entity imports, brain access, hook execution, hook-trust writes, or approval
+keystrokes. The MCP caller owns consent before approve_tools/open_review.
 """
+from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
@@ -37,6 +37,7 @@ def find_codex(executable=None):
 class _Client:
     def __init__(self, executable, codex_home, cwd, timeout=12):
         self.timeout = timeout
+        self.cwd = str(cwd)
         self.seq = 0
         self.buffer = b''
         self.process = subprocess.Popen(
@@ -67,14 +68,14 @@ class _Client:
                     continue
                 if message.get('id') == request_id:
                     if 'error' in message:
-                        raise ReviewError('This Codex build could not inspect hooks. Use its native hook review.')
+                        raise ReviewError('Codex rejected the setup request. Check setup again before retrying.')
                     return message['result']
             remaining = deadline - time.monotonic()
             if remaining <= 0 or not self.selector.select(remaining):
-                raise ReviewError('Codex hook status timed out. Try again after Codex finishes starting.')
+                raise ReviewError('Codex setup request timed out. Check setup again before retrying.')
             chunk = os.read(self.process.stdout.fileno(), 65536)
             if not chunk:
-                raise ReviewError('Codex stopped before returning hook status.')
+                raise ReviewError('Codex stopped before confirming setup. Check setup again before retrying.')
             self.buffer += chunk
 
     def close(self):
@@ -115,23 +116,73 @@ def summarize_hooks(reply, plugin_root=None):
             'runtime_verified': False}
 
 
-def hook_status(*, executable=None, codex_home=None, cwd=None, plugin_root=None):
-    """Ask Codex for its current hashes and trust. Never infer trust from a stamp."""
-    binary = find_codex(executable)
+@contextmanager
+def _connection(*, executable=None, codex_home=None, cwd=None):
     home = Path(codex_home or os.environ.get('CODEX_HOME') or Path.home() / '.codex').absolute()
     directory = Path(cwd or Path.home()).absolute()
-    client = _Client(binary, home, directory)
+    client = _Client(find_codex(executable), home, directory)
     try:
-        client.call('initialize', {'clientInfo': {'name': 'entity-hook-review', 'version': '1'},
+        client.call('initialize', {'clientInfo': {'name': 'entity-setup', 'version': '1'},
                                    'capabilities': {'experimentalApi': True}})
         client.send({'method': 'initialized'})
-        return summarize_hooks(client.call('hooks/list', {'cwds': [str(directory)]}), plugin_root)
+        yield client
     finally:
         client.close()
 
 
+def _tool_policy(config, plugin_id):
+    server = config.get('plugins', {}).get(plugin_id, {}).get('mcp_servers', {}).get('brain', {})
+    return {'plugin_id': plugin_id, 'mode': server.get('default_tools_approval_mode', 'auto'),
+            'restricted_tools': [name for name, tool in server.get('tools', {}).items()
+                                 if tool.get('enabled') is False or tool.get('approval_mode') in ('prompt', 'writes')],
+            'server_enabled': server.get('enabled', True)}
+
+
+def _status(client, plugin_root):
+    status = summarize_hooks(client.call('hooks/list', {'cwds': [client.cwd]}), plugin_root)
+    ids = {hook['pluginId'] for hook in status['hooks']}
+    if len(ids) != 1:
+        status['tool_approval'] = None
+        return status
+    config = client.call('config/read', {'cwd': client.cwd})['config']
+    status['tool_approval'] = _tool_policy(config, ids.pop())
+    return status
+
+
+def setup_status(*, plugin_root=None, **host):
+    with _connection(**host) as client:
+        return _status(client, plugin_root)
+
+
+def approve_tools(*, plugin_root, plugin_id, **host):
+    """After explicit consent, save only this Entity server's default policy.
+
+    Revalidate installation identity and use Codex's optimistic write version.
+    Explicit tool restrictions and hook trust are never changed.
+    """
+    with _connection(**host) as client:
+        status = _status(client, plugin_root)
+        policy = status['tool_approval']
+        if not policy or policy['plugin_id'] != plugin_id or not policy['server_enabled']:
+            raise ReviewError('The Entity installation changed or its tools are disabled. Check setup again.')
+        config = client.call('config/read', {'includeLayers': True, 'cwd': client.cwd})
+        user = next((layer for layer in config['layers'] if layer['name']['type'] == 'user'
+                     and not layer['name'].get('profile')), None)
+        if user is None:
+            raise ReviewError('Codex did not identify a writable user configuration.')
+        client.call('config/batchWrite', {'edits': [{
+            'keyPath': 'plugins.' + json.dumps(plugin_id) + '.mcp_servers.brain.default_tools_approval_mode',
+            'value': 'approve', 'mergeStrategy': 'replace'}],
+            'filePath': user['name']['file'], 'expectedVersion': user['version']})
+        policy = _tool_policy(client.call('config/read', {'cwd': client.cwd})['config'], plugin_id)
+        if policy['mode'] != 'approve':
+            raise ReviewError('Another Codex policy overrides Entity tool approval. Check Codex permission settings.')
+        return {'saved': True, **policy,
+                'message': 'Entity-wide tool approval is saved. Individual restrictions remain. An existing Codex connection may need to reload before using the new setting.'}
+
+
 def review_script(executable, codex_home, cwd):
-    """A terminal receives the exact host configuration inspected by hook_status."""
+    """A terminal receives the exact host configuration inspected by setup_status."""
     command = shlex.join([str(executable), '--no-alt-screen', '--cd', str(cwd)])
     return ('#!/bin/sh\n'
             'printf "%s\\n" "Entity automatic memory — Codex hook review" '

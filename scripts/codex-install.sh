@@ -99,7 +99,7 @@ echo "bootstrapping the runtime in the cache copy (first time: a few minutes)...
 bash "$INSTALLED/hooks/scripts/ensure-runtime.sh" >"$INSTALLED/.bootstrap.log" 2>&1 \
   || { echo "ERROR: runtime bootstrap failed — see $INSTALLED/.bootstrap.log" >&2; exit 1; }
 echo "✓ runtime ready: $("$INSTALLED/venv/bin/python" -c 'import sys; print(sys.version.split()[0])')"
-echo "  Next: open Codex and ask 'Finish Entity setup'. Entity will check hook status"
-echo "  and offer an in-app confirmation to open Codex's own hook review."
-echo "  Review appears in a terminal window; no shell commands need to be typed."
+echo "  Next: open Codex and ask 'Finish Entity setup'. Entity will check tools and hooks"
+echo "  and offer one confirmation for Entity tools and automatic-memory setup."
+echo "  If hooks need trust, Codex opens its review; no commands need to be typed."
 echo "  After approval, return to the chat and ask Entity to check setup again."

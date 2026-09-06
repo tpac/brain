@@ -420,16 +420,31 @@ under CC) fixes both hosts and is already noted as deferred in
 Setup ownership: `.codex-plugin/plugin.json` selects `codex_setup.py` through
 `mcp-launch.sh --adapter`. `hooks/adapters/codex_setup.py` owns the local setup
 tool and one active operation per MCP connection; `codex_onboarding.py` owns
-Codex discovery, `hooks/list`, and native review launch. These are MCP adapters,
+Codex discovery, setup status, consented tool-policy writes, and native review launch. These are MCP adapters,
 not event hooks. The package builder includes them separately from
 `hooks/scripts/`. The shared proxy confines adapter loading to this directory,
 rejects tool-name conflicts, negotiates protocol capabilities, and routes
 messages. Setup stays outside the daemon, core tool contracts, and brain data.
 
-Status inspection and review launch run on workers. Only matching, unexpired
-consent with `open_review: true` can launch; cancellation or reinitialization
+Status inspection, policy writes, and review launch run on workers. Only matching,
+unexpired consent with `enable_entity: true` can save permission or launch; cancellation or reinitialization
 invalidates the operation by object identity, even if the host reuses an ID.
-Accepting the form never writes trust. Errors use the injected proxy logger.
+The adapter resolves the installed Entity ID through root-scoped `hooks/list`,
+rechecks it before a write, and uses Codex's user-layer file/version with
+`config/batchWrite`. It changes only that plugin's brain server
+`default_tools_approval_mode` to `approve`, then reads the setting back. Individual
+tool restrictions, other plugins, and hook trust remain unchanged. Saved policy
+is reported separately from active-connection or automatic-memory readiness.
+Errors use the injected proxy logger; a later hook-launch failure retains the
+successful tool-policy result so partial completion is visible.
+Decision scope: Tom's unified-setup direction (2026-09-06) authorizes an explicit
+in-app choice that saves Entity-wide MCP tool permission. This replaces the
+previous hold on a tool-permission writer because the user chooses the change
+in a form that explains its scope; it does not authorize the separate proposed
+hook-trust writer. Hook definitions are executable code and remain subject to
+Codex's own native review. The two permissions share one guided setup request,
+with each effect and remaining step reported separately.
+
 The user flow and fallback limits are in [Codex setup](CODEX-SETUP.md).
 
 ### 5.8 G8 — Gates

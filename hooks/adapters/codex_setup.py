@@ -1,7 +1,7 @@
 """Session-local setup interactions, independent of the brain daemon.
 
 The stdin owner routes responses here; waiting for consent never blocks that
-reader. Only the matching, unexpired acceptance may open native hook review.
+reader. Matching consent can save tool policy and open native hook review.
 """
 import json
 import sys
@@ -13,11 +13,13 @@ import codex_onboarding as codex
 
 SETUP_TOOL = {
     'name': 'setup',
-    'description': ('Check Entity automatic-memory setup in Codex. Use action=status '
-                    'when memory context or session attribution is missing. '
-                    'action=review asks the user in-app before opening Codex native '
-                    'hook review in a terminal window; no commands need to be typed. '
-                    'Then call status again. This tool never grants hook trust.'),
+    'title': 'Set up Entity memory and permissions',
+    'description': ('Check Entity setup with action=status. action=review presents one '
+                    'clear confirmation to allow Entity tools without individual prompts '
+                    'and, when needed, open Codex hook review for automatic memory. '
+                    'Tool approval includes reading, changing and deleting memories and '
+                    'messaging other Entity sessions. Hook trust is decided in Codex. '
+                    'Check status afterwards; saved policy may need a connection reload.'),
     'inputSchema': {'type': 'object', 'properties': {
         'action': {'type': 'string', 'enum': ['status', 'review'], 'default': 'status'}},
         },
@@ -38,8 +40,10 @@ class SetupSession:
     instructions = (
         "If automatic memory context is absent or a tool reports missing session "
         "identity, tell the user and call setup(action='status'). Offer "
-        "setup(action='review') when review is needed. An accepted confirmation "
-        "does not grant hook trust. Check status after the user completes review."
+        "setup(action='review') when setup is incomplete. Explain it requests "
+        "Entity-wide tool permission and opens Codex's separate hook review. "
+        "Check status afterwards; a saved tool policy does not prove the current "
+        "connection reloaded it or that automatic memory works."
     )
     notice = IDENTITY_NOTICE
 
@@ -99,37 +103,49 @@ class SetupSession:
         if action not in ('status', 'review'):
             self.result(op, {'state': 'error', 'message': 'Use action=status or action=review.'}, True)
             return
-        status = codex.hook_status(plugin_root=self.plugin_root)
+        status = codex.setup_status(plugin_root=self.plugin_root)
         status['caller_identity_verified'] = identity_verified
-        if action == 'status' or status['state'] in ('not_found', 'definitions_trusted', 'disabled'):
+        policy = status['tool_approval']
+        needs_tools = policy is not None and policy['mode'] != 'approve'
+        needs_hooks = status['state'] == 'review_required'
+        if action == 'status' or not policy or not policy['server_enabled'] or not (needs_tools or needs_hooks):
             status['message'] = {
                 'not_found': 'Codex did not find this Entity installation’s hooks. Check that the plugin is installed and enabled.',
                 'definitions_trusted': 'Codex reports these hook definitions trusted and enabled. Verify automatic recall and capture in the app before declaring memory ready.',
                 'disabled': 'Some Entity hooks are disabled. Open Codex CLI and use /hooks to review their settings. The automatic startup review only covers new or changed enabled hooks.',
                 'review_required': 'Entity hooks need review. Offer setup(action="review") to open Codex’s own approval screen.',
             }[status['state']]
+            if needs_tools:
+                status['message'] += ' Entity-wide tool approval is not saved; offer setup(action="review").'
+            if policy and not policy['server_enabled']:
+                status['message'] += ' Entity tools are disabled in Codex; enable the server there first.'
             self.result(op, status)
             return
         if not self.form_supported:
             self.result(op, {'state': 'confirmation_unavailable', 'trust_granted': False,
-                        'message': 'This connection does not support in-app confirmation. Open Codex CLI and review Entity under /hooks; this tool changed no permissions.'})
+                        'message': 'This connection cannot show the setup confirmation. Review Entity tool permissions in Codex and hook trust under /hooks; this tool changed no permissions.'})
             return
         eid = 'entity-setup-' + uuid.uuid4().hex
         timer = threading.Timer(self.timeout, self._expire, args=(op,))
         timer.daemon = True
         request = {'jsonrpc': '2.0', 'id': eid, 'method': 'elicitation/create', 'params': {
             'mode': 'form',
-            'message': ('Entity needs Codex hook approval for automatic memory. Open Codex’s '
-                        'review in a terminal window? You will choose which hooks to trust '
-                        'in Codex; accepting this form does not grant permission. No shell '
-                        'commands need to be typed. Afterwards, return here to check setup.'),
+            'message': ('Allow Entity to use its memory tools without asking you each time.\n\n'
+                        'This includes reading, changing and deleting saved memories, and '
+                        'messaging your other Entity sessions. '
+                        'This applies to current and future tools from Entity’s brain server; '
+                        'your individual tool restrictions stay in place.\n\n'
+                        'If automatic-memory hooks need approval, Codex will open their review '
+                        'in Terminal. You make the hook-trust decision there. No commands need '
+                        'to be typed. Return here afterwards to check setup.'),
             'requestedSchema': {'type': 'object', 'properties': {
-                'open_review': {'type': 'boolean', 'title': 'Open Codex hook review', 'default': False}},
-                'required': ['open_review']}}}
+                'enable_entity': {'type': 'boolean', 'title': 'Allow Entity tools and continue setup', 'default': False}},
+                'required': ['enable_entity']}}}
         with self.lock:
             if self.current is not op:
                 return
-            op.update(eid=eid, timer=timer)
+            op.update(eid=eid, timer=timer, plugin_id=policy['plugin_id'],
+                      needs_tools=needs_tools, needs_hooks=needs_hooks)
             self.send(request)
             timer.start()
 
@@ -148,7 +164,7 @@ class SetupSession:
         reply = message.get('result') or {}
         content = reply.get('content') or {} if isinstance(reply, dict) else {}
         accepted = (isinstance(reply, dict) and reply.get('action') == 'accept' and
-                    isinstance(content, dict) and content.get('open_review') is True and
+                    isinstance(content, dict) and content.get('enable_entity') is True and
                     'error' not in message)
         if not accepted:
             self.result(op, {'state': 'review_cancelled', 'trust_granted': False})
@@ -157,10 +173,22 @@ class SetupSession:
             with self.lock:
                 if self.current is not op:
                     return
+            result = {'state': 'setup_updated', 'hook_trust_granted': False,
+                      'tool_permission': None, 'hook_review': None, 'runtime_verified': False}
             try:
-                self.result(op, codex.open_review())
+                if op['needs_tools']:
+                    result['tool_permission'] = codex.approve_tools(
+                        plugin_root=self.plugin_root, plugin_id=op['plugin_id'])
+                if op['needs_hooks']:
+                    with self.lock:
+                        if self.current is not op:
+                            return
+                    result['hook_review'] = codex.open_review()
+                result['message'] = 'Check setup again after hook review. An existing Codex connection may need to reload saved tool permissions.'
+                self.result(op, result)
             except Exception as error:
-                self.result(op, {'state': 'launch_failed', 'trust_granted': False, 'message': str(error)}, True)
+                result.update(state='setup_incomplete', message=str(error))
+                self.result(op, result, True)
         self._dispatch(launch)
         return True
 

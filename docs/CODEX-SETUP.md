@@ -1,10 +1,20 @@
 # Codex setup
 
-After installation and runtime preparation, ask the assistant to finish Entity
-setup. It calls `setup` with `action: status`. If enabled hook definitions need
-approval, `action: review` asks for confirmation in the host. Accepting with
-“Open Codex hook review” selected launches Codex's native review UI. The user
-makes the trust decision in Codex and then asks the assistant to check again.
+After installation and runtime preparation, ask **“Finish Entity setup.”**
+The assistant checks two things: permission to use Entity tools and trust for
+automatic-memory hooks. If needed, one in-app confirmation explains both.
+
+Selecting **“Allow Entity tools and continue setup”** and accepting saves an
+Entity-wide tool approval. This covers current and future tools from Entity's
+brain server, including reading, changing and deleting memories and messaging
+other Entity sessions. Existing restrictions on individual tools stay in place.
+It applies until you change Entity's tool approval setting in Codex.
+
+When hooks need trust, the same acceptance opens Codex's own hook review. You
+make the hook-trust decision there. The popup does not grant hook trust. Return
+to the chat and ask to check setup again. Saved tool permission may require the
+existing Codex connection to reload; if prompts continue, quit and reopen the
+app and check again.
 
 The native startup review is a terminal UI. No shell commands need to be typed
 for new or modified enabled hooks. Codex may first ask whether to trust its
@@ -22,7 +32,8 @@ recall and capture in the host before declaring the installation fully ready.
 
 - Disabled hooks require manual `/hooks` settings review; the automatic startup
   review is for new or changed enabled definitions.
-- Missing or disabled plugins are reported as not found. A successful MCP
+- Missing or disabled plugins are reported as not found; a disabled MCP server
+  must be enabled in Codex before setup can grant its tool permission. A successful MCP
   connection alone is never treated as hook approval.
 - Missing form capability or an older MCP protocol produces instructions without
   launching anything. Unsupported Codex inspection produces an explicit error.
