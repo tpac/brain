@@ -18,18 +18,24 @@ from servers.scales.runner import run_llm_loop
 from servers.trace_contract import build_delta_metadata
 
 
+def scribe_journal_kwargs(session_id):
+    """The Scribe's binding shape beyond scale/source: session-walled residue
+    plus the `## Arc` opt-in. One spelling, used by S1Scribe.journal (the
+    production binding, which adds the source) and by _journal below."""
+    return {'session_id': session_id, 'arc': True}
+
+
 def _journal(brain, session_id=''):
-    """The Scribe's journal binding — session-walled residue plus the
-    `## Arc` opt-in (S1E owns the session arc; S2 units don't). Constructed
-    per use site so the standalone builder callers (evals, tests) need no
-    signature change; decorate-only sites may pass brain=None (decoration
-    never touches the brain)."""
+    """A SOURCE-LESS Scribe-shaped binding for the standalone callers (evals,
+    tests) that carry no unit — tell/ask lines stay plain notes there. The
+    production binding is `S1Scribe.journal`, handed in as `journal=`.
+    Decorate-only sites may pass brain=None."""
     from servers.scales.journal import JournalBinding
-    return JournalBinding(brain, scale='s1', session_id=session_id, arc=True)
+    return JournalBinding(brain, scale='s1', **scribe_journal_kwargs(session_id))
 
 
 def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
-                 muster_enabled=None):
+                 muster_enabled=None, journal=None):
     """S1 turn encoder: gather → prompt → trace O/K → LLM loop → post-process.
 
     Args:
@@ -60,6 +66,11 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
 
     def _step(name):
         profile.append((name, int((time.time() - t0) * 1000)))
+
+    # ONE binding per run — decoration, continuity and harvest all read it.
+    # The production caller (S1Scribe) hands in its sourced binding; the
+    # standalone callers get the source-less Scribe shape.
+    journal = journal or _journal(brain, session_id)
 
     load_env()
     _step("env_loaded")
@@ -112,7 +123,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     enc_effort = enc_cfg['effort']
     enc_model = enc_cfg['model']
     system_prompt = _build_system_prompt(
-        prompt_instructions=enc_instructions or None, lived=lived)
+        prompt_instructions=enc_instructions or None, lived=lived,
+        journal=journal)
 
     # 2a. Catalog FIRST (both arms) — muster needs the rendered catalog +
     # catalog ids, and on the lived arm the body needs the muster's findings
@@ -146,7 +158,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         brain, messages, counter, session_id, lived_sequence=lived,
         precomputed=(catalog_text, catalog_ids, streams),
         scout_outputs=(scout_outputs if lived else None), view_policy=view,
-        view_now=view_now)
+        view_now=view_now, journal=journal)
     if not lived and scout_report.strip():
         user_content = user_content + "\n\n## Scout reports\n\n" + scout_report
     _step("prompt(preamble=%d chars, body=%d chars)" % (
@@ -297,7 +309,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             # lands at activation (replacement-before-removal). No eval confound:
             # the Frozen-Corpus sweep queries with a FRESH session_id, so Recent
             # moves is empty in BOTH arms there regardless of this flag.
-            _journal(brain, session_id).harvest(
+            journal.harvest(
                 final_text, enc_chain,
                 arc_limit=ENCODING_AGENT.get('session_context_limit', 800))
             journal_entry = ''
@@ -409,7 +421,7 @@ def _gather_messages(brain, session_id):
     return []
 
 
-def _build_system_prompt(prompt_instructions=None, lived=None):
+def _build_system_prompt(prompt_instructions=None, lived=None, journal=None):
     """Build encoding agent system prompt.
 
     If prompt_instructions provided (from interactions table), uses it.
@@ -454,7 +466,7 @@ def _build_system_prompt(prompt_instructions=None, lived=None):
     # control arm.
     if lived:
         try:
-            prompt = _journal(None).decorate_system(prompt)
+            prompt = (journal or _journal(None)).decorate_system(prompt)
         except Exception as e:
             print('[s1e] WARNING: could not inject arc/review block/closure: %s' % e, flush=True)
     return prompt
@@ -870,7 +882,7 @@ def _render_scout_legend(legend_lines, unmapped):
 
 def _build_user_content(brain, messages, counter, session_id, lived_sequence=None,
                         precomputed=None, scout_outputs=None, view_policy=None,
-                        view_now=None):
+                        view_now=None, journal=None):
     """Assemble S1 encoding prompt: stable preamble + dynamic body.
 
     The split is deliberate for caching. The stable preamble (instructions
@@ -942,7 +954,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # runs in THIS conversation; never carries across sessions). Old arm = the
     # legacy `### Encoding Journal` blob. self-labeled block either way.
     if lived:
-        journal_block = _journal(brain, session_id).continuity()
+        journal_block = (journal or _journal(brain, session_id)).continuity()
     else:
         blob = (brain.get_config('encoding_journal_%s' % session_id, '')
                 or 'First run — no previous encoding in this session.')
