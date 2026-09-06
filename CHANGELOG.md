@@ -1,36 +1,52 @@
 # Changelog
 
-All notable changes to **Anchor** (the `brain` plugin). The format roughly follows
-[Keep a Changelog](https://keepachangelog.com); versioning is [semver](https://semver.org).
+All notable changes to **entity**. The format follows
+[Keep a Changelog](https://keepachangelog.com); versions follow
+[semver](https://semver.org). A version is a claim about delivered value, not
+about the size of the code, which is why the first public release is 0.9.
 
-> Per-version detail for releases before 9.6.0 lives in git history and the prior
-> `plugin.json` descriptions. This file is the going-forward home for release notes —
-> the `description` field stays a stable one-liner.
+## [0.9.0] — YYYY-MM-DD
 
-## [9.6.0] — 2026-05-31
-### Added
-- **Self-channel rules of engagement** — the channel between parallel streams (concurrent
-  sessions of the same identity) gains a behavioral layer plus the substrate behind it:
-  - third-person **containment render** (`⚡ <who> says: "…"` + a standing attribution
-    footer) so another stream's action can't bleed into this stream's self-model;
-  - **`self_outbox`** — sender-side delivery visibility (per-recipient delivered/pending),
-    so silence reads as "delivered vs never," not a guess;
-  - **presence active / dormant / lost** classification, surfacing recently-gone streams
-    instead of silently dropping them;
-  - **graceful `self_send` addressing** — id-canonical, with the 8-char short resolving as
-    a prefix against the live roster (no self-naming);
-  - the operative rules in `skills/brain/SKILL.md`.
+First public release.
 
-### Changed
-- **Plugin metadata aligned to the Claude Code plugin standard**: `displayName` ("Anchor"),
-  a concise stable `description` ("Persistent identity…"), `homepage` / `repository` /
-  `license`, and trimmed keywords. Release notes moved out of the `description` field into
-  this changelog.
-- `build-plugin.sh` warns if `BRAIN_DEV_MODE` is set in the building shell (end-user
-  artifacts must run without the developer safety-net opt-out).
+### Memory
+- Two kinds of memory: semantic (decisions, lessons, corrections, linked in a
+  graph) and episodic (a verbatim, queryable record of every conversation). It
+  answers both "what did we decide?" and "what exactly did you say?"
+- A recall pass on every prompt, and a boot brief at session start: who you
+  are to it, its current focus, the open threads.
+- Background encoding: a scribe agent turns conversation into memories when
+  the session goes idle.
+- Idle-time maintenance: consolidating duplicates, classifying relationships,
+  placing memories into named communities, healing broken links.
+- Corrections that travel: when it is wrong and you say so, the correction
+  stays attached to the belief it amended and rides every future recall of it.
 
-## [9.5.x] and earlier
-Highlights (full detail in git history): episodic-references write path (`source_refs`,
-`co_anchored` engram edges); S2 graph-integration units (consolidation, community, healer,
-aspect-integration); the unified aspect taxonomy; the agentic surface recall path; and the
-Frame structured prior.
+### Identity
+- The entity's name lives in your config, not in the code. Who it becomes is
+  yours.
+- The Nursery: a fresh brain is born with a small seed pack of instincts and a
+  zero-memory boot, then grows from there.
+- The thalamus: reminders, notices and open questions that surface when due,
+  across sessions.
+
+### Sessions and hosts
+- Runs under Claude Code and under Codex from the same package.
+- Parallel sessions of the same entity find each other, read each other's
+  focus, and message each other, within a host and across hosts. Several
+  streams of one mind, not several minds.
+- `/self-salvage` hands a long session's context to its successor.
+
+### Tools and surfaces
+- Memory tools Claude uses itself: `remember`, `revise`, `connect`, a batched
+  `brain_batch`, `recall`, `recall_episodes`, `filter_nodes`, `get_node`, plus
+  introspection and maintenance tools.
+- Commands: `/brain`, `/dashboard`, `/watch`, `/self-salvage`.
+- A read-only local dashboard: the live graph, traces, encode and decode
+  activity, streams, journals, logs and health.
+
+### Your data
+- Everything is stored locally in SQLite on your machine. No telemetry, no
+  cloud store, no account. Rolling backups; the brain survives every update
+  and can be relocated.
+- A guided migration from the pre-release `brain` plugin (see MIGRATING.md).
