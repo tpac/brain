@@ -105,7 +105,9 @@ _ship "skills/" ':(glob)skills/*/SKILL.md' ':(glob)skills/*/references/*.md'
 
 if [ "$MODE" = public ]; then
   # ── Public-repo extras (D-8: runtime + tests ship). Never in the .plugin zip.
-  _name README.md CONTRIBUTING.md MIGRATING.md
+  # CHANGELOG.md is the PUBLIC changelog (0.9.x line); scripts/release.sh
+  # refuses a release whose version has no entry in it.
+  _name README.md CONTRIBUTING.md MIGRATING.md CHANGELOG.md
   # tests/ — the suite by shape, its infrastructure by name. Nothing else under
   # tests/ ships: fixtures, corpora, gold datasets, benchmarks, runners and notes
   # are exactly where personal material has landed before (tests/conversations

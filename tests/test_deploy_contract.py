@@ -170,6 +170,14 @@ class TestVersionLockstep:
             f"{self.EXPECTED_VERSION!r} — bump EXPECTED_VERSION in the same "
             'commit as the manifests, or the export ships the wrong version')
 
+    def test_changelog_has_entry_for_expected_version(self):
+        # The release command refuses without one; pinning it here too means
+        # the public changelog cannot drift away from the version pin between
+        # releases — the notes are written in the same commit as the bump.
+        assert f'## [{self.EXPECTED_VERSION}]' in _read('CHANGELOG.md'), (
+            f'CHANGELOG.md has no entry for {self.EXPECTED_VERSION} — write the '
+            'release notes in the same commit as the version bump')
+
     def test_codex_manifest_in_lockstep(self):
         assert CODEX_PLUGIN['name'] == PLUGIN_NAME, (
             f".codex-plugin/plugin.json names {CODEX_PLUGIN['name']!r}, "
@@ -649,7 +657,7 @@ class TestPublicTreeExport:
     def test_public_manifest_extends_package(self):
         public = _public_manifest()
         assert set(_manifest()) <= set(public), 'the public view must contain the package'
-        for f in ('README.md', 'CONTRIBUTING.md', 'MIGRATING.md',
+        for f in ('README.md', 'CONTRIBUTING.md', 'MIGRATING.md', 'CHANGELOG.md',
                   'tests/conftest.py', 'tests/__init__.py'):
             assert f in public, f'{f} missing from the public view'
         leaked = [f for f in public if f.startswith(('docs/', 'eval/', 'scripts/'))]
@@ -696,7 +704,7 @@ class TestPublicTreeExport:
             'hooks/adapters/codex_setup.py': '',
             'skills/brain/SKILL.md': '', 'skills/brain/references/detailed-api.md': '',
             'skills/newskill/SKILL.md': '',             # a new skill: shape names it
-            'README.md': '', 'CONTRIBUTING.md': '', 'MIGRATING.md': '',
+            'README.md': '', 'CONTRIBUTING.md': '', 'MIGRATING.md': '', 'CHANGELOG.md': '',
             'tests/__init__.py': '', 'tests/conftest.py': '',
             'tests/brain_test_base.py': '', 'tests/isolated_brain.py': '',
             'tests/eval_optional.py': '', 'tests/interaction_override.py': '',
@@ -959,6 +967,14 @@ class TestReleaseCommand:
         r = self._run(tmp_path, '9.7', email='a@example.org')
         assert r.returncode != 0
         assert 'X.Y.Z' in r.stderr
+
+    def test_refuses_without_changelog_entry(self, tmp_path):
+        # A release with no notes is the one artifact no export gate sees;
+        # the changelog rots the moment one ships without touching it.
+        r = self._run(tmp_path, '0.0.1', email='a@example.org')
+        assert r.returncode != 0
+        assert 'CHANGELOG.md' in r.stderr and '0.0.1' in r.stderr, r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists(), 'refused, yet staged'
 
     def test_publish_refuses_a_foreign_remote(self, tmp_path):
         # a mis-aimed push is the one way history could leak

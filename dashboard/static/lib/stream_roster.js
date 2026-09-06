@@ -18,7 +18,7 @@
 // passed in — so the roster re-renders correctly under the 5s presence poll.
 // ===========================================================================
 
-import { escapeHtml, relativeTime } from '/static/lib/dom.js';
+import { escapeHtml, relativeTime, modelChipHTML } from '/static/lib/dom.js';
 import { sessionLabel, sessionColor, sessionTooltip } from '/static/lib/sessions.js';
 
 const _LIVE = {
@@ -118,6 +118,8 @@ function _pane(s, open, boots, messages) {
   // metrics
   const stats = [];
   if (s.cwd) stats.push('<span style="font-family:ui-monospace,monospace">' + escapeHtml(_shortCwd(s.cwd)) + '</span>');
+  // What the stream rides on right now — presence mirrors the latest turn's model.
+  if (s.model) stats.push(modelChipHTML(s.model, s.host));
   if (s.turn_count) stats.push(s.turn_count + ' turn' + (s.turn_count === 1 ? '' : 's'));
   const tenure = _dur(s.session_started_at);
   if (tenure) stats.push('up ' + escapeHtml(tenure));

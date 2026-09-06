@@ -697,12 +697,15 @@ class Brain(
                 for dim in SCOPE_PROVENANCE_FIELDS}
 
     def session_env_for(self, session_id: str) -> dict:
-        """Per-session env (cwd, branch, worktree, project) for a stream — fed in
-        at boot from the Claude side, surfaced in peek so streams identify where
-        each other work. Reads the live cached SessionContext if present, else the
-        persisted row. Empty strings when unknown. Mirrors session_context_for's
-        per-session pattern (no global key — parallel sessions don't clobber)."""
-        _empty = {'cwd': '', 'branch': '', 'worktree': '', 'project': ''}
+        """Per-session env (cwd, branch, worktree, project, model, host) for a
+        stream — fed in from the host side (boot hook; per-turn recall/Stop hooks
+        for model/host), surfaced in peek so streams identify where each other
+        work and what they ride on. Reads the live cached SessionContext if
+        present, else the persisted row. Empty strings when unknown. Mirrors
+        session_context_for's per-session pattern (no global key — parallel
+        sessions don't clobber)."""
+        _empty = {'cwd': '', 'branch': '', 'worktree': '', 'project': '',
+                  'model': '', 'host': ''}
         if not session_id:
             return _empty
         ctx = self._session_contexts.get(session_id)
@@ -717,7 +720,7 @@ class Brain(
         if ctx is None:
             return _empty
         return {'cwd': ctx.cwd, 'branch': ctx.branch, 'worktree': ctx.worktree,
-                'project': ctx.project}
+                'project': ctx.project, 'model': ctx.model, 'host': ctx.host}
 
     def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
         """Read the most recent portion of the encoder's per-session journal.

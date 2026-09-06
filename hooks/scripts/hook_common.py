@@ -260,6 +260,84 @@ def get_hook_input():
     return data
 
 
+# ── Host + model (the S0 session stamp) ──
+# What a turn rides on, fed to the daemon by the UserPromptSubmit / Stop hooks
+# and stamped onto the turn's S0 rows (trace_contract.S0_SESSION_STAMP_FIELDS).
+# Two hosts, two sources: Codex puts `model` on every hook payload; Claude Code
+# does not, but every assistant entry in the transcript carries message.model.
+
+def host_name():
+    """Which runtime this hook runs under: 'claude-code', 'codex', or '' when
+    neither tell is present. Claude Code exports CLAUDE_CODE_SESSION_ID into
+    every hook process; Codex injects bare PLUGIN_DATA (Claude Code sets only
+    the CLAUDE_-prefixed alias). The tell must be one the HOST supplies: bare
+    PLUGIN_ROOT is not one — our own resolve-brain-db.sh exports it on both."""
+    if os.environ.get("CLAUDE_CODE_SESSION_ID"):
+        return "claude-code"
+    if os.environ.get("PLUGIN_DATA"):
+        return "codex"
+    return ""
+
+
+# Tail window for the transcript read: assistant entries land on every tool
+# call, so the last one is always within a few KB of the end — a full
+# readlines() over a session-long transcript (tens of MB) on the prompt hot
+# path is the cost this avoids.
+_TRANSCRIPT_TAIL_BYTES = 256 * 1024
+
+
+def turn_model(hook_input):
+    """The model this turn ran on, or '' when the payload doesn't say.
+
+    Codex: the payload's `model`. Claude Code: the LAST main-thread assistant
+    entry in the transcript — at Stop that is this turn's model; at
+    UserPromptSubmit it is the previous turn's (the model the operator was
+    talking to when the prompt arrived; '' on a session's first prompt, and the
+    Stop hook fills it). Sidechain entries (subagents, which may run on a
+    different model) are skipped — they are not the operator's turn.
+
+    The tail window is the normal read; when it holds no main-thread assistant
+    entry (one oversized tool result, or a subagent's sidechain, can push the
+    last one out of the window) the whole file is scanned once — rare, and
+    the alternative is an unstamped turn plus a spurious model-unset error."""
+    m = hook_input.get("model")
+    if isinstance(m, str) and m.strip():
+        return m.strip()
+    path = hook_input.get("transcript_path")
+    if not path:
+        return ""
+    path = os.path.expanduser(path)
+    try:
+        size = os.path.getsize(path)
+        model = _last_main_assistant_model(path, max(0, size - _TRANSCRIPT_TAIL_BYTES))
+        if not model and size > _TRANSCRIPT_TAIL_BYTES:
+            model = _last_main_assistant_model(path, 0)
+        return model
+    except OSError:
+        return ""
+
+
+def _last_main_assistant_model(path, start):
+    """message.model of the last non-sidechain assistant entry at or after byte
+    `start` of the transcript, or ''. Raises OSError on a read failure."""
+    with open(path, "rb") as f:
+        f.seek(start)
+        lines = f.read().decode("utf-8", errors="replace").splitlines()
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue   # the first line of a tail window is usually a partial record
+        if not isinstance(entry, dict) or entry.get("type") != "assistant" \
+                or entry.get("isSidechain"):
+            continue
+        msg = entry.get("message")
+        model = msg.get("model") if isinstance(msg, dict) else None
+        if isinstance(model, str) and model.strip():
+            return model.strip()
+    return ""
+
+
 # ── Host tool-input shapes ──
 # Codex's file tool is apply_patch: its PreToolUse/PostToolUse input is
 # {"command": <patch text>} with no file_path — the target sits in the patch

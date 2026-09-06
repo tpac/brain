@@ -561,7 +561,7 @@ class IntegrationUnit:
 
         # read_usage(None) is the all-zero token baseline — reused on the
         # pre-usage failure path.
-        telemetry = {'elapsed_ms': 0, **read_usage(None)}
+        telemetry = {'elapsed_ms': 0, 'model': model, **read_usage(None)}
 
         # Ensure API key
         if not os.environ.get('ANTHROPIC_API_KEY'):
