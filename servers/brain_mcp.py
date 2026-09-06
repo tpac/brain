@@ -13,6 +13,7 @@ stderr gets a message and the caller gets a real error.
 import json
 import os
 import sys
+import threading
 
 # Ensure parent dir is on sys.path so `from servers.X` works
 # even when this file is run as a standalone script (not -m servers.brain_mcp)
@@ -484,6 +485,7 @@ def ensure_daemon_running():
 SERVER_NAME = BRAIN_MCP_SERVER
 SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
+SUPPORTED_PROTOCOL_VERSIONS = (PROTOCOL_VERSION, "2025-06-18", "2025-11-25")
 
 # Tool definitions — what Claude sees as native tools
 # Memory operations only. No operational tools (ping, save, health_check, config).
@@ -949,17 +951,28 @@ SERVER_INSTRUCTIONS = (
 )
 
 
-def handle_initialize(request_id):
+def handle_initialize(request_id, params=None, extension=None):
+    params = params or {}
+    version = params.get('protocolVersion', PROTOCOL_VERSION)
+    if version not in SUPPORTED_PROTOCOL_VERSIONS:
+        version = PROTOCOL_VERSION
+    if extension is not None:
+        capabilities = dict(params.get('capabilities', {}))
+        # The legacy protocol predates elicitation. Capability advertisement
+        # alone cannot enable operations outside the negotiated revision.
+        if version == PROTOCOL_VERSION:
+            capabilities.pop('elicitation', None)
+        extension.initialize({'protocolVersion': version, 'capabilities': capabilities})
     return make_response(request_id, {
-        "protocolVersion": PROTOCOL_VERSION,
+        "protocolVersion": version,
         "capabilities": {"tools": {}},
         "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
-        "instructions": SERVER_INSTRUCTIONS,
+        "instructions": SERVER_INSTRUCTIONS + (" " + extension.instructions if extension else ""),
     })
 
 
-def handle_tools_list(request_id):
-    return make_response(request_id, {"tools": TOOLS})
+def handle_tools_list(request_id, extension=None):
+    return make_response(request_id, {"tools": TOOLS + (extension.tools if extension else [])})
 
 
 def _select_node_config(n, rich, get_nodes_config):
@@ -1212,10 +1225,30 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     return json.dumps(result, indent=2, default=str)
 
 
-def handle_tools_call(request_id, params):
+def handle_tools_call(request_id, params, extension=None):
     import time as _time
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    if not isinstance(arguments, dict):
+        return make_error(request_id, -32602, 'Tool arguments must be an object.')
+    if extension is not None and extension.handles(tool_name):
+        clean = _stamp_caller_session(dict(arguments))
+        verified = bool(clean.pop(CALLER_SESSION_KEY, None))
+        extension.start(request_id, clean, identity_verified=verified)
+        return None  # The extension owns its response, possibly deferred.
+
+    identity_missing = False
+
+    def identity_gap(reason):
+        nonlocal identity_missing
+        identity_missing = True
+        _note_identity_gap(reason)
+
+    def content(text):
+        blocks = [{"type": "text", "text": text}]
+        if identity_missing and extension is not None:
+            blocks.append({"type": "text", "text": extension.notice})
+        return blocks
 
     # Try up to 3 times with backoff — daemon may be restarting
     backoff = [0, 0.5, 1.5]  # immediate, 0.5s, 1.5s
@@ -1226,7 +1259,7 @@ def handle_tools_call(request_id, params):
 
         # Only TOOL calls carry identity; the proxy's own pings run headless by
         # design, so the identity-gap note is armed here and nowhere else.
-        resp = daemon_send(tool_name, arguments, note=_note_identity_gap)
+        resp = daemon_send(tool_name, arguments, note=identity_gap)
         if resp.get("ok"):
             # `rich` is the MCP render opt-in for get_node/get_nodes (full view).
             # filter_nodes' own `rich` is a data-layer flag handled in dispatch;
@@ -1243,7 +1276,7 @@ def handle_tools_call(request_id, params):
                 result_text = "%s\n\n%s" % (
                     truncation_banner(_res["truncated"]), result_text)
             return make_response(request_id, {
-                "content": [{"type": "text", "text": result_text}]
+                "content": content(result_text)
             })
 
         # Distinguish a real daemon error from a missing-envelope response. A
@@ -1269,7 +1302,7 @@ def handle_tools_call(request_id, params):
             break
 
     return make_response(request_id, {
-        "content": [{"type": "text", "text": "ERROR: {}".format(last_error)}],
+        "content": content("ERROR: {}".format(last_error)),
         "isError": True
     })
 
@@ -1278,11 +1311,15 @@ def handle_ping(request_id):
     return make_response(request_id, {})
 
 
+_stdout_lock = threading.Lock()
+
+
 def send(msg):
     """Write JSON-RPC message to stdout."""
     line = json.dumps(msg)
-    sys.stdout.write(line + "\n")
-    sys.stdout.flush()
+    with _stdout_lock:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
 
 
 def send_notification(method):
@@ -1401,7 +1438,7 @@ def _health_monitor():
                 pass
 
 
-def main():
+def main(extension=None):
     # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
     import time, threading
@@ -1415,7 +1452,8 @@ def main():
             time.sleep(2)
     if daemon_ready:
         check_daemon_fingerprint()  # Record initial fingerprint
-        sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
+        count = len(TOOLS) + (len(extension.tools) if extension else 0)
+        sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(count))
     else:
         sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
 
@@ -1441,19 +1479,31 @@ def main():
         request_id = msg.get("id")
         params = msg.get("params", {})
 
+        # Server-originated elicitation responses have an id but no method.
+        # Consume even unknown/expired replies; never bounce a response back
+        # as a Method not found request and never reopen a cancelled review.
+        if not method and ('result' in msg or 'error' in msg):
+            if extension is not None:
+                extension.receive(msg)
+            continue
+
         # Notifications (no id) — acknowledge silently
         if request_id is None:
             if method == "notifications/initialized":
                 pass  # Client acknowledged init
+            elif method == 'notifications/cancelled' and extension is not None:
+                extension.cancel(params.get('requestId'))
             continue
 
         try:
             if method == "initialize":
-                send(handle_initialize(request_id))
+                send(handle_initialize(request_id, params, extension))
             elif method == "tools/list":
-                send(handle_tools_list(request_id))
+                send(handle_tools_list(request_id, extension))
             elif method == "tools/call":
-                send(handle_tools_call(request_id, params))
+                response = handle_tools_call(request_id, params, extension)
+                if response is not None:
+                    send(response)
             elif method == "ping":
                 send(handle_ping(request_id))
             else:
@@ -1465,6 +1515,46 @@ def main():
             except Exception:
                 pass  # stdout broken — nothing we can do
 
+    if extension is not None:
+        extension.close()
+
+
+def load_extension(name):
+    """Load only a packaged adapter; a broken extension leaves core tools usable."""
+    if not name:
+        return None
+    import importlib.util
+    from pathlib import Path
+    import re
+    try:
+        if not re.fullmatch(r'[a-z][a-z0-9_]*\.py', name):
+            raise ValueError('adapter must be a packaged Python filename')
+        directory = Path(_parent).resolve() / 'hooks' / 'adapters'
+        path = (directory / name).resolve()
+        if path.parent != directory or not path.is_file():
+            raise ValueError('adapter is missing or outside the package')
+        spec = importlib.util.spec_from_file_location('_brain_host_extension', path)
+        module = importlib.util.module_from_spec(spec)
+        # The adapter may import siblings. Restrict this path addition to load.
+        sys.path.insert(0, str(directory))
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.remove(str(directory))
+        extension = module.create_extension(send, _parent, log=_log_proxy_error)
+        names = [tool['name'] for tool in extension.tools]
+        if len(set(names)) != len(names) or set(names) & {tool['name'] for tool in TOOLS}:
+            raise ValueError('adapter tool names conflict with the shared tool inventory')
+        return extension
+    except Exception as error:
+        message = 'Host extension unavailable: %s' % error
+        sys.stderr.write('[brain-mcp] %s\n' % message)
+        _log_proxy_error('mcp_extension', message, 'extension loading', level='warning')
+        return None
+
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description='Brain MCP proxy')
+    parser.add_argument('--adapter', help='Packaged host extension filename')
+    main(extension=load_extension(parser.parse_args().adapter))

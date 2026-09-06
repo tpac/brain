@@ -417,6 +417,21 @@ until the runtime moves to `PLUGIN_DATA` (S7). Relocating the runtime to `PLUGIN
 under CC) fixes both hosts and is already noted as deferred in
 `runtime-state.sh`.
 
+Setup ownership: `.codex-plugin/plugin.json` selects `codex_setup.py` through
+`mcp-launch.sh --adapter`. `hooks/adapters/codex_setup.py` owns the local setup
+tool and one active operation per MCP connection; `codex_onboarding.py` owns
+Codex discovery, `hooks/list`, and native review launch. These are MCP adapters,
+not event hooks. The package builder includes them separately from
+`hooks/scripts/`. The shared proxy confines adapter loading to this directory,
+rejects tool-name conflicts, negotiates protocol capabilities, and routes
+messages. Setup stays outside the daemon, core tool contracts, and brain data.
+
+Status inspection and review launch run on workers. Only matching, unexpired
+consent with `open_review: true` can launch; cancellation or reinitialization
+invalidates the operation by object identity, even if the host reuses an ID.
+Accepting the form never writes trust. Errors use the injected proxy logger.
+The user flow and fallback limits are in [Codex setup](CODEX-SETUP.md).
+
 ### 5.8 G8 — Gates
 
 `test_deploy_contract`: add `.codex-plugin/plugin.json` to the manifest

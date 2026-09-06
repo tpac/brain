@@ -96,6 +96,8 @@ _name servers/scales/s2/aspects_v1.json
 _name hooks/hooks.json hooks/hooks.codex.json
 _ship "hooks/scripts/" ':(glob)hooks/scripts/*.sh' ':(glob)hooks/scripts/*.py' \
                        ':(glob)hooks/scripts/*.plist' ':(glob)hooks/scripts/brain-*'
+# Host adapter modules are MCP extensions, separate from event-hook scripts.
+_ship "hooks/adapters/" ':(glob)hooks/adapters/*.py'
 
 # skills/ — SKILL.md *is* the skill; .md is the payload here. A skill's
 # references/ subtree ships with it.

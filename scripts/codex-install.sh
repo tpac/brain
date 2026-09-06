@@ -99,5 +99,7 @@ echo "bootstrapping the runtime in the cache copy (first time: a few minutes)...
 bash "$INSTALLED/hooks/scripts/ensure-runtime.sh" >"$INSTALLED/.bootstrap.log" 2>&1 \
   || { echo "ERROR: runtime bootstrap failed — see $INSTALLED/.bootstrap.log" >&2; exit 1; }
 echo "✓ runtime ready: $("$INSTALLED/venv/bin/python" -c 'import sys; print(sys.version.split()[0])')"
-echo "  Next: Codex skips a plugin's hooks until you trust them — in the ChatGPT app's plugin"
-echo "  settings for $PLUGIN, or in the CLI (\`$CODEX\`, then /hooks). Then open a NEW Codex chat."
+echo "  Next: open Codex and ask 'Finish Entity setup'. Entity will check hook status"
+echo "  and offer an in-app confirmation to open Codex's own hook review."
+echo "  Review appears in a terminal window; no shell commands need to be typed."
+echo "  After approval, return to the chat and ask Entity to check setup again."

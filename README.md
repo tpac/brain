@@ -172,14 +172,21 @@ codex plugin marketplace add tpac/entity
 codex plugin add entity@anchor
 ```
 
-Then trust the plugin's hooks when Codex asks, and open a new Codex chat. Codex
-runs plugins from a cache copy, so the first session bootstraps the runtime
-there (60–90 s); the brain's tools appear from the second session.
+Once Entity's tools are connected, ask **“Finish Entity setup.”** The assistant
+checks the installed hooks and offers an in-app confirmation to open Codex's
+own hook review. Review appears in a terminal window; you choose which hooks
+to trust without typing shell commands. Return to the chat and ask to check
+setup again. Accepting the popup only opens review—it does not grant permission.
+
+Codex runs plugins from a cache copy. Direct marketplace installs may need to
+finish runtime bootstrap and reconnect before tools appear. The checkout
+installer below prepares the cached runtime before reporting success.
 
 Working from a checkout? Codex copies a plugin's source directory wholesale, so
 never point a marketplace at the repo itself. `scripts/codex-install.sh`
 packages the tree, points your personal marketplace
-(`~/.agents/plugins/marketplace.json`) at it, installs, and verifies.
+(`~/.agents/plugins/marketplace.json`) at it, installs, prepares the runtime,
+and verifies. See [setup behavior and troubleshooting](docs/CODEX-SETUP.md).
 
 ## Where your memories live — and what survives
 
