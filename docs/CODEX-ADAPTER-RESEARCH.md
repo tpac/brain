@@ -1,19 +1,26 @@
 # Codex Adapter — Research
 
-## § State — 2026-09-05
+## § State — 2026-09-06
 
 S1 (host-portable hook stdout: `hook_common.emit_hook_output`, silence = no
-opinion, block on Stop only) and S2 (`.codex-plugin/plugin.json`,
-`hooks/hooks.codex.json`, newest-install MCP launcher, gates) are on main at
-d5c1793 after two code reviews; the daemon restart + `./redeploy.sh` that make
-them live in Claude Code ran 2026-09-05 (safety hook verified as a warning).
-Ruling that shaped them: the brain informs, it never gates. S4 (signed identity
-stamp, §5.1) is on main at 2a86970 after two review passes:
-`hooks/scripts/stamp-caller-session.sh` registered in `hooks.codex.json` only,
-sign/verify + secret in `servers/dispatch_common.py`, proxy rule in
-`brain_mcp._stamp_caller_session`, `tests/test_caller_stamp.py`. Not yet: the
-live empirical pass (§6) on Tom's ChatGPT desktop app — E5 is the stamp's first
-live check. Brain milestone: 387a4a05.
+opinion, block on Stop only), S2 (`.codex-plugin/plugin.json`,
+`hooks/hooks.codex.json`, newest-install MCP launcher, gates) and S4 (signed
+identity stamp, §5.1: `hooks/scripts/stamp-caller-session.sh` in
+`hooks.codex.json` only, sign/verify + secret in `servers/dispatch_common.py`,
+proxy rule in `brain_mcp._stamp_caller_session`) are on main and redeployed.
+Ruling that shaped them: the brain informs, it never gates. Install from a
+checkout: `scripts/codex-install.sh` (§5.7) — packaged tree at
+`dist/codex/entity`, personal marketplace `anchor-dev`; its step 6 (pre-build
+the runtime inside the cache copy) is on branch 36256d4, not yet merged. Live
+pass (§6) on Tom's ChatGPT desktop app, thread 01a07465, 2026-09-06: E1, E3,
+E4, E5, E6, E9 measured PASS once the hooks were trusted through the CLI
+`/hooks` review; E2 (boot) needs a fresh chat, encoding a fifth Stop; E7, E8,
+E10 open. For Tom: identity wording (§5.6 — the GPT model already answers
+"Anchor here in Codex"), provenance and lock rights for Codex-originated writes
+(§5.8), and the Codex-side agent's proposal to grant hook trust from our
+dashboard (recommendation: no — the plugin asserting trust about itself is the
+gate Codex placed outside the plugin). Brain: milestone 387a4a05, live-pass
+finding 07322307.
 
 Can Anchor run inside ChatGPT's Codex mode as a second host, with hooks? What is
 there, what is missing, and how each gap closes. Researched 2026-09-05 against
@@ -438,21 +445,27 @@ text>}`); everything else falls through to the generic branch correctly.
 
 ---
 
-## 6. Empirical pass (needs a Codex install)
+## 6. Empirical pass
 
-Neither `codex` CLI nor a Codex-mode session exists on this machine yet
-(`ChatGPT.app` is installed; `~/.codex` absent) **[measured]**.
+Run 2026-09-05/06 on Tom's ChatGPT desktop app (codex-cli 0.153.4 bundled at
+`/Applications/ChatGPT.app/Contents/Resources/codex`), install via
+`scripts/codex-install.sh`, thread 01a07465 after its hooks were trusted.
+Evidence is the brain's traces and session rows, Codex's log
+(`~/.codex/logs_2.sqlite`) and the thread's rollout jsonl — not the model's
+self-report **[measured]**.
 
-1. Legacy plugin loads from a `.claude-plugin/marketplace.json` local path; hooks show in `/hooks` and trust sticks across sessions.
-2. SessionStart: stdout vs `additionalContext` both land as developer context; spill behaviour with and without `additionalContextLimit: 0`.
-3. UserPromptSubmit: per-turn context arrives before the model request; no hook-failure warnings after §5.2.
-4. `.mcp.json`: which of §5.3 a/b spawns; startup within `startup_timeout_sec`; tools appear as `mcp__brain__*`; `instructions` visible in behaviour.
-5. Identity hook: fires for `mcp__brain__*`; `updatedInput` reaches the proxy; signature verifies; per-call latency.
-6. Stop block → continuation prompt carries a pending self-message.
-7. Plugin refresh: does the cache copy keep `venv/`?
-8. Desktop app: hook trust UI; threads created in worktrees resolve cwd/branch/project correctly at boot.
-9. Approval prompts for brain writes under `default_tools_approval_mode = "writes"`; effect of `readOnlyHint` annotations.
-10. Chat mode untouched by any of the above.
+1. **PASS.** Loads through `.codex-plugin/plugin.json` from the personal marketplace (`~/.agents/plugins/marketplace.json`, path relative to `$HOME`, packaged tree only — §2.2). `/hooks` lists all 11 handlers as enabled/untrusted until reviewed; trust is one `[hooks.state."entity@anchor-dev:hooks/hooks.codex.json:<event>:<group>:<index>"] trusted_hash` table per handler in `~/.codex/config.toml`, sticks across threads, and took effect in the already-open thread within a minute. The desktop app shows no trust prompt or warning — the CLI `/hooks` review is the only path.
+2. **Untested.** SessionStart never ran for the measured thread (it predates trust) — needs a fresh chat; also what fills cwd/branch/worktree/project on the session row.
+3. **PASS.** Every prompt after trust produced a `user_message` trace with an `s1r` recall chain (25 candidates → 3 surfaced → `additionalContext`); the model confirmed it saw them. No hook-failure warnings.
+4. **PASS.** The launcher spawned the proxy from the cache copy (`Daemon connected. Serving 39 tools.`); tools are `mcp__brain__*`. Codex's code mode wraps calls in `exec` → `tools.mcp__brain__<tool>(…)`; hooks still receive `tool_name = mcp__brain__<tool>`.
+5. **PASS.** The rollout's `McpToolCall` items carry `_caller_session` + `_caller_sig`; a `self_send` sent with no `from_session` arrived attributed to the thread, so the stamp alone carried identity and verified. Unexplained: the first two brain calls after trust reached the proxy unstamped (one `mcp_caller_identity` note), the next three stamped. The proxy notes a gap once per process, so the rollout arguments — not the logs — are the stamp-rate ground truth. Live latency not measured (shim 99–117 ms by hand, §5.1).
+6. **PASS** (delivery). A self-message landed in the thread as a `self_message` trace at its next Stop. Whether the model acts on the continuation is not yet observed.
+7. **Measured: no.** `plugin remove` deletes the cache copy, venv included; the next install starts cold — hence `codex-install.sh` step 6.
+8. **Partial.** No hook-trust UI in the desktop app (see 1). Worktree cwd/branch/project at boot: untested (no boot yet; Codex has no WorktreeCreate event, so boot cwd is the only source).
+9. **Measured.** Codex prompts the user once per brain tool on first use — reads included (`recall`, `query_logs`, `self_inbox`) — and remembers each as `[plugins."entity@anchor-dev".mcp_servers.brain.tools.<tool>] approval_mode = "approve"`. The hook's `permissionDecision: allow` does not suppress the prompt. The model never sees it and reports "no approval".
+10. **Untested.** Chat mode.
+
+Not yet measured: S1 encoding at the fifth Stop (thread was at turn 4).
 
 ---
 
