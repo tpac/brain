@@ -11,7 +11,7 @@ import json
 import re
 import sys
 
-from .dispatch_common import _pop_session_ctx, caller_session, CALLER_SESSION_KEY
+from .dispatch_common import _pop_session_ctx, caller_session, CALLER_SESSION_KEY, CALLER_SIG_KEY
 from .scales.dispatch import stamp_scope_provenance
 
 
@@ -345,11 +345,12 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
-        # defensive: neither identity key is a node field. _pop_session_ctx
+        # defensive: no identity key is a node field. _pop_session_ctx
         # already stripped the top-level args; this guards a spec that bundled
-        # either key per-node (so it can't cascade into node_metadata_kv).
+        # one per-node (so it can't cascade into node_metadata_kv).
         spec.pop('session_id', None)
         spec.pop(CALLER_SESSION_KEY, None)
+        spec.pop(CALLER_SIG_KEY, None)
         if spec.get('reason') and not spec.get('reasoning'):
             reason_warnings.append(
                 "nodes[%d]: `reason` is not a node field and was dropped — "
@@ -436,10 +437,11 @@ def _handle_revise(brain, args, graph_changes):
     scope_warnings = _stamp_session_scope(brain, 'revise', args)
 
     # Reserve known dispatch keys so they don't get treated as field updates.
-    # CALLER_SESSION_KEY is the ambient identity the proxy stamps — reserve it
-    # too so it never lands in `updates` as a bogus node field.
+    # The identity keys (the ambient session the proxy stamps, and the hook
+    # signature it strips) are reserved too, so neither lands in `updates` as
+    # a bogus node field.
     DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id",
-                     "session_id", CALLER_SESSION_KEY}
+                     "session_id", CALLER_SESSION_KEY, CALLER_SIG_KEY}
     updates = {k: v for k, v in args.items() if k not in DISPATCH_KEYS}
 
     # v29 / Phase B Step 4 — source_refs validation on revise

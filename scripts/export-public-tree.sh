@@ -8,9 +8,11 @@
 #          export-public-tree.sh --denylist-only DIR (gate A alone, for tests)
 #          export-public-tree.sh --secrets-only DIR  (gate D alone, for tests)
 #
-# Contents = the package manifest (build-plugin.sh --list — the ONE owner of
-# "what ships", LICENSES/ included) + additive extras (README, CONTRIBUTING, tests/)
-# − the denylist. Four hard-fail gates run on the RESULT, not the intent:
+# Contents = `build-plugin.sh --list-public` (the ONE owner of "what ships":
+# the package manifest plus the public-repo extras — README, CONTRIBUTING,
+# MIGRATING, the test suite — every path OPT-IN, named by literal or by shape;
+# a tracked file nothing names does not ship) − the denylist below. Four
+# hard-fail gates run on the RESULT, not the intent:
 #   A. denylist — private artifacts must not exist in the output
 #   B. scrub — personal-information patterns must not appear anywhere in the
 #      output, except an explicit per-file attribution allowlist
@@ -31,6 +33,10 @@ fail() { printf '%s\n' "[export-public] GATE FAILED: $*" >&2; exit 1; }
 
 # ── Gate A: private artifacts that must never reach the public tree.
 # Paths, relative to the tree root. Directories mean the whole subtree.
+# The manifest is opt-in, so nothing here is what keeps these OUT — the copy
+# filter derived from this list binds on exactly one entry today
+# (tests/test_deploy_contract.py matches the suite's shape). The rest is the
+# RESULT check: gate A fires if a manifest shape ever grows to cover one.
 DENYLIST=(
   docs/DISTRIBUTION-READINESS.md   # names personal-data findings + internal paths
   CLAUDE.md                        # dev guide naming internal streams
@@ -282,7 +288,7 @@ if [ -n "${EXPECT_VERSION:-}" ] && [ "$_pv" != "$EXPECT_VERSION" ]; then
 fi
 say "gate C (version): $_pv${EXPECT_VERSION:+ (expected $EXPECT_VERSION ✓)}"
 
-# ── Materialize: manifest + extras, paths preserved. The DENYLIST is the one
+# ── Materialize the public manifest, paths preserved. The DENYLIST is the one
 # owner of "never ship": the copy filter derives from it (no second regex to
 # drift), and gate A still verifies the RESULT.
 _denied() {
@@ -302,12 +308,7 @@ mkdir -p "$OUT"
 _copy() { _denied "$1" && return 0
           mkdir -p "$OUT/$(dirname "$1")"; cp "$1" "$OUT/$1"; _count=$((_count+1)); }
 _count=0
-while IFS= read -r f; do _copy "$f"; done < <(./build-plugin.sh --list)
-# extras: the public-repo face + the test suite (D-8: runtime + tests ship).
-# LICENSES/ is NOT listed here — it ships in the package manifest above, which
-# stays the one owner of "what ships". Copying it twice only inflated $_count.
-for f in README.md CONTRIBUTING.md MIGRATING.md; do _copy "$f"; done
-while IFS= read -r f; do _copy "$f"; done < <(git ls-files tests)
+while IFS= read -r f; do _copy "$f"; done < <(./build-plugin.sh --list-public)
 say "materialized $_count files -> $OUT"
 
 _denylist_gate "$OUT"

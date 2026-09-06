@@ -5,11 +5,15 @@
 S1 (host-portable hook stdout: `hook_common.emit_hook_output`, silence = no
 opinion, block on Stop only) and S2 (`.codex-plugin/plugin.json`,
 `hooks/hooks.codex.json`, newest-install MCP launcher, gates) are on main at
-d5c1793 after two code reviews. Ruling that shaped them: the brain informs, it
-never gates (the safety hook's block became a warning). Not yet: S4 signed
-identity stamp (§5.1), the live empirical pass (§6) on Tom's ChatGPT desktop
-app, and the daemon restart + `./redeploy.sh` that make the merged code live in
-Claude Code. Handoff node in the brain: search "HANDOFF — Codex adapter".
+d5c1793 after two code reviews; the daemon restart + `./redeploy.sh` that make
+them live in Claude Code ran 2026-09-05 (safety hook verified as a warning).
+Ruling that shaped them: the brain informs, it never gates. S4 (signed identity
+stamp, §5.1) is on main at 2a86970 after two review passes:
+`hooks/scripts/stamp-caller-session.sh` registered in `hooks.codex.json` only,
+sign/verify + secret in `servers/dispatch_common.py`, proxy rule in
+`brain_mcp._stamp_caller_session`, `tests/test_caller_stamp.py`. Not yet: the
+live empirical pass (§6) on Tom's ChatGPT desktop app — E5 is the stamp's first
+live check. Brain milestone: 387a4a05.
 
 Can Anchor run inside ChatGPT's Codex mode as a second host, with hooks? What is
 there, what is missing, and how each gap closes. Researched 2026-09-05 against
@@ -100,11 +104,20 @@ Marketplaces **[doc][src]**: `$REPO_ROOT/.agents/plugins/marketplace.json`,
 `~/.agents/plugins/marketplace.json` (personal). Add with
 `codex plugin marketplace add <path | owner/repo | git-url>`. Install copies
 the plugin to `~/.codex/plugins/cache/$MARKETPLACE/$PLUGIN/$VERSION/`
-(`$VERSION` = `local` for local sources) and **loads from the cache copy**.
-After changing a local plugin: update the directory the marketplace entry
-points to, restart the app (or start a new CLI session). Enable state and
-per-plugin MCP policy live in `~/.codex/config.toml` under
-`plugins."<name>@<marketplace>".mcp_servers.<server>`.
+(`$VERSION` = the manifest's `version` — `anchor-dev/entity/0.9.0/`
+**[measured]**) and **loads from the cache copy**. The copy is the source
+directory WHOLESALE — no `.gitignore`, no manifest filter **[measured]**: a
+marketplace pointed at this checkout copied 122,533 files / 9.9 GB (`.git/`,
+`conversations/`, `venv/`), and copies interrupted mid-way are left as
+`cache/$MARKETPLACE/plugin-install-*/` staging trees with no manifest. So the
+marketplace source is the packaged tree at `dist/codex/entity` (`redeploy.sh`
+refreshes it; `scripts/codex-install.sh` does package → marketplace → install
+→ verify). A personal marketplace's `source.path` resolves relative to its
+root, `$HOME` **[measured]** — an absolute path yields zero plugins, silently.
+After changing a local plugin, re-install (the script does remove + add) and
+start a new session. Enable state and per-plugin MCP policy live in
+`~/.codex/config.toml` under `plugins."<name>@<marketplace>"` (`enabled =
+true` is written by `plugin add` **[measured]**).
 
 Plugin name rule: lowercase kebab-case — `entity` qualifies. `userConfig` and
 other unknown manifest keys are not part of the Legacy schema **[src]**; whether
@@ -297,6 +310,32 @@ collides in the desktop app (one app-server parent for all threads)
 unreliable. Last-booted-session fallback — the last-writer-wins bug removed
 2026-05-17.
 
+**Built (2026-09-05) [ours].** `hooks/scripts/stamp-caller-session.sh` →
+`stamp_caller_session.py`, matcher `mcp__brain__.*` in `hooks.codex.json`
+only — Claude Code keeps the env var (decision fa0f5f5a), which the manifest
+sync test's `CODEX_ONLY_HANDLERS` states and checks. Owners:
+`servers/dispatch_common.py` (`CALLER_SIG_KEY`, `is_brain_tool`,
+`hook_secret_path`, sign/verify; the secret is created on first use by
+whichever side asks first and published atomically, so a hook/proxy race
+converges on one key), `brain_mcp._stamp_caller_session` (env wins → verified
+stamp → scrub; a broken secret degrades to an unattributed call; gaps noted
+once per reason per proxy process in `hook_errors`, `mcp_caller_identity`),
+`hook_common.emit_updated_input` (the one writer of the rewrite shape; refuses
+any tool that is not the brain's own) and `hook_common.strip_caller_stamp`
+(the trace hook drops the pair before recording — a zero-argument brain call
+would otherwise land the full signature in a recallable, replayable trace).
+Details per hook: `hooks/HOOKS.md`. Limits, stated: the secret is a 0600 file
+under the agent's own uid, so the pair defeats accidental identity keys, not a
+determined same-user forger — the proxy's note is the control that matters;
+and the hook resolves the config dir under `$SHELL -lc` while the proxy runs on
+Codex's cleared env, so an `XDG_CONFIG_HOME` exported only in a dotfile splits
+the two secrets (every call unattributed, one warning per proxy). Cost
+**[measured]**: 99–117 ms per brain call for the shim, ~60 % of it the resolver
+chain a hook that never opens the brain does not need; E5 decides whether to
+register it bare like `post_tool_trace.py` (~40–60 ms) against the CLAUDE.md
+rule that hook shims source `resolve-brain-db.sh`. Tests:
+`tests/test_caller_stamp.py`. Still **[untested]** live: E5.
+
 ### 5.2 G2 — Hook output hygiene (host-neutral fix)
 
 Change the shared scripts and daemon handlers so that: approve = **no
@@ -361,12 +400,13 @@ the stance text should be model-neutral, or the daemon takes a `host` on
 
 ### 5.7 G7 — Install, redeploy, runtime
 
-Dev loop: marketplace entry → `codex plugin marketplace add` (or the desktop
-app's Personal tab) → install → **trust hooks** (`/hooks`) → new session.
-Redeploy: refresh the directory the marketplace points at, restart. The venv
-bootstrap writes into `$PLUGIN_ROOT/venv`, i.e. into the cache copy; whether a
-refresh preserves it is **[untested]** — if not, every update pays the 60–90 s
-cold bootstrap. Relocating the runtime to `PLUGIN_DATA` (`CLAUDE_PLUGIN_DATA`
+Dev loop: `scripts/codex-install.sh` (package → `dist/codex/entity` →
+personal marketplace → `codex plugin add` → verify) → **trust hooks** in the
+app → new session. Redeploy: run the script again (it removes and re-adds, so
+the cache copy is the current package) and start a new session. The venv
+bootstrap writes into `$PLUGIN_ROOT/venv`, i.e. into the cache copy; a
+remove + add discards it, so every update pays the 60–90 s cold bootstrap
+until the runtime moves to `PLUGIN_DATA` (S7). Relocating the runtime to `PLUGIN_DATA` (`CLAUDE_PLUGIN_DATA`
 under CC) fixes both hosts and is already noted as deferred in
 `runtime-state.sh`.
 
@@ -422,7 +462,7 @@ Each step runs cold in its own session.
 
 | # | Step | Depends on | Size |
 |---|---|---|---|
-| S0 | Install Codex CLI (or use Codex mode); personal marketplace → repo | — | Tom |
+| S0 | Codex mode installed; personal marketplace → the packaged tree via `scripts/codex-install.sh` (never the repo: the install copies the source wholesale) | — | done 2026-09-05 |
 | S1 | Output hygiene (§5.2) in shared scripts + daemon handlers + `HOOKS.md`; tests | — | ½ day |
 | S2 | `hooks/hooks.codex.json` (§5.5) + `.codex-plugin/plugin.json` (§5.4) + deploy-contract lockstep/allowlists (§5.8) | S1 | ½ day |
 | S3 | Codex `mcpServers` object with launcher resolution, `startup_timeout_sec`, `env_vars`, `instructions` (§5.3) | S2 | ½ day + E4 |

@@ -282,15 +282,17 @@ def tool_target_file(tool_input):
 
 
 # ── Hook stdout contract ──
-# The ONE writer of a hook script's stdout. Two hosts read it — Claude Code and
-# Codex — against strict per-event JSON schemas, so the daemon protocol
-# ({decision, reason} / {additionalContext}) is translated to the host wire in
-# exactly one place. The brain informs, it never gates: a block is honored only
-# on Stop, where it is how a pending self-message is delivered (the host
-# continues the turn with the reason as its next prompt). Printing
-# `{"decision":"approve"}` is never right — Codex rejects it as invalid output
-# (hook run FAILED), and on Claude Code it meant "allow, skip the permission
-# prompt", a decision a memory plugin must not make for its user.
+# The ONLY writers of a hook script's stdout live here — emit_hook_output for
+# what the brain has to SAY, emit_updated_input for the one tool input it
+# REWRITES. Two hosts read it — Claude Code and Codex — against strict per-event
+# JSON schemas, so the daemon protocol ({decision, reason} / {additionalContext})
+# is translated to the host wire in exactly one place. The brain informs, it
+# never gates: a block is honored only on Stop, where it is how a pending
+# self-message is delivered (the host continues the turn with the reason as its
+# next prompt). Printing `{"decision":"approve"}` is never right — Codex rejects
+# it as invalid output (hook run FAILED), and on Claude Code it meant "allow,
+# skip the permission prompt", a decision a memory plugin must not make for its
+# user.
 
 _BLOCKING_EVENTS = ("Stop",)
 
@@ -355,6 +357,54 @@ def emit_hook_output(hook_event_name, payload):
     if out is not None:
         sys.stdout.write(json.dumps(out))
         sys.stdout.flush()
+
+
+def strip_caller_stamp(tool_input):
+    """A tool input without the proxy-bound identity pair. The stamp hook
+    rewrites the brain's tool arguments with `_caller_session` + `_caller_sig`
+    (servers.dispatch_common owns both keys); anything that RECORDS a tool
+    input — the PostToolUse trace — must drop them first, or a valid pair lands
+    in a trace the model can recall and replay as another stream's identity.
+    Keyed on the shared `_caller_` prefix rather than an import: this runs on
+    every tool call."""
+    if not isinstance(tool_input, dict):
+        return tool_input
+    return {k: v for k, v in tool_input.items() if not k.startswith("_caller_")}
+
+
+def emit_updated_input(hook_event_name, tool_name, updated_input):
+    """PreToolUse only, brain tools only: hand the host a rewritten tool input.
+
+    Both hosts apply `permissionDecision: "allow"` + `updatedInput` the same
+    way — the object REPLACES the tool's arguments before the call runs — and
+    neither applies the rewrite without the `allow`. That `allow` is the brain
+    permitting its OWN MCP tools, the one tool family a memory plugin may
+    approve for itself, so this writer refuses any other `tool_name`
+    (servers.dispatch_common.is_brain_tool) — a widened matcher cannot turn it
+    into an auto-approve of a user's tool. Any other event, tool, or a non-dict
+    input emits nothing and is logged. Flushes stdout so a caller may os._exit()
+    right after.
+    """
+    def _warn(msg):
+        log_hook_error(_get_hook_name(), msg, "emit_updated_input(%s)" % hook_event_name, level="warning")
+
+    if hook_event_name != "PreToolUse":
+        _warn("updatedInput is a PreToolUse-only shape — nothing emitted")
+        return
+    from servers.dispatch_common import is_brain_tool
+    if not is_brain_tool(tool_name):
+        _warn("updatedInput refused for %r — the brain rewrites only its own MCP tools; "
+              "check the PreToolUse matcher" % (tool_name,))
+        return
+    if not isinstance(updated_input, dict):
+        _warn("non-dict updatedInput (%s) — nothing emitted" % type(updated_input).__name__)
+        return
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "updatedInput": updated_input,
+    }}))
+    sys.stdout.flush()
 
 
 def daemon_unavailable_error(hook_name=None):

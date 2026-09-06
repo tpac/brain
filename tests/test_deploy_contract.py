@@ -29,6 +29,7 @@ import functools
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -93,6 +94,18 @@ def _manifest():
     read it from here; one subprocess per run."""
     out = subprocess.run(
         ['bash', os.path.join(REPO, 'build-plugin.sh'), '--list'],
+        capture_output=True, text=True, timeout=60, cwd=REPO,
+    )
+    assert out.returncode == 0, out.stderr
+    return [l for l in out.stdout.splitlines() if l.strip()]
+
+
+@functools.lru_cache(maxsize=None)
+def _public_manifest():
+    """`build-plugin.sh --list-public` — the package manifest plus the
+    public-repo extras, from the same owner. What the export materializes."""
+    out = subprocess.run(
+        ['bash', os.path.join(REPO, 'build-plugin.sh'), '--list-public'],
         capture_output=True, text=True, timeout=60, cwd=REPO,
     )
     assert out.returncode == 0, out.stderr
@@ -632,6 +645,107 @@ class TestPublicTreeExport:
         leaked = [f for f in files
                   if f.startswith(('docs/', 'eval/', 'scripts/'))]
         assert not leaked, f'dev-only paths in the package manifest: {leaked}'
+
+    def test_public_manifest_extends_package(self):
+        public = _public_manifest()
+        assert set(_manifest()) <= set(public), 'the public view must contain the package'
+        for f in ('README.md', 'CONTRIBUTING.md', 'MIGRATING.md',
+                  'tests/conftest.py', 'tests/__init__.py'):
+            assert f in public, f'{f} missing from the public view'
+        leaked = [f for f in public if f.startswith(('docs/', 'eval/', 'scripts/'))]
+        assert not leaked, f'dev-only paths in the public manifest: {leaked}'
+        # tests/ ships CODE only. Every personal-data leak found under tests/
+        # was a data file — session logs as fixtures, gold corpora with real
+        # content — so a non-.py file there is a leak until someone argues it
+        # in with a manifest line AND a widening of this check.
+        data = [f for f in public if f.startswith('tests/') and not f.endswith('.py')]
+        assert not data, f'non-code files under tests/ in the public manifest: {data}'
+
+    def test_new_tracked_file_does_not_ship_until_named(self, tmp_path):
+        """5.9: the public tree is OPT-IN. A tracked file under a shipped
+        directory reaches the export only when the manifest names it — by
+        literal, or by a code shape (`tests/test_*.py`, `servers/**/*.py`).
+        Data, docs, fixtures, harnesses and new subdirectories are the shapes
+        personal material has actually taken, and none of them is a shape
+        the manifest knows; committing one must change nothing about what
+        ships. An UNTRACKED file must not ship even when its shape matches.
+
+        Runs the REAL export (the same scripts, copied into a sandbox git
+        repo) so the assertion is on the tree, not on a list."""
+        repo = tmp_path / 'repo'
+        (repo / 'scripts').mkdir(parents=True)
+        shutil.copy(os.path.join(REPO, 'build-plugin.sh'), repo / 'build-plugin.sh')
+        shutil.copy(self.SCRIPT, repo / 'scripts' / 'export-public-tree.sh')
+        v = json.dumps({'name': 'entity', 'version': '0.0.1'})
+        # one file per shape the manifest names, so every MISSING check passes
+        named = {
+            'LICENSE': 'grant\n',
+            '.claude-plugin/plugin.json': v,
+            '.claude-plugin/marketplace.json': json.dumps(
+                {'plugins': [{'name': 'entity', 'version': '0.0.1'}]}),
+            '.codex-plugin/plugin.json': v,
+            '.mcp.json': '{}\n', 'requirements.txt': '\n',
+            'LICENSES/PolyForm-A.md': '# grant\n',
+            'dashboard/server.py': '', 'dashboard/static/app.js': '',
+            'dashboard/static/css/base.css': '', 'dashboard/static/index.html': '',
+            'servers/brain.py': '', 'servers/scales/s2/aspects_v1.json': '{}\n',
+            'servers/scales/s2/new_unit.py': '',        # a new module: shape names it
+            'hooks/hooks.json': '{}\n', 'hooks/hooks.codex.json': '{}\n',
+            'hooks/scripts/boot-brain.sh': '', 'hooks/scripts/boot_brain.py': '',
+            'hooks/scripts/com.brain.daemon.plist': '', 'hooks/scripts/brain-daemon': '',
+            'skills/brain/SKILL.md': '', 'skills/brain/references/detailed-api.md': '',
+            'skills/newskill/SKILL.md': '',             # a new skill: shape names it
+            'README.md': '', 'CONTRIBUTING.md': '', 'MIGRATING.md': '',
+            'tests/__init__.py': '', 'tests/conftest.py': '',
+            'tests/brain_test_base.py': '', 'tests/isolated_brain.py': '',
+            'tests/eval_optional.py': '', 'tests/interaction_override.py': '',
+            'tests/test_core.py': '',                   # a new test module: shape names it
+            'tests/integration/__init__.py': '', 'tests/integration/test_pipeline.py': '',
+        }
+        # tracked, under shipped directories, and named by nothing
+        unnamed = [
+            'tests/fixtures/session_2026.json',   # a session log as a fixture
+            'tests/golden_new.json',              # a gold corpus
+            'tests/bench_new.py',                 # a dev harness
+            'tests/helper_new.py',                # a helper module nobody named
+            'tests/NOTES.md',
+            'tests/probe/test_deep.py',           # a new subdirectory
+            'servers/scratch_dump.json',
+            'servers/DESIGN.md',
+            'servers/scales/s2/archive/retired.py',
+            'hooks/HOOKS.md',
+            'hooks/scripts/session.jsonl',
+            'hooks/scripts/new-launcher',         # extensionless, not brain-*
+            'dashboard/TODO.md',
+            'skills/brain/draft.txt',
+            'docs/anything.md', 'eval/anything.py', 'scripts/other.sh',
+        ]
+        for rel, text in named.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(text)
+        for rel in unnamed:
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text('# nothing personal here\n')
+        git = ['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com']
+        subprocess.run([*git, 'init', '-q'], cwd=repo, check=True)
+        subprocess.run([*git, 'add', '-A'], cwd=repo, check=True)
+        subprocess.run([*git, 'commit', '-q', '-m', 'init'], cwd=repo,
+                       check=True, capture_output=True)
+        # matches a code shape, but is not tracked
+        (repo / 'servers' / 'untracked_probe.py').write_text('')
+
+        out = tmp_path / 'out'
+        env = {k: v for k, v in os.environ.items() if k != 'EXPECT_VERSION'}
+        r = subprocess.run(['bash', str(repo / 'scripts' / 'export-public-tree.sh'), str(out)],
+                           env=env, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}'
+        shipped = {os.path.relpath(os.path.join(d, f), out)
+                   for d, _, fs in os.walk(out) for f in fs}
+        assert set(named) <= shipped, f'named files missing: {sorted(set(named) - shipped)}'
+        leaked = sorted(set(unnamed) & shipped)
+        assert not leaked, f'tracked files nothing named reached the export: {leaked}'
+        assert 'servers/untracked_probe.py' not in shipped, 'an untracked file shipped'
+        assert shipped == set(named), f'unexpected extras: {sorted(shipped - set(named))}'
 
     def test_scrub_gate_catches_planted_leak(self, tmp_path):
         (tmp_path / 'mod.py').write_text('# see /Users/tpac/brain for setup\n')

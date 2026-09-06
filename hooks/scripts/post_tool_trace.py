@@ -10,7 +10,7 @@ import socket
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import run_hook, tool_target_file
+from hook_common import run_hook, tool_target_file, strip_caller_stamp
 
 
 def _build_summary(tool_name, tool_input):
@@ -70,7 +70,9 @@ def main():
         return
 
     tool_name = data.get("tool_name", "")
-    tool_input = data.get("tool_input", {})
+    # A brain tool's input arrives REWRITTEN with the caller-identity pair; a
+    # recorded signature is a replayable identity, so it never enters a trace.
+    tool_input = strip_caller_stamp(data.get("tool_input", {}))
     session_id = data.get("session_id", "")
 
     summary = _build_summary(tool_name, tool_input)

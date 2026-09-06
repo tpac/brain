@@ -105,7 +105,7 @@ MAX_OPEN_PER_SOURCE = 8    # file() REJECTS (loudly, synchronously) at the cap.
                            # string for every session's runs (the
                            # encoding_source grammar has no session slot), so
                            # a source-only key would let one busy session
-                           # starve every other (Tom, 2026-09-05)
+                           # starve every other
 PULL_MAX_ITEMS = 5         # per render moment (boot / stop), overflow named
 BLOCK_MAX = 4000           # whole injected block — loud cap, mirror of the
                            # self-channel RECEIVED_BLOCK_MAX discipline

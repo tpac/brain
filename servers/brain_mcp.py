@@ -373,44 +373,83 @@ def _build_revise_batch_schema():
 # session_id. CALLER_SESSION_KEY is the single source of truth (servers.
 # dispatch_common); the daemon's identity handlers read it via caller_session().
 # Importing it here keeps the wire key from drifting across the proxy boundary.
-from servers.dispatch_common import CALLER_SESSION_KEY
+from servers.dispatch_common import (CALLER_SESSION_KEY, CALLER_SIG_KEY, BRAIN_MCP_SERVER,
+                                     verify_caller_session)
 
 
-def _stamp_caller_session(args):
-    """Stamp the calling session (CLAUDE_CODE_SESSION_ID) under the RESERVED
-    `_caller_session` key, so attribution / per-session handlers always have the
-    caller's identity WITHOUT it colliding with `session_id`.
+def _stamp_caller_session(args, note=None):
+    """Resolve the calling session under the RESERVED `_caller_session` key, so
+    attribution / per-session handlers always have the caller's identity
+    WITHOUT it colliding with `session_id`.
 
     `session_id` stays a PURE caller-supplied cross-session FILTER: when a read
     omits it, the daemon defaults to all streams — the natural default for a
     freshly-awoken stream reaching all of itself, never the calling session.
     Identity ≠ filter, by design, not by per-command exception. Pure +
-    testable: the socket path stays out of it.
+    testable: the socket path stays out of it, and so does logging — `note`
+    receives one reason string when a call ends up unattributed.
 
-    The proxy is the SOLE writer of `_caller_session`: a tool-call payload may
-    carry an arbitrary `_caller_session` (MCP schemas don't forbid extra keys),
-    so we always set it from the env when present and SCRUB it otherwise —
-    never trust an inbound value the daemon would otherwise honor as identity."""
+    The env var Claude Code sets per session wins outright; else a stamp the
+    PreToolUse hook signed into the tool input (hosts whose proxy gets no
+    session identity — Codex) is accepted when its HMAC verifies. Anything
+    else is SCRUBBED: a payload may carry an arbitrary `_caller_session` (MCP
+    schemas don't forbid extra keys), and an unsigned, mis-signed or
+    unverifiable claim is the model's, not the hook's. `_caller_sig` never
+    crosses to the daemon in any branch, and a broken secret file degrades to
+    an unattributed call, never a failed one."""
+    sig = args.pop(CALLER_SIG_KEY, None)
     sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if sid:
         args[CALLER_SESSION_KEY] = sid
+        return args
+    claimed = args.get(CALLER_SESSION_KEY)
+    if claimed and sig:
+        try:
+            if verify_caller_session(claimed, sig):
+                return args
+            reason = "dropped an inbound _caller_session carrying a bad signature"
+        except Exception as e:
+            reason = "could not verify the inbound _caller_session (%s: %s)" % (type(e).__name__, e)
+    elif claimed:
+        reason = "dropped an inbound _caller_session carrying no signature"
     else:
-        args.pop(CALLER_SESSION_KEY, None)
+        reason = "no identity source: CLAUDE_CODE_SESSION_ID unset and no signed stamp"
+    args.pop(CALLER_SESSION_KEY, None)
+    if note is not None:
+        note(reason)
     return args
 
 
-def daemon_send(cmd, args=None, timeout=30.0):
+# Identity gaps are logged ONCE per reason per proxy process — an unattributed
+# Codex session (hooks not trusted yet, a stale secret) shows up in hook_errors
+# instead of silently writing anonymous traces, without a row per tool call.
+_noted_identity_gaps = set()
+
+
+def _note_identity_gap(reason):
+    if reason in _noted_identity_gaps:
+        return
+    _noted_identity_gaps.add(reason)
+    _log_proxy_error("mcp_caller_identity", reason,
+                     "brain tool calls from this MCP process are unattributed — the host "
+                     "gave the proxy no session identity (Claude Code: CLAUDE_CODE_SESSION_ID "
+                     "unset; Codex: plugin hooks not trusted, or the stamp hook failing)",
+                     level="warning")
+
+
+def daemon_send(cmd, args=None, timeout=30.0, note=None):
     """Send command to brain daemon via TCP, return result dict.
 
-    Stamps the calling session under the reserved `_caller_session` key (from
-    CLAUDE_CODE_SESSION_ID, the env var Claude Code sets per session) so every
-    write / per-session handler can attribute to the caller — see
-    _stamp_caller_session. `session_id` is left untouched: it reaches the daemon
-    only when the caller explicitly scopes a read, so cross-session filter reads
-    (recall_episodes, query_traces) default to all streams. The daemon is a
-    singleton per user; each MCP subprocess carries its own session env.
+    Resolves the calling session under the reserved `_caller_session` key (the
+    Claude Code env var, else the hook-signed stamp) so every write /
+    per-session handler can attribute to the caller — see
+    _stamp_caller_session; `note` is forwarded to it. `session_id` is left
+    untouched: it reaches the daemon only when the caller explicitly scopes a
+    read, so cross-session filter reads (recall_episodes, query_traces) default
+    to all streams. The daemon is a singleton per user; each MCP subprocess
+    carries its own session env.
     """
-    args = _stamp_caller_session(dict(args) if args else {})
+    args = _stamp_caller_session(dict(args) if args else {}, note=note)
     resp = send_command(cmd, args, timeout=timeout)
     # The wire lives in daemon_client — including the guarantee that this is a
     # dict. What stays here is the stamping above and the operator-facing prose
@@ -442,7 +481,7 @@ def ensure_daemon_running():
 
 # ── MCP Protocol ──
 
-SERVER_NAME = "brain"
+SERVER_NAME = BRAIN_MCP_SERVER
 SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
 
@@ -1185,7 +1224,9 @@ def handle_tools_call(request_id, params):
         if delay > 0:
             _time.sleep(delay)
 
-        resp = daemon_send(tool_name, arguments)
+        # Only TOOL calls carry identity; the proxy's own pings run headless by
+        # design, so the identity-gap note is armed here and nowhere else.
+        resp = daemon_send(tool_name, arguments, note=_note_identity_gap)
         if resp.get("ok"):
             # `rich` is the MCP render opt-in for get_node/get_nodes (full view).
             # filter_nodes' own `rich` is a data-layer flag handled in dispatch;
@@ -1273,6 +1314,29 @@ def _read_stdin():
     sys.stderr.write("[brain-mcp] stdin closed — shutting down cleanly.\n")
 
 
+def _log_proxy_error(hook_name, error, context, level="error"):
+    """Persist a proxy-side event to brain_logs.db.hook_errors — the
+    daemon-independent table hook_common.log_hook_error writes to, so the
+    dashboard errors panel, query_logs and the next boot surface it whether the
+    daemon is up or not. The hook_errors SQL lives in LogsDAL (no raw SQL in the
+    MCP layer). Never raises: a failure to log is reported on stderr, not
+    allowed to take the proxy down."""
+    try:
+        import sqlite3
+        from servers.daemon_config import resolve_db_dir
+        db_dir = resolve_db_dir()
+        if not (db_dir and os.path.isdir(db_dir)):
+            return
+        from servers.dal_logs import LogsDAL
+        conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
+        try:
+            LogsDAL(conn).log_hook_error(hook_name, error, context=context, level=level)
+        finally:
+            conn.close()
+    except Exception as e:
+        sys.stderr.write("[brain-mcp] could not log %s to hook_errors: %s\n" % (hook_name, e))
+
+
 def _health_monitor():
     """Background health monitor — pings daemon every 2s.
 
@@ -1284,7 +1348,6 @@ def _health_monitor():
     Runs as daemon thread — dies when MCP process exits.
     """
     import time
-    import sqlite3
     from servers.daemon_client import recover_daemon
 
     consecutive_failures = 0
@@ -1313,26 +1376,12 @@ def _health_monitor():
             sys.stderr.write("[brain-mcp] ALERT: Daemon unreachable for %ds — attempting restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
 
-            # Persist the outage to brain_logs.db.hook_errors — the same
-            # daemon-independent table hook_common.log_hook_error writes to, so
-            # the dashboard errors panel + query_logs surface it whether the
-            # hook-side detector or this idle ping-loop detector fires first.
-            # The hook_errors SQL lives in LogsDAL (no raw SQL in the MCP layer).
-            try:
-                from servers.daemon_config import resolve_db_dir
-                db_dir = resolve_db_dir()
-                if db_dir and os.path.isdir(db_dir):
-                    from servers.dal_logs import LogsDAL
-                    conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
-                    try:
-                        LogsDAL(conn).log_hook_error(
-                            "DAEMON_DOWN",
-                            "Daemon unreachable — MCP health monitor detected failure",
-                            context="mcp_health_monitor", level="critical")
-                    finally:
-                        conn.close()
-            except Exception:
-                pass
+            # Persist the outage so the dashboard errors panel + query_logs
+            # surface it whether the hook-side detector or this idle ping-loop
+            # detector fires first.
+            _log_proxy_error("DAEMON_DOWN",
+                             "Daemon unreachable — MCP health monitor detected failure",
+                             "mcp_health_monitor", level="critical")
 
             # Force-recover the hung daemon — kill + launchd respawn.
             # (ensure_daemon_running() only pings; a corpse won't exit on its
