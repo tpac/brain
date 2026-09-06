@@ -262,6 +262,22 @@ def arms_continuation(traced_ref_types):
 DELIVERY_REACTION_WINDOW_MIN = 60
 
 
+# ── S0 SESSION STAMP ──
+# Per-session facts every S0 row carries, next to the identity stamp: which
+# model produced the turn and which host runtime the stream rides on
+# ('claude-code' / 'codex'). Unlike human_identity / agent_identity — a
+# process-wide property stamped by TraceDAL from env — these vary PER SESSION
+# and per turn (one daemon serves streams on different models; a stream can
+# switch model mid-session), so they live on the SessionContext and are
+# stamped by the S0 write door (brain_traces.stamp_s0_session) from the ctx
+# the hook resolved. Fed in by the UserPromptSubmit / Stop hooks
+# (hook_common.turn_model / host_name): Codex puts `model` on every hook
+# payload; Claude Code exposes it only in the transcript's assistant entries.
+# The session row mirrors the LATEST value so presence can say which model a
+# stream is on right now; the per-turn truth is the S0 row.
+S0_SESSION_STAMP_FIELDS = ('model', 'host')
+
+
 # Operator dialogue — the two ref_types that ARE the operator↔Anchor
 # exchange. Presence (focus / recency ranking / recent_msgs), the
 # recall_episodes conversation default, the LAF trace matrix, and the

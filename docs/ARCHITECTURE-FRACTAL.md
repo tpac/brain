@@ -129,7 +129,9 @@ observation of the next.
 PostToolUse); S1 recall (candidates + selection + additionalContext); S1
 encode (prompt pointer + catalog + actions); S2 units (O/K/Δ per cycle); plus
 identity stamping (`human_identity` / `agent_identity` per trace, see
-`docs/EPISODIC-REFERENCES.md`).
+`docs/EPISODIC-REFERENCES.md`) and the per-session S0 stamp (`model` / `host`
+per S0 row — which model produced the turn, on which host runtime; the
+session row mirrors the latest, see `trace_contract.S0_SESSION_STAMP_FIELDS`).
 
 Trace validation lives in `servers/trace_contract.py` — single source of
 truth for valid (scale, event_type, ref_type) triples.

@@ -191,6 +191,11 @@ def hook_recall(brain, args, graph_changes):
     # already filtered, so reaching hook_recall means a real prompt.
     # See trace_contract S0 TURN CLASSIFICATION.
     ctx.last_recall_stop = ctx.stop_counter
+    # What this turn rides on, fed in by the hook (hook_common.turn_model /
+    # host_name) — stamped onto the S0 rows below and mirrored on the session.
+    # Empty leaves the known value (a session's first prompt has no transcript
+    # entry yet on Claude Code; the Stop hook fills it).
+    ctx.set_env(model=args.get('model', ''), host=args.get('host', ''))
 
     # Write the user_message S0 trace NOW, at prompt-arrival — not at Stop. This
     # is what lets presence/peek surface a stream's current prompt mid-turn
@@ -542,14 +547,21 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def post_response_common(brain, session_id, user_message, assistant_response):
+def post_response_common(brain, session_id, user_message, assistant_response,
+                         model='', host=''):
     """Shared post-response path: S0 traces, heartbeat, stop counter
     increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
+    `model` / `host`: what produced this turn (trace_contract
+    S0_SESSION_STAMP_FIELDS), fed in by the Stop hook — stamped onto the
+    turn's S0 rows and mirrored as the session's latest. Empty (the eval
+    harness) leaves the known value.
+
     Returns the SessionContext after increment.
     """
     ctx = brain.get_or_create_session(session_id)
+    ctx.set_env(model=model, host=host)
     # No pre-cap here: _s0_trace owns the one (loud) stored-content cap; a
     # second slice against the same constant is how the sides drift apart.
     assistant_response = assistant_response or ""
@@ -654,11 +666,29 @@ def hook_post_response_track(brain, args, graph_changes):
     truth, current — and delivers pending self-messages. One trigger owner (the
     poll) means no hook/poll double-fire race.
     """
+    # Loud at the write boundary: every Stop payload must say which model
+    # produced the turn (Codex puts it on the hook payload; Claude Code's
+    # transcript carries it on every assistant entry — hook_common.turn_model
+    # reads it). A gap here means the S0 record goes down without a model, and
+    # a boot-time check would fire once and be easy to bypass — this fires at
+    # the write, per session (the error text carries the session, so the
+    # dedup fingerprint is per stream: one row per session per dedup window,
+    # and a second stream's gap is never masked by the first's). Logged, never
+    # blocking: the turn is still recorded.
+    if args.get("hook_event_name") == "Stop" and not args.get("model"):
+        _sid_short = (args.get('session_id', '') or '')[:8]
+        brain._log_error(
+            's0_model_unset',
+            ValueError('no model on Stop for session %s (host=%s)'
+                       % (_sid_short, args.get('host', '') or '?')),
+            'the turn\'s S0 rows carry no model stamp')
     ctx = post_response_common(
         brain,
         args.get('session_id', ''),
         args.get("prompt", "") or args.get("message", ""),
         args.get("last_assistant_message", "") or "",
+        model=args.get("model", "") or "",
+        host=args.get("host", "") or "",
     )
     session_id = ctx.session_id
 

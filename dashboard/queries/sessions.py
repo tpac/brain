@@ -44,9 +44,10 @@ def query_recent_sessions(conn, limit: int = 80, days: int = 7):
 
     Per session: `id`, `short`, `handle` (the display name), `first`/`last`
     seen, `events` count, plus whatever env the brain recorded (`branch`,
-    `worktree`, `project`, `cwd`) and its accumulated `arc` line. The frontend
-    renders `handle` and puts the rest in the hover — one shape, so no caller
-    re-derives a label.
+    `worktree`, `project`, `cwd`, and the LATEST `model` / `host` the stream
+    rode on — per-turn values live on the S0 rows) and its accumulated `arc`
+    line. The frontend renders `handle` and puts the rest in the hover — one
+    shape, so no caller re-derives a label.
     """
     rows = conn.execute(
         "SELECT session_id, MIN(created_at) as first_seen, "
@@ -92,6 +93,8 @@ def query_recent_sessions(conn, limit: int = 80, days: int = 7):
             "worktree": env.get('worktree') or '',
             "project": env.get('project') or '',
             "cwd": env.get('cwd') or '',
+            "model": env.get('model') or '',
+            "host": env.get('host') or '',
             "turns": env.get('stop_counter') or 0,
         })
     return out

@@ -9,7 +9,7 @@
 
 import { api } from '/static/lib/api.js';
 import { poll } from '/static/lib/poll.js';
-import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
+import { escapeHtml, localTime, identityChipHTML, modelChipHTML } from '/static/lib/dom.js';
 import { SCALE_COLORS } from '/static/lib/scales.js';
 import { reapplyTraceFlashIfPending, loadNodeDetail } from '/static/lib/node_detail.js';
 import { renderTraceDetail, collapsedBadges, isMergeableRefType, groupSummary } from '/static/lib/trace_detail.js';
@@ -317,6 +317,18 @@ function _renderTracesBatch(el) {
     const identityTag = (chainHi || chainAi)
       ? '<span style="margin-left:6px">' + identityChipHTML(chainHi, chainAi) + '</span>'
       : '';
+    // Which model produced this turn. The LAST stamped event wins (events are
+    // sorted ascending): the assistant_message written at Stop names this
+    // turn's model exactly, while the prompt-time user_message can only carry
+    // the previous turn's — so on a mid-session model switch the later row is
+    // the truthful one. Empty for chains from before the stamp existed.
+    let chainModel = '', chainHost = '';
+    for (const ev of events) {
+      if (ev.model) { chainModel = ev.model; chainHost = ev.host || ''; }
+    }
+    const modelTag = chainModel
+      ? '<span style="margin-left:6px">' + modelChipHTML(chainModel, chainHost) + '</span>'
+      : '';
 
     // data-chain-id on the wrapper + data-trace-id on each event row let
     // node_detail.js scroll a specific trace into view after navigating
@@ -324,7 +336,7 @@ function _renderTracesBatch(el) {
     // selector to target the right event.
     html += '<div class="trace-chain" data-chain-id="' + escapeHtml(chainId) + '" style="background:#0a0a12;border-radius:8px;margin:6px 0;border-left:3px solid ' + color + '">';
     html += '<div style="padding:8px 12px;display:flex;justify-content:space-between;align-items:center">';
-    html += '<div><span style="color:' + color + ';font-size:12px;font-weight:bold">' + label + '</span>' + sessionTag + identityTag + '</div>';
+    html += '<div><span style="color:' + color + ';font-size:12px;font-weight:bold">' + label + '</span>' + sessionTag + identityTag + modelTag + '</div>';
     html += '<span style="color:#555;font-size:10px">' + localTime(firstTime) + '</span>';
     html += '</div>';
 

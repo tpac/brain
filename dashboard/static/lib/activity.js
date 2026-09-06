@@ -81,7 +81,7 @@ export function fingerprint(item) {
   const d = item.data || {};
   return item.kind === 'surface'
     ? ['s', d.judge_output ? 1 : 0, d.used_count || 0,
-       Object.keys(d.titles || {}).length].join(':')
+       Object.keys(d.titles || {}).length, d.model || ''].join(':')
     : ['e', (d.nodes || []).length, (d.edges || []).length,
        (d.journal_notes || []).length].join(':');
 }
@@ -152,6 +152,16 @@ function _renderSurface(item, { showSession, hooks }) {
   const surfaced = Object.keys(evt.titles || {}).length || (evt.returned_ids || []).length;
   const chosen = evt.used_count || (evt.used_ids || []).length;
   const src = RECALL_SOURCE[evt.source] || { label: evt.source || '?', cls: '', title: '' };
+  // The per-turn recall's source chip reads "turn" — the one slot on the card
+  // that says nothing you can't already see. When the turn's model is known
+  // (the S0 session stamp, joined server-side), it takes that slot: WHICH model
+  // ran this turn. Rows from before the stamp keep the plain "turn" label.
+  const stamped = evt.source === 'hook' && !!evt.model;
+  const srcLabel = stamped ? evt.model : src.label;
+  const srcCls = stamped ? src.cls + ' act-src--model' : src.cls;
+  const srcTitle = stamped
+    ? src.title + ' · model: ' + evt.model + (evt.host ? ' · host: ' + evt.host : '')
+    : src.title;
   const color = sessionColor(item.session_id);
 
   const head = el('div', { class: 'act-head' },
@@ -160,7 +170,7 @@ function _renderSurface(item, { showSession, hooks }) {
     surfaced
       ? el('span', { class: 'act-count act-count--surface' }, chosen + '/' + surfaced)
       : null,
-    el('span', { class: 'act-src ' + src.cls, title: src.title }, src.label),
+    el('span', { class: 'act-src ' + srcCls, title: srcTitle }, srcLabel),
     el('span', { class: 'act-head-tail' }, el('span', { class: 'act-caret' }, '▸')),
     evt.query
       ? el('div', { class: 'act-query', style: { borderLeftColor: color } }, evt.query)
