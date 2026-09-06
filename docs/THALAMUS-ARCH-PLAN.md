@@ -266,14 +266,18 @@ ask      · 7e6decd2 · milestone says merge pending; it merged as 56c7bd6 — r
   is gone, `_due_filter` excludes each audience's asks at its off-moments,
   `list_items(source=, target_session=)`, budget predicate adds
   `target_session`; id:178f4727 revised to superseded.
-- **(d) Trace the filing.** `("s1", "delta")` gains `thalamus_filed`; the door,
-  handed a `run_chain`, writes one row (ref_id = item id; metadata: tag,
-  subject, note, target) through the traces door — the symmetry `journal_note`
-  rows already have. The trace guardrail's writer-file list gains
-  `channels/thalamus/thalamus.py`. An item's life is then joinable across
-  scales: filed (s1 Δ, run chain) → delivered (s0 K `thalamus_delivery`, the
-  session's chain, ref_id=stop) → answered (item state; the resolve call in the
-  session's own tool trail).
+- **(d) Trace the filing — SHIPPED.** `("s1", "delta")` gains `thalamus_filed`
+  (also in `RESIDUE_REF_TYPES` + the dashboard mirror, so per-run consumers
+  never count a filing as a run); the door, handed a `run_chain`, calls
+  `brain.write_thalamus_filed` — one row (ref_id = item id; metadata =
+  `THALAMUS_FILED_METADATA_SHAPE`, door vocabulary: source, body, target,
+  needs_answer, dedup_key, route, filing ∈ new/refresh/rearm), scale derived
+  from the chain prefix (`scale_for_chain`), failure-isolated. The write lives
+  in `brain_traces.py` (the traces door, already a guardrail writer file), not
+  the channel. An item's life is then joinable across scales: filed (s1 Δ, run
+  chain) → delivered (s0 K `thalamus_delivery`, the session's chain,
+  ref_id=stop; join filters route='queue') → answered (item state; the resolve
+  call in the session's own tool trail).
 - **(e) Feedback by render-join, never write-back.** `thalamus_contract.
   render_producer_view(items)` renders the unit's items with live state — filed
   by run, delivered ×N at moment, answered: <text>, dismissed, expired,

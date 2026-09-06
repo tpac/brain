@@ -304,9 +304,14 @@ class TestTraceContractSync:
         # Validates itself instead: _emit_mutation_traces calls
         # validate_trace_event(scale, 'delta', ref_type) per row before writing.
         'servers/mutation_emitter.py',
-        # ref_type is the literal 'journal_note', but `scale` is a parameter —
-        # the caller's (s1 Scribe or an S2 unit). Both are covered by the
-        # (s1|s2, delta, journal_note) registrations the contract already holds.
+        # Two variable-scale doors. write_journal_notes: ref_type is the
+        # literal 'journal_note', `scale` is the caller's (s1 Scribe or an
+        # S2 unit) — covered by the (s1|s2, delta, journal_note)
+        # registrations. write_thalamus_filed: scale is DERIVED from the
+        # chain (scale_for_chain), ref_type is the REF_THALAMUS_FILED name —
+        # covered by the (s1, delta) registration; an unregistered scale is
+        # caught at the write boundary and pinned by
+        # test_thalamus.TestFiledTrace.
         'servers/brain_traces.py',
     }
 
@@ -700,6 +705,67 @@ class TestJournalNoteContract:
     subject lives in ref_id; metadata carries {note, tag}. Registered for
     s1 + s2 delta only — never s0 (notes are an encoder concern, and keeping
     them off s0 is part of the recall guard: s1/s2 traces aren't embedded)."""
+
+    def test_thalamus_filed_is_s1_delta_residue_only(self):
+        """Step 13(d): the filing-side marker rides the S1 Scribe's run
+        chain, is residue (never counted as a run), and is NOT registered
+        for s0 or s2 — S2 stays in boot; an s2 filing must fail loudly at
+        the write boundary, not slip in as a row."""
+        from servers.trace_contract import (REF_TYPES, RESIDUE_REF_TYPES,
+                                            REF_THALAMUS_FILED,
+                                            validate_trace_event)
+        assert REF_THALAMUS_FILED in REF_TYPES[('s1', 'delta')]
+        assert REF_THALAMUS_FILED in RESIDUE_REF_TYPES
+        assert validate_trace_event('s1', 'delta', REF_THALAMUS_FILED)[0]
+        for scale in ('s0', 's2'):
+            assert not validate_trace_event(scale, 'delta', REF_THALAMUS_FILED)[0]
+
+    def test_thalamus_filed_metadata_is_a_registered_shape(self):
+        """The payload is contract-owned and ENFORCED at the write boundary,
+        like journal_note — a permissive (unregistered) ref_type is how two
+        writers once emitted two shapes undetected."""
+        from servers.trace_contract import (
+            REF_THALAMUS_FILED, METADATA_REQUIRED_BY_REF_TYPE,
+            THALAMUS_FILED_METADATA_SHAPE, build_thalamus_filed_metadata,
+            validate_trace_metadata, THALAMUS_FILED_BODY_LIMIT)
+        assert METADATA_REQUIRED_BY_REF_TYPE[REF_THALAMUS_FILED] is \
+            THALAMUS_FILED_METADATA_SHAPE
+        m = build_thalamus_filed_metadata(
+            source='encoder:sonnet', body='x' * (THALAMUS_FILED_BODY_LIMIT + 50),
+            target_session='abc', needs_answer=1, dedup_key='7e6decd2',
+            route='queue', filing='rearm')
+        assert set(m) == set(THALAMUS_FILED_METADATA_SHAPE)
+        assert m['needs_answer'] is True
+        assert len(m['body']) < THALAMUS_FILED_BODY_LIMIT + 50  # capped, loud
+        assert validate_trace_metadata('delta', REF_THALAMUS_FILED, m)[0]
+        ok, err = validate_trace_metadata('delta', REF_THALAMUS_FILED,
+                                          {'source': 'x'})
+        assert not ok and 'body' in err
+        try:
+            build_thalamus_filed_metadata(source='x', body='y', filing='bumped')
+        except ValueError as e:
+            assert 'filing' in str(e)
+        else:
+            raise AssertionError('unknown filing value must raise')
+
+    def test_scale_for_chain_derives_from_chain_prefixes(self):
+        """A writer handed a run chain is not also handed the scale — the
+        prefix already says it; an unclaimed chain raises (producer bug)."""
+        from servers.trace_contract import scale_for_chain, CHAIN_PREFIXES
+        assert scale_for_chain('s1e-aaaaaaaa-3') == 's1'
+        assert scale_for_chain('s1r-aaaaaaaa-3') == 's1'
+        assert scale_for_chain('s0-aaaaaaaa-3') == 's0'
+        assert scale_for_chain('s2-20260905120000-consolidation') == 's2'
+        for key, template in CHAIN_PREFIXES.items():
+            assert scale_for_chain(template.split('{', 1)[0] + 'x') == \
+                key.split('_', 1)[0]
+        for bad in ('', 'chain-1', 's9-abc'):
+            try:
+                scale_for_chain(bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('%r must not resolve to a scale' % bad)
 
     def test_registered_for_s1_and_s2_delta(self):
         from servers.trace_contract import REF_TYPES

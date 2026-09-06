@@ -12,7 +12,7 @@ import { poll } from '/static/lib/poll.js';
 import { escapeHtml, localTime, identityChipHTML } from '/static/lib/dom.js';
 import { SCALE_COLORS } from '/static/lib/scales.js';
 import { reapplyTraceFlashIfPending, loadNodeDetail } from '/static/lib/node_detail.js';
-import { renderTraceDetail, collapsedBadges } from '/static/lib/trace_detail.js';
+import { renderTraceDetail, collapsedBadges, isMergeableRefType, groupSummary } from '/static/lib/trace_detail.js';
 import { renderFriendlyChain } from '/static/lib/trace_friendly.js';
 
 let _traceChainEntries = [];
@@ -43,6 +43,15 @@ const _TECH_SCALE_LABELS = {
 // id → row so the delegated click handler can build detail without re-fetching.
 const _traceExpanded = new Set();
 let _traceEventById = {};
+// Same deal for merged runs (see _groupRuns): open-state by group key, and a
+// key → events map so the delegated handler can build the member rows without
+// re-fetching. A group key is chain + ref_type + the run's first event id —
+// stable across polls, so an open run stays open.
+const _traceGroupsOpen = new Set();
+let _traceGroupByKey = {};
+// A run shorter than this reads fine as individual rows; merging two rows into
+// a row-plus-caret saves nothing.
+const _MERGE_MIN = 3;
 // Signature of the last rendered result. The 5s poll calls loadTraces
 // unconditionally; without this guard it rebuilt #traces-content every tick —
 // blanking innerHTML resets the page scroll (jumps to top) and wipes the scroll
@@ -141,6 +150,7 @@ export async function loadTraces(opts = {}) {
     _traceChainEntries = chainEntries;
     _traceRendered = 0;
     _traceEventById = {};
+    _traceGroupByKey = {};
     el.innerHTML = '';
     _renderTracesBatch(el);
     // Re-apply the source-ref flash if one is still pending. The 5s
@@ -167,9 +177,116 @@ function _traceChainLabel(chainId) {
   return chainId;
 }
 
+const _TYPE_LABELS = {O:'Observed', K:'Selected', delta:'Changed', outcome:'Outcome'};
+const _TYPE_COLORS = {O:'#45B7D1', K:'#ffaa33', delta:'#33ff88', outcome:'#aa66ff'};
+
+/** Split a chain's events into rows, each an array: a run of ≥_MERGE_MIN
+ *  consecutive events sharing a mergeable ref_type stays whole (rendered as one
+ *  group row), everything else comes back as a 1-element array. Length is the
+ *  discriminant — a 2-element array is never produced. Runs (not whole-chain
+ *  buckets) so the chain keeps its narrative order — an S2 unit's edge writes
+ *  stay between the journal notes they happened between. */
+function _groupRuns(events) {
+  const rows = [];
+  let run = [];
+  const flush = () => {
+    if (!run.length) return;
+    if (run.length >= _MERGE_MIN) rows.push(run);
+    else run.forEach(ev => rows.push([ev]));
+    run = [];
+  };
+  for (const ev of events) {
+    if (run.length && ev.ref_type === run[0].ref_type) { run.push(ev); continue; }
+    flush();
+    if (isMergeableRefType(ev.ref_type)) run = [ev];
+    else rows.push([ev]);
+  }
+  flush();
+  return rows;
+}
+
+function _eventRowHTML(ev, nested) {
+  if (ev.id) _traceEventById[ev.id] = ev;
+  const tColor = _TYPE_COLORS[ev.event_type] || '#666';
+  const tLabel = _TYPE_LABELS[ev.event_type] || ev.event_type;
+  const traceIdAttr = ev.id ? ' data-trace-id="' + escapeHtml(String(ev.id)) + '"' : '';
+  const expanded = ev.id && _traceExpanded.has(ev.id);
+  const caret = '<span class="trace-caret" style="flex-shrink:0;width:10px;color:#556;font-size:9px;margin-top:3px">' + (expanded ? '▾' : '▸') + '</span>';
+  // Whole row is the expand affordance — cursor:pointer signals it; the
+  // delegated #traces-content handler toggles on click.
+  let h = '<div class="trace-event"' + traceIdAttr + ' style="padding:4px 12px 4px '
+    + (nested ? 8 : 16) + 'px;border-top:1px solid #111;display:flex;gap:6px;align-items:flex-start;cursor:pointer">';
+  h += caret;
+  h += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
+  h += '<div style="flex:1;min-width:0">';
+  if (ev.ref_type && !nested) h += '<span style="color:#666;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">' + ev.ref_type + '</span>';
+  h += collapsedBadges(ev);
+  h += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 300)) + '</div>';
+  h += '</div>';
+  h += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
+  h += '</div>';
+  if (expanded) h += _detailHTML(ev);
+  return h;
+}
+
+function _groupKey(chainId, run) {
+  return chainId + '|' + run[0].ref_type + '|' + (run[0].id || run[0].created_at || '');
+}
+
+// Always rendered/inserted directly after its header, so the header's next
+// sibling IS the member list — no selector round-trip through the key (which
+// would have to match the escaping the attribute was written with).
+function _groupMembersHTML(run) {
+  return '<div class="trace-group-members" style="margin-left:22px;border-left:1px solid #1b1b28">'
+    + run.map(ev => _eventRowHTML(ev, true)).join('') + '</div>';
+}
+
+function _membersOf(headerEl) {
+  const next = headerEl.nextElementSibling;
+  return next && next.classList.contains('trace-group-members') ? next : null;
+}
+
+/** Open a group in place: remember it, insert its members, flip the caret.
+ *  The one writer of that three-part contract — the click handler and
+ *  revealTrace both come here. */
+function _openGroup(headerEl, key, run) {
+  _traceGroupsOpen.add(key);
+  if (!_membersOf(headerEl)) headerEl.insertAdjacentHTML('afterend', _groupMembersHTML(run));
+  const caret = headerEl.querySelector('.trace-caret');
+  if (caret) caret.textContent = '▾';
+}
+
+/** One collapsed row standing for a run of same-ref_type events. */
+function _groupRowHTML(chainId, run) {
+  const key = _groupKey(chainId, run);
+  _traceGroupByKey[key] = run;
+  // Members register in _traceEventById even while collapsed, so expanding the
+  // run and then a member finds the event without a re-render.
+  run.forEach(ev => { if (ev.id) _traceEventById[ev.id] = ev; });
+  const open = _traceGroupsOpen.has(key);
+  const ev0 = run[0];
+  const tColor = _TYPE_COLORS[ev0.event_type] || '#666';
+  const tLabel = _TYPE_LABELS[ev0.event_type] || ev0.event_type;
+
+  let h = '<div class="trace-group" data-group-key="' + escapeHtml(key) + '" '
+    + 'style="padding:4px 12px 4px 16px;border-top:1px solid #111;display:flex;gap:6px;'
+    + 'align-items:flex-start;cursor:pointer;background:#0c0c17">';
+  h += '<span class="trace-caret" style="flex-shrink:0;width:10px;color:#7a7a90;font-size:9px;margin-top:3px">' + (open ? '▾' : '▸') + '</span>';
+  h += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
+  h += '<div style="flex:1;min-width:0">';
+  h += '<span style="color:#8a8aa0;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">'
+    + escapeHtml(ev0.ref_type) + ' <b style="color:#bcd">×' + run.length + '</b></span>';
+  h += collapsedBadges(run);
+  h += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">'
+    + escapeHtml(groupSummary(run).substring(0, 300)) + '</div>';
+  h += '</div>';
+  h += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(run[run.length - 1].created_at, 'time') + '</span>';
+  h += '</div>';
+  if (open) h += _groupMembersHTML(run);
+  return h;
+}
+
 function _renderTracesBatch(el) {
-  const typeLabels = {O:'Observed', K:'Selected', delta:'Changed', outcome:'Outcome'};
-  const typeColors = {O:'#45B7D1', K:'#ffaa33', delta:'#33ff88', outcome:'#aa66ff'};
   const end = Math.min(_traceRendered + _TRACE_BATCH, _traceChainEntries.length);
 
   let html = '';
@@ -211,27 +328,9 @@ function _renderTracesBatch(el) {
     html += '<span style="color:#555;font-size:10px">' + localTime(firstTime) + '</span>';
     html += '</div>';
 
-    events.forEach(ev => {
-      if (ev.id) _traceEventById[ev.id] = ev;
-      const tColor = typeColors[ev.event_type] || '#666';
-      const tLabel = typeLabels[ev.event_type] || ev.event_type;
-      const traceIdAttr = ev.id ? ' data-trace-id="' + escapeHtml(String(ev.id)) + '"' : '';
-      const expanded = ev.id && _traceExpanded.has(ev.id);
-      const caret = '<span class="trace-caret" style="flex-shrink:0;width:10px;color:#556;font-size:9px;margin-top:3px">' + (expanded ? '▾' : '▸') + '</span>';
-      // Whole row is the expand affordance — cursor:pointer signals it; the
-      // delegated #traces-content handler toggles on click.
-      html += '<div class="trace-event"' + traceIdAttr + ' style="padding:4px 12px 4px 16px;border-top:1px solid #111;display:flex;gap:6px;align-items:flex-start;cursor:pointer">';
-      html += caret;
-      html += '<span style="flex-shrink:0;font-size:10px;font-weight:bold;color:' + tColor + ';min-width:55px">' + tLabel + '</span>';
-      html += '<div style="flex:1;min-width:0">';
-      if (ev.ref_type) html += '<span style="color:#666;font-size:10px;background:#1a1a2a;padding:1px 4px;border-radius:2px;margin-right:4px">' + ev.ref_type + '</span>';
-      html += collapsedBadges(ev);
-      html += '<div style="color:#ccc;font-size:12px;margin-top:2px;white-space:pre-wrap;word-break:break-word">' + escapeHtml((ev.summary || '').substring(0, 300)) + '</div>';
-      html += '</div>';
-      html += '<span style="color:#444;font-size:9px;flex-shrink:0;white-space:nowrap">' + localTime(ev.created_at, 'time') + '</span>';
-      html += '</div>';
-      if (expanded) html += _detailHTML(ev);
-    });
+    for (const run of _groupRuns(events)) {
+      html += run.length > 1 ? _groupRowHTML(chainId, run) : _eventRowHTML(run[0], false);
+    }
 
     html += '</div>';
   }
@@ -241,6 +340,22 @@ function _renderTracesBatch(el) {
   if (_traceRendered < _traceChainEntries.length) {
     el.insertAdjacentHTML('beforeend', '<div id="trace-load-more" style="text-align:center;padding:12px"><button onclick="_loadMoreTraces()" style="background:#1a1a2a;color:#7eb8ff;border:1px solid #3a3a5a;padding:4px 16px;border-radius:4px;cursor:pointer">Load more (' + (_traceChainEntries.length - _traceRendered) + ' remaining)</button></div>');
   }
+}
+
+/** Open the collapsed run holding `traceId`, if one is hiding it. A source-ref
+ *  jump (node_detail) looks the row up by data-trace-id; a merged run keeps its
+ *  members out of the DOM until opened, so the jump asks here first. */
+export function revealTrace(traceId) {
+  const want = String(traceId);
+  for (const header of document.querySelectorAll('.trace-group')) {
+    const key = header.getAttribute('data-group-key');
+    const run = _traceGroupByKey[key];
+    if (!run || _traceGroupsOpen.has(key)) continue;
+    if (!run.some(ev => String(ev.id) === want)) continue;
+    _openGroup(header, key, run);
+    return true;
+  }
+  return false;
 }
 
 export function _loadMoreTraces() {
@@ -263,6 +378,22 @@ function _onTracesClick(e) {
   if (nodeEl) {
     const id = nodeEl.dataset.nodeid;
     if (id) loadNodeDetail(id);
+    return;
+  }
+  // Group header → toggle its member rows. Members live in a SIBLING div, so a
+  // click on one matches .trace-event (below) and never this branch.
+  const groupEl = e.target.closest('.trace-group');
+  if (groupEl) {
+    const key = groupEl.getAttribute('data-group-key');
+    if (_traceGroupsOpen.has(key)) {
+      _traceGroupsOpen.delete(key);
+      const members = _membersOf(groupEl);
+      if (members) members.remove();
+      const caret = groupEl.querySelector('.trace-caret');
+      if (caret) caret.textContent = '▸';
+    } else if (_traceGroupByKey[key]) {
+      _openGroup(groupEl, key, _traceGroupByKey[key]);
+    }
     return;
   }
   const row = e.target.closest('.trace-event');
@@ -304,6 +435,7 @@ export function setTraceMode(mode) {
   // Expanded-detail state is technical-only; clear on switch so it's not
   // stranded behind the friendly cards.
   _traceExpanded.clear();
+  _traceGroupsOpen.clear();
   _applyModeLabels();
   loadTraces();
 }

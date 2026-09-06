@@ -42,6 +42,15 @@ for _d in servers hooks skills dashboard data .claude-plugin .codex-plugin; do
 done
 unzip -o -q "$REPO/brain.plugin" -d "$PLUGIN"
 
+# 2b. Refresh the Codex marketplace source from the SAME package. Codex installs
+#     a plugin by copying the directory its marketplace entry points at,
+#     wholesale — no .gitignore, no manifest filter — so that directory must be
+#     the packaged tree, never this checkout (.git/, conversations/, venv/:
+#     ~10 GB, 120k files). scripts/codex-install.sh points the personal
+#     marketplace here and re-installs; Codex loads from its own cache copy.
+CODEX_SRC="$REPO/dist/codex/entity"
+rm -rf "${CODEX_SRC:?}" && mkdir -p "$CODEX_SRC" && unzip -o -q "$REPO/brain.plugin" -d "$CODEX_SRC"
+
 # 3. Refresh deps only when requirements.txt actually changed.
 NEWHASH="$(shasum "$REPO/requirements.txt" | awk '{print $1}')"
 OLDHASH="$(cat "$PLUGIN/.deployed-reqs-hash" 2>/dev/null || true)"
@@ -86,4 +95,7 @@ cat <<'EOF'
     • servers/brain_mcp.py             (resident MCP proxy, loaded once per session)
     • contract.py tool/field schemas   (tool list is fixed at the session handshake)
     • hooks/hooks*.json, .mcp.json, .claude-plugin/ and .codex-plugin/ manifests (read at session/plugin load)
+
+  Codex (ChatGPT desktop) loads its OWN cache copy — dist/codex/entity is fresh,
+  but the install is not: run scripts/codex-install.sh, then a NEW Codex chat.
 EOF

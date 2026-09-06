@@ -445,6 +445,38 @@ class BrainTracesMixin:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
             return {'written': 0, 'malformed': 0, 'status': 'error'}
 
+    def write_thalamus_filed(self, *, chain_id, session_id, item_id, source,
+                             body, target_session='', needs_answer=False,
+                             dedup_key='', route='queue', filing='new'):
+        """Write door for a Thalamus filing made from a producer's RUN — one
+        `thalamus_filed` delta row on the run's chain (ref_id = item id), the
+        sibling of write_journal_notes' rows. The scale is the chain's
+        (trace_contract.scale_for_chain); the payload shape is the contract's
+        (build_thalamus_filed_metadata, validated at the write boundary).
+
+        Failure-isolated: the item is already committed when this runs, and a
+        trace failure must never undo or mask a filing — logged loud, the
+        caller's result stands. A chain whose scale the contract does not
+        register for this ref_type (an S2 run, while S2 stays in boot) is
+        exactly such a failure: LOUD in the errors log, no row."""
+        try:
+            from .trace_contract import (REF_THALAMUS_FILED, scale_for_chain,
+                                          build_thalamus_filed_metadata)
+            meta = build_thalamus_filed_metadata(
+                source=source, body=body, target_session=target_session,
+                needs_answer=needs_answer, dedup_key=dedup_key, route=route,
+                filing=filing)
+            return self._trace_dal.append(
+                chain_id=chain_id, scale=scale_for_chain(chain_id),
+                session_id=session_id, event_type='delta',
+                ref_type=REF_THALAMUS_FILED, ref_id=item_id,
+                summary=meta['body'][:80], metadata=meta)
+        except Exception as e:
+            self._log_error('thalamus_filed_trace_failed', e,
+                            'chain=%s item=%s — filing stands, trace lost'
+                            % (chain_id, item_id))
+            return None
+
     def write_session_arc(self, *, final_text, session_id, limit=800):
         """Write door for the session arc — the journal mechanism's second
         component (design §7.2: Encode → Arc → Review). Extract the encoder's
