@@ -1186,9 +1186,10 @@ def render_edge_lines(conn, cfg=None, indent='    '):
         [type id:xxxxxxxx <age>] "<neighbor title>" <relation> this — <description>
 
     the second form for an incoming edge (the neighbor is the actor). The age
-    is the RELATION's created_at — when this relation was first written;
-    a description repaired in place keeps that date (edge_relations has no
-    updated_at) — falling back to the pair's created_at. The description is
+    is when the RELATION's claim last changed — its updated_at (description,
+    weight or verb repaired in place), else its created_at (never repaired),
+    else the pair's created_at — so a reader can tell a fresh claim from one
+    older than the node it hangs on. The description is
     never truncated: a reader may copy it verbatim as a swap's `old`, and a
     cut copy fails the exactly-once match. The neighbor title is cut at 100
     chars — it is the neighbor's own field, not something this line is for
@@ -1215,7 +1216,8 @@ def render_edge_lines(conn, cfg=None, indent='    '):
     tag_head = '[%s id:%s' % (conn.get('type', '?'), (conn.get('id') or '?')[:8])
     for r in rels:
         rel = r.get('relation') or 'related'
-        age = _fmt_node_time(r.get('created_at') or conn.get('edge_created_at'), cfg) or '?'
+        age = _fmt_node_time(r.get('updated_at') or r.get('created_at')
+                             or conn.get('edge_created_at'), cfg) or '?'
         desc = r.get('description') or ''
         head = ('"%s" %s this' % (title, rel)) if incoming else ('this %s "%s"' % (rel, title))
         lines.append('%s%s %s] %s%s' % (indent, tag_head, age, head,

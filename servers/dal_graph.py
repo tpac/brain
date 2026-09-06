@@ -350,9 +350,12 @@ class GraphDAL:
             id, type, title, created_at, revised_at, confidence, locked
                 (the NEIGHBOR node's fields — created_at is the neighbor's age),
             weight, direction, edge_created_at (when the pair was connected),
-            relations: [{relation, description, weight, created_at}, ...]
-                (created_at is when THAT relation's description was written —
-                the age an edge line renders).
+            relations: [{relation, description, weight, created_at,
+                         updated_at}, ...]
+                (created_at is when THAT relation was first written;
+                updated_at when its claim — description, weight, verb — last
+                changed, NULL until then. The edge line renders
+                `updated_at or created_at`.)
 
         Raises ValueError on empty node_ids.
         """
@@ -390,7 +393,7 @@ class GraphDAL:
                    n1.confidence, n1.locked,
                    n2.id, n2.type, n2.title, n2.created_at, n2.revised_at,
                    n2.confidence, n2.locked,
-                   e.created_at, er.created_at
+                   e.created_at, er.created_at, er.updated_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n1 ON n1.id = e.target_id
@@ -423,9 +426,10 @@ class GraphDAL:
             n2 = {'id': row[13], 'type': row[14], 'title': row[15],
                   'created_at': row[16], 'revised_at': row[17],
                   'confidence': row[18], 'locked': row[19] == 1}
-            edge_created, rel_created = row[20], row[21]
+            edge_created, rel_created, rel_updated = row[20], row[21], row[22]
             relation_entry = {'relation': rel, 'description': desc,
-                              'weight': rel_weight, 'created_at': rel_created}
+                              'weight': rel_weight, 'created_at': rel_created,
+                              'updated_at': rel_updated}
 
             if src in owner_set and tgt != src:
                 entry = grouped[src].setdefault(n1['id'], {
@@ -1149,6 +1153,9 @@ class GraphDAL:
             # connect upsert's — so es_specified is intentionally ignored here.
 
             if updates:
+                # The claim on this line changed — stamp it. A no-op
+                # re-connect never reaches here, so updated_at stays honest.
+                updates['updated_at'] = ts
                 set_clause = ', '.join('%s = ?' % k for k in updates)
                 self.conn.execute(
                     'UPDATE edge_relations SET %s '
@@ -1166,7 +1173,7 @@ class GraphDAL:
                 'UPDATE edge_relations '
                 'SET archived = 0, archived_at = NULL, archived_by = NULL, '
                 '    description = ?, weight = ?, encoding_source = ?, '
-                '    created_at = ? '
+                '    created_at = ?, updated_at = NULL '
                 'WHERE edge_id = ? AND relation = ?',
                 (desc_value, weight_value, es_value, ts, edge_id, relation))
             result['created'] = True
@@ -1290,11 +1297,12 @@ class GraphDAL:
         (reclassify, revise_edge) stay embedding-ignorant; the worker owns the
         actual re-embed via Brain.backfill_edge_embeddings.
         """
+        # The verb is part of the claim — the rename stamps updated_at.
         self.conn.execute(
             "UPDATE edge_relations SET relation = ?, encoding_source = ?, "
-            "embedding = NULL, embedding_model = NULL "
+            "updated_at = ?, embedding = NULL, embedding_model = NULL "
             "WHERE edge_id = ? AND relation = ?",
-            (new_relation, encoding_source, edge_id, old_relation))
+            (new_relation, encoding_source, iso_now(), edge_id, old_relation))
         commit_unless_batched(self.conn)
         self._enqueue_edge_embed(edge_id, 'rename_relation')
 

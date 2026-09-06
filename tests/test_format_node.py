@@ -301,6 +301,60 @@ class TestFormatNode(BrainTestBase):
         self.brain.conn.commit()
         self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], heavy)
 
+    def test_edge_line_age_is_the_repair_when_the_claim_changed(self):
+        """A description repaired in place used to keep its birth date on the
+        line — the age lied after exactly the repair we want. edge_relations
+        now carries updated_at, stamped only when the claim changes
+        (description / weight via the upsert, the verb via rename); a no-op
+        re-connect leaves it NULL and the line keeps the honest birth date."""
+        from servers.clock import iso_now
+        nid = self._make_node(title='Owner')
+        nbr = self._make_node(title='Neighbor')
+        # weight 0.5 = what connect_typed resolves for an unlisted relation,
+        # so the re-connect below changes nothing (weight is a claim too)
+        self._add_edge(nid, nbr, relation='gaps_in', weight=0.5,
+                       description='asserted 9.6.0')
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
+            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
+            ('2020-01-01T00:00:00+00:00', nid, nbr))
+        self.brain.conn.commit()
+
+        def _row():
+            return self.brain.conn.execute(
+                "SELECT er.relation, er.updated_at FROM edge_relations er JOIN edges e "
+                "ON e.edge_id = er.edge_id WHERE e.source_id = ? AND e.target_id = ? "
+                "AND er.archived = 0", (nid, nbr)).fetchone()
+
+        # untouched: birth date on the line, no stamp
+        self.assertIsNone(_row()[1])
+        self.assertIn('2020', self._edge_line(nid, 'gaps_in'))
+        # a re-connect that changes nothing is a true no-op
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='asserted 9.6.0', encoding_source='test')
+        self.assertIsNone(_row()[1])
+        # the repair stamps, and the line's age is the repair
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='moved to 9.7.2', encoding_source='test')
+        self.assertTrue(_row()[1])
+        line = self._edge_line(nid, 'gaps_in')
+        self.assertNotIn('2020', line)
+        self.assertIn(iso_now()[:10], line)
+        self.assertIn('moved to 9.7.2', line)
+        # renaming the verb is a claim change too
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET updated_at = NULL WHERE edge_id = "
+            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)", (nid, nbr))
+        self.brain.conn.commit()
+        self.brain.revise_edge(nid, nbr, 'gaps_in', new_relation='closes',
+                               encoding_source='test')
+        self.assertEqual(_row(), ('closes', _row()[1]))
+        self.assertTrue(_row()[1])
+
+    def _edge_line(self, node_id, relation):
+        out = self._render(node_id)   # absolute dates
+        return next(l for l in out.split('\n') if l.startswith('    [') and relation in l)
+
     def test_edge_lines_one_per_relation_descriptions_whole(self):
         """A pair carrying several relations renders one line per relation,
         each with its own description untruncated — a reader may copy it

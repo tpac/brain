@@ -285,8 +285,12 @@ them (4659bd7). The ten live rows using aspect names as relations were folded
 into their pairs' `community_member` relation on 2026-09-05. Re-measured on an
 isolated copy: noise top-5 slots 28% → 0; d827d22f 9 → 5 connections with
 15bbfd64 in the top 5; nodes with >5 semantic edges 3,196 (of 9,351 with any).
-**Open:** (f) below; the install's working copy still lists the four names
-under noise (seed removals do not propagate — `reconcile_working_copy`).
+(f) ruled by Tom 2026-09-06 — "last update, shown as x ago": `edge_relations.updated_at`,
+additive column (ensure_schema ALTERs it in on the next daemon start), stamped
+by the upsert only when description/weight change and by `rename_relation`;
+NULL until the first repair; the edge line renders `updated_at or created_at`.
+**Open:** the install's working copy still lists the four names under noise
+(seed removals do not propagate — `reconcile_working_copy`).
 
 `contract.render_edge_lines` is the one edge grammar for every LLM
 reader (f716faf); the line's age is the relation's `created_at`; no reader
