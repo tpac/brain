@@ -86,13 +86,21 @@ def _insert_item(conn, **fields):
 
 
 def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
-         refs=None, dedup_key=None, expires=None, session_id=''):
+         refs=None, dedup_key=None, expires=None, session_id='',
+         run_chain=''):
     """The single producer door: validate → resolve the grammars → route.
 
     Returns {'ok': True, 'id': …} or a LOUD synchronous rejection
     {'ok': False, 'error': <guidance>} — every guard fires HERE, at the write
     boundary, where the rejection lands in the caller's loop while it can
     still adapt (never in a sweeper hours later).
+
+    Tracing: a producer filing from a RUN passes its chain (`run_chain`; the
+    scale is the chain's) and every ACCEPTED filing leaves one
+    `thalamus_filed` row on that chain through the traces door
+    (brain.write_thalamus_filed) — the filed→delivered→answered join across
+    scales. No chain, no row: an interactive `remind` call is already in the
+    caller's own tool trail.
 
     Routing: for_whom 'live' delegates to the courier broadcast (requires a
     filing session — the locked stream-speech render must stay honest) and the
@@ -158,13 +166,24 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
                 "thalamus.file: for_whom='live' requires a filing session "
                 "(the stream-speech render needs an honest sender); "
                 "machine live-now is Phase 3")
-        return _file_live(brain, source, body, refs, refs_json, session_id,
-                          now)
-
-    return _file_queued(brain, source, body, refs_json, now,
-                        audience=audience, target_session=target_session,
-                        needs_answer=needs_answer, dedup_key=dedup_key,
-                        deliver_at=deliver_at, expires_at=expires_at)
+        result = _file_live(brain, source, body, refs, refs_json, session_id,
+                            now)
+    else:
+        result = _file_queued(brain, source, body, refs_json, now,
+                              audience=audience, target_session=target_session,
+                              needs_answer=needs_answer, dedup_key=dedup_key,
+                              deliver_at=deliver_at, expires_at=expires_at)
+    if run_chain and result.get('ok'):
+        # The door owns its result envelope, so it names what it did — the
+        # traces layer never learns the envelope's shape.
+        filing = ('rearm' if result.get('rearmed') else
+                  'refresh' if result.get('updated') else 'new')
+        brain.write_thalamus_filed(
+            chain_id=run_chain, session_id=session_id, item_id=result['id'],
+            source=source, body=body, target_session=target_session,
+            needs_answer=needs_answer, dedup_key=dedup_key or '',
+            route=result['route'], filing=filing)
+    return result
 
 
 def _file_live(brain, source, body, refs, refs_json, session_id, now):
