@@ -209,7 +209,7 @@ class TestAddressedRouting(BrainTestBase):
         self.assertEqual(len(self._items()), 2)
         self._scribe().harvest(
             'done.\n\n## Review\n```\n'
-            'resolved · ask · 7e6decd2 · Tom said revise\n'
+            'resolved · ask · 7e6decd2 · the operator said revise\n'
             'resolved · Segment 6.A · confirmed\n'
             '```\n', 's1e-aaaaaaaa-4')
         self.assertEqual(self._items(), [])
