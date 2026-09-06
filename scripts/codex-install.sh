@@ -90,5 +90,14 @@ for f in .codex-plugin/plugin.json hooks/hooks.codex.json hooks/scripts/mcp-laun
   [ -f "$INSTALLED$f" ] || { echo "ERROR: installed copy lacks $f ($INSTALLED)" >&2; exit 1; }
 done
 echo "✓ $PLUGIN@$MARKETPLACE installed at $INSTALLED ($(find "$INSTALLED" -type f | wc -l | tr -d ' ') files)"
-echo "  Next: in the ChatGPT app, trust the plugin's hooks, then open a NEW Codex chat."
-echo "  The first session bootstraps the runtime into the cache copy (60–90 s); brain tools appear from the second."
+
+# 6. Warm the runtime INSIDE the cache copy now. Codex runs hooks and the MCP
+#    server from that copy; left cold, the first session's boot hook dies at
+#    its 15 s timeout while uv downloads Python + deps (minutes), and the MCP
+#    server misses its 40 s startup window — a dead first session.
+echo "bootstrapping the runtime in the cache copy (first time: a few minutes)..."
+bash "$INSTALLED/hooks/scripts/ensure-runtime.sh" >"$INSTALLED/.bootstrap.log" 2>&1 \
+  || { echo "ERROR: runtime bootstrap failed — see $INSTALLED/.bootstrap.log" >&2; exit 1; }
+echo "✓ runtime ready: $("$INSTALLED/venv/bin/python" -c 'import sys; print(sys.version.split()[0])')"
+echo "  Next: Codex skips a plugin's hooks until you trust them — in the ChatGPT app's plugin"
+echo "  settings for $PLUGIN, or in the CLI (\`$CODEX\`, then /hooks). Then open a NEW Codex chat."
