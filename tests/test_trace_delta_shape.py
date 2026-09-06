@@ -190,20 +190,34 @@ class TestBuildRunTelemetry:
     that BOTH the encoder delta and the Surface K trace build through, so the two
     can't drift into separate field-sets."""
 
-    def test_emits_every_run_telemetry_field_int_typed(self):
+    def test_emits_every_run_telemetry_field_typed(self):
         m = build_run_telemetry()
         for f in RUN_TELEMETRY_FIELDS:
             assert f in m, f"missing {f}"
-            assert m[f] == 0 and isinstance(m[f], int)
+            if f == 'model':
+                assert m[f] == '' and isinstance(m[f], str)   # the one str: unstamped = ''
+            else:
+                assert m[f] == 0 and isinstance(m[f], int)
         assert set(m) == set(RUN_TELEMETRY_FIELDS)  # nothing extra leaks in
 
     def test_values_passthrough(self):
         m = build_run_telemetry(elapsed_ms=120, rounds=2, truncated=1,
                                 input_tokens=500, output_tokens=30,
-                                cache_read_tokens=400, cache_creation_tokens=10)
+                                cache_read_tokens=400, cache_creation_tokens=10,
+                                model='claude-sonnet-4-6')
         assert m == {'elapsed_ms': 120, 'rounds': 2, 'truncated': 1,
                      'input_tokens': 500, 'output_tokens': 30,
-                     'cache_read_tokens': 400, 'cache_creation_tokens': 10}
+                     'cache_read_tokens': 400, 'cache_creation_tokens': 10,
+                     'model': 'claude-sonnet-4-6'}
+
+    def test_model_threads_into_delta_and_validates(self):
+        # The run's model reaches the encoder Δ through the same builder the
+        # token counts do, typed str in the shape contract.
+        d = build_delta_metadata(model='claude-sonnet-4-6')
+        assert d['model'] == 'claude-sonnet-4-6'
+        assert DELTA_METADATA_SHAPE['model'] is str
+        assert validate_trace_metadata('delta', 'encoding_run', d)[0]
+        assert build_delta_metadata()['model'] == ''
 
     def test_none_coerced_to_zero_int(self):
         m = build_run_telemetry(elapsed_ms=None, rounds=None, input_tokens=None)

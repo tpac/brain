@@ -146,7 +146,7 @@ const _DELTA_KNOWN = new Set([
   'rejection_skipped', 'journal_entry', 'action_details', 'read_calls',
   'final_text', 'errors', 'created', 'revised', 'archived', 'classifications',
   'elapsed_ms', 'input_tokens', 'output_tokens', 'cache_read_tokens',
-  'cache_creation_tokens', 'truncated', 'interaction_version',
+  'cache_creation_tokens', 'truncated', 'model', 'interaction_version',
   'interaction_fingerprint', 'interaction_source',
   'human_identity', 'agent_identity',
 ]);
@@ -168,6 +168,8 @@ function _runCostLane(ev, m) {
   if (m.output_tokens != null)     cost += _stat('tok out', m.output_tokens);
   if (m.cache_read_tokens)         cost += _stat('cache rd', m.cache_read_tokens);
   if (m.cache_creation_tokens)     cost += _stat('cache wr', m.cache_creation_tokens);
+  // Which LLM the run called — what makes the token counts priceable.
+  if (m.model)                     cost += _stat('model', m.model);
   // K provenance: source decides the label — an override shows its version,
   // a default-run shows 'default' (version 0 would render as nothing).
   // Legacy rows (no interaction_source) fall back to the bare version chip.
