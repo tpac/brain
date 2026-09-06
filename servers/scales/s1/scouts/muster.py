@@ -18,7 +18,8 @@ Responsibilities:
   5. Collect outputs, format the combined report for S1S, emit trace
      events, return.
 
-Emits trace events on the caller's S1E chain:
+Emits trace events on the caller's S1E chain, one pair per scout that
+actually RAN this cycle (an excluded scout emits nothing):
   s1 O  ref_type=scout_input     (shared prefix + per-scout tasks)
   s1 K  ref_type=scout_findings  (candidates per scout)
 
@@ -224,8 +225,7 @@ def run_muster(
     # consumers can distinguish "didn't run" from "ran and found nothing".
     for name in sc.SCOUT_NAMES:
         if name not in outputs:
-            reason = ('disabled' if (name not in SCOUT_RUNNERS
-                                     or name in exclude_scouts) else 'no result')
+            reason = 'disabled' if name not in runners else 'no result'
             outputs[name] = _exception_stub(name, RuntimeError(reason))
 
     elapsed_ms = int((_time.time() - t0) * 1000)
@@ -240,7 +240,7 @@ def run_muster(
     )
     log(f'[muster] done in {elapsed_ms}ms — candidates: {summary}')
 
-    _emit_traces(ctx, outputs, elapsed_ms)
+    _emit_traces(ctx, outputs, elapsed_ms, ran=tuple(runners))
 
     return formatted, outputs, metrics
 
@@ -375,8 +375,14 @@ def _metrics(outputs: Dict[str, Dict[str, Any]], elapsed_ms: int) -> Dict[str, A
 
 def _emit_traces(ctx: Dict[str, Any],
                  outputs: Dict[str, Dict[str, Any]],
-                 elapsed_ms: int):
-    """Emit O and K trace events per scout on the S1E chain.
+                 elapsed_ms: int,
+                 ran: Tuple[str, ...]):
+    """Emit O and K trace events per scout that RAN, on the S1E chain.
+
+    `ran` is the set muster actually dispatched. A scout excluded this cycle
+    emits nothing: its padded stub would otherwise trace as
+    "scanned 0 turns / 0 candidates / 1 err", which reads like a scout that
+    ran and failed rather than one that was never mustered.
 
     Graceful on failure — tracing is observability, not correctness.
     Re-uses the caller's s1e-{session}-{counter} chain so dashboard groups
@@ -397,6 +403,8 @@ def _emit_traces(ctx: Dict[str, Any],
 
     events = []
     for name in sc.SCOUT_NAMES:
+        if name not in ran:
+            continue
         out = outputs.get(name) or {}
         cands = out.get('candidates') or []
         # O — scout saw this much input (scanned counts).

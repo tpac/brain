@@ -305,6 +305,23 @@ class TestTraceEmission(BrainTestBase):
         self.assertEqual(len(inputs), 3)
         self.assertEqual(len(findings), 3)
 
+    def test_excluded_scouts_emit_no_trace_events(self):
+        """A scout that never ran leaves no trace pair. The padded 'disabled'
+        stub used to emit `scanned 0 turns` / `0 candidates` + a 1-error badge,
+        which read on the dashboard like a scout that ran and failed — the
+        production residue of the lived arm's quote/temporal exclusion."""
+        fake = _make_fake_runners({n: _ok_envelope(n) for n in sc.SCOUT_NAMES})
+        with patch.object(m, 'SCOUT_RUNNERS', fake):
+            m.run_muster(_basic_ctx(self.brain),
+                         exclude_scouts=('quote', 'temporal'))
+
+        # Read back through the traces door (brain.query_traces), not raw SQL.
+        chain = self.brain.query_traces(chain_id='s1e-abcdef12-5')['chain']
+        rows = [e for e in chain
+                if e['ref_type'] in ('scout_input', 'scout_findings')]
+        self.assertEqual(len(rows), 2, 'only the scout that ran emits: %r' % (rows,))
+        self.assertTrue(all(r['summary'].startswith('facts:') for r in rows), rows)
+
     def test_scout_findings_carry_token_usage(self):
         """An LLM scout's per-call usage ('_usage' stub, API field names)
         rides into the K scout_findings metadata under the short USAGE_FIELDS
