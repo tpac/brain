@@ -788,39 +788,39 @@ class GraphDAL:
         if not ids:
             raise ValueError("get_communities_for: node_ids is empty")
 
-        id_ph = ','.join('?' * len(ids))
         archived_clause = '' if include_archived else 'AND er.archived = 0'
-        community_clause = 'AND n.archived = 0' if require_active_community else ''
-
+        community_clause = 'AND c.archived = 0' if require_active_community else ''
+        # Which endpoint is the community is decided by the NODE'S TYPE, never
+        # by which endpoint the caller asked for: a batch that holds both a
+        # community and one of its members used to attribute the row to the
+        # community as "member" and drop it on the type filter — the member
+        # rendered as unplaced whenever its community was pulled alongside it
+        # (canonicalize_results does exactly that when recall returns both).
         sql = """
-            SELECT
-                CASE WHEN e.source_id IN ({id_ph}) THEN e.source_id
-                     ELSE e.target_id END as member,
-                CASE WHEN e.source_id IN ({id_ph}) THEN e.target_id
-                     ELSE e.source_id END as community,
-                n.title
+            SELECT m.id, c.id, c.title
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n ON n.id = CASE
-                WHEN e.source_id IN ({id_ph}) THEN e.target_id
-                ELSE e.source_id END
-            WHERE (e.source_id IN ({id_ph}) OR e.target_id IN ({id_ph}))
+            JOIN nodes c ON c.type = 'community'
+                        AND c.id IN (e.source_id, e.target_id)
+            JOIN nodes m ON m.id = CASE WHEN c.id = e.source_id
+                                        THEN e.target_id ELSE e.source_id END
+            WHERE m.id IN ({id_ph})
               AND er.relation = 'community_member'
-              AND n.type = 'community'
               {archived_clause}
               {community_clause}
-        """.format(
-            id_ph=id_ph,
-            archived_clause=archived_clause,
-            community_clause=community_clause,
-        )
-
-        rows = self.conn.execute(sql, ids * 5).fetchall()
-
+        """
         from collections import defaultdict
         membership = defaultdict(list)
-        for member_id, comm_id, comm_title in rows:
-            membership[member_id].append({'id': comm_id, 'title': comm_title})
+        # Chunk to stay within SQLite's bind-variable limit (the sibling
+        # bulk walks do the same) — get_node puts this on every pull.
+        for i in range(0, len(ids), 400):
+            chunk = ids[i:i + 400]
+            rows = self.conn.execute(sql.format(
+                id_ph=','.join('?' * len(chunk)),
+                archived_clause=archived_clause,
+                community_clause=community_clause), chunk).fetchall()
+            for member_id, comm_id, comm_title in rows:
+                membership[member_id].append({'id': comm_id, 'title': comm_title})
         return dict(membership)
 
 

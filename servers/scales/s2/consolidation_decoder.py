@@ -880,7 +880,7 @@ class ConsolidationDecoder(IntegrationUnit):
         Returns {member_id: {neighbor_id: connection}} where connection is a
         GraphDAL.get_connections_bulk entry unchanged — id, type, title,
         direction, edge_created_at, relations: [{relation, description,
-        weight, created_at}] — the shape contract.render_edge_lines reads,
+        weight, created_at, updated_at}] — the shape contract.render_edge_lines reads,
         so the encoder passes it through without reshaping. Grouped per
         owner: an edge whose BOTH endpoints are in `node_ids` appears under
         each of them with its own direction (the flat loader assigns such an

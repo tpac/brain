@@ -318,6 +318,18 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         self.assertIn('    --- %s --- [LOCKED, CRITICAL]' % old[:8], text)
         self.assertIn('    --- %s ---\n' % new[:8], text)
         self.assertIn('[handoff] "opener old" (id:%s, locked' % old[:8], text)
+        # the rich header already carries src: and the age — the separator
+        # block does not repeat them
+        self.assertNotIn('src=', text)
+        self.assertNotIn('created=', text)
+        # a member that vanished between decode and encode still reads as
+        # `[type] "title"`, never as an anonymous body
+        gone = 'deadbeef'
+        cluster = self._cluster(old, gone, {old: {}, gone: {}})
+        cluster['node_details'][gone] = {'title': 'vanished', 'type': 'handoff',
+                                         'content': 'its body'}
+        text = self._encoder()._format_clusters([cluster])
+        self.assertIn('      [handoff] "vanished"\n      Content: its body', text)
 
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.

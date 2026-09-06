@@ -467,32 +467,36 @@ class BrainRecallMixin:
         connections_by_owner = self._graph.get_connections_bulk(
             found_ids, exclude_relations=self.aspects.structural_exclusions)
 
+        from .contract import relation_age
         for nid in found_ids:
             conns = connections_by_owner.get(nid, [])
-            # Order: weight desc, then the relation's created_at desc. Weights
-            # are flat in practice (0.5/0.6 everywhere, id:abbb5b26), so
-            # without the second key the top-N cut every reader applies is a
-            # tie broken by SQL row order — the newest claim is the better
-            # tie-break: it is the one most likely written with the node's
-            # current shape in view. 'relation'/'description' = the top
-            # relation, for compat.
-            def _rel_key(r):
-                return (r.get('weight') or 0, r.get('created_at') or '')
+            # Order: weight desc, then relation_age desc — the same recency
+            # the edge line prints. Weights are flat in practice (0.5/0.6
+            # everywhere, id:abbb5b26), so without the second key the top-N
+            # cut every reader applies is a tie broken by SQL row order; the
+            # newest claim is the better tie-break. The pair's weight is the
+            # max over the relations that SURVIVED the exclusion, not the
+            # stored aggregate — that one counts the hidden noise rows too,
+            # and a 0.6 community_member must not lift a 0.5 pair above its
+            # semantic peers. 'relation'/'description' = the top relation,
+            # for compat.
             for c in conns:
-                rels = sorted(c['relations'], key=_rel_key, reverse=True)
+                rels = sorted(c['relations'],
+                              key=lambda r: (r.get('weight') or 0, relation_age(r, c)),
+                              reverse=True)
                 c['relations'] = rels
                 c['relation'] = rels[0]['relation'] if rels else 'related'
                 c['description'] = rels[0]['description'] if rels else ''
-            conns.sort(key=lambda x: (x.get('weight') or 0,
-                                      max((r.get('created_at') or ''
-                                           for r in x['relations']), default='')),
-                       reverse=True)
+                c['weight'] = max((r.get('weight') or 0 for r in rels),
+                                  default=c.get('weight') or 0)
+                c['_age'] = max((relation_age(r, c) for r in rels), default='')
+            conns.sort(key=lambda x: (x['weight'], x.pop('_age')), reverse=True)
             nodes[nid]['connections'] = conns
 
-        # ── 6. Community membership — Tom's exception to the noise hide
-        # (2026-09-05): Anchor and the recall surface want to know which
-        # communities a node sits in, but not as edge lines competing for
-        # the Edges cut. It rides as its own attachment, [{id, title}], and
+        # ── 6. Community membership — the one exception to the noise hide:
+        # Anchor and the recall surface want to know which communities a
+        # node sits in, but not as edge lines competing for the Edges cut.
+        # It rides as its own attachment, [{id, title}], and
         # renders as a `Communities:` line where a format opts in
         # (cfg show_communities); the encoder catalog stays community-blind.
         communities_by_node = self._graph.get_communities_for(found_ids)

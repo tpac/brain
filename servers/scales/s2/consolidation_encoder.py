@@ -360,29 +360,33 @@ class ConsolidationEncoder(IntegrationUnit):
                 flag_str = ' [%s]' % ', '.join(flags) if flags else ''
 
                 # One header per node: render_rich_node below prints the
-                # `[type] "title" (id:…)` line, so this separator carries
-                # only the id and the flags the rich header lacks (CRITICAL).
+                # `[type] "title" (id:…, src:…, <age>)` line, so this separator
+                # carries only what that header lacks — the CRITICAL flag and
+                # the cluster-level counts.
+                header = '[%s] "%s"' % (nd.get('type', '?'), nd.get('title', '?'))
                 lines.append('    --- %s ---%s' % (nid[:8], flag_str))
-                lines.append('      recalled=%dx  judged=%dx  src=%s  created=%s' % (
-                    recall_count, judge_count,
-                    nd.get('encoding_source', '?')[:15],
-                    nd.get('created_at', '?')[:10]))
+                lines.append('      recalled=%dx  judged=%dx' % (recall_count, judge_count))
 
                 # Catalog blindness per node
                 if cluster.get('catalog_blind', {}).get(nid, False):
                     lines.append('      ⚠ CATALOG BLIND — created without seeing other cluster members')
 
                 # Rich node content (using consolidation format — more depth than community)
+                # The fallbacks keep the node's identity: a member that went
+                # missing between decode and encode must still read as
+                # `[type] "title"`, never as an anonymous body.
                 try:
                     rich = self.brain.get_node(nid)
                     if rich:
                         rendered = render_rich_node(rich, CONSOLIDATION_NODE_FORMAT)
                         lines.append('      ' + rendered.replace('\n', '\n      '))
                     else:
+                        lines.append('      ' + header)
                         content = nd.get('content', '')
                         if content:
                             lines.append('      Content: %s' % content[:600])
                 except Exception:
+                    lines.append('      ' + header)
                     content = nd.get('content', '')
                     if content:
                         lines.append('      Content: %s' % content[:600])

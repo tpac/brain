@@ -86,9 +86,8 @@ class BrainVoice:
         """Standard node display — delegates to render_rich_node().
         Used by recall, consolidation, MCP.
         """
-        from .contract import render_rich_node
-        MCP_FORMAT = {'content_limit': None, 'edge_limit': 3, 'metadata_limit': 200}
-        lines.append(render_rich_node(node, MCP_FORMAT))
+        from .contract import render_rich_node, RECALL_NODE_FORMAT
+        lines.append(render_rich_node(node, RECALL_NODE_FORMAT))
         lines.append("")
 
     # format_node_deep removed 2026-04-14 — dead code, 0 callers.

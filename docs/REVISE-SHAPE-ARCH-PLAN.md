@@ -276,7 +276,8 @@ importers.
 (bc2e16c); community membership is a `communities` attachment and a
 `Communities:` line for Anchor's formats, SURFACE_ARC/FACT and HAIKU_FORMAT —
 off for the encoder, the consolidation node block and HAIKU_FORMAT_LEAN, which
-is ablation-measured (e6de5ff); ties break by relation `created_at` and
+is ablation-measured (e6de5ff); ties break by `contract.relation_age` (the same
+recency the line prints) and a pair weighs its surviving relations, and
 GET_NODES_SMALL/BALANCED show the edge total — the encoder already does via
 the view policy cfg, and the control arm stays byte-identical (test_encoder_view)
 (c07c622); one header per node in the cluster block (bed9510);
@@ -293,7 +294,8 @@ NULL until the first repair; the edge line renders `updated_at or created_at`.
 (seed removals do not propagate — `reconcile_working_copy`).
 
 `contract.render_edge_lines` is the one edge grammar for every LLM
-reader (f716faf); the line's age is the relation's `created_at`; no reader
+reader (f716faf); the line's age is `relation_age` — when the claim last
+changed (`updated_at`, else `created_at`); no reader
 truncates a description; consolidation loads edges grouped per owner and
 shows each once (ae6bc58); the healer examples match the live grammar
 (bdfe8a8). Reviewed and fixed (brain a92554b0).

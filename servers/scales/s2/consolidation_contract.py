@@ -54,7 +54,8 @@ CLUSTER_SHAPE = {
     'unique_edges': 'dict[str, int]',  # node_id → edges not in shared set
     'edge_details': 'dict[str, dict]', # node_id → {neighbor_id: get_connections_bulk entry — id, type,
                                         #   title, direction, edge_created_at, relations: [{relation,
-                                        #   description, weight, created_at}]} (render_edge_lines' input)
+                                        #   description, weight, created_at, updated_at}]}
+                                        #   (render_edge_lines' input)
     'communities': 'dict[str, list]',  # node_id → [{id, title}] community memberships
     'same_community': 'bool',          # Any pair shares a community?
     'shared_community_ids': 'list[str]',
@@ -101,9 +102,8 @@ CONSOLIDATION_NODE_FORMAT = {
     'edge_limit': 0,
     'metadata_limit': 300,      # Full metadata — reasoning, raw quotes
     'time_format': 'relative',
-    # The cluster block prints one Communities line per cluster
-    # (_format_clusters) — the rich node block does not repeat it.
-    'show_communities': False,
+    # show_communities stays off: the cluster block prints one Communities
+    # line per cluster (_format_clusters).
 }
 
 

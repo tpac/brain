@@ -32,6 +32,19 @@ class TestFormatNode(BrainTestBase):
             return None
         return render_rich_node(node, config)
 
+    def _stamp_relation(self, source_id, target_id, ts, column='created_at'):
+        """Backdate (or clear) a relation's timestamp on the (source, target) pair."""
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET %s = ? WHERE edge_id = "
+            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)" % column,
+            (ts, source_id, target_id))
+        self.brain.conn.commit()
+
+    def _edge_line(self, node_id, relation, config=None):
+        """The rendered edge line carrying `relation` (absolute dates by default)."""
+        out = self._render(node_id, config)
+        return next(l for l in out.split('\n') if l.startswith('    [') and relation in l)
+
     # ── Basic rendering ──
 
     def test_full_node(self):
@@ -202,8 +215,7 @@ class TestFormatNode(BrainTestBase):
         self.brain.conn.execute("UPDATE nodes SET created_at = ? WHERE id = ?",
                                 ('2020-01-01T00:00:00+00:00', old_nbr))
         self._add_edge(nid, old_nbr, relation='grounds', description='written today')
-        out = self._render(nid)   # absolute dates
-        edge_line = next(l for l in out.split('\n') if l.startswith('    [') and 'grounds' in l)
+        edge_line = self._edge_line(nid, 'grounds')   # absolute dates
         self.assertNotIn('2020', edge_line)
         from servers.clock import iso_now
         self.assertIn(iso_now()[:10], edge_line)
@@ -250,6 +262,12 @@ class TestFormatNode(BrainTestBase):
         node = self.brain.get_node(nid)
         self.assertEqual(node['communities'], [{'id': comm, 'title': 'A community'}])
         self.assertEqual(node['connections'], [])
+        # the same member pulled in one batch WITH its community keeps its
+        # placement — the lookup decides which endpoint is the community by
+        # the node's type, not by which id the caller asked for
+        batch = self.brain.get_node([nid, comm])
+        self.assertEqual(batch[nid]['communities'], [{'id': comm, 'title': 'A community'}])
+        self.assertEqual(batch[comm]['communities'], [])
         line = '  Communities: "A community" (id:%s)' % comm[:8]
         self.assertNotIn('Communities:', render_rich_node(node))
         self.assertNotIn('Communities:', render_rich_node(node, S1_NODE_CONFIG))
@@ -277,12 +295,8 @@ class TestFormatNode(BrainTestBase):
         for i, s in enumerate(spokes):
             self._add_edge(hub, s, relation='extends', weight=0.6,
                            description='claim %d' % i)
-            # stamp the relation's birth: spoke 0 oldest ... spoke 6 newest
-            self.brain.conn.execute(
-                "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
-                "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
-                ('2026-01-%02dT00:00:00+00:00' % (i + 1), hub, s))
-        self.brain.conn.commit()
+            # the relation's birth: spoke 0 oldest ... spoke 6 newest
+            self._stamp_relation(hub, s, '2026-01-%02dT00:00:00+00:00' % (i + 1))
         node = self.brain.get_node(hub)
         self.assertEqual([c['id'] for c in node['connections']], spokes[::-1])
         out = render_rich_node(node, GET_NODES_BALANCED_FORMAT)     # limit 6
@@ -291,15 +305,24 @@ class TestFormatNode(BrainTestBase):
         self.assertNotIn('claim 0', out)          # the oldest is the one cut
         # a limit that does not cut (8) keeps the bare header
         self.assertIn('  Edges:\n', render_rich_node(node, GET_NODES_SMALL_FORMAT))
+        # the recency that orders is the recency the line prints: a claim
+        # REPAIRED today outranks its untouched siblings even though it was
+        # born first
+        self._stamp_relation(hub, spokes[0], '2026-09-01T00:00:00+00:00', column='updated_at')
+        self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], spokes[0])
         # a higher weight still wins over recency
         heavy = self._make_node(title='Heavy')
         self._add_edge(hub, heavy, relation='grounds', weight=0.9, description='heavy')
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
-            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
-            ('2020-01-01T00:00:00+00:00', hub, heavy))
-        self.brain.conn.commit()
+        self._stamp_relation(hub, heavy, '2020-01-01T00:00:00+00:00')
         self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], heavy)
+        # a pair's weight is the max over its SURVIVING relations: a heavy
+        # noise relation on a weak pair must not lift it above semantic peers
+        noisy = self._make_node(title='Noisy')
+        self._add_edge(hub, noisy, relation='extends', weight=0.5, description='weak claim')
+        self._add_edge(hub, noisy, relation='co_anchored', weight=0.95)
+        conns = self.brain.get_node(hub)['connections']
+        self.assertEqual(conns[-1]['id'], noisy)
+        self.assertEqual(conns[-1]['weight'], 0.5)
 
     def test_edge_line_age_is_the_repair_when_the_claim_changed(self):
         """A description repaired in place used to keep its birth date on the
@@ -310,15 +333,11 @@ class TestFormatNode(BrainTestBase):
         from servers.clock import iso_now
         nid = self._make_node(title='Owner')
         nbr = self._make_node(title='Neighbor')
-        # weight 0.5 = what connect_typed resolves for an unlisted relation,
-        # so the re-connect below changes nothing (weight is a claim too)
-        self._add_edge(nid, nbr, relation='gaps_in', weight=0.5,
-                       description='asserted 9.6.0')
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET created_at = ? WHERE edge_id = "
-            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)",
-            ('2020-01-01T00:00:00+00:00', nid, nbr))
-        self.brain.conn.commit()
+        # seed through the same door the assertions exercise, so the
+        # re-connect below is a true no-op whatever weight it resolves
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='asserted 9.6.0', encoding_source='test')
+        self._stamp_relation(nid, nbr, '2020-01-01T00:00:00+00:00')
 
         def _row():
             return self.brain.conn.execute(
@@ -342,18 +361,12 @@ class TestFormatNode(BrainTestBase):
         self.assertIn(iso_now()[:10], line)
         self.assertIn('moved to 9.7.2', line)
         # renaming the verb is a claim change too
-        self.brain.conn.execute(
-            "UPDATE edge_relations SET updated_at = NULL WHERE edge_id = "
-            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)", (nid, nbr))
-        self.brain.conn.commit()
+        self._stamp_relation(nid, nbr, None, column='updated_at')
         self.brain.revise_edge(nid, nbr, 'gaps_in', new_relation='closes',
                                encoding_source='test')
-        self.assertEqual(_row(), ('closes', _row()[1]))
-        self.assertTrue(_row()[1])
-
-    def _edge_line(self, node_id, relation):
-        out = self._render(node_id)   # absolute dates
-        return next(l for l in out.split('\n') if l.startswith('    [') and relation in l)
+        relation, stamped = _row()
+        self.assertEqual(relation, 'closes')
+        self.assertTrue(stamped)
 
     def test_edge_lines_one_per_relation_descriptions_whole(self):
         """A pair carrying several relations renders one line per relation,

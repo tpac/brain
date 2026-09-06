@@ -819,6 +819,17 @@ GET_NODES_FULL_FORMAT = {
     'show_communities': True,
 }
 
+# The MCP `recall` result render (BrainVoice.format_node) — what Anchor reads
+# when it recalls: the selected nodes, whole content, a short edge tail with
+# its total, and the node's communities.
+RECALL_NODE_FORMAT = {
+    'content_limit': None,
+    'edge_limit': 3,
+    'metadata_limit': 200,
+    'show_communities': True,
+    'show_edge_total': True,
+}
+
 # The skinny node shape returned by NodeDAL.filter_nodes (dal.py:2038-2040)
 # when rich=False — id/title/type/confidence/created_at, plus the filtered
 # column. render_skinny_node uses this to tell the standard columns from the
@@ -1172,6 +1183,16 @@ def _fmt_node_time(ts, cfg):
     return str(ts)[:10]
 
 
+def relation_age(rel, conn=None):
+    """When a relation's CLAIM last changed — the one recency every reader
+    agrees on: `updated_at` (description, weight or verb repaired in place),
+    else `created_at` (never repaired), else the pair's `created_at`. The
+    edge line renders it and get_node's ordering ties break on it, so a
+    freshly repaired claim both reads as recent and sorts as recent."""
+    return (rel.get('updated_at') or rel.get('created_at')
+            or (conn or {}).get('edge_created_at') or '')
+
+
 def render_edge_lines(conn, cfg=None, indent='    '):
     """The one edge render for LLM readers — the lines under a node's Edges.
     Every reader that shows a node's edges (the encoder catalog, the recall
@@ -1186,10 +1207,9 @@ def render_edge_lines(conn, cfg=None, indent='    '):
         [type id:xxxxxxxx <age>] "<neighbor title>" <relation> this — <description>
 
     the second form for an incoming edge (the neighbor is the actor). The age
-    is when the RELATION's claim last changed — its updated_at (description,
-    weight or verb repaired in place), else its created_at (never repaired),
-    else the pair's created_at — so a reader can tell a fresh claim from one
-    older than the node it hangs on. The description is
+    is `relation_age` — when the RELATION's claim last changed — so a reader
+    can tell a fresh claim from one older than the node it hangs on. The
+    description is
     never truncated: a reader may copy it verbatim as a swap's `old`, and a
     cut copy fails the exactly-once match. The neighbor title is cut at 100
     chars — it is the neighbor's own field, not something this line is for
@@ -1216,8 +1236,7 @@ def render_edge_lines(conn, cfg=None, indent='    '):
     tag_head = '[%s id:%s' % (conn.get('type', '?'), (conn.get('id') or '?')[:8])
     for r in rels:
         rel = r.get('relation') or 'related'
-        age = _fmt_node_time(r.get('updated_at') or r.get('created_at')
-                             or conn.get('edge_created_at'), cfg) or '?'
+        age = _fmt_node_time(relation_age(r, conn), cfg) or '?'
         desc = r.get('description') or ''
         head = ('"%s" %s this' % (title, rel)) if incoming else ('this %s "%s"' % (rel, title))
         lines.append('%s%s %s] %s%s' % (indent, tag_head, age, head,
