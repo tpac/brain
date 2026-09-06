@@ -115,7 +115,8 @@ class TestSessionContextPersistence:
             SessionContext.load(self.brain._session_state, 'corrupt-sess')
         # the brain caller catches the signal and degrades gracefully (no crash)
         assert self.brain.session_env_for('corrupt-sess') == {
-            'cwd': '', 'branch': '', 'worktree': '', 'project': ''}
+            'cwd': '', 'branch': '', 'worktree': '', 'project': '',
+            'model': '', 'host': ''}
 
     def test_save_updates_existing(self):
         from servers.session_context import SessionContext
