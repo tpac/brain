@@ -247,6 +247,29 @@ targeted.
 - `eval/longmem/` — eval harness for validating architecture changes
 
 
+## § Scout muster deprecation — Tom ruled "deprecate the scout" (2026-09-06) ◀ ACTIVE ARC
+
+**Read first:** handoff id:acabf63e; plan id:e3ea3935 (component map + ordered cut); the
+measurement it rests on, id:34a42bc6.
+
+The facts scout, the last scout the lived arm mustered, fired on 8.4% of encode cycles in
+June and 1.4% in early September with no prompt boundary in between; 4 of 4 sampled dev
+windows held sizes/counts/versions it reported as zero fact claims; when it fired the
+encoder folded a third to half of its candidates into arc nodes it writes anyway; it cost
+≈$7.35/week on a cache that never reads (system block under Haiku 4.5's 4,096-token minimum).
+
+**Locked:** the facts scout is deprecated; re-aiming its example domain is closed; the
+context_anchors v8 restore is mooted.
+**Open (Tom's gate):** facts-only exclusion vs removing the whole muster, and whether the
+May 2026 LongMemEval control-arm numbers become historical once no arm runs scouts.
+
+**Do not reopen:** prompt re-aim by example domain · 1h-cache fix · quote/temporal
+"excluded not retired" status · context_anchors v8.
+
+Order: (1) exclude facts on the lived arm → (2) remove muster call path, K entries,
+package, tests, eval consumers → (3) eval-gated S1E prompt edit → (4) trace ref_types +
+this section. The roadmap below describes the architecture being removed.
+
 ## Scout architecture roadmap (2026-04-23)
 
 ### Phase 1 — Muster-and-Scouts (current)
