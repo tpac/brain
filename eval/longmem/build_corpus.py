@@ -303,7 +303,8 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
                  interaction_overrides: dict = None, lived: bool = True,
-                 seed_pack: str = None, interactions_off: list = None) -> str:
+                 seed_pack: str = None, interactions_off: list = None,
+                 interaction_templates: dict = None) -> str:
     _load_env()
 
     # Seed-pack override must land before any eval Brain is created — the
@@ -386,6 +387,14 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # every pre-existing corpus keeps its hash.
     if interactions_off:
         config["interactions_off"] = sorted(interactions_off)
+    # A template FILE deployed as an interaction override (e.g. a candidate
+    # s1e_gist) changes the encoded graph — addressed on the file's CONTENT,
+    # like --s1e, so editing the candidate forces a rebuild.
+    template_texts = {name: open(path).read()
+                      for name, path in sorted((interaction_templates or {}).items())}
+    if template_texts:
+        config["interaction_templates"] = {
+            name: source_token(interaction_templates[name]) for name in template_texts}
     config["k_fingerprints"] = _k_fingerprints(override_templates)
     config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
@@ -449,6 +458,9 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
             _apply_surface_override(brain, ingest_surface)
         for ov_name, ov_template in override_templates.items():
             override_interaction(brain, ov_name, template=ov_template)
+        for tpl_name, tpl_text in template_texts.items():
+            override_interaction(brain, tpl_name, template=tpl_text,
+                                 set_by="eval-interaction-template")
         for off_name in (interactions_off or []):
             # template=None keeps the effective words; only `enabled` flips —
             # the same door a production `enabled: false` override uses.
@@ -817,6 +829,11 @@ def main():
                         "brain (config `enabled: false`, words untouched) — e.g. "
                         "'s1e_gist' for a control arm of an install whose main has no "
                         "gist. Part of the corpus hash.")
+    p.add_argument("--interaction-template", dest="interaction_template", default=None,
+                   help="Comma-separated NAME=FILE pairs: deploy FILE as the template override "
+                        "for interaction NAME in each eval brain (e.g. 's1e_gist=eval/"
+                        "candidate_prompts/gist_x.md'). Addressed on the file's content, "
+                        "like --s1e. Part of the corpus hash.")
     p.add_argument("--pooled", action="store_true",
                    help="§20.18 pooled build: interleave the picked items' haystack "
                         "sessions by date into ONE brain (per-conversation session ids, "
@@ -835,13 +852,20 @@ def main():
 
     interactions_off = [n.strip() for n in (args.interaction_off or "").split(",")
                         if n.strip()]
+    interaction_templates = {}
+    for pair in (args.interaction_template or "").split(","):
+        if "=" in pair:
+            n, path = pair.split("=", 1)
+            interaction_templates[n.strip()] = path.strip()
 
     if args.pooled:
         # args.lived is None unless the user pinned an arm explicitly — pooled
         # takes no arm pin (it always builds lived; there is no control pooled).
-        if args.lived is not None or overrides or args.seed_pack or interactions_off:
+        if (args.lived is not None or overrides or args.seed_pack or interactions_off
+                or interaction_templates):
             p.error("--pooled does not compose with --lived/--no-lived/"
-                    "--interaction-override/--interaction-off/--seed-pack")
+                    "--interaction-override/--interaction-off/--interaction-template/"
+                    "--seed-pack")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
                             args.s2_every_n, args.label, force=args.force,
                             items_per_axis=args.items, seed=args.seed)
@@ -852,7 +876,8 @@ def main():
                  interaction_overrides=overrides or None,
                  lived=(True if args.lived is None else args.lived),
                  seed_pack=args.seed_pack,
-                 interactions_off=interactions_off or None)
+                 interactions_off=interactions_off or None,
+                 interaction_templates=interaction_templates or None)
 
 
 if __name__ == "__main__":
