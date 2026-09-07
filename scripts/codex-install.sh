@@ -93,11 +93,13 @@ echo "✓ $PLUGIN@$MARKETPLACE installed at $INSTALLED ($(find "$INSTALLED" -typ
 
 # 6. Warm the runtime INSIDE the cache copy now. Codex runs hooks and the MCP
 #    server from that copy; left cold, the first session's boot hook dies at
-#    its 15 s timeout while uv downloads Python + deps (minutes), and the MCP
-#    server misses its 40 s startup window — a dead first session.
+#    its 15 s timeout while uv downloads Python + deps. Preparing the runtime
+#    here also avoids delaying MCP availability on the first connection.
 echo "bootstrapping the runtime in the cache copy (first time: a few minutes)..."
 bash "$INSTALLED/hooks/scripts/ensure-runtime.sh" >"$INSTALLED/.bootstrap.log" 2>&1 \
   || { echo "ERROR: runtime bootstrap failed — see $INSTALLED/.bootstrap.log" >&2; exit 1; }
 echo "✓ runtime ready: $("$INSTALLED/venv/bin/python" -c 'import sys; print(sys.version.split()[0])')"
-echo "  Next: Codex skips a plugin's hooks until you trust them — in the ChatGPT app's plugin"
-echo "  settings for $PLUGIN, or in the CLI (\`$CODEX\`, then /hooks). Then open a NEW Codex chat."
+echo "  Next: open Codex and ask 'Finish Entity setup'. Entity will check tools and hooks"
+echo "  and offer one confirmation for Entity tools and automatic-memory setup."
+echo "  If hooks need trust, Codex opens its review; no commands need to be typed."
+echo "  After approval, return to the chat and ask Entity to check setup again."

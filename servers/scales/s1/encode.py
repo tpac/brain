@@ -136,12 +136,12 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     _step("catalog(%d ids)" % len(catalog_ids))
 
     # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
-    # the s1e chain. Architectural default: ON. The lived arm runs WITHOUT the
-    # quote scout (episodes recall preserves verbatim substrate) NOR the
-    # temporal scout (the encoder resolves and sets event_time itself, so the
-    # scout is net noise), leaving facts as the only lived
-    # scout, consumed as per-turn timeline annotations; the control arm runs the
-    # full set and appends the classic `## Scout reports` block.
+    # the s1e chain. Architectural default: ON. The lived arm runs NO scouts:
+    # quote (episodes recall preserves verbatim substrate), temporal (the
+    # encoder resolves and sets event_time itself) and facts (yield fell to
+    # ~1% of cycles; the encoder folds its hits into arc nodes it writes
+    # anyway) are all excluded; the control arm runs the full set and appends
+    # the classic `## Scout reports` block.
     if muster_enabled is None:
         muster_enabled = True
 
@@ -149,7 +149,8 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     if muster_enabled:
         scout_report, scout_outputs, muster_summary = _run_muster_phase(
             brain, messages, session_id, counter, catalog_text, catalog_ids,
-            log_fn, _step, exclude_scouts=(('quote', 'temporal') if lived else ()))
+            log_fn, _step,
+            exclude_scouts=(('quote', 'temporal', 'facts') if lived else ()))
 
     # 2c. Body assembly. Lived: scout findings ride INSIDE the timeline
     # (<scout_notes> per turn + <scout_legend>); control: legacy body + the

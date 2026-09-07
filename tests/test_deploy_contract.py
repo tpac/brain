@@ -701,6 +701,7 @@ class TestPublicTreeExport:
             'hooks/hooks.json': '{}\n', 'hooks/hooks.codex.json': '{}\n',
             'hooks/scripts/boot-brain.sh': '', 'hooks/scripts/boot_brain.py': '',
             'hooks/scripts/com.brain.daemon.plist': '', 'hooks/scripts/brain-daemon': '',
+            'hooks/adapters/codex_setup.py': '',
             'skills/brain/SKILL.md': '', 'skills/brain/references/detailed-api.md': '',
             'skills/newskill/SKILL.md': '',             # a new skill: shape names it
             'README.md': '', 'CONTRIBUTING.md': '', 'MIGRATING.md': '', 'CHANGELOG.md': '',
@@ -722,6 +723,7 @@ class TestPublicTreeExport:
             'servers/DESIGN.md',
             'servers/scales/s2/archive/retired.py',
             'hooks/HOOKS.md',
+            'hooks/adapters/NOTES.md',
             'hooks/scripts/session.jsonl',
             'hooks/scripts/new-launcher',         # extensionless, not brain-*
             'dashboard/TODO.md',
