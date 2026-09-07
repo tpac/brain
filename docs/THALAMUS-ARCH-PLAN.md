@@ -47,10 +47,10 @@ item = withdraw, then file. `withdraw(dedup_key=…)` takes the target.
 **Shipped:** 13(h) b573f76, 13(c) 2c7acc2, 13(d) 963e5c6, 13(b) merge 691bac4
 (unified S1+S2; simplify + 8-angle review applied; id:9b83b70b), 13(e) aa2e6aa
 (merge 3d85619; producer view + producer_items door; id:b0c1ccdd).
-**(a) built dark:** `trace_contract.JOURNAL_ADDRESSED_INSTRUCTION` behind
-`JOURNAL_ADDRESSED_LIVE = False`; `render_journal_review_block()` is byte-
-identical to before while dark (pinned). **Next:** (f) flip the flag,
-eval-gated → (g).
+**(a) shipped dark (001a291), (f) LIT (ef3149a, 2026-09-07):**
+`trace_contract.JOURNAL_ADDRESSED_LIVE = True` — every journaling encoder
+reads the tell/ask paragraph; escalation boot channel retired, 32 nodes
+archived behind a backup. **Now:** (g) the week of measurement.
 **Open:** the unified paragraph wording (eval-gated, Tom's nod); the fate of
 the ~30 live `journals-escalation` nodes (archive behind a backup, or stop
 injecting only); **boot influence** — "the influence of a single tell today is
@@ -326,17 +326,22 @@ ask      · 7e6decd2 · milestone says merge pending; it merged as 56c7bd6 — r
   channel). Withdrawn items don't render; a refused filing is already a note
   with `undelivered`. No `delivered` mark ever enters the journal
   (id:e63c41dd, id:defbdf8b).
-- **(f) Prompt, eval-gated, the only encoder-visible change.** Ship (a)–(e)
-  DARK first — with the paragraph absent no encoder writes the verbs, behavior
-  is bit-identical. Then the S1 review paragraph: read the whole S1 prompt +
-  review block first (id:71eeff20 discipline), run `eval/s1_encode_eval.py`
-  before/after, `tests/test_s1e_residue.py` green, then restart.
-- **(g) Measure, one week.** From traces + ledger: `thalamus_filed` per
-  `encoding_run`; `journal_addressed_rejected` count; delivered latency
-  (filed → ledger row); answered vs dismissed; dedup updates vs inserts.
+- **(f) SHIPPED (ef3149a) — the verbs are live.** `JOURNAL_ADDRESSED_LIVE =
+  True`: one paragraph for every journaling encoder (S1 and S2), injected at
+  runtime by the journal component — so NOT a prompt edit and not eval-gated
+  (the operator's ruling); the week's numbers are the gate, and the flag is
+  the one off-switch. The open×5 nudge hands up as `ask`; the
+  `journals-escalation` type left the boot default (mechanism stays, ships
+  empty); the 32 live escalation nodes were archived behind
+  `brain.db.thalamus-13f-escalation-archive.bak.gz`.
+- **(g) Measure, one week (from 2026-09-07).** From traces + items:
+  `thalamus_filed` per s1e/s2 run, tell vs ask, `filing` new/refresh/rearm,
+  `*_journal_addressed_rejected` warnings, item fates (answered / dismissed /
+  expired), and delivered vs acted per moment — the boot-influence thread.
   Kill criteria: zero filings in the window (unused — the `bridge_proposals`
-  death, id:bfc6d106) or dismissed > answered (noise). Either way the number
-  decides Phase 2b, not the build.
+  death, id:bfc6d106) or dismissed > answered (noise) → flag off. Either way
+  the number decides what widens next (urgency, conditions, encoder↔encoder),
+  not the build.
 
 **Timeline representation.** In the receiving session's S0 timeline the
 Scribe's message is the brain speaking at a Stop (`thalamus_delivery`, the
