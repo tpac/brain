@@ -30,7 +30,8 @@ IDENTITY_NOTICE = (
     'Entity could not verify session identity for this call. Automatic memory '
     'capture may be unavailable: hooks may need approval, be disabled, or be '
     'failing. Tell the user; in Codex call setup(action="status") to diagnose '
-    'and setup(action="review") to offer native hook review. Do not claim '
+    'and explain what remains unavailable. Offer to finish Entity setup; '
+    'do not reopen a declined confirmation unless the user asks again. Do not claim '
     'automatic memory is active from an MCP connection alone.'
 )
 
@@ -40,9 +41,17 @@ class SetupSession:
     instructions = (
         "If automatic memory context is absent or a tool reports missing session "
         "identity, tell the user and call setup(action='status'). Offer "
-        "setup(action='review') when setup is incomplete. Explain it requests "
-        "Entity-wide tool permission and opens Codex's separate hook review. "
-        "Check status afterwards; a saved tool policy does not prove the current "
+        "to finish Entity setup when setup is incomplete. Only call "
+        "setup(action='review') while the user is asking to complete setup. "
+        "Explain it requests Entity-wide tool permission and opens Codex's "
+        "separate hook review. Report these permissions separately: missing "
+        "Entity-wide tool approval alone does not mean automatic memory is off. "
+        "After a declined, dismissed or unchecked confirmation, explain that "
+        "permissions were unchanged and the user can say 'Finish Entity setup' "
+        "anytime. Do not reopen it unless the user asks again. After expiry, "
+        "explain that nothing changed and offer a fresh attempt; do not treat "
+        "expiry as consent or repeatedly reopen forms. Check status afterwards; "
+        "a saved tool policy does not prove the current "
         "connection reloaded it or that automatic memory works."
     )
     notice = IDENTITY_NOTICE
@@ -113,10 +122,10 @@ class SetupSession:
                 'not_found': 'Codex did not find this Entity installation’s hooks. Check that the plugin is installed and enabled.',
                 'definitions_trusted': 'Codex reports these hook definitions trusted and enabled. Verify automatic recall and capture in the app before declaring memory ready.',
                 'disabled': 'Some Entity hooks are disabled. Open Codex CLI and use /hooks to review their settings. The automatic startup review only covers new or changed enabled hooks.',
-                'review_required': 'Entity hooks need review. Offer setup(action="review") to open Codex’s own approval screen.',
+                'review_required': 'Some Entity automatic-memory hooks still need Codex approval. Those hooks will not run until approved. Say “Finish Entity setup” to continue.',
             }[status['state']]
             if needs_tools:
-                status['message'] += ' Entity-wide tool approval is not saved; offer setup(action="review").'
+                status['message'] += ' Entity-wide tool approval is not saved; existing tool approval settings still apply. This does not disable approved memory hooks. Say “Finish Entity setup” to continue.'
             if policy and not policy['server_enabled']:
                 status['message'] += ' Entity tools are disabled in Codex; enable the server there first.'
             self.result(op, status)
@@ -152,7 +161,8 @@ class SetupSession:
     def _expire(self, op):
         with self.lock:
             if self.current is op and op['eid']:
-                self.result(op, {'state': 'confirmation_expired', 'trust_granted': False})
+                self.result(op, {'state': 'confirmation_expired', 'trust_granted': False,
+                                 'message': 'The confirmation expired. No permissions were changed. Say “Finish Entity setup” to try again.'})
 
     def receive(self, message):
         with self.lock:
@@ -167,7 +177,14 @@ class SetupSession:
                     isinstance(content, dict) and content.get('enable_entity') is True and
                     'error' not in message)
         if not accepted:
-            self.result(op, {'state': 'review_cancelled', 'trust_granted': False})
+            action = reply.get('action') if isinstance(reply, dict) else None
+            reason = ('invalid_response' if 'error' in message else
+                      'declined' if action == 'decline' else
+                      'dismissed' if action == 'cancel' else
+                      'unchecked' if action == 'accept' and isinstance(content, dict)
+                      and content.get('enable_entity') is False else 'invalid_response')
+            self.result(op, {'state': 'review_cancelled', 'reason': reason, 'trust_granted': False,
+                             'message': 'No permissions were changed. Existing tool permissions and approved hooks were left as they were. If automatic-memory hooks still need approval, those hooks remain unavailable. Say “Finish Entity setup” anytime to continue.'})
             return True
         def launch():
             with self.lock:

@@ -128,11 +128,27 @@ class TestConsent(unittest.TestCase):
         self.assertFalse(self.payload()['hook_trust_granted'])
 
     def test_decline_cancel_false_and_malformed_accept_never_launch(self):
-        for action, value in [('decline', True), ('cancel', True), ('accept', False), ('accept', 'true')]:
+        for action, value, reason in [('decline', True, 'declined'), ('cancel', True, 'dismissed'),
+                                      ('accept', False, 'unchecked'), ('accept', 'true', 'invalid_response')]:
             self.reply(self.request(), action, value)
             self.assertEqual(self.payload()['state'], 'review_cancelled')
+            self.assertEqual(self.payload()['reason'], reason)
         self.open.assert_not_called()
         self.approve.assert_not_called()
+
+    def test_declined_form_cannot_grant_on_replay_but_fresh_request_can(self):
+        declined = self.request()
+        self.reply(declined, action='decline')
+        self.assertIsNone(self.session.current)
+        self.assertEqual(len(self.sent), 2, 'A declined form must not reopen itself')
+        self.reply(declined)
+        self.approve.assert_not_called()
+        self.open.assert_not_called()
+        fresh = self.request(2)
+        self.assertNotEqual(fresh, declined)
+        self.reply(fresh)
+        self.approve.assert_called_once()
+        self.open.assert_called_once()
 
     def test_cancellation_expiry_and_unknown_id_cannot_launch(self):
         eid = self.request()
@@ -346,7 +362,7 @@ class TestProxy(unittest.TestCase):
         from servers import brain_mcp as proxy
         self.assertNotIn('setup', [t['name'] for t in proxy.handle_tools_list(1)['result']['tools']])
         response = proxy.handle_initialize(2)
-        self.assertNotIn("setup(action=", response['result']['instructions'])
+        self.assertEqual(response['result']['instructions'], proxy.SERVER_INSTRUCTIONS)
 
     def test_legacy_client_reader_roundtrip_keeps_its_protocol_and_core_tools(self):
         from servers import brain_mcp as proxy

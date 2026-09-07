@@ -28,6 +28,19 @@ health, or all hooks work. `caller_identity_verified` describes the current
 call's identity evidence; `runtime_verified` remains false. Confirm automatic
 recall and capture in the host before declaring the installation fully ready.
 
+## If the confirmation closes or expires
+
+The confirmation expires after two minutes. Nothing is approved by expiry;
+the assistant explains this and offers another attempt. Say **“Finish Entity
+setup”** to reopen it.
+
+Skipping, closing, or continuing without selecting the checkbox leaves your
+permissions unchanged. The assistant explains how to resume and does not
+immediately reopen a declined confirmation. This does not disable previously
+approved memory hooks: tools keep their existing permission settings, while
+hooks that still need trust remain unavailable. The assistant reports these
+two permissions separately.
+
 ## Fallbacks and scope
 
 - Disabled hooks require manual `/hooks` settings review; the automatic startup
