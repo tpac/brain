@@ -47,6 +47,9 @@ ARMS = [  # (label, glob) — order = table order
     ('wording',      'ops7/*-wording/*.json'),   # levers + gist_c (L2 rewritten as the interview probes said)
     ('render',       'ops7/*-render/*.json'),    # wording + every edge why rendered as its own `why:` line
     ('clean',        'ops8/*-clean/*.json'),     # wording on the cleaned render: noise excluded at get_node, recency tie-break, edge total
+    ('prod9',        'ops9/*-prod/*.json'),      # cell 9: 09-03 production snapshot, capture untouched (no gist) — what the daemon runs
+    ('control9',     'ops9/*-control/*.json'),   # cell 9: 09-03 production snapshot + the branch gist — isolates the template change
+    ('candidate9',   'ops9/*-candidate/*.json'), # cell 9: the branch code default + gist — what the merge deploys
 ]
 MERGE = {'v41 rep': 'v41', 'v42 rep': 'v42'}
 GENERIC = {'related', 'related_to'}
