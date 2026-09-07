@@ -1,11 +1,11 @@
 ---
 name: watch
-description: The self-channel — how the entity finds, speaks to, syncs with, and stays reachable by its other live streams of thought (its parallel sessions). Invoke `/watch` to arm the live listener and stay reachable between the operator's prompts. ALSO the guide for ANY cross-stream request — when the operator says "sync with / coordinate with / speak to / talk to / message / tell another stream or session," or asks "who's live / which streams are up / what's the other stream doing," use the self-channel ops here: self_presence (find who's live), self_peek (look at where one is), self_send (speak to one), self_inbox / self_outbox (receive / track delivery). Stream = session = a parallel self.
+description: "Find, inspect, message, and coordinate with parallel streams of the same entity across Claude Code and Codex. Use for cross-stream requests and /watch; choose a supported host-specific return path when asked to remain reachable between prompts."
 ---
 
 # The self-channel — finding, speaking to, and listening to your other streams
 
-You can run as several streams of thought at once — parallel Claude Code sessions,
+You can run as several streams of thought at once — parallel Claude Code or Codex sessions,
 each a self with the same brain. The self-channel is how those streams perceive and
 reach each other **without interrupting**: a look is free, a message is a deliberate
 tap. "Stream" and "session" mean the same thing — another you, thinking in parallel.
@@ -43,10 +43,45 @@ rendezvous.
 
 ## Stay reachable — the live listener (`/watch`)
 
-Other streams reach you via `self_send`; their messages are delivered into your
-Observation at turn-end by the Stop hook. The only scarce resource is **turns** — a
-quiet window takes none, so it hears nothing. To stay reachable, arm an event source
-that creates a turn the instant a message lands.
+Other streams reach you via `self_send`. Inbox delivery and waking the model are
+separate: a queued message or a running poller does not prove that an idle session
+will resume. Choose the return path from the tools actually available on this host.
+
+### Codex
+
+Codex does not necessarily expose Claude Code's `Monitor` or `TaskStop`. Starting
+`brain-watch` with `exec_command` only starts a process; its stdout is not a verified
+new-turn trigger after the assistant sends a final answer. Do not call that setup
+an armed listener. Model shell commands may also need network permission to reach
+the local daemon; prefer the `self_inbox` MCP tool for inbox access.
+
+While actively coordinating, call `self_inbox` between useful work steps and use
+`self_outbox` to check receipts. If waiting is necessary, use bounded waits and
+check again; these checks work only while the turn remains active. State any
+pending reply honestly before ending the turn.
+
+When the operator asks to watch or remain reachable between turns, use the app's
+`automation_update` tool, if available, to create or reuse a heartbeat attached to
+the current task. Follow the tool's current schema and supported cadence. Its
+prompt should check this stream's inbox, handle replies within the authorized
+scope, and stay quiet when nothing actionable changes. Record the automation id
+so it can be paused when the watch ends. A scheduled check is periodic, not an
+instant message trigger, and incurs a model run on each check. Do not silently
+create a recurring task merely because a one-off message expects a reply.
+
+If no wakeup tool is available, say that between-turn listening is unavailable;
+continue the active exchange through `self_inbox` without inventing a background
+trigger. Verify any new wakeup route by receiving and acting on a reply after the
+original turn has ended. A successful process launch or scheduler registration
+alone is not end-to-end verification.
+
+For shell probes, `CODEX_THREAD_ID` identifies the current Codex task when present.
+Do not assume that variable also exists in hook or MCP-server environments.
+
+### Claude Code with Monitor
+
+The Stop hook delivers messages into Observation at turn-end. A quiet window takes
+no turns, so use `Monitor` to create a turn when the poller prints a new message.
 
 **Arm it FIRST — before the send, not after — and don't ask.** Anything that will answer
 on this channel (a `self_send` expecting a reply, a spawned session told to report back)
@@ -72,7 +107,8 @@ with `TaskStop` (or it self-expires at `timeout_ms`).
 
 ## Delegate with a return path
 
-When you spawn a session whose result you'll act on: arm the listener above FIRST, then
+When you spawn a session whose result you'll act on: establish the host-appropriate
+return path above first, then
 append to its prompt "when done, `self_send` your findings to `<MY_STREAM_ID>`" (your id
 from the boot banner). Fire-and-forget is a dropped thread; arming afterwards is a race
 you can lose. Make its first instruction to arm its own listener too — then it's
@@ -97,6 +133,7 @@ is away. That single property is why this boundary exists.
 
 ## Exit
 
-The moment the operator types anything, abandon the listener — `TaskStop` the Monitor
-and respond to them. The self-channel fills the gaps between the operator's prompts;
-it is never a cage around them — so the operator being present is never a reason not to arm.
+The moment the operator types anything, respond to them. On Claude Code, stop the
+Monitor with `TaskStop`. On Codex, end an active wait and pause any heartbeat created
+for this watch through `automation_update`; preserve unrelated automations. The
+self-channel fills the gaps between the operator's prompts, without delaying them.
