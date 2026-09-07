@@ -903,7 +903,7 @@ JOURNAL_ESCALATION_TYPE = 'journals-escalation'
 # (reconstruction/successor) were removed as over-correction against the OLD
 # journal's restatement disease, not an evidenced need. Iterate from LIVE
 # results, not synthetic probes (which can't reproduce the encoder's lived run).
-JOURNAL_REVIEW_INSTRUCTION = (
+_REVIEW_HEAD = (
     "A review — a short note to the next run of this work, about anything "
     "noticed here that won't be visible in the actions taken.\n"
     "The changes made are already recorded automatically; don't restate them. "
@@ -917,24 +917,64 @@ JOURNAL_REVIEW_INSTRUCTION = (
     "— one line per subject.\n"
     "Mark a persisting item once: `open %s subject %s note` — it stays "
     "visible until resolved; don't re-assert it each run.\n\n"
+) % ((JOURNAL_NOTE_DELIMITER,) * 4)
+
+_REVIEW_TAIL = (
     "Put the notes under a `## Review` heading, inside a fenced code block — "
     "one note per line as `tag %s subject %s note`. A clean run is an empty "
     "fence — leave it empty rather than saying there's nothing to note.\n\n"
     "Time is precious — actions are already logged automatically; no need "
     "to rephrase. Stay sharp."
-) % ((JOURNAL_NOTE_DELIMITER,) * 6)
+) % ((JOURNAL_NOTE_DELIMITER,) * 2)
+
+# The dark block — what every encoder reads today. Bit-identical to the text
+# before the addressed verbs existed; render_journal_review_block returns
+# exactly this while JOURNAL_ADDRESSED_LIVE is False.
+JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
+
+# ── The addressed verbs, as the encoder will read them ──
+# One text for every encoder (Tom: "the instructions should be the same and
+# the delivery different"); the door routes by audience. Sits between the
+# `open` line and the output-format close. LIVE flips it in for every
+# journaling encoder at once — an encoder-visible change, so it lands only
+# behind the encode eval and the operator's nod on wording; until then the
+# review block stays bit-identical (the whole point of shipping the
+# machinery dark first).
+JOURNAL_ADDRESSED_LIVE = False
+JOURNAL_ADDRESSED_INSTRUCTION = (
+    "Two notes leave the journal and reach the person working, instead of "
+    "your next run:\n"
+    "`%(tell)s %(d)s subject %(d)s note` — something they should know now.\n"
+    "`%(ask)s %(d)s subject %(d)s note` — something only they can decide.\n"
+    "The test: would the person working act differently in the next hour if "
+    "they knew? Then %(tell)s or %(ask)s. Would only your next run care? Then "
+    "a plain note.\n"
+    "Write them for a reader with none of your context — plain words, what "
+    "it is and why it matters, no internal vocabulary. One line per subject; "
+    "the same subject later updates it rather than repeating it. A line with "
+    "no subject (`%(tell)s %(d)s note`) is about the run itself. "
+    "`resolved %(d)s subject %(d)s why` withdraws it. Next run you read how "
+    "each ended, under YOUR MESSAGES.\n\n"
+) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
+     'd': JOURNAL_NOTE_DELIMITER}
 
 
-def render_journal_review_block(examples=''):
+def render_journal_review_block(examples='', addressed=None):
     """The shared review block — self-contained (output structure + close folded
-    in), identical for every encoder.
+    in), identical for every encoder. `addressed` (default: the contract's
+    JOURNAL_ADDRESSED_LIVE) folds the tell/ask paragraph in between the
+    `open` line and the close; while dark the block IS
+    JOURNAL_REVIEW_INSTRUCTION, byte for byte.
 
     `examples` is optional and ships empty by default: a positive example
     anchors *what to notice*, which for residue we deliberately leave open. A
     per-encoder caller may pass its own `tag · subject · note` examples later if
     a unit proves to need them, appended as a fenced block.
     """
-    block = JOURNAL_REVIEW_INSTRUCTION
+    if addressed is None:
+        addressed = JOURNAL_ADDRESSED_LIVE
+    block = (_REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if addressed else '')
+             + _REVIEW_TAIL)
     if examples and examples.strip():
         block += "\n\n```\n" + examples.strip() + "\n```\n"
     return block

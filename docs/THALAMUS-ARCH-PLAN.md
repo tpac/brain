@@ -45,7 +45,12 @@ reader is another item, never a retarget (one producer string serves every
 session; a retarget would let one session take another's item). Moving an
 item = withdraw, then file. `withdraw(dedup_key=…)` takes the target.
 **Shipped:** 13(h) b573f76, 13(c) 2c7acc2, 13(d) 963e5c6, 13(b) merge 691bac4
-(unified S1+S2; simplify + 8-angle review applied; id:9b83b70b).
+(unified S1+S2; simplify + 8-angle review applied; id:9b83b70b), 13(e) aa2e6aa
+(merge 3d85619; producer view + producer_items door; id:b0c1ccdd).
+**(a) built dark:** `trace_contract.JOURNAL_ADDRESSED_INSTRUCTION` behind
+`JOURNAL_ADDRESSED_LIVE = False`; `render_journal_review_block()` is byte-
+identical to before while dark (pinned). **Next:** (f) flip the flag,
+eval-gated → (g).
 **Open:** the unified paragraph wording (eval-gated, Tom's nod); the fate of
 the ~30 live `journals-escalation` nodes (archive behind a backup, or stop
 injecting only); **boot influence** — "the influence of a single tell today is

@@ -189,6 +189,23 @@ class TestRenderLifecycle(JournalLifecycleBase):
 
     def test_instruction_teaches_both_verbs(self):
         from servers.trace_contract import JOURNAL_REVIEW_INSTRUCTION
+        from servers.trace_contract import (render_journal_review_block,
+                                            JOURNAL_ADDRESSED_LIVE,
+                                            JOURNAL_ADDRESSED_INSTRUCTION,
+                                            JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
+        # The addressed verbs land DARK: while the contract flag is off the
+        # rendered block is the pre-existing text byte for byte, and the
+        # lit form places the paragraph before the output-format close.
+        self.assertFalse(JOURNAL_ADDRESSED_LIVE)
+        self.assertEqual(render_journal_review_block(), JOURNAL_REVIEW_INSTRUCTION)
+        self.assertNotIn(JOURNAL_TELL_TAG + ' ·', JOURNAL_REVIEW_INSTRUCTION)
+        lit = render_journal_review_block(addressed=True)
+        self.assertIn(JOURNAL_ADDRESSED_INSTRUCTION, lit)
+        self.assertLess(lit.index('`%s · subject' % JOURNAL_ASK_TAG),
+                        lit.index('Put the notes under a `## Review`'))
+        self.assertTrue(lit.startswith(JOURNAL_REVIEW_INSTRUCTION.split(
+            'Put the notes', 1)[0]))
+        self.assertTrue(lit.endswith('Stay sharp.'))
         self.assertIn('resolved · <its exact subject> · why',
                       JOURNAL_REVIEW_INSTRUCTION)
         self.assertIn('open · subject · note', JOURNAL_REVIEW_INSTRUCTION)
