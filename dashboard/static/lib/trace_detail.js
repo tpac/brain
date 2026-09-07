@@ -440,8 +440,6 @@ const _GROUP_SUMMARY = {
   },
   node_archived: (evs) => evs.length + ' archived',
   journal_note: (evs) => evs.length + ' journal notes',
-  // No scout_* entry: the muster emits O then K per scout, so scout rows
-  // alternate ref_type and never form a run to merge.
   // The heaviest run of all: a working turn lands dozens between two messages.
   // Tallied by tool, so the collapsed row still says what the turn DID.
   tool_result: (evs) => {

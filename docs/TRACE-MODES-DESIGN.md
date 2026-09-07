@@ -34,7 +34,7 @@ the 6M-char tool result whose diagnosis required stitching four capture sources)
 ### The recorder lives in the traces layer
 
 The centralization point is NOT any LLM loop — `run_llm_loop` covers the Scribe and
-S2 encoders, but the surface's agentic loop, the scouts, recall query-expansion, and
+S2 encoders, but the surface's agentic loop, recall query-expansion, and
 the healer encoder all call the API directly. The one layer they already report to
 is the traces layer. It grows a recorder API (methods on `BrainTracesMixin`,
 contract in `trace_contract.py`):
@@ -62,7 +62,7 @@ grows a `record_round_fn(round_idx, payload_dict)` callback parameter that
 `self.brain` + the unit's run chain. Same boundary pattern as error logging
 (encoder-side, never runner-side). Do NOT route recording through `dispatch_fn` —
 dispatch closures are write-classified and attribution-stamped, and the
-surface/scout paths don't use dispatch at all.
+surface path doesn't use dispatch at all.
 
 **Payload root:** `{db_dir}/payloads/` where db_dir is the directory of the brain
 INSTANCE the caller holds — never a global env var (the a88343d6 lesson:

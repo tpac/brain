@@ -116,8 +116,8 @@ build_corpus.py  (Stage 1, slow, ONCE)        sweep.py  (Stage 2, fast, MANY)
 - **Recall experiment:** same `corpus_hash`, different `--surface` → delta is
   *pure recall* (encode held byte-identical). The baseline sweep persists by
   name, so the control is never recomputed.
-- **Encode experiment** (e.g. v22 vs v24+v7): build *two* corpora, the treatment
-  with `build_corpus.py --interaction-override 's1e=24,s1_scout_facts=7'` — fetches
+- **Encode experiment** (e.g. v22 vs v24): build *two* corpora, the treatment
+  with `build_corpus.py --interaction-override 's1e=24'` — fetches
   the DORMANT versions from the live daemon and deploys them as overrides in each
   isolated eval brain (the corpus hash is content-addressed on the applied
   template, so the arms get distinct addresses). Sweep both

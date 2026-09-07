@@ -175,8 +175,7 @@ export BRAIN_S1E_ASSOCIATED_STUBS="0"
 
 # S1 Scribe lived-sequence input — ON activates the v28/v29 encoder rebuild:
 # XML lived-sequence timeline (<other>/<me> + tool actions + provenance),
-# widened catalog, facts-only scout (temporal+quote retired), inline scout
-# notes, `## Arc`/`## Review` residue. Paired with s1e active=v29 (medium
+# widened catalog, `## Arc`/`## Review` residue. Paired with s1e active=v29 (medium
 # effort). Gate: LongMemEval do-no-harm A/B 2026-07-03 — raw pass 70%→77%,
 # encode-miss 6→0, temporal held 1.0 (brain finding bab8d86a). Read by the
 # DAEMON's S1 Scribe (encode._lived_sequence_enabled) — takes effect at

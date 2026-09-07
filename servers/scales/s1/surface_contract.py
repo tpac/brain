@@ -914,9 +914,11 @@ _SPREAD_MAX_STEPS = 3
 # Per-source neighbor cap during spread expansion. Held at 50 after
 # 2026-05-01 partial-rollback: lim=30 was tried (variant C, iter_M
 # 14/15 on seed=42) but iter_O on a different sample (seed=1) revealed
-# the narrowing starves muster recall during ingestion → encoder
-# misses specific facts → quality drops 80%→60% on that sample. The
-# narrower lim hurt 5 items on seed=1, helped 0. Reverted.
+# the narrowing starves recall during ingestion → encoder misses
+# specific facts → quality drops 80%→60% on that sample. The narrower
+# lim hurt 5 items on seed=1, helped 0. Reverted. Measured while the
+# since-removed scout muster was in the ingestion loop; a re-bench is
+# what would license moving this.
 #
 # The latency win lives entirely in HOP_SCRUTINY_DEFAULT (variant D in
 # the bench): scrutiny alone reduces avg recall 11.2s → 6.3s (44%) by

@@ -47,7 +47,7 @@ report; nothing pre-resolves ids at the dispatch layer.
 ### Concern 3 — Fetch (id → data)
 | Path | Sites |
 |---|---|
-| `brain.get_node` (canonical rich, correction-enriched) | **26 callers / 12 files** — `fetch_tools.py`(7), `dispatch_read`(5), `surface_contract`(3), `community_encoder`(2), `encode_contract`(2), +1 each in `surface`, `healer_decoder`, `consolidation_encoder`, `scouts/muster`, `daemon_hooks`, `brain_recall`, `dal` |
+| `brain.get_node` (canonical rich, correction-enriched) | **25 callers / 11 files** — `fetch_tools.py`(7), `dispatch_read`(5), `surface_contract`(3), `community_encoder`(2), `encode_contract`(2), +1 each in `surface`, `healer_decoder`, `consolidation_encoder`, `daemon_hooks`, `brain_recall`, `dal` |
 | `get_title` (bespoke title-only) | `surface.py:52` (dedup), `encode.py:411` (encoder timeline), `brain_connections.py:254` (bridge, S2), `brain_remember.py:1507` (mark-critical existence check) |
 
 ### Concern 4 — Render (data → text)

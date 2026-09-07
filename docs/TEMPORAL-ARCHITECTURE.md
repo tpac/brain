@@ -49,10 +49,10 @@ Cross-session background pass that strengthens the temporal graph.
 
 ## Bugs found and fixed in this session
 
-### Bug 1 — Temporal scout used wall-clock (FIXED)
-[servers/scales/s1/scouts/muster.py:69-70](../servers/scales/s1/scouts/muster.py) defaulted `current_date = _dt.date.today()` when not supplied. [servers/scales/s1/encode.py](../servers/scales/s1/encode.py) didn't pass `current_date` → fallback to NOW.
+### Bug 1 — Date extraction used wall-clock (FIXED)
+The encode-side date extraction defaulted `current_date` to today when the caller in [servers/scales/s1/encode.py](../servers/scales/s1/encode.py) didn't pass one → fallback to NOW.
 
-In eval (replay of historical conversations), the scout resolved "today / yesterday / last Tuesday" against the real wall-clock (2026-05-11) instead of the conversation date (e.g. 2023-03-19). Trace evidence on `gpt4_b0863698`: scout candidates included `2026-05-11, 2026-03-05, 2026-05-10` — all relative phrases mis-anchored to NOW.
+In eval (replay of historical conversations), relative phrases — "today / yesterday / last Tuesday" — resolved against the real wall-clock (2026-05-11) instead of the conversation date (e.g. 2023-03-19). Trace evidence on `gpt4_b0863698`: extracted dates included `2026-05-11, 2026-03-05, 2026-05-10` — all mis-anchored to NOW.
 
 **Fix:** [servers/clock.py](../servers/clock.py) — single source of truth for "now" across S1/S2. `brain_now()` (operator wall-clock) + `conversation_now(messages)` (reads `[Current date: ...]` replay prefix or session start). Contract test ([tests/test_clock_contract_sync.py](../tests/test_clock_contract_sync.py)) prohibits direct `datetime.now()` / `date.today()` calls in S1/S2 code; exceptions are marked `# clock-ok`. See brain memories `6d5b789e` (bug) and `dcc093464` (architecture).
 
@@ -162,9 +162,7 @@ Healer currently fills `question` / `situation` / `reasoning` only. Designed ext
 | File | Role |
 |---|---|
 | [servers/clock.py](../servers/clock.py) | `brain_now()` + `conversation_now()` — single source of truth for "now" |
-| [servers/scales/s1/scouts/muster.py](../servers/scales/s1/scouts/muster.py) | Passes `current_date` to temporal scout (no longer wall-clock-defaulted) |
 | [servers/scales/s1/encode.py](../servers/scales/s1/encode.py) | Calls `conversation_now()` and threads through |
-| [servers/scales/s1/scouts/temporal.py](../servers/scales/s1/scouts/temporal.py) | Extracts date candidates, computes ISO from relative phrases against `current_date` |
 | [servers/scales/s1/surface_contract.py](../servers/scales/s1/surface_contract.py) | `_event_time_line()` + render integration |
 | [eval/prompts/s1e_v15_8.txt](../eval/prompts/s1e_v15_8.txt) | Canonical encoder prompt with temporal section + rebuilt canonical example |
 | [tests/test_clock_contract_sync.py](../tests/test_clock_contract_sync.py) | Contract test forbidding direct wall-clock calls |

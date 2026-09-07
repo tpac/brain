@@ -6,7 +6,6 @@ For each failure, classify the failure layer:
   - SURFACE_PICK: gold-bearing node in candidates but not selected
   - CONTEXT_RENDER: selected but its content didn't reach the answerer
   - ANSWERER: content in context but answerer abstained/wrong
-  - SCOUT_SILENT_PARTIAL: quote scout dropped phrases that mattered (annotation)
 
 The layered approach catches the bug found in edced276:
   selected=2 IDs but only 1 rendered fully, the other became edge mention only.
@@ -79,39 +78,6 @@ def _find_gold_in_nodes(nodes, gold_terms):
     elif best[2] >= 1:
         return best[0], best[1], 'partial', best[3]
     return None, None, 'absent', ''
-
-
-def _scout_summary(traces):
-    out = {}
-    for t in traces:
-        if t.get('ref_type') != 'scout_findings':
-            continue
-        meta = t.get('metadata') or {}
-        if isinstance(meta, str):
-            try: meta = json.loads(meta)
-            except: meta = {}
-        scout = meta.get('scout','?')
-        cands = meta.get('candidate_handles') or []
-        errs = meta.get('errors') or []
-        out[scout] = {'cands': len(cands), 'errors': errs}
-    for t in traces:
-        if t.get('ref_type') != 'scout_input':
-            continue
-        meta = t.get('metadata') or {}
-        if isinstance(meta, str):
-            try: meta = json.loads(meta)
-            except: meta = {}
-        scout = meta.get('scout','?')
-        if scout in out:
-            scanned = meta.get('scanned') or {}
-            if isinstance(scanned, dict):
-                considered = (scanned.get('phrases_considered') or
-                              scanned.get('date_phrases_found') or
-                              scanned.get('fact_claims_found') or
-                              scanned.get('considered'))
-                out[scout]['considered'] = considered
-                out[scout]['passed'] = scanned.get('passed_threshold')
-    return out
 
 
 def _diagnose(item_dir: Path):
@@ -198,8 +164,6 @@ def _diagnose(item_dir: Path):
     else:
         layer = 'UNKNOWN'
 
-    scouts = _scout_summary(traces)
-
     return {
         'qid': qid,
         'axis': axis,
@@ -219,7 +183,6 @@ def _diagnose(item_dir: Path):
         'enc_content_in_context': enc_content_in_ctx,
         'selected_count': len(selected_ids),
         'context_chars': len(ctx),
-        'scouts': scouts,
         'node_count': len(nodes),
     }
 
@@ -257,10 +220,6 @@ def render(diagnoses, run_name):
     lines.append('')
     for d in diagnoses:
         if d['correct']: continue
-        s = d['scouts']
-        scout_line = ' | '.join(
-            f"{name}: c={s.get(name,{}).get('considered','-')} p={s.get(name,{}).get('passed','-')} cands={s.get(name,{}).get('cands','-')}"
-            for name in ['quote','temporal','facts','synthesis'])
         lines.append(f"### `{d['qid']}` — {d['axis']} — {d['layer_diagnosis']}")
         lines.append('')
         lines.append(f"- **Gold:** {d['gold']}")
@@ -279,7 +238,6 @@ def render(diagnoses, run_name):
         lines.append(f"- **Surface:** gold-node in selected? **{d['enc_in_selected']}** "
                      f"| content rendered to answerer? **{d['enc_content_in_context']}** "
                      f"(ctx={d['context_chars']} chars)")
-        lines.append(f"- **Scouts:** {scout_line}")
         lines.append('')
     return '\n'.join(lines)
 

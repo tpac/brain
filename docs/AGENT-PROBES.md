@@ -130,7 +130,7 @@ For v15.8's canonical-example rebuild change, probe predicted **5/5 high-confide
 ## Future modes (not yet built)
 
 - **Coverage / Replay probe** — **BUILT 2026-05-15** as two domain-specific tools:
-  - `eval/agent_introspect/encoder_replay.py` — replays the encoder agent against a candidate s1e prompt, using captured conversation + scout output. Reports tool_use rounds + emitted actions per item. ~$0.001–0.003 per item, ~30s wall.
+  - `eval/agent_introspect/encoder_replay.py` — replays the encoder agent against a candidate s1e prompt, using the captured conversation. Reports tool_use rounds + emitted actions per item. ~$0.001–0.003 per item, ~30s wall.
   - `eval/agent_introspect/surface_replay.py` — replays the surface agent against a candidate surface prompt, using a saved per-item brain.db (from `--keep_dbs` evals). Swaps only the active 'surface' interaction; reconstructs candidates_data from `recall.json` + `nodes.jsonl`; calls `_call_surface` (handles v4 vs v5_agentic variant). Reports selection + tool_trace + timing. ~$0.001 per item, ~2–13s wall.
 
   Both tools support iteration loops where the dynamic content (operator turns, Frame, candidate pool) stays fixed and only the static instruction (system prompt) changes. The full eval pipeline pays seconds per iteration round instead of minutes.
