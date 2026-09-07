@@ -144,8 +144,8 @@ MAX_CONCURRENT_ENCODES = 4
 
 # Encoding agent v3.2 (Sonnet) — split node catalog + timeline with references
 ENCODING_AGENT = {
-    'message_content_limit': 2500,    # per message stored in message_stream (both roles equally)
-    'message_display_limit': 2500,    # per message in timeline (both roles — shared learnings, not one side's words)
+    'message_content_limit': None,    # preserve the whole stored episode when gathering
+    'message_display_limit': None,    # no additional per-message timeline cut
     'max_messages': 20,               # last N messages (~10 turns)
     'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
     'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)

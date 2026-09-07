@@ -12,11 +12,11 @@ the idf lane calls recall_laf.idf_scores (the production formula, pure) fed
 AS-OF corpus state — title_tok/title_df restricted to nodes created before
 turn t (per-turn df via bisect over per-token creation timestamps).
 
-Text used for idf is capped at 500 chars — the production RECALL QUERY cap
-(pipeline_contract 'user_message_query': 500), so at j=0 idf sees exactly what
-production saw. Note the trace VECTORS embed the full turn render (the 500
-cap on trace_embeddings.text is storage-only) — production itself carries
-this query-cap vs full-turn-vector asymmetry.
+Text used for idf is capped at 500 chars — the query width used to fit this
+walker corpus, independent of pipeline_contract's current user_message_query
+limit. Note the trace VECTORS embed the full turn render (the 500 cap on
+trace_embeddings.text is storage-only), so this corpus retains the query-cap
+vs full-turn-vector asymmetry.
 
 INCREMENTAL: turns already scored under the current LANES_VERSION are
 skipped; --rebuild wipes the table first. Missing inputs (April vectors
