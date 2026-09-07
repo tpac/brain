@@ -331,6 +331,20 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         text = self._encoder()._format_clusters([cluster])
         self.assertIn('      [handoff] "vanished"\n      Content: its body', text)
 
+    def test_cluster_block_renders_member_content_whole(self):
+        """A merge or keep is decided on the claim, not a gist: the rich node
+        block and both fallbacks render the member's content whole."""
+        long_body = 'c' * 900 + ' THE TAIL PAST SIX HUNDRED'
+        a = self._node('long member')
+        self.brain.revise(a, content=long_body)
+        cluster = self._cluster(a, self._node('other'), {})
+        self.assertIn(long_body, self._encoder()._format_clusters([cluster]))
+        gone = 'deadbeef'
+        cluster = self._cluster(a, gone, {})
+        cluster['node_details'][gone] = {'title': 'vanished', 'type': 'handoff',
+                                         'content': long_body}
+        self.assertIn('      Content: ' + long_body, self._encoder()._format_clusters([cluster]))
+
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
         old = self._node('opener old')

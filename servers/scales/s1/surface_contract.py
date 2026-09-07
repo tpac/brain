@@ -804,7 +804,7 @@ def resolve_surface_format(fmt, budget, scope=None):
 # the IN (rendered candidate menu Haiku reads), the SURFACE_*_FORMATs
 # are the OUT (what Anchor receives after Haiku's selection).
 HAIKU_FORMAT = {
-    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'content_limit': 600, 'edge_limit': 5, 'metadata_limit': 120,
     'time_format': 'relative',
     # Haiku surface receives correction context at balanced fidelity:
     # relation + edge_description + content excerpt (~150 chars). Enough
@@ -823,7 +823,8 @@ HAIKU_FORMAT = {
 # reasoning 10%, question 6%, corrections 6%, quotes 5%. Lean keeps every
 # SELECTION signal in cheapest sufficient form (~60% cut):
 #   • situation kept whole — it IS the selection question ("when relevant")
-#   • content kept at 300 (operator call, 2026-06-12)
+#   • content 600 and 5 edges (operator call: the 300/3 lean cut was too
+#     cheap for a selector that must recognize the node it is picking)
 #   • encoding_source kept in header (future: guide Haiku to prefer
 #     src:anchor manual encodings)
 #   • edges → oneline (direction + relation + title; descriptions are
@@ -840,7 +841,7 @@ HAIKU_FORMAT = {
 # the aspect-aligned edge-choice experiment decides whether edges can earn
 # their place in selection (operator's aspect-traversal thread).
 HAIKU_FORMAT_LEAN = {
-    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'content_limit': 600, 'edge_limit': 5, 'metadata_limit': 120,
     'time_format': 'relative',
     'correction_render': 'lean',
     'edge_style': 'oneline',

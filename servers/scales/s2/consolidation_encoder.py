@@ -384,12 +384,12 @@ class ConsolidationEncoder(IntegrationUnit):
                         lines.append('      ' + header)
                         content = nd.get('content', '')
                         if content:
-                            lines.append('      Content: %s' % content[:600])
+                            lines.append('      Content: %s' % content)
                 except Exception:
                     lines.append('      ' + header)
                     content = nd.get('content', '')
                     if content:
-                        lines.append('      Content: %s' % content[:600])
+                        lines.append('      Content: %s' % content)
 
                 # Surface ALL metadata KV — emergent fields must survive consolidation.
                 # Don't hardcode keys — any brain may have domain-specific fields

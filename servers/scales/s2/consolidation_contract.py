@@ -86,16 +86,13 @@ CLUSTER_REQUIRED_FIELDS = {
 # NODE RENDERING FORMAT
 #
 # How cluster member nodes are rendered for the consolidation encoder.
-# Consolidation needs FULL depth for 2-5 nodes — Sonnet must read
-# the actual content to decide synthesize vs keep.
-#
-# Compare to community format (gist of 5 reps → 300 char content):
-#   S2CE writes about communities → needs the gist
-#   Consolidation decides per-node fate → needs the substance
+# Consolidation needs FULL depth for 2-5 nodes — Sonnet must read the whole
+# content to decide synthesize vs keep, and a survivor's content it did not
+# fully see is content a merge can silently drop.
 # ═══════════════════════════════════════════════════════════════
 
 CONSOLIDATION_NODE_FORMAT = {
-    'content_limit': 600,       # More depth than community (300)
+    'content_limit': None,      # the whole node: a merge or keep is decided on the claim, not a gist
     # Edges render ONCE per cluster, in the Intra-cluster and External blocks
     # (_format_clusters) — every edge, with direction and the whole
     # description — so the rich node block shows none.
