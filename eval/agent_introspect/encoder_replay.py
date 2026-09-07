@@ -4,8 +4,7 @@ The unbuilt "coverage" probe from AGENT-INTROSPECTION.md, finally built.
 For diagnostic-level prompt iteration:
 
   - Load a conversation from the eval oracle
-  - Run scouts to produce real muster_ctx
-  - Call Sonnet ONCE with the candidate prompt + scout report + tool defs
+  - Call Sonnet ONCE with the candidate prompt + tool defs
   - Inspect tool_use blocks (no execution — read-only)
 
 This is FAST (~30s per item) because there's no haystack ingest loop,
@@ -69,33 +68,8 @@ def _load_conversation(qid: str) -> Dict[str, Any]:
     }
 
 
-def _run_scouts(brain, turns, conversation_now: str) -> Dict[str, Any]:
-    """Run muster on the full conversation, return scout outputs dict.
-
-    Matches encode.py's call: pass messages with 'role'/'content'/'id',
-    plus the catalog-rendered string + ID set (empty for fresh brains)
-    and a session_id/counter pair (synthetic — replay isn't tied to a
-    real session).
-    """
-    from servers.scales.s1.scouts.muster import build_muster_context, run_muster
-    messages = [{'role': t['role'], 'content': t['text'], 'id': t['turn_id']}
-                for t in turns]
-    ctx = build_muster_context(
-        brain=brain,
-        messages=messages,
-        session_id='replay-session',
-        counter=0,
-        catalog_rendered='(empty — fresh brain)',
-        catalog_node_ids=set(),
-        session_context='',
-        current_date=conversation_now,
-    )
-    formatted_report, scout_outputs, metrics = run_muster(ctx)
-    return {'report': formatted_report, 'outputs': scout_outputs, 'metrics': metrics}
-
-
-def _build_user_content(conv: Dict[str, Any], scout_report: str) -> str:
-    """Approximate the encoder's user_content: catalog stub + conversation + scout report.
+def _build_user_content(conv: Dict[str, Any]) -> str:
+    """Approximate the encoder's user_content: catalog stub + conversation.
 
     Faithful to encode.py::_build_user_content shape, minus catalog (eval starts
     from empty brain) and journal (no prior turns).
@@ -110,10 +84,6 @@ def _build_user_content(conv: Dict[str, Any], scout_report: str) -> str:
         speaker = 'OPERATOR' if t['role'] == 'user' else 'ANCHOR'
         lines.append(f"\n[turn {t['turn_id']}, {speaker}]")
         lines.append(t['text'])
-    lines.append('')
-    lines.append('## Scout reports')
-    lines.append('')
-    lines.append(scout_report)
     return '\n'.join(lines)
 
 
@@ -158,11 +128,7 @@ def replay_one(brain, qid: str, system_prompt: str,
     single-batch encoding than the windowed pipeline would.
     """
     conv = _load_conversation(qid)
-    t_scout = time.time()
-    scout_data = _run_scouts(brain, conv['turns'], conv['conversation_now'])
-    scout_ms = int((time.time() - t_scout) * 1000)
-
-    user_content = _build_user_content(conv, scout_data['report'])
+    user_content = _build_user_content(conv)
 
     # Build encoder tool defs from the live registry
     from servers.scales.s1.encode import _get_tool_schemas
@@ -193,14 +159,12 @@ def replay_one(brain, qid: str, system_prompt: str,
         'question': conv['question'],
         'gold': conv['gold'],
         'conversation_now': conv['conversation_now'],
-        'scout_ms': scout_ms,
         'call_ms': call_ms,
         'tokens_in': resp.usage.input_tokens,
         'tokens_out': resp.usage.output_tokens,
         'stop_reason': resp.stop_reason,
         'actions': actions,
         'final_text': '\n'.join(text_parts),
-        'scout_metrics': scout_data['metrics'],
     }
 
 
@@ -213,7 +177,7 @@ def render_report(results: List[Dict[str, Any]], prompt_path: str) -> str:
         lines.append('')
         lines.append(f'**Q:** {r["question"]}')
         lines.append(f'**Gold:** {r["gold"]}')
-        lines.append(f'**Timing:** scouts={r["scout_ms"]}ms · encoder={r["call_ms"]}ms · '
+        lines.append(f'**Timing:** encoder={r["call_ms"]}ms · '
                      f'tokens={r["tokens_in"]}→{r["tokens_out"]}')
         lines.append(f'**Stop reason:** {r["stop_reason"]} · {len(r["actions"])} tool calls')
         lines.append('')
@@ -303,8 +267,8 @@ def main():
 
     load_env()
 
-    # Need a brain for interaction lookup + scout dispatch. fresh_brain
-    # creates a clean eval brain (seeded interactions, no production data).
+    # Need a brain for interaction lookup. fresh_brain creates a clean eval
+    # brain (seeded interactions, no production data).
     from eval.longmem.fresh_brain import create_fresh_eval_brain
     import tempfile, os, shutil
     tmpdir = tempfile.mkdtemp(prefix='encoder_replay_')

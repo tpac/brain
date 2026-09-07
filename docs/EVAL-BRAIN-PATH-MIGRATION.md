@@ -203,14 +203,14 @@ Also in scope, same class of rot:
 
 ### 3 — port the noun-retention metric
 
-`extract_proper_nouns()` + `noun_retention_pct` currently live in
-`eval/s1s_ab_quality_analyzer.py` (last touched **2026-04-24**), which reads
-preserved brains from `eval/reports/s1s_ab_smoke/{run}/brains/` — **a directory
-that does not exist**. The metric code itself is clean of stale references; only
-its harness and input are gone.
+`extract_proper_nouns()` + `noun_retention_pct` lived in
+`eval/s1s_ab_quality_analyzer.py`, deleted with the scout-muster removal because
+its harness and input directory were already gone. The metric code itself is
+clean of stale references; recover the two functions from git
+(`git show <pre-removal>:eval/s1s_ab_quality_analyzer.py`).
 
-Move the two functions into `eval/longmem/analyzer.py` (maintained, on the live
-corpus, wired to the A/B machinery). Do not resurrect the old harness.
+Port them into `eval/longmem/analyzer.py` (maintained, on the live corpus, wired
+to the A/B machinery). Do not resurrect the old harness.
 
 ### 4 — the `context_anchors` restore eval
 

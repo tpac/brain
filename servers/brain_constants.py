@@ -357,7 +357,7 @@ LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
 
 # ── LLM transport ──
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1 encode, S2
-# encoders, scouts). The SDK default is roughly 600s but is measured against
+# encoders). The SDK default is roughly 600s but is measured against
 # time.monotonic(), which does NOT advance while the process is suspended
 # (macOS sleep). A call started right before sleep can therefore hang
 # indefinitely after wake. A post-sleep hang is recovered reactively

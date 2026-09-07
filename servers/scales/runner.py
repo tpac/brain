@@ -92,9 +92,9 @@ def make_client():
     Every encoder execution path (the run_llm_loop callers and run_llm_once)
     builds its client here, so the provider SDK stays behind this module's
     seam — swapping providers means reimplementing this module's internals,
-    nothing above it. (Recall-lane sites — surface, scouts, query expansion,
-    the daemon's shared warm client — have their own lifecycles and sit
-    outside this seam.)
+    nothing above it. (Recall-lane sites — surface, query expansion, the
+    daemon's shared warm client — have their own lifecycles and sit outside
+    this seam.)
     """
     import anthropic
     import httpx

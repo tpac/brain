@@ -15,7 +15,7 @@ SERVERS_DIR = os.path.join(os.path.dirname(__file__), '..', 'servers')
 
 # LLM-prompt-backed names carry a real template; config-only names carry ''.
 PROMPT_BACKED = {
-    's1e', 'surface', 's1_scout_quote', 's1_scout_temporal', 's1_scout_facts',
+    's1e', 'surface',
     's2_community_enrichment', 's2_consolidation_enrichment', 's2_healer',
     's2_aspects', 'recall_query_expansion',
 }
@@ -60,7 +60,9 @@ class TestDefaultFilesOwnTheirContent:
     def test_no_default_file_claims_db_ownership(self):
         import ast
         files = self._prompt_files()
-        assert len(files) >= 10, 'prompt-file walk found only %d' % len(files)
+        assert len(files) >= len(PROMPT_BACKED), \
+            'prompt-file walk found %d files for %d prompt-backed names' % (
+                len(files), len(PROMPT_BACKED))
         offenders = {}
         for path in files:
             with open(path, encoding='utf-8') as f:
@@ -110,12 +112,12 @@ class TestRegistryCompleteness:
     entry nobody wrote).
 
     Three consumer shapes, each collected its own way — a literal-only scan
-    missed 6 of 14 names because S2 units and scouts reach the resolver
-    through variables (`_call_llm('s2_healer', ...)` → `base.py`'s
+    misses names that reach the resolver through variables
+    (`_call_llm('s2_healer', ...)` → `base.py`'s
     `get_interaction_prompt(interaction_name)`):
       1. direct accessor literals,
       2. `_call_llm('<name>', ...)` literals (the S2 unit pattern),
-      3. name REGISTRIES that feed the resolver (scouts, scopes)."""
+      3. name REGISTRIES that feed the resolver (scopes)."""
 
     _CALL_RE = re.compile(
         r"get_interaction(?:_prompt|_config|_stamp)?\(\s*['\"]([a-z0-9_]+)['\"]")
@@ -147,16 +149,10 @@ class TestRegistryCompleteness:
 
     def test_registry_fed_names_are_registry_keys(self):
         """Consumers whose interaction name arrives through a registry, not
-        a literal: every scout in SCOUT_NAMES resolves interaction_name(),
-        and ScopePolicy loads scopes._INTERACTION_NAME. A new scout added to
-        SCOUT_NAMES without a code default must fail HERE, not in
-        production via the errors table."""
-        from servers.scales.s1.scouts import contract as sc
+        a literal: ScopePolicy loads scopes._INTERACTION_NAME. A registry
+        name without a code default must fail HERE, not in production via
+        the errors table."""
         from servers.scopes import _INTERACTION_NAME as SCOPES_NAME
-        missing = [sc.interaction_name(s) for s in sc.SCOUT_NAMES
-                   if sc.interaction_name(s) not in INTERACTION_DEFAULTS]
-        assert not missing, \
-            "scouts reach the resolver with no code default: %s" % missing
         assert SCOPES_NAME in INTERACTION_DEFAULTS
 
 

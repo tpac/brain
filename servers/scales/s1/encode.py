@@ -35,7 +35,7 @@ def _journal(brain, session_id=''):
 
 
 def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
-                 muster_enabled=None, journal=None):
+                 journal=None):
     """S1 turn encoder: gather → prompt → trace O/K → LLM loop → post-process.
 
     Args:
@@ -44,14 +44,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         counter: Stop counter value
         session_id: Session ID (required)
         log_fn: Optional logging function
-        muster_enabled: Explicit override for the Phase-1 scouts muster.
-            When None (default), muster runs — the v13 prompt is built
-            around scout reports. Passing False is for tests / ablation
-            harnesses that want to measure no-scout behavior.
 
     Returns:
-        dict with encoding results summary. When muster runs, also includes
-        'muster' key with per-scout metrics and any scout errors.
+        dict with encoding results summary.
     """
     def _log(msg):
         print("[s1e] %s" % msg, flush=True)
@@ -126,42 +121,18 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         prompt_instructions=enc_instructions or None, lived=lived,
         journal=journal)
 
-    # 2a. Catalog FIRST (both arms) — muster needs the rendered catalog +
-    # catalog ids, and on the lived arm the body needs the muster's findings
-    # (inlined into the timeline), so the assembly order is catalog → scouts →
-    # body. Control arm output is unchanged: same catalog, same body, the scout
-    # report appended after — only the internal build order moved.
+    # 2a. Catalog first (both arms), then the body — the two halves profile
+    # separately and the body reuses the catalog's trace streams.
     catalog_text, catalog_ids, streams = _build_catalog(
         brain, messages, session_id, lived, view_policy=view, now=view_now)
     _step("catalog(%d ids)" % len(catalog_ids))
 
-    # 2b. Muster phase — Phase-1 scouts fan out in parallel, emit O/K traces on
-    # the s1e chain. Architectural default: ON. The lived arm runs NO scouts:
-    # quote (episodes recall preserves verbatim substrate), temporal (the
-    # encoder resolves and sets event_time itself) and facts (yield fell to
-    # ~1% of cycles; the encoder folds its hits into arc nodes it writes
-    # anyway) are all excluded; the control arm runs the full set and appends
-    # the classic `## Scout reports` block.
-    if muster_enabled is None:
-        muster_enabled = True
-
-    scout_report, scout_outputs, muster_summary = '', None, {'enabled': False}
-    if muster_enabled:
-        scout_report, scout_outputs, muster_summary = _run_muster_phase(
-            brain, messages, session_id, counter, catalog_text, catalog_ids,
-            log_fn, _step,
-            exclude_scouts=(('quote', 'temporal', 'facts') if lived else ()))
-
-    # 2c. Body assembly. Lived: scout findings ride INSIDE the timeline
-    # (<scout_notes> per turn + <scout_legend>); control: legacy body + the
-    # appended report.
+    # 2b. Body assembly. Lived: the XML lived-sequence timeline; control: the
+    # legacy markdown body.
     user_preamble, user_content, _cat_text2, _cat_ids2 = _build_user_content(
         brain, messages, counter, session_id, lived_sequence=lived,
-        precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=(scout_outputs if lived else None), view_policy=view,
+        precomputed=(catalog_text, catalog_ids, streams), view_policy=view,
         view_now=view_now, journal=journal)
-    if not lived and scout_report.strip():
-        user_content = user_content + "\n\n## Scout reports\n\n" + scout_report
     _step("prompt(preamble=%d chars, body=%d chars)" % (
         len(user_preamble), len(user_content)))
 
@@ -387,8 +358,6 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                              'delta trace missing LLM telemetry')
 
     result['profile'] = profile
-    if muster_summary is not None:
-        result['muster'] = muster_summary
     return result
 
 
@@ -474,70 +443,12 @@ def _build_system_prompt(prompt_instructions=None, lived=None, journal=None):
     return prompt
 
 
-def _run_muster_phase(brain, messages, session_id, counter, catalog_text,
-                      catalog_ids, log_fn, _step, exclude_scouts=()):
-    """The muster try/except envelope, extracted from run_encoding so the two
-    arms can sequence it differently (lived: before body assembly, findings
-    inlined; control: report appended after). Scouts are advisory — any failure
-    logs loud and encoding proceeds without them.
-
-    Returns (scout_report, scout_outputs, muster_summary)."""
-    try:
-        from servers.scales.s1.scouts.muster import (
-            build_muster_context, run_muster)
-        # conversation_now resolves the date THIS conversation thinks
-        # it's happening: eval replay reads [Current date: ...] prefix;
-        # production reads SessionContext.created_at; falls back to
-        # operator wall-clock. Critical for date resolution — without it,
-        # "today/yesterday" in historical conversations resolve to NOW.
-        # See servers/clock.py + brain memory 6d5b789e.
-        from servers.clock import conversation_now
-        session_ctx_obj = brain.get_or_create_session(session_id)
-        conv_started = getattr(session_ctx_obj, 'started_at', None)
-        conv_dt = conversation_now(
-            messages=messages,
-            session_started_at=conv_started,
-            brain=brain)
-        muster_ctx = build_muster_context(
-            brain=brain, messages=messages, session_id=session_id,
-            counter=counter,
-            catalog_rendered=catalog_text,
-            catalog_node_ids=catalog_ids,
-            session_context=brain.session_context_for(session_id),
-            current_date=conv_dt.date().isoformat(),
-            log_fn=log_fn,
-        )
-        _step("muster_ctx")
-        scout_report, scout_outputs, muster_metrics = run_muster(
-            muster_ctx, exclude_scouts=exclude_scouts)
-        _step("muster_done(%dms,%dc)" % (
-            muster_metrics.get('elapsed_ms', 0),
-            muster_metrics.get('total_candidates', 0)))
-        return scout_report, scout_outputs, {
-            'enabled': True,
-            'metrics': muster_metrics,
-            'scout_names': list(scout_outputs.keys()),
-        }
-    except Exception as muster_exc:
-        # Scouts are advisory — never block encoding. Log loud, proceed.
-        print('[s1e] MUSTER ERROR (falling back to no scouts): %s' %
-              muster_exc, flush=True)
-        try:
-            # _log_error expects an Exception so its traceback formatter
-            # works — passing the caught exception directly.
-            brain._log_error('s1e_muster_fallback', muster_exc,
-                             'muster raised; encoding continues without scout reports')
-        except Exception:
-            pass
-        return '', None, {'enabled': True, 'error': str(muster_exc)}
-
-
 def _build_catalog(brain, messages, session_id, lived, view_policy=False,
                    now=None):
-    """The catalog half of the encoding input — extracted from
-    _build_user_content so muster (which consumes the rendered catalog) can run
-    BEFORE body assembly on the lived arm. Gathers the trace streams once
-    (lived); the same tuple threads into the timeline's <provenance>.
+    """The catalog half of the encoding input, built before the body so
+    run_encoding can profile the two halves separately. Gathers the trace
+    streams once (lived); the same tuple threads into the timeline's
+    <provenance>.
     `view_policy` (resolved once in run_encoding) turns on catalog aging in
     build_node_catalog.
 
@@ -752,138 +663,8 @@ def _associated_stub_ids(brain, messages, session_id, exclude_ids,
     return [nid for nid, _s in ranked[:ASSOCIATED_STUBS_K]]
 
 
-def _scout_note_line(scout, cand):
-    """One <scout_notes> line for a candidate — compact but LOSSLESS on the
-    decision-bearing fields the encoder's instructions rely on. The turn's full
-    text sits directly above the note, so the detail (event description /
-    evidence quote) can trim — but fields the turn text does NOT carry must
-    render or the instruction that uses them goes dead:
-      [role] — source_role, rendered in the timeline's identity vocabulary:
-               [other] = the other side's own wording, [me] = my turn
-               attributed it
-      anchors: … — the facts scout's context_anchors (adjacent-query findability)
-      catalog: id:… — the facts scout's catalog_match (dedup hint)
-    Whitespace-collapsed and XML-escaped so it can't malform the timeline."""
-    handle = str(cand.get('handle') or '').strip()
-    detail = str(cand.get('event_description') or cand.get('evidence_quote') or '').strip()
-    line = '%s: %s' % (scout, handle)
-    role = str(cand.get('source_role') or '').strip()
-    if role:
-        # scout contract speaks role-vocabulary (user/assistant); the timeline
-        # speaks identity-vocabulary — map at render, substrate unchanged
-        role = {'user': 'other', 'assistant': 'me'}.get(role, role)
-        line += ' [%s]' % role
-    if detail:
-        line += ' — %s' % detail[:160]
-    extras = [str(b) for b in (cand.get('precision'), cand.get('relational_marker')) if b]
-    reuse = _id_ish(cand.get('existing_anchor_id'))
-    if reuse:
-        extras.append('reuse id:%s' % reuse)
-    anchors = cand.get('context_anchors') or ()
-    if anchors:
-        extras.append('anchors: %s' % ', '.join(str(a) for a in anchors[:4]))
-    cat = _id_ish(cand.get('catalog_match'))
-    if cat:
-        extras.append('catalog: id:%s' % cat)
-    if extras:
-        line += ' (%s)' % '; '.join(extras)
-    return _xml_escape(' '.join(line.split()))
-
-
-def _id_ish(v):
-    """Coerce a scout-provided node-id reference to a renderable 8-char id, or
-    '' when it isn't one. Haiku scouts emit these fields loosely — a dict
-    ({'node_id': …}), a titled string, null — and a raw repr leaking into the
-    prompt reads as garbage (`catalog: id:{'node_i` — found live, dry-run 3).
-    Accept only something that actually looks like a node id: extract from a
-    dict's id-ish keys, strip an `id:` prefix, then require a hex-ish token."""
-    if isinstance(v, dict):
-        v = v.get('node_id') or v.get('id') or v.get('catalog_id') or ''
-    s = str(v or '').strip()
-    if s.lower().startswith('id:'):
-        s = s[3:]
-    s = s.strip()
-    if re.fullmatch(r'[0-9a-f]{6,32}', s):
-        return s[:8]
-    return ''
-
-
-def _map_scout_notes(scout_outputs, messages):
-    """Join scout candidates to the timeline's turns: findings live where
-    they happened, not in a trailing report.
-
-    The join: candidates cite muster turn ids (`messages[i]['id']`, mirroring
-    build_muster_context's `m.get('id') or 'turn-{i}'`); each cited message maps
-    to its OWNING user turn (walk back to the nearest user message), whose
-    `trace_id` is exactly the episode id the lived timeline keys its turns on.
-    First mappable evidence turn wins; candidates citing nothing mappable land
-    in the window-level `unmapped` list (rendered in the legend, not dropped).
-
-    Returns (per_turn {user_trace_id: [line, ...]}, unmapped [line, ...],
-    legend_lines [scout category statements])."""
-    idx_by_mid = {}
-    for i, m in enumerate(messages or []):
-        idx_by_mid[m.get('id') or 'turn-%d' % i] = i
-    owner_trace, last_user = [], None
-    for m in (messages or []):
-        if m.get('role') == 'user':
-            last_user = m.get('trace_id')
-        owner_trace.append(last_user)
-
-    per_turn, unmapped, legend = {}, [], []
-    # Generic mapper: inline whatever non-stub scout envelopes it's handed.
-    # WHICH scouts run is muster's call (exclude_scouts) — temporal is
-    # disabled there, so it arrives here only as a disabled stub (skipped
-    # below), never as candidates.
-    for name in ('temporal', 'facts'):
-        env = (scout_outputs or {}).get(name) or {}
-        if env.get('_errors'):
-            continue                      # stub (disabled / timed out) — nothing to inline
-        cs = ' '.join(str(env.get('category_statement') or '').split())
-        if cs:
-            legend.append('%s — %s' % (name, _xml_escape(cs)))
-        for cand in (env.get('candidates') or ()):
-            line = _scout_note_line(name, cand)
-            owner = None
-            for et in (cand.get('evidence_turns') or ()):
-                i = idx_by_mid.get(et)
-                # bounds guard: idx_by_mid and owner_trace are built from the
-                # same messages list today, but a scout citing an id outside it
-                # (hallucinated turn ref) must land in `unmapped`, never crash
-                if i is not None and i < len(owner_trace) and owner_trace[i]:
-                    owner = owner_trace[i]
-                    break
-            if owner:
-                per_turn.setdefault(owner, []).append(line)
-            else:
-                unmapped.append(line)
-    return per_turn, unmapped, legend
-
-
-def _render_scout_legend(legend_lines, unmapped):
-    """The <scout_legend> block: explains that the inline
-    `scout:` notes came from OUTSIDE this read — what the scouts are and how
-    their findings got into the timeline — plus each scout's category statement
-    and any window-level findings no single turn owns."""
-    out = "<scout_legend>\n"
-    out += ("Notes inside <scout_notes> came from outside this read: a focused "
-            "scout that scanned this same window in parallel before this "
-            "encode — facts (entity-feature-value triples, Haiku) — and its "
-            "findings are attached to the turns they cite. It was primed for "
-            "one kind of atomization: hints, not the map. It proposes; I "
-            "compose — I read the window myself.\n")
-    for ln in legend_lines:
-        out += "- %s\n" % ln
-    if unmapped:
-        out += "Window-level findings no single turn owns:\n"
-        for ln in unmapped:
-            out += "- %s\n" % ln
-    out += "</scout_legend>\n"
-    return out
-
-
 def _build_user_content(brain, messages, counter, session_id, lived_sequence=None,
-                        precomputed=None, scout_outputs=None, view_policy=None,
+                        precomputed=None, view_policy=None,
                         view_now=None, journal=None):
     """Assemble S1 encoding prompt: stable preamble + dynamic body.
 
@@ -897,16 +678,12 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         (user_preamble, user_body, catalog_text, catalog_ids)
         - user_preamble: stable instructions; safe to cache 1h.
         - user_body: dynamic content for this cycle (5m cache).
-        - catalog_text: rendered catalog block (reused by muster).
-        - catalog_ids: set of node ids in the catalog (reused by muster scouts).
+        - catalog_text: rendered catalog block.
+        - catalog_ids: set of node ids in the catalog.
 
     `precomputed` — the (node_catalog, cataloged_ids, streams) tuple from
-    _build_catalog, when run_encoding already built it (it runs muster between
-    the catalog and the body). None → build here (tests / standalone callers).
-    `scout_outputs` — muster envelopes (lived arm only): facts
-    candidates inline into the timeline as per-turn <scout_notes>, with a
-    <scout_legend> explaining where they came from; the trailing
-    `## Scout reports` block is retired on this arm.
+    _build_catalog, when run_encoding already built it. None → build here
+    (tests / standalone callers).
     `view_policy` — the encoder_view flag, resolved once in run_encoding and
     threaded in; None → read the env (tests / standalone callers). Lived-arm
     only; shapes the timeline render (aging rides the precomputed catalog).
@@ -916,7 +693,7 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # A/B flag (piece 1, docs/S1-SCRIBE-REDESIGN.md §10.3.1): OFF (default) =
     # markdown messages-only timeline + surfaced-only catalog (the long-standing
     # path, untouched). ON = the new input as ONE unit: the XML lived-sequence
-    # timeline (messages + tool actions + per-turn <provenance> + <scout_notes>)
+    # timeline (messages + tool actions + per-turn <provenance>)
     # AND the widened catalog (surfaced ∪ encoded ∪ authored ∪ recalled, tagged).
     # Both consume the same trace streams, gathered ONCE and threaded into both.
     lived = _lived_sequence_enabled() if lived_sequence is None else lived_sequence
@@ -929,21 +706,13 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
         node_catalog, cataloged_ids, streams = _build_catalog(
             brain, messages, session_id, lived, view_policy=view_policy)
 
-    scout_legend = ''
     if lived:
-        scout_notes = None
-        if scout_outputs:
-            per_turn, unmapped, legend_lines = _map_scout_notes(
-                scout_outputs, messages)
-            scout_notes = per_turn
-            if legend_lines or unmapped or per_turn:
-                scout_legend = _render_scout_legend(legend_lines, unmapped)
         conv_now = view_now
         if view_policy and conv_now is None:
             conv_now = _conversation_now_safe(brain, session_id, messages)
         timeline = _render_lived_sequence_timeline(
             brain, session_id, messages, streams=streams,
-            scout_notes=scout_notes, view_policy=view_policy, now=conv_now)
+            view_policy=view_policy, now=conv_now)
     else:
         timeline = _render_markdown_timeline(brain, messages)
 
@@ -1011,11 +780,9 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             body += "<failed_encodes>\n%s</failed_encodes>\n\n" % failed_block
         if node_catalog:
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
-        if scout_legend:    # explains the <scout_notes> inside the timeline
-            body += "%s\n" % scout_legend
         # `now=` stamp (view policy): the absolute anchor that makes every
         # relative label below invertible — and the current-time declaration
-        # the encoder's date resolution never had (only the scouts got one).
+        # the encoder's date resolution never had before the view policy.
         now_attr = ''
         if view_policy and conv_now is not None:
             from servers.scales.s1.encoder_view import timeline_now_attr
@@ -1227,8 +994,7 @@ def window_first_turn(brain, session_id, messages, turns=None):
 
 
 def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
-                                    scout_notes=None, view_policy=False,
-                                    now=None):
+                                    view_policy=False, now=None):
     """The XML lived sequence — messages + tool actions interleaved (piece 1).
 
     `view_policy` (encoder_view, resolved once in run_encoding): ON, the
@@ -1238,10 +1004,6 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
     (created/revised/recalled/archived (me)) instead of the merged
     encoded(me). OFF: the pre-policy render (message text is full in both
     arms — the encoded-turn trim is retired).
-
-    `scout_notes` (optional): {user_trace_id: [line, ...]} from _map_scout_notes
-    — scout findings rendered inside the turn they cite (<scout_notes>), after
-    the actions, before the provenance. None → no annotation blocks.
 
     Reads through the existing `recall_episodes` door (the conversational lens
     over s0 traces), NOT a bespoke DAL query — docs/S1-SCRIBE-REDESIGN.md §10.2.
@@ -1387,12 +1149,6 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
                     for ln in lines:
                         out += '    %s\n' % ln
                     out += '  </actions>\n'
-        notes = scout_notes.get(uid) if (scout_notes and uid) else None
-        if notes:
-            out += '  <scout_notes>\n'
-            for ln in notes:
-                out += '    %s\n' % ln     # lines pre-escaped by _scout_note_line
-            out += '  </scout_notes>\n'
         out += '</turn>\n\n'
     return out
 
@@ -1456,8 +1212,8 @@ def _turn_links(brain, session_id, turns, streams=None):
         return {}, {}
     except Exception as e:
         # A real failure (trace-contract drift, malformed record) — LOUD, then
-        # degrade (mirrors the muster fallback above; brain.errors is the surface,
-        # a bare print is not). Provenance is advisory; never block the timeline.
+        # degrade (brain.errors is the surface, a bare print is not).
+        # Provenance is advisory; never block the timeline.
         try:
             brain._log_error('s1e_provenance', e,
                              'trace-link provenance failed; timeline renders without it')

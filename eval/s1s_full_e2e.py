@@ -1,16 +1,15 @@
-"""Full end-to-end test: v14 prompt + muster + S2 + recall + answerer.
+"""Full end-to-end test: v14 prompt + S2 + recall + answerer.
 
 Purpose (Tom's ask, session end 2026-04-24):
   - Real end-to-end run with the full S1+S2 pipeline
   - "Resolving with agent the recalls — like it should be"
   - Detailed internal capture so we can analyze across sessions
 
-What this does differently from eval/s1s_ab_wiring_check.py:
+What this does:
   - Uses eval/longmem/replay.py for the full pipeline (S1R + S0 + S1E
     + S2 at every 2 encodings + final S2 flush + backfill_vectors)
   - Registers v14 prompt in each fresh brain before replay
-  - Muster runs unconditionally (architectural default since the v13 ship)
-  - Single arm (v14 + muster), no A/B — the question this answers is
+  - Single arm (v14), no A/B — the question this answers is
     "how does the full new stack perform", not "is B better than A"
   - Preserves ALL internals (brain DB, logs DB, traces, preserved
     brain dirs under ~/AgentsContext/brain-eval-{run_name}/{qid}/)
@@ -81,7 +80,7 @@ def run_item(item: Dict[str, Any], run_name: str, arm: str = 'B') -> Dict[str, A
             return {"ok": False, "error": f"unknown: {cmd}"}
         return entry.handler(brain, args or {}, [])
 
-    # Arm B: register v14 + enable muster
+    # Arm B: register v14
     registered_version = None
     if arm == 'B':
         v14 = extract_v13_prompt()
@@ -136,11 +135,6 @@ def run_item(item: Dict[str, Any], run_name: str, arm: str = 'B') -> Dict[str, A
         "AND er.encoding_source NOT LIKE 'hook:%'"
     ).fetchone()[0]
 
-    # Count scout events
-    scout_events = brain.logs_conn.execute(
-        "SELECT COUNT(*) FROM trace_events WHERE ref_type IN "
-        "('scout_input','scout_findings')").fetchone()[0]
-
     # Close brain (keep dir) + force GC. Each item creates a new Brain with
     # its own SQLite conns, vector cache, trace buffers; without explicit
     # cleanup the parent process accumulates unbounded across longmem items
@@ -177,7 +171,6 @@ def run_item(item: Dict[str, Any], run_name: str, arm: str = 'B') -> Dict[str, A
         'answer_tokens_out': a_result.get('tokens_out', 0),
         'n_nodes_created': n_nodes,
         'n_edges_created': n_edges,
-        'n_scout_events': scout_events,
         'n_new_errors': n_new_errors,
         'brain_dir': brain_dir,
         **failure_info,
@@ -201,7 +194,7 @@ def _load_items(n_per_axis: int) -> List[Dict[str, Any]]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Full E2E — v14 + muster + S2')
+    parser = argparse.ArgumentParser(description='Full E2E — v14 + S2')
     parser.add_argument('--n-per-axis', type=int, default=3,
                         help='variance runs per axis (default 3)')
     parser.add_argument('--items', type=int, default=None,
@@ -211,15 +204,13 @@ def main():
     parser.add_argument('--workers', type=int, default=6,
                         help='Parallel worker count (default 6)')
     parser.add_argument('--arm', default='B', choices=['A', 'B'],
-                        help='A = no muster + prod v12 prompt; B = v14 + muster')
+                        help='A = prod v12 prompt; B = v14')
     args = parser.parse_args()
 
     _load_env()
 
-    # Muster is now architecturally unconditional in run_encoding(); the
-    # `--arm` flag only controls which prompt gets registered (v12 default
-    # vs v14+SPLIT). Arm A no longer disables scouts — that distinction
-    # would require plumbing a muster_enabled kwarg through replay_item.
+    # The `--arm` flag only controls which prompt gets registered (v12
+    # default vs v14+SPLIT).
 
     run_name = args.run_name or f'full_e2e_{time.strftime("%Y%m%d_%H%M%S")}'
     reports_dir = ROOT / 'eval' / 'reports' / 's1s_full_e2e'
@@ -232,7 +223,7 @@ def main():
         items = items[:args.items]
 
     print(f'[e2e] run_name: {run_name}')
-    print(f'[e2e] arm: {args.arm}  (muster is now architecturally unconditional)')
+    print(f'[e2e] arm: {args.arm}')
     print(f'[e2e] items: {len(items)} ({args.n_per_axis} per axis × '
           f'{len(set((i["_axis"]) for i in items))} axes)')
     print(f'[e2e] brains: ~/AgentsContext/brain-eval-{run_name}/{{qid}}/')
@@ -249,7 +240,7 @@ def main():
                 r = run_item(item, run_name, arm=args.arm)
                 mark = '✓' if r['correct'] else '✗'
                 print(f'[e2e] {mark}  nodes={r["n_nodes_created"]} '
-                      f'edges={r["n_edges_created"]} scout_events={r["n_scout_events"]} '
+                      f'edges={r["n_edges_created"]} '
                       f'errors={r["n_new_errors"]} '
                       f'query_ctx={r["additional_context_chars"]}chars')
                 print(f'[e2e]    H: {r["hypothesis"][:120]}')
@@ -267,7 +258,6 @@ def main():
     else:
         from concurrent.futures import ProcessPoolExecutor, as_completed
         print(f'[e2e] running {len(items)} items across {args.workers} workers')
-        print(f'[e2e] muster runs unconditionally in each worker via encode.run_encoding()')
         by_idx: Dict[int, Dict[str, Any]] = {}
         with ProcessPoolExecutor(max_workers=args.workers) as pool:
             futures = {
@@ -284,7 +274,6 @@ def main():
                     mark = '✓' if r.get('correct') else '✗'
                     print(f'[e2e] {mark} {done+1}/{len(items)}: '
                           f'{r["axis"]} / {r["qid"]}  nodes={r.get("n_nodes_created","?")} '
-                          f'scout_events={r.get("n_scout_events","?")} '
                           f'errors={r.get("n_new_errors","?")}', flush=True)
                 except Exception as e:
                     tb = traceback.format_exc()

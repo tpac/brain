@@ -99,9 +99,6 @@ _BENIGN_CAPS = {
                                            # brains mint new strings, so rate
                                            # is structurally above production's
     "bg_writer_worker_stalled": 2,         # watchdog observation, self-recovers
-    "s1_scout_facts_api_error": 3,         # connection blip → scout no-op
-    "s1_scout_quote_api_error": 3,
-    "s1_scout_temporal_api_error": 3,
 }
 
 # Sources whose benign membership is NARROWER than the source: only these
@@ -210,8 +207,8 @@ def _read_build_errors(brain) -> dict:
 def _fetch_interaction_template(name: str, version: int) -> str:
     """Fetch a registered interaction version's template from the LIVE daemon.
 
-    Used to pull DORMANT prompt versions (e.g. s1e v24, s1_scout_facts v7) so the
-    eval can A/B them against the active ones. Reads production's interactions
+    Used to pull DORMANT prompt versions (e.g. s1e v24) so the eval can A/B
+    them against the active ones. Reads production's interactions
     table via TCP; the eval brain is untouched until override_interaction.
     """
     from servers.daemon_client import send_command
@@ -315,8 +312,8 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         _apply_seed_pack_override(seed_pack)
 
     # The lived arm (BRAIN_S1E_LIVED_SEQUENCE) changes the ENCODED GRAPH — the
-    # XML lived-sequence input, widened catalog, 2-scout muster, inline scout
-    # notes all shape what S1E writes — so it must be pinned here, not inherited
+    # XML lived-sequence input and widened catalog shape what S1E writes — so
+    # it must be pinned here, not inherited
     # from the shell: set it explicitly per the arg, and clear any leaked env
     # on the control arm so a stray export can't silently flip a build's arm.
     # Default is LIVED — production's arm since v29 activation (brain-env.sh
@@ -367,8 +364,8 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
         "qids": qid_list,
     }
     address_variants(config, variant_pins)
-    # Interaction overrides (e.g. DORMANT s1e v24 + s1_scout_facts v7) change the
-    # encoded graph, so they're part of the content address — a v22 corpus and a
+    # Interaction overrides (e.g. a DORMANT s1e v24) change the encoded
+    # graph, so they're part of the content address — a v22 corpus and a
     # v24+v7 corpus get distinct hashes. Addressed on the template CONTENT: a
     # version int is install-local and, once "version absent" means "code
     # default", not a complete address — two corpora built against different
@@ -791,7 +788,7 @@ def main():
     p.add_argument("--force", action="store_true", help="rebuild even if the corpus already exists")
     p.add_argument("--lived", action=argparse.BooleanOptionalAction, default=None,
                    help="arm pin: --lived / --no-lived (BRAIN_S1E_LIVED_SEQUENCE: XML "
-                        "lived-sequence input, widened catalog, 2 scouts, inline notes, "
+                        "lived-sequence input, widened catalog, "
                         "`## Arc` residue). Default LIVED — production's arm since v29 "
                         "activation. Joins the content address — a lived corpus never "
                         "collides with a control corpus.")
@@ -804,7 +801,7 @@ def main():
     p.add_argument("--interaction-override", dest="interaction_override", default=None,
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
-                        "e.g. 's1e=24,s1_scout_facts=7'. Part of the corpus hash.")
+                        "e.g. 's1e=24'. Part of the corpus hash.")
     p.add_argument("--pooled", action="store_true",
                    help="§20.18 pooled build: interleave the picked items' haystack "
                         "sessions by date into ONE brain (per-conversation session ids, "

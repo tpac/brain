@@ -23,7 +23,7 @@ REFINED BUCKETS (subdivisions of the original four)
 ---------------------------------------------------
 ENCODE_MISS variants:
     encoder_filtered     — encoder explicitly decided 0 nodes (e.g. "no stake")
-    encoder_no_extract   — scouts emitted nothing relevant; encoder had nothing
+    encoder_no_extract   — encoder found nothing to extract
     encoder_partial      — encoder wrote nodes but gold-bearing fact not encoded
     encoder_paraphrased  — gold fact MAY be encoded under different terms (manual review)
 
@@ -63,7 +63,7 @@ def _extract_gold_terms(gold: str, min_len: int = 4) -> List[str]:
     """Extract distinctive terms from gold answer.
 
     Drops common stop words + short tokens. Used to find the gold-bearing
-    node and to scan scout outputs.
+    node.
     """
     if not gold:
         return []
@@ -166,36 +166,6 @@ def _find_gold_bearing_nodes(nodes: List[Dict[str, Any]], gold: str,
 
 # ─── per-trace walkers ────────────────────────────────────────────────
 
-def _walk_scouts(traces: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Extract per-scout metrics + candidates from trace events.
-
-    Returns one row per scout invocation:
-        {scout: 'facts', turn_window_idx: 1, scanned: {...},
-         candidates: [...], passed: N}
-    """
-    out = []
-    for t in traces:
-        if t.get('ref_type') == 'scout_findings':
-            md = t.get('metadata') or {}
-            out.append({
-                'scout': md.get('scout', '?'),
-                'candidates': md.get('candidate_handles', []),
-                'errors': md.get('errors', []),
-                'warnings': md.get('warnings', []),
-                'created_at': t.get('created_at', ''),
-            })
-        elif t.get('ref_type') == 'scout_input':
-            md = t.get('metadata') or {}
-            out.append({
-                'scout': md.get('scout', '?'),
-                'scanned': md.get('scanned', {}),
-                'latency_ms': md.get('latency_ms', 0),
-                'is_input_only': True,
-                'created_at': t.get('created_at', ''),
-            })
-    return sorted(out, key=lambda r: r['created_at'])
-
-
 def _walk_encoder(traces: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Extract encoder runs with journal + actions count.
 
@@ -276,7 +246,6 @@ def _refine_bucket(bundle: Dict[str, Any]
     original_bucket = result.get('failure_bucket')
 
     encoder_runs = _walk_encoder(traces)
-    scouts = _walk_scouts(traces)
 
     # Find gold-bearing nodes via deeper search (any text field, all KV).
     bearing = _find_gold_bearing_nodes(nodes, gold)
@@ -294,10 +263,6 @@ def _refine_bucket(bundle: Dict[str, Any]
         ],
         'encoder_journal_summary': [
             r['journal_entry'][:240] for r in encoder_runs if r['journal_entry']
-        ],
-        'scout_summary': [
-            f"{s['scout']}: {len(s.get('candidates', []))} candidates"
-            for s in scouts if not s.get('is_input_only')
         ],
         'recall_candidate_count': recall.get('candidate_count', 0),
         'recall_selected_count': len(recall.get('selected', [])),
@@ -417,11 +382,6 @@ def _markdown(bundle: Dict[str, Any], refined: str,
         lines.append('- Encoder journal:')
         for j in evidence['encoder_journal_summary']:
             lines.append(f"  > {j}")
-    lines.append('')
-
-    lines.append('## Scouts')
-    for s in evidence['scout_summary']:
-        lines.append(f"- {s}")
     lines.append('')
 
     lines.append('## Encoded knowledge — gold-fact match')

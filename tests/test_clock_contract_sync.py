@@ -2,15 +2,14 @@
 
 Why this file exists
 --------------------
-Bug surfaced 2026-05-11: build_muster_context() silently fell back to
-datetime.now() when no current_date was passed. In eval replays of
-historical conversations, this resolved "today/yesterday" against the
-real wall-clock instead of the conversation date — corrupting temporal
-scout candidates.
+A grain-axis caller that silently falls back to datetime.now() when no
+conversation date is passed resolves "today/yesterday" in eval replays of
+historical conversations against the real wall-clock instead of the
+conversation date — corrupting every date the encoder derives.
 
-Fix: servers/clock.py is the single source of truth for "now". This test
-keeps it that way by failing if anyone adds a direct wall-clock call
-anywhere under servers/scales (s1, s2, scout, and any future grain).
+servers/clock.py is the single source of truth for "now". This test keeps
+it that way by failing if anyone adds a direct wall-clock call anywhere
+under servers/scales (s1, s2, and any future grain).
 
 Allowed exemptions:
   - servers/clock.py itself (the implementation)

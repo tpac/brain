@@ -183,8 +183,6 @@ The supporting layers (the diagnostic substrate the corpus build + sweep reuse):
    cleanup. Schema-stable, scale-agnostic. The sweep emits the same shape.
 3. **`eval/longmem/analyzer.py` + `run_diff.py` + `compare_arms.py` + `cost_summary.py`**
    — analysis: refined-bucket classification, side-by-side run comparison, cost/latency.
-4. **`eval/full_suite.py`** — legacy broad-eval orchestrator (3 sub-suites).
-   Historical; see the 2026-04-25/26 section near the bottom.
 
 **Single most important file for cold-start digging:**
 - Corpus state (answerability + S2 Δ + build errors): `~/AgentsContext/eval-corpus/{corpus_hash}/manifest.json`
@@ -267,8 +265,10 @@ Used 2026-05-10 for the v14 → v15.3 evolution. Per-iteration cost ~$0.50 (5 So
 > doc describes the original `full_suite` broad eval. It's kept for methodology and
 > for the dig-in recipes (which generalize), but the numbers, run dirs, and exact
 > commands are from that first run. **Current longmem baseline is ~92% (v22), not the
-> 44.4% below**, and the `brain-eval-full_20260425_*` dirs have long since been cleaned
-> up. For how to run today, use the Frozen Corpus section at the top.
+> 44.4% below**, the `brain-eval-full_20260425_*` dirs have long since been cleaned
+> up, and the orchestrator, snapshot replay and quality analyzer scripts named below
+> are no longer in the tree. For how to run today, use the Frozen Corpus section at
+> the top.
 
 Originally `eval/full_suite.py` ran three sub-suites against isolated brain copies. First run revealed **44.4% on broad longmem** vs **84% on cherry-picked N=5** — confirming the over-fitting risk Tom flagged. The 30 broad items × 3 variance brain dirs are preserved for forensic analysis.
 
@@ -486,42 +486,9 @@ That's what gets written to `results.jsonl` at aggregate time. We
 LOST those in-memory results when the script was killed before
 aggregate. Recoverable by re-running individual items.
 
-### 6. Per-axis quality dimensions (for preserved brains)
-```bash
-./dev python3 eval/s1s_ab_quality_analyzer.py <run_name>
-# run_name resolves under eval/reports/s1s_ab_smoke/ and needs its results.jsonl
-# Reports: noun retention, two-register %, edge desc median chars, etc.
-```
-
 ---
 
 ## How to re-run
-
-### Re-run the full broad eval (or a subset)
-```bash
-# Full medium suite (90 longmem + 15 abstention + 3 snapshot)
-./dev python3 eval/full_suite.py \
-  --run-name preflight_$(date +%Y%m%d_%H%M%S) \
-  --variance 3 --longmem-workers 25 --abstention-workers 10
-
-# Skip snapshot replays (avoid API contention)
-./dev python3 eval/full_suite.py \
-  --run-name longmem_only \
-  --skip-snapshot
-
-# Skip abstention specifically
-./dev python3 eval/full_suite.py \
-  --run-name no_abstention \
-  --skip-abstention
-
-# Just snapshot replays (recommended: serialize, not parallel)
-for conv in 71857713 eba17631 fd829e08; do
-  ./dev python3 eval/s1s_snapshot_replay.py \
-    --snapshot ~/AgentsContext/brain/brain.db.bak-pre-situation-migration \
-    --conversation ~/.claude/projects/-Users-tpac-brain/${conv}*.jsonl \
-    --run-name solo_${conv}
-done
-```
 
 ### Re-run a single item (for forensic deep-dive)
 The harness's `run_item` is callable directly:
