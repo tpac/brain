@@ -10,10 +10,13 @@ community listing, the scout text out of the prompt, the opener fixed. Unmerged 
 the daemon runs main; the deploy is one merge, together, never the tool-layer half
 first. Five edge cells: the edge surface is 0/39 across every wording lever, so the
 next lever is a mechanism (write-boundary check in `brain.revise`) or a worked
-example — Tom's gate. **Next:** after the merge, the s1e prompt eval on MAIN —
-control = `eval/candidate_prompts/s1e_production_2026-09-03.md`, candidate = the
-code default; then the remaining plan changes one at a time (verb scan, situation
-contrast pair, values-derived gist; confidence-label is a contract step). Handoff:
+example — Tom's gate. **Next:** the s1e prompt eval ON THE BRANCH (merge = deploy,
+so the branch stays unmerged until Tom wants all of it live) — control =
+`eval/candidate_prompts/s1e_production_2026-09-03.md` via `--s1e-template`,
+candidate = the code default, both arms on the same worktree substrate; then the
+remaining plan changes one at a time (verb scan, situation contrast pair,
+values-derived gist; confidence-label is a contract step); the merge is the
+promotion at the end. Handoff:
 brain `d91e12b2` (boot self-test, order, verify-before-use, gates); working set
 outside git at
 `/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-4.md`.
