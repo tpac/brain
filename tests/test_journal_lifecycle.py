@@ -175,10 +175,14 @@ class TestRenderLifecycle(JournalLifecycleBase):
         note = {'tag': 'open', 'subject': 'repo-question', 'note': 'undecided',
                 'open_runs': JOURNAL_OPEN_NUDGE_RUNS,
                 'first_seen': '2026-07-17T00:00:00+00:00'}
+        from servers.trace_contract import JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER as D
         text = render_journal_notes_prefix([note])
         self.assertIn('open ×%d since 07-17' % JOURNAL_OPEN_NUDGE_RUNS, text)
-        self.assertIn('hand it up: `ask · repo-question · <the question>`', text)
-        self.assertNotIn('journals-escalation', text)
+        self.assertIn('hand it up: `%s %s repo-question %s <the question>`'
+                      % (JOURNAL_ASK_TAG, D, D), text)
+        # …and clear the pin — otherwise the nudge repeats every run while
+        # the item already carries the question.
+        self.assertIn('`resolved %s repo-question %s handed up`' % (D, D), text)
 
     def test_render_below_threshold_no_nudge(self):
         from servers.trace_contract import render_journal_notes_prefix
@@ -194,23 +198,20 @@ class TestRenderLifecycle(JournalLifecycleBase):
                                             JOURNAL_ADDRESSED_LIVE,
                                             JOURNAL_ADDRESSED_INSTRUCTION,
                                             JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
-        # The addressed verbs are LIVE (one flag for every encoder): the
-        # default render carries the paragraph between the `open` line and
-        # the output-format close; the residue-only text is one flag away.
+        # The addressed verbs are LIVE (one flag for every encoder): the one
+        # block every encoder reads carries the paragraph between the `open`
+        # line and the output-format close, and the render IS the constant.
         self.assertTrue(JOURNAL_ADDRESSED_LIVE)
-        lit = render_journal_review_block()
-        self.assertIn(JOURNAL_ADDRESSED_INSTRUCTION, lit)
-        self.assertEqual(render_journal_review_block(addressed=False),
-                         JOURNAL_REVIEW_INSTRUCTION)
-        self.assertNotIn(JOURNAL_TELL_TAG + ' ·', JOURNAL_REVIEW_INSTRUCTION)
-        self.assertLess(lit.index('`%s · subject' % JOURNAL_ASK_TAG),
-                        lit.index('Put the notes under a `## Review`'))
-        self.assertTrue(lit.startswith(JOURNAL_REVIEW_INSTRUCTION.split(
-            'Put the notes', 1)[0]))
-        self.assertTrue(lit.endswith('Stay sharp.'))
-        self.assertIn('resolved · <its exact subject> · why',
-                      JOURNAL_REVIEW_INSTRUCTION)
-        self.assertIn('open · subject · note', JOURNAL_REVIEW_INSTRUCTION)
+        block = render_journal_review_block()
+        self.assertEqual(block, JOURNAL_REVIEW_INSTRUCTION)
+        self.assertIn(JOURNAL_ADDRESSED_INSTRUCTION, block)
+        self.assertIn('`%s · subject · note`' % JOURNAL_TELL_TAG, block)
+        self.assertLess(block.index('`%s · subject' % JOURNAL_ASK_TAG),
+                        block.index('Put the notes under a `## Review`'))
+        self.assertGreater(block.index('`%s · subject' % JOURNAL_ASK_TAG),
+                           block.index('open · subject · note'))
+        self.assertTrue(block.endswith('Stay sharp.'))
+        self.assertIn('resolved · <its exact subject> · why', block)
 
 
 class TestBootStandingItems(BrainTestBase):
@@ -224,9 +225,9 @@ class TestBootStandingItems(BrainTestBase):
         from servers.scales.s1.frame import (render_standing_items,
                                              BOOT_INJECT_TYPES_DEFAULT)
         self.assertEqual(BOOT_INJECT_TYPES_DEFAULT, '')
-        self.brain.remember(type='journals-escalation',
+        self.brain.remember(type='some-standing-type',
                             title='repo-question — open 3 sessions',
-                            content='promoted from journal',
+                            content='a standing item of an unconfigured type',
                             encoding_source='encoder:sonnet')
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop('BRAIN_BOOT_INJECT_TYPES', None)
@@ -238,7 +239,7 @@ class TestBootStandingItems(BrainTestBase):
                             content='c', encoding_source='anchor')
         with mock.patch.dict(os.environ,
                              {'BRAIN_BOOT_INJECT_TYPES':
-                              'journals-escalation, my-custom-boot-type'}):
+                              'some-standing-type, my-custom-boot-type'}):
             text = render_standing_items(self.brain)
         self.assertIn('custom item', text)
 

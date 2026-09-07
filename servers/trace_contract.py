@@ -924,17 +924,12 @@ _REVIEW_TAIL = (
     "to rephrase. Stay sharp."
 ) % ((JOURNAL_NOTE_DELIMITER,) * 2)
 
-# The residue-only block — the text without the addressed verbs.
-# render_journal_review_block(addressed=False) returns exactly this.
-JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
-
 # ── The addressed verbs, as the encoder reads them ──
-# One text for every encoder (the operator's ruling: same instructions,
-# delivery differs by audience); the door does the routing. Sits between the
-# `open` line and the output-format close. The flag is the one switch for
-# every journaling encoder at once; it shipped dark and was lit on the
-# operator's nod on the wording. It stays a flag so the verbs can be turned
-# off in one place if the week's measurement says noise.
+# One text for every encoder (same instructions; delivery differs by
+# audience — the door does the routing). Sits between the `open` line and
+# the output-format close. The flag is the one switch for every journaling
+# encoder at once: off, and the block is residue-only again — the exit if
+# the measurement says noise.
 JOURNAL_ADDRESSED_LIVE = True
 JOURNAL_ADDRESSED_INSTRUCTION = (
     "Two notes go to the live work, not to your next run:\n"
@@ -951,26 +946,25 @@ JOURNAL_ADDRESSED_INSTRUCTION = (
 ) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
      'd': JOURNAL_NOTE_DELIMITER}
 
+# THE review block every encoder reads — one text, assembled once from the
+# flag. Readers compare prompts against this constant (or the render, which
+# returns it); the head/tail halves are assembly detail.
+JOURNAL_REVIEW_INSTRUCTION = (
+    _REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if JOURNAL_ADDRESSED_LIVE
+                    else '') + _REVIEW_TAIL)
 
-def render_journal_review_block(examples='', addressed=None):
+
+def is_addressed(tag):
+    """True when a note's tag is one of the addressed verbs — a Thalamus
+    item, not a journal row. The one predicate the write door, the eval
+    harnesses and the binding share."""
+    return journal_key(tag) in JOURNAL_ADDRESSED_TAGS
+
+
+def render_journal_review_block():
     """The shared review block — self-contained (output structure + close folded
-    in), identical for every encoder. `addressed` (default: the contract's
-    JOURNAL_ADDRESSED_LIVE) folds the tell/ask paragraph in between the
-    `open` line and the close; while dark the block IS
-    JOURNAL_REVIEW_INSTRUCTION, byte for byte.
-
-    `examples` is optional and ships empty by default: a positive example
-    anchors *what to notice*, which for residue we deliberately leave open. A
-    per-encoder caller may pass its own `tag · subject · note` examples later if
-    a unit proves to need them, appended as a fenced block.
-    """
-    if addressed is None:
-        addressed = JOURNAL_ADDRESSED_LIVE
-    block = (_REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if addressed else '')
-             + _REVIEW_TAIL)
-    if examples and examples.strip():
-        block += "\n\n```\n" + examples.strip() + "\n```\n"
-    return block
+    in), identical for every encoder: JOURNAL_REVIEW_INSTRUCTION."""
+    return JOURNAL_REVIEW_INSTRUCTION
 
 
 # The arc — the SECOND closing act (§7.2: Encode → Arc → Review), a journal-
@@ -1066,9 +1060,11 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
             # answer back (YOUR MESSAGES).
             line += (
                 "\n  ⚠ long-lived — resolve it, or hand it up: "
-                "`%s %s %s %s <the question>`"
-                % (JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER,
-                   n.get('subject', ''), JOURNAL_NOTE_DELIMITER))
+                "`%(ask)s %(d)s %(s)s %(d)s <the question>`, then "
+                "`resolved %(d)s %(s)s %(d)s handed up` (the pin clears; "
+                "the item carries it from here)"
+                % {'ask': JOURNAL_ASK_TAG, 'd': JOURNAL_NOTE_DELIMITER,
+                   's': n.get('subject', '')})
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
 
