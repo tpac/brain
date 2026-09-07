@@ -400,8 +400,7 @@ class BrainTracesMixin:
         """
         from .trace_contract import (extract_review_block, parse_journal_notes,
                                       salvage_review_fence,
-                                      JOURNAL_REVIEW_MARKER,
-                                      JOURNAL_ADDRESSED_TAGS,
+                                      JOURNAL_REVIEW_MARKER, is_addressed,
                                       JOURNAL_RESOLVE_TAGS, journal_key)
 
         def _result(written, malformed, status, addressed=(), resolved=()):
@@ -455,12 +454,11 @@ class BrainTracesMixin:
             # and resolve lines are also named so the caller can close items.
             residue, addressed, resolved = [], [], []
             for n in notes:
-                tag = journal_key(n.get('tag'))
-                if tag in JOURNAL_ADDRESSED_TAGS:
+                if is_addressed(n.get('tag')):
                     addressed.append(n)
                     continue
                 residue.append(n)
-                if tag in JOURNAL_RESOLVE_TAGS:
+                if journal_key(n.get('tag')) in JOURNAL_RESOLVE_TAGS:
                     resolved.append(n)
         except Exception as e:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)

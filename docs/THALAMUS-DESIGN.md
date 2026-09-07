@@ -107,9 +107,9 @@ the consume-once courier is Stop-only.
 - **Stop** (`decision:block`, forcing) — beside stream mail, in its own render
   section. The locked `render_signal` containment contract ("other stream
   says:") is untouched.
-- **Boot** (`additionalContext`, passive) — replaces the `journals-escalation`
-  standing-items block. Fires on fresh sessions only (resume/compaction get no
-  boot render).
+- **Boot** (`additionalContext`, passive) — the standing-items block's
+  default set is empty now; broadcast asks arrive here. Fires on fresh
+  sessions only (resume/compaction get no boot render).
 - **Prompt** (`additionalContext` ahead of the recall surface, passive; Tom,
   2026-09-04; plan Step 12) — the third moment, the moment a stale context is
   about to be reasoned from. Queued kinds do **not** ride it yet (asks stay
@@ -216,11 +216,13 @@ then measured over a window: filed per run, rejected at the door, delivered
 latency, answered vs dismissed — `bridge_proposals` died built-but-unused
 (id:bfc6d106), delivery alone is not success.
 
-**Phase 2b — widen, and retire the boot channel.** `remind` for the S2 units'
-mid-run asks; retire `journals-escalation`, the `open ×5` promote nudge, and
-the standing-items renderer **in the same commit as their replacement**.
-Deliberately after S1 proves the loop (Tom, 2026-09-05: "keep S2 as is in boot
-for the moment").
+**Phase 2b — folded into Step 13 (shipped).** S1 and S2 units file through
+the same review-block verbs (`tell`/`ask`); delivery differs by audience
+(directed → Stop, broadcast → boot). The `journals-escalation` type left the
+boot default, the `open ×5` nudge hands up as `ask`, and the live escalation
+nodes were archived; the standing-items renderer stays as the operator's
+extension point (`BRAIN_BOOT_INJECT_TYPES`). Ledger: docs/THALAMUS-ARCH-PLAN.md
+§ Step 13.
 
 **Phase 2.5 — the Prompt moment and the first assist** (plan Step 12): the
 third delivery moment, the assist mechanism, the clock re-anchor, and the door

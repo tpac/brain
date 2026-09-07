@@ -32,7 +32,7 @@ sys.path.insert(0, ROOT)
 from tests.isolated_brain import IsolatedBrain
 from tests.interaction_override import override_interaction
 from servers.trace_contract import (extract_review_block, parse_journal_notes,
-                                    journal_key, JOURNAL_ADDRESSED_TAGS)
+                                    is_addressed)
 from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
@@ -94,8 +94,7 @@ def _parse_per_batch(final_text):
         notes, mal = parse_journal_notes(block)
         # Addressed lines (tell/ask) are Thalamus items, not journal rows —
         # the parsed==persisted check counts residue only.
-        well_formed += sum(1 for n in notes
-                           if journal_key(n.get('tag')) not in JOURNAL_ADDRESSED_TAGS)
+        well_formed += sum(1 for n in notes if not is_addressed(n.get('tag')))
         malformed += len(mal)
     return well_formed, malformed, sections
 

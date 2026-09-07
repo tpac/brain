@@ -489,7 +489,6 @@ class TestSingleShotCallLlm(BrainTestBase):
         return captured
 
     def test_journal_true_decorates_and_harvests(self):
-        from servers.trace_contract import JOURNAL_REVIEW_INSTRUCTION
         unit = self._unit()
         captured = self._patch_llm(self.RESPONSE)
 

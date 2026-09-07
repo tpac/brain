@@ -869,13 +869,15 @@ class TestJournalNoteParser:
         notes, bad = parse_journal_notes('## Review\n\nfriction · scout · misfired\n')
         assert bad == [] and len(notes) == 1
 
-    def test_render_block_has_instruction_and_fenced_examples(self):
+    def test_render_block_is_the_one_instruction(self):
+        """One text for every encoder: the render IS the constant readers
+        compare prompts against (no per-encoder variants, no examples fence)."""
         from servers.trace_contract import (render_journal_review_block,
                                             JOURNAL_REVIEW_INSTRUCTION)
-        block = render_journal_review_block('doubt · cluster-7 · members drifted')
-        assert JOURNAL_REVIEW_INSTRUCTION.split('\n')[0] in block
-        assert 'doubt · cluster-7 · members drifted' in block
-        assert block.count('```') == 2
+        block = render_journal_review_block()
+        assert block == JOURNAL_REVIEW_INSTRUCTION
+        assert block.startswith('A review — a short note to the next run')
+        assert '```' not in block
 
     def test_hash_subject_not_dropped(self):
         # A delimiter-bearing line whose subject starts with '#' (e.g. an issue

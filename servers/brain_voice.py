@@ -439,8 +439,8 @@ class BrainVoice:
             out.append("")
 
         # ── Standing items — boot-only, BRAIN_BOOT_INJECT_TYPES-driven ──
-        # Escalated journal items (and any operator-configured types) reach
-        # a human here.
+        # Operator-configured node types print here once per boot; the
+        # default set is empty (encoders hand items up as Thalamus asks).
         def standing_items():
             from servers.scales.s1.frame import render_standing_items
             return render_standing_items(brain, session_id=session_id)

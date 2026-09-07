@@ -116,11 +116,9 @@ def build_frame(brain, session_id: str, at=None) -> str:
 # render_boot_v2 after the Frame.
 #
 # BRAIN_BOOT_INJECT_TYPES (~/.config/brain/env, comma-separated) picks which
-# node types surface at boot. Ships EMPTY: a long-lived journal item reaches
-# a human through the Thalamus `ask` (budgeted, expiring, answerable, read
-# back by its producer), not through a node type printed at every boot. The
-# mechanism stays for operators who want a type of their own on the wake-up
-# ritual.
+# node types surface at boot. Ships EMPTY — an encoder's long-lived item is
+# handed up as a Thalamus `ask`, not printed as a node type at every boot.
+# The mechanism stays for operators who want a type of their own here.
 
 BOOT_INJECT_TYPES_DEFAULT = ''
 BOOT_INJECT_CAP = 10
@@ -132,8 +130,8 @@ def render_standing_items(brain, session_id: str = '') -> str:
     Empty string when nothing qualifies — a clean boot adds nothing. The
     lifecycle exit is on the node: handle it, then archive (or revise) it and
     it leaves the next boot. session_id threads the booting session's scope
-    veil through filter_nodes — a walled escalation must not print into
-    every other session's boot.
+    veil through filter_nodes — a walled item must not print into every
+    other session's boot.
     """
     import os
     raw = os.environ.get('BRAIN_BOOT_INJECT_TYPES', BOOT_INJECT_TYPES_DEFAULT)
