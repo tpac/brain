@@ -1,17 +1,22 @@
 # Revise shape — value or swap, edges via `connect_to`
 
-Status: ruled by Tom 2026-09-03. **Every §4 row is done and committed on the
-branch** `claude/sweet-lichterman-ba9854` (contract + write path, tool layer,
-gist interaction + guardrail, harness, prompt rows, shared `$defs` shapes, the
-plan-step-1 harness fixes, the two edge levers L1/L2, the render unification
-and the edge-render cleaning — `REVISE-SHAPE-ARCH-PLAN.md` Step 7), unmerged —
-the daemon runs main; Tom ruled the deploy is one merge, together, never the
-tool-layer half first ("all at once", 2026-09-05). Four edge cells have a
-number (§6 step 3): the edge surface is 0/36 across every arm while every other
-surface held or improved; merge is Tom's gate. The vocabulary guardrail is
-GREEN. Handoff: brain `92e4f8ff` (boot self-test, verify-before-use, gates);
-working set outside git at
-`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-3.md`.
+Status 2026-09-07: **every §4 row is done on the branch** `claude/sweet-lichterman-ba9854`
+(head 1a4172d, 44 ahead of main, main merged in, wide tier 805 passed) — contract
++ write path, tool layer, gist interaction + guardrail, harness, prompt rows,
+shared `$defs` shapes, the render unification, the edge-render cleaning with
+`edge_relations.updated_at` (`REVISE-SHAPE-ARCH-PLAN.md` Step 7), the two-view
+node-fetch render behind one selector, whole content for consolidation and the
+community listing, the scout text out of the prompt, the opener fixed. Unmerged —
+the daemon runs main; the deploy is one merge, together, never the tool-layer half
+first. Five edge cells: the edge surface is 0/39 across every wording lever, so the
+next lever is a mechanism (write-boundary check in `brain.revise`) or a worked
+example — Tom's gate. **Next:** after the merge, the s1e prompt eval on MAIN —
+control = `eval/candidate_prompts/s1e_production_2026-09-03.md`, candidate = the
+code default; then the remaining plan changes one at a time (verb scan, situation
+contrast pair, values-derived gist; confidence-label is a contract step). Handoff:
+brain `d91e12b2` (boot self-test, order, verify-before-use, gates); working set
+outside git at
+`/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/WORKING-SET-next-session-4.md`.
 **Before any prompt row is edited: the full read of `SYSTEM_PROMPT` with a
 per-section audit artifact (brain id:71eeff20) — Tom's condition for the
 prompt half.**
