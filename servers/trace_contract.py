@@ -933,8 +933,8 @@ _REVIEW_TAIL = (
 JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
 
 # ── The addressed verbs, as the encoder will read them ──
-# One text for every encoder (Tom: "the instructions should be the same and
-# the delivery different"); the door routes by audience. Sits between the
+# One text for every encoder (the operator's ruling: same instructions,
+# delivery differs by audience); the door does the routing. Sits between the
 # `open` line and the output-format close. LIVE flips it in for every
 # journaling encoder at once — an encoder-visible change, so it lands only
 # behind the encode eval and the operator's nod on wording; until then the
