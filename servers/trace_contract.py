@@ -890,10 +890,7 @@ def journal_subject_refs(subject):
     key = journal_key(subject)
     return [key] if looks_like_node_id(key) else []
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
-JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
-# The escalation type is boot-visible: render_standing_items (frame.py) injects
-# all live nodes of the types in BRAIN_BOOT_INJECT_TYPES at session boot.
-JOURNAL_ESCALATION_TYPE = 'journals-escalation'
+JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the hand-it-up nudge
 
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
@@ -903,7 +900,7 @@ JOURNAL_ESCALATION_TYPE = 'journals-escalation'
 # (reconstruction/successor) were removed as over-correction against the OLD
 # journal's restatement disease, not an evidenced need. Iterate from LIVE
 # results, not synthetic probes (which can't reproduce the encoder's lived run).
-JOURNAL_REVIEW_INSTRUCTION = (
+_REVIEW_HEAD = (
     "A review — a short note to the next run of this work, about anything "
     "noticed here that won't be visible in the actions taken.\n"
     "The changes made are already recorded automatically; don't restate them. "
@@ -917,24 +914,60 @@ JOURNAL_REVIEW_INSTRUCTION = (
     "— one line per subject.\n"
     "Mark a persisting item once: `open %s subject %s note` — it stays "
     "visible until resolved; don't re-assert it each run.\n\n"
+) % ((JOURNAL_NOTE_DELIMITER,) * 4)
+
+_REVIEW_TAIL = (
     "Put the notes under a `## Review` heading, inside a fenced code block — "
     "one note per line as `tag %s subject %s note`. A clean run is an empty "
     "fence — leave it empty rather than saying there's nothing to note.\n\n"
     "Time is precious — actions are already logged automatically; no need "
     "to rephrase. Stay sharp."
-) % ((JOURNAL_NOTE_DELIMITER,) * 6)
+) % ((JOURNAL_NOTE_DELIMITER,) * 2)
+
+# The residue-only block — the text without the addressed verbs.
+# render_journal_review_block(addressed=False) returns exactly this.
+JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
+
+# ── The addressed verbs, as the encoder reads them ──
+# One text for every encoder (the operator's ruling: same instructions,
+# delivery differs by audience); the door does the routing. Sits between the
+# `open` line and the output-format close. The flag is the one switch for
+# every journaling encoder at once; it shipped dark and was lit on the
+# operator's nod on the wording. It stays a flag so the verbs can be turned
+# off in one place if the week's measurement says noise.
+JOURNAL_ADDRESSED_LIVE = True
+JOURNAL_ADDRESSED_INSTRUCTION = (
+    "Two notes go to the live work, not to your next run:\n"
+    "`%(tell)s %(d)s subject %(d)s note` — the \"wait, one thing\" that "
+    "surfaces while you encode and bears on what they're doing now.\n"
+    "`%(ask)s %(d)s subject %(d)s note` — the \"what about…?\" only they can "
+    "settle.\n"
+    "Interrupt only when it touches the present work, would change it, and "
+    "is worth the stop; otherwise it's a plain note.\n"
+    "Plain words, for a reader with none of your context. One line per "
+    "subject — repeating a subject updates it, no subject means the run "
+    "itself, `resolved %(d)s subject %(d)s why` withdraws it. Next run, "
+    "YOUR MESSAGES shows how each ended.\n\n"
+) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
+     'd': JOURNAL_NOTE_DELIMITER}
 
 
-def render_journal_review_block(examples=''):
+def render_journal_review_block(examples='', addressed=None):
     """The shared review block — self-contained (output structure + close folded
-    in), identical for every encoder.
+    in), identical for every encoder. `addressed` (default: the contract's
+    JOURNAL_ADDRESSED_LIVE) folds the tell/ask paragraph in between the
+    `open` line and the close; while dark the block IS
+    JOURNAL_REVIEW_INSTRUCTION, byte for byte.
 
     `examples` is optional and ships empty by default: a positive example
     anchors *what to notice*, which for residue we deliberately leave open. A
     per-encoder caller may pass its own `tag · subject · note` examples later if
     a unit proves to need them, appended as a fenced block.
     """
-    block = JOURNAL_REVIEW_INSTRUCTION
+    if addressed is None:
+        addressed = JOURNAL_ADDRESSED_LIVE
+    block = (_REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if addressed else '')
+             + _REVIEW_TAIL)
     if examples and examples.strip():
         block += "\n\n```\n" + examples.strip() + "\n```\n"
     return block
@@ -1027,14 +1060,15 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
             # refused it — the reason is what the encoder reads next run.
             line += ' — not delivered: %s' % n['undelivered']
         if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-            # Tool-neutral phrasing: encoders write nodes through different
-            # doors (brain_batch remember op, remember_batch) — name the
-            # node type, not a tool signature.
+            # A note that has persisted this long is a question for the live
+            # work, not residue — hand it up through the addressed verb; the
+            # door delivers it, budgets it, expires it, and carries the
+            # answer back (YOUR MESSAGES).
             line += (
-                "\n  ⚠ long-lived — resolve it, or promote it out of the "
-                "journal: create a `%s`-type node carrying it, then write "
-                "`resolved · %s · promoted to <id>`"
-                % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
+                "\n  ⚠ long-lived — resolve it, or hand it up: "
+                "`%s %s %s %s <the question>`"
+                % (JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER,
+                   n.get('subject', ''), JOURNAL_NOTE_DELIMITER))
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
 
