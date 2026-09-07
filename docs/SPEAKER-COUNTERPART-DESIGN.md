@@ -896,7 +896,7 @@ Do **not** mass-rename these. Verified 2026-07-24 across all nine files:
 - **~90% are decision-provenance comments** — `"Tom 2026-07-02"`, `"per Tom"`,
   `"Tom's spec"`, `"Tom's standing rule (node 8178593a)"` (`encode.py`,
   `encode_contract.py`, `surface_contract.py`, `trace_links.py`,
-  `scouts/muster.py`, `scouts/runners.py`, `presence.py`, `self_contract.py`).
+  `presence.py`, `self_contract.py`).
   These attribute *who decided what*. **Leave them untouched** — they are
   legitimate attribution history, and rewriting them would destroy provenance
   for zero gain. (Census note 2026-07-27, **revised 2026-08-09**: the runtime
@@ -1037,7 +1037,7 @@ than the trace migration), the MCP agent-facing schema (→ `redeploy.sh` + new
 session), all four encoder prompt defaults (edit `SYSTEM_PROMPT` in each
 prompt `.py`), the full contract-sync chain (`remember()` → MCP schema → dispatch →
 encoder tools → SKILL.md), `contract.py`, `dal_metadata.py`, the S2
-healer/community/consolidation contracts, quality + surface contracts, scouts.
+healer/community/consolidation contracts, quality + surface contracts.
 **Verify before executing:** whether the quote *values* feed any node
 embedding group — if they do, the same zero-re-embedding invariant as §6 holds
 (keys don't enter vector space, values do), but confirm rather than assume.

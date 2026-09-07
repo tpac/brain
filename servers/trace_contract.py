@@ -104,10 +104,10 @@ REF_TYPES = {
     # Encode path (chain prefix: s1e-): O=prompt given, K=node catalog, delta=actions+reasoning
     ("s1", "O"):       ["recall",            # candidates with scores
                          "encoding_prompt",    # what the encoder was given
-                         "scout_input"],       # muster scouts: what they saw
+                         "scout_input"],       # retired with the scout muster; history rows read through it
     ("s1", "K"):       ["surface_selected",  # what the surfacer picked
                          "node_catalog",       # which nodes available to encoder
-                         "scout_findings"],    # muster scouts: their candidates
+                         "scout_findings"],    # retired with the scout muster; history rows read through it
     ("s1", "delta"):   ["additionalContext",       # what reached Anchor
                          "encoding_run",            # what the encoder produced
                          "encoding_run_failed",     # LLM loop died — no writes; NOT read by

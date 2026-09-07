@@ -102,7 +102,7 @@ material** (inflating one throwaway turn into several low-value nodes).
 
 ### Headline: the encoder is *already* structurally flexible on turn count. The real gap is **terminal-run semantics**, not batch size.
 
-The encode pipeline is `_gather_messages → _build_user_content (+ muster) →
+The encode pipeline is `_gather_messages → _build_user_content →
 run_llm_loop → post-process` (`servers/scales/s1/encode.py`). Tracing it shows the
 "5" is the **cadence**, not a window the encoder is built around:
 
@@ -184,9 +184,6 @@ A/B a candidate through `tests/interaction_override.py` before merging it.)
 
 ### To verify before shipping (eval, not code-reading)
 
-- **Scouts (muster) over a tiny window.** facts/quote/temporal scouts run over the
-  gathered messages; confirm they degrade gracefully (likely fewer candidates, no
-  error) on a 1–2 turn input. Low risk, but verify.
 - **Thin-material calibration.** Run `s1_encode_eval` / longmem Frozen Corpus on 1/2/3
   turn batches vs the 5-turn baseline (with and without the CHANGE-1 `final` line).
   Watch for **over-encoding thin material** and confidence inflation. This is the

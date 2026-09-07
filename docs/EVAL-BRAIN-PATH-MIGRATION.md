@@ -107,8 +107,8 @@ writer while the daemon runs.
 many and is the canonical pull — it walks corrections and attaches `_corrections`.
 Strictly better than the raw SQL it replaces.
 
-**`analyzer.py` is already half-migrated.** It walks `traces` for `_walk_encoder`
-and `_walk_scouts`, then reaches for `nodes.jsonl` for node content. B2 finishes a
+**`analyzer.py` is already half-migrated.** It walks `traces` for `_walk_encoder`,
+then reaches for `nodes.jsonl` for node content. B2 finishes a
 migration already underway — cf. `id:24caccca`, half-migrated code accumulates.
 
 ---
@@ -147,7 +147,7 @@ amended versions:
    `id:332d170a`, "eval sites stay traceless"), but it is superseded by the B2
    ruling, whose delta read cannot exist without emission — and its
    pollution rationale doesn't hold: the eval already writes the
-   system-under-test's own traces (`encoding_run`, scouts, journal) via
+   system-under-test's own traces (`encoding_run`, journal) via
    `trace_append`, and mutation traces are the same class of signal. Fixed:
    the local dispatch now routes through `dispatch_command` (mirroring
    `IsolatedBrain.dispatch`), which also restores `check_unknown_keys` and
@@ -195,8 +195,6 @@ longer a divergence to reconcile. Its KV key set (2) and truncation (220/120) ar
 what step 1's reader must either match or deliberately supersede.
 
 Also in scope, same class of rot:
-- `eval/longmem/cost_summary.py:41` — `'scout_synthesis'`, a scout deleted from the
-  codebase.
 - `eval/longmem/analyzer.py:88` and `eval/longmem/structural_diff.py:70` — read the
   dead `keywords` field. (`structural_diff`'s `gold_keywords` is a *different*
   thing — local gold-matching vocabulary. Leave it.)
@@ -212,32 +210,12 @@ clean of stale references; recover the two functions from git
 Port them into `eval/longmem/analyzer.py` (maintained, on the live corpus, wired
 to the A/B machinery). Do not resurrect the old harness.
 
-### 4 — the `context_anchors` restore eval
+### 4 — the `context_anchors` restore eval (moot)
 
-Blocked on 1-3, because the point is to measure with an instrument we trust.
-
-- `context_anchors` is an **encode**-side field. `sweep.py` is explicitly "Stage 2 —
-  recall over a frozen corpus, zero encoding" and cannot see it.
-- `build_corpus.py` **does** support `interaction_overrides={'s1_scout_facts': N}`
-  (now `tests.interaction_override.override_interaction`). Two encode runs, v7 vs a
-  DORMANT v8.
-- Run v8 as an override arm, run both arms, compare noun retention, and move
-  `context_anchors` into the code default only if it holds.
-
-**Shared-constant hazard (verified 2026-08-16, found by 17d9ae94 via 2ee7a900):**
-`SCOUT_FACTS_INTERACTION_DEFAULT` (`scales/s1/scouts/contract.py`) embeds
-`FACTS_OUTPUT_SCHEMA` **by reference**. Build the v8 schema for the override arm
-via `copy.deepcopy(FACTS_OUTPUT_SCHEMA)` — `{**...}` is a shallow copy and the
-field sits four levels down
-(`["properties"]["candidates"]["items"]["properties"]`), so spread-then-assign
-mutates the shared constant in-process and silently contaminates the baseline
-arm. Touch the constant itself only when promoting the winner, as one step.
-
-Context for why this matters: seed_7 (`id:cc834325`) measured noun retention
-regressing on every transcript, −1 to −18pt. `context_anchors` was the fix. seed_8
-(`id:50018eb9`) shipped it and **never re-reported the axis**. It was then killed
-silently by the Structured Outputs migration on 2026-05-17. This eval is the
-measurement that was skipped.
+`context_anchors` was a field of the facts scout's output. The scout muster was
+removed in September 2026, so there is no schema to restore the field into and
+nothing to measure. The noun-retention axis itself is still unmeasured on the
+current encoder — step 3's port is what makes measuring it possible.
 
 ---
 
