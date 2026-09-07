@@ -1,7 +1,7 @@
 """S1 Scribe model resolution: the encoder model comes from the s1e
 interaction config, not a source literal.
 
-`run_encoding_agent` is monolithic (catalog, muster, traces, loop), so a
+`run_encoding_agent` is monolithic (catalog, traces, loop), so a
 behavioural test would need a full brain + LLM double. These pins hold the
 two lines that make the model table-driven, the same way the query-expansion
 gate is pinned: as live statements, not substrings that could survive in a

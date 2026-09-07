@@ -91,8 +91,8 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
         # The encoder lane's 600s ceiling is the wrong shape here — a recall
         # that waits ten minutes has already failed. max_retries=0 keeps the
         # bound hard (the SDK default of 2 would triple the worst case); recall
-        # proceeds on the primary query when expansion misses, which is the
-        # same best-effort posture scouts/base.py takes.
+        # proceeds on the primary query when expansion misses — best-effort,
+        # never blocking.
         client = anthropic.Anthropic(
             timeout=RECALL_EXPANSION_TIMEOUT_S, max_retries=0)
     except Exception:

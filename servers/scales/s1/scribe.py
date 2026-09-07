@@ -15,8 +15,7 @@ What stays S1-specific:
   single source (SessionContext.s1e_chain).
 - **The encode logic** — `encode.run_encoding(brain, dispatch, counter,
   session_id)` stays the standalone callable so the eval harnesses
-  (`longmem/replay`, `s1s_ab_wiring_check`) drive it directly with their own
-  brain + dispatch. `S1Scribe` is the *production* wrapper: it binds the
+  (`longmem/replay`) drive it directly with their own brain + dispatch. `S1Scribe` is the *production* wrapper: it binds the
   daemon's brain + the in-process dispatch + the run chain.
 
 Execution: in-process on the daemon's brain — writes serialize under

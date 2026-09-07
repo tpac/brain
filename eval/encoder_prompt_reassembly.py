@@ -97,13 +97,14 @@ def assemble(brain, session_id, view_policy, older_than=None):
     preamble, body, _t, _i = _build_user_content(
         brain, messages, 0, session_id, lived_sequence=True,
         precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=None, view_policy=view_policy, view_now=now)
+        view_policy=view_policy, view_now=now)
     return preamble + "\n\n" + body
 
 
 def strip_scout_blocks(text):
-    """Muster is off in the harness — remove the capture's scout renders so
-    size comparison is apples-to-apples."""
+    """The encoder no longer renders scout blocks; captures recorded before the
+    muster was removed still carry them — strip so size comparison is
+    apples-to-apples."""
     text = re.sub(r'<scout_legend>.*?</scout_legend>\n?', '', text,
                   flags=re.DOTALL)
     return re.sub(r'\s*<scout_notes>.*?</scout_notes>\n?', '\n', text,

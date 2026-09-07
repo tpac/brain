@@ -2,7 +2,7 @@
 
 Walks the eval log and per-item artifacts to compute:
 
-  - Per-item token usage by component (encoder/scouts/surface/answerer)
+  - Per-item token usage by component (encoder/surface/answerer)
   - Per-item dollar cost using model rates
   - Per-item wall time + latency breakdown
   - Cohort aggregates + percentiles
@@ -35,11 +35,7 @@ RATES = {
 # What model each component uses (matches the runtime config)
 COMPONENT_MODEL = {
     'encoder': 'sonnet',         # claude-sonnet-4-6
-    'scout_temporal': None,      # algorithmic, no LLM
-    'scout_quote': 'haiku',      # claude-haiku-4-5
-    'scout_facts': 'haiku',
-    'scout_synthesis': 'haiku',
-    'surface': 'haiku',
+    'surface': 'haiku',          # claude-haiku-4-5
     'answerer': 'haiku',
     'judge': 'sonnet',           # the longmem judge (post-answer correctness check)
 }
