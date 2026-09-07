@@ -13,7 +13,10 @@ No DB needed — a tiny stub brain feeds the readers the controlled inputs.
 """
 import os
 import sys
+from types import SimpleNamespace
 from datetime import datetime, timezone
+
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -44,7 +47,7 @@ class _StubBrain:
 
 
 def _ep(rt, summary, ts, tid, tool=None, content=None):
-    # Real message traces store the FULL body in metadata['content'] (≤4000) and a
+    # Real message traces store the capped body in metadata['content'] and a
     # 200-char display `summary`; tool_result traces store only the cue in summary.
     meta = {'tool': tool} if tool else {}
     if content is not None:
@@ -99,6 +102,45 @@ def test_messages_render_full_content_not_summary():
     out = _render_lived_sequence_timeline(brain, 'sess', MESSAGES)
     assert 'can you check the wal-index path?' in out          # content-only, not in summary
     assert 'holds the lock through the whole batch' in out     # content-only, not in summary
+
+
+@pytest.mark.parametrize('body_length', [8000, 8500])
+def test_episode_bodies_survive_store_gather_and_both_timelines(body_length):
+    """Keep long messages and the store's overflow marker through S1 assembly."""
+    from servers.brain_traces import _s0_trace
+    from servers.scales.s1.encode import _gather_messages
+    from servers.session_context import SessionContext
+
+    episodes = []
+
+    def append(**event):
+        tid = str(len(episodes) + 1)
+        episodes.append(_ep(event['ref_type'], event['summary'],
+                            '2026-09-07T00:00:0' + tid, tid,
+                            content=event['metadata']['content']))
+        return tid
+
+    brain = _StubBrain(episodes)
+    brain._trace_dal = SimpleNamespace(append=append)
+    brain.get_conversation = lambda *a, **kw: [
+        {'role': role, 'content': ep['metadata']['content'], 'trace_id': ep['id']}
+        for role, ep in zip(('user', 'assistant'), episodes)]
+    ctx = SessionContext(session_id='episode-fidelity')
+    bodies = ['q' * 7990 + 'USER_TAIL!', 'a' * 7990 + 'ASST_TAIL!']
+    # Both bodies have exactly 8,000 characters before optional overflow.
+    for ref_type, body in zip(('user_message', 'assistant_message'), bodies):
+        _s0_trace(brain, ctx, event_type='delta', ref_type=ref_type,
+                  summary='short excerpt', content=body + 'z' * (body_length - 8000))
+
+    messages = _gather_messages(brain, ctx.session_id)
+    for body, message in zip(bodies, messages):
+        expected = body
+        if body_length > 8000:
+            expected += ' …[+500 chars truncated at trace store]'
+        assert message['content'] == expected
+        assert expected in _render_markdown_timeline(brain, messages)
+        assert _xml_escape(expected) in _render_lived_sequence_timeline(
+            brain, ctx.session_id, messages)
 
 
 def test_lived_sequence_escapes_xml():

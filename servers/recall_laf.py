@@ -129,9 +129,8 @@ DEFAULT_CONFIG = {
     'moment_gains': {},
 }
 
-MOMENT_TEXT_CAP = 500   # slot idf text cap — the production recall-query cap
-                        # (pipeline_contract 'user_message_query') and the
-                        # walker's TEXT_CAP; keeps slot idf commensurate with j0
+MOMENT_TEXT_CAP = 500   # history-slot idf cap, matching the walker's fitted TEXT_CAP;
+                        # independent of the current prompt's recall-query cap
 
 CONFIG_TTL_S = 60.0           # K-store overlay refresh cadence
 TITLES_TTL_S = 60.0           # min seconds between title-idf rebuilds

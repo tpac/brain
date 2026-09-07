@@ -1045,13 +1045,12 @@ def _render_lived_sequence_timeline(brain, session_id, messages, streams=None,
         return _render_markdown_timeline(brain, messages)
 
     def _text(ep):
-        # Full message body lives in metadata['content'] (≤4000); `summary` is the
-        # 200-char display truncation. Mirror get_session_turns (dal.py): prefer
-        # content, fall back to summary. Truncate to the display limit, mark the
-        # cut with an ellipsis, then escape.
+        # The store-capped message body lives in metadata['content']; `summary`
+        # is the short display excerpt. Preserve the body and any store-limit
+        # marker when the timeline limit is None, then escape for XML.
         meta = ep.get('metadata')
         body = (meta.get('content') if isinstance(meta, dict) else None) or ep.get('summary') or ''
-        cut = body[:lim] + ('…' if len(body) > lim else '')
+        cut = body[:lim] + ('…' if lim is not None and len(body) > lim else '')
         return _xml_escape(cut)
 
     # Piece 2: per-turn <provenance> — the trace↔node links (what recall surfaced

@@ -49,6 +49,12 @@ will resume. Choose the return path from the tools actually available on this ho
 
 ### Codex
 
+Prefer an event-driven listener that runs a function or script without invoking
+the model while the inbox is quiet, then wakes this task only on a new message.
+Check the available tools for that capability before choosing a prompt schedule.
+A heartbeat is not equivalent to Claude Code's `Monitor`: even a check that finds
+nothing and produces no visible answer still incurs a model run.
+
 Codex does not necessarily expose Claude Code's `Monitor` or `TaskStop`. Starting
 `brain-watch` with `exec_command` only starts a process; its stdout is not a verified
 new-turn trigger after the assistant sends a final answer. Do not call that setup
@@ -60,9 +66,23 @@ While actively coordinating, call `self_inbox` between useful work steps and use
 check again; these checks work only while the turn remains active. State any
 pending reply honestly before ending the turn.
 
-When the operator asks to watch or remain reachable between turns, use the app's
-`automation_update` tool, if available, to create or reuse a heartbeat attached to
-the current task. Follow the tool's current schema and supported cadence. Its
+For a host integration, the documented app-server protocol provides building
+blocks: `command/exec` runs a command without creating a thread or model turn,
+and streams output to its connected client. That client can call `turn/start`
+with `input: []` and `toolOutput: {name, output}` only when a message arrives.
+This supplies actual tool output rather than attributing a generated prompt to
+the operator. See the [app-server documentation](https://learn.chatgpt.com/docs/app-server).
+These are protocol capabilities, not an installed listener or scheduler. An
+integration still needs an authorized connection to the app-server that owns
+this task, message deduplication, and cancellation when the operator speaks.
+Do not assume a separately launched app-server controls the existing Desktop
+task, or that a command-output notification automatically wakes its model.
+
+When the operator asks to watch between turns and no verified event-driven route
+is available, explain the heartbeat's per-check model cost before using the app's
+`automation_update` tool to create or reuse one attached to the current task.
+If the operator wants checks without model runs, report the integration gap;
+do not substitute a prompt heartbeat. Follow the tool's schema and cadence. Its
 prompt should check this stream's inbox, handle replies within the authorized
 scope, and stay quiet when nothing actionable changes. Record the automation id
 so it can be paused when the watch ends. A scheduled check is periodic, not an
