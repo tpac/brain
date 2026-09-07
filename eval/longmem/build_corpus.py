@@ -303,7 +303,7 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
                  s1e: str, ingest_surface: str, s2_every_n: int,
                  label: str, qids: str = None, force: bool = False,
                  interaction_overrides: dict = None, lived: bool = True,
-                 seed_pack: str = None) -> str:
+                 seed_pack: str = None, interactions_off: list = None) -> str:
     _load_env()
 
     # Seed-pack override must land before any eval Brain is created — the
@@ -381,6 +381,11 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
     # collide on one hash and the cache would hand back the wrong arm's corpus.
     if lived:
         config["s1e_lived"] = True
+    # An interaction turned OFF changes the encoded graph (the assembler skips
+    # its block), so it joins the address — key absent when nothing is off, so
+    # every pre-existing corpus keeps its hash.
+    if interactions_off:
+        config["interactions_off"] = sorted(interactions_off)
     config["k_fingerprints"] = _k_fingerprints(override_templates)
     config["seed_pack"] = _seed_pack_token()
     h = corpus_config_hash(config)
@@ -444,6 +449,11 @@ def build_corpus(items_per_axis: int, seed: int, oracle: str,
             _apply_surface_override(brain, ingest_surface)
         for ov_name, ov_template in override_templates.items():
             override_interaction(brain, ov_name, template=ov_template)
+        for off_name in (interactions_off or []):
+            # template=None keeps the effective words; only `enabled` flips —
+            # the same door a production `enabled: false` override uses.
+            override_interaction(brain, off_name, parameters={"enabled": False},
+                                 set_by="eval-interaction-off")
 
         t0 = time.time()
         stats = replay_item(
@@ -802,6 +812,11 @@ def main():
                    help="Comma-separated name=version pairs, fetched from the live daemon's "
                         "registered (incl. DORMANT) versions and activated in each eval brain. "
                         "e.g. 's1e=24'. Part of the corpus hash.")
+    p.add_argument("--interaction-off", dest="interaction_off", default=None,
+                   help="Comma-separated interaction names to run DISABLED in each eval "
+                        "brain (config `enabled: false`, words untouched) — e.g. "
+                        "'s1e_gist' for a control arm of an install whose main has no "
+                        "gist. Part of the corpus hash.")
     p.add_argument("--pooled", action="store_true",
                    help="§20.18 pooled build: interleave the picked items' haystack "
                         "sessions by date into ONE brain (per-conversation session ids, "
@@ -818,12 +833,15 @@ def main():
                 n, v = pair.split("=", 1)
                 overrides[n.strip()] = int(v.strip())
 
+    interactions_off = [n.strip() for n in (args.interaction_off or "").split(",")
+                        if n.strip()]
+
     if args.pooled:
         # args.lived is None unless the user pinned an arm explicitly — pooled
         # takes no arm pin (it always builds lived; there is no control pooled).
-        if args.lived is not None or overrides or args.seed_pack:
+        if args.lived is not None or overrides or args.seed_pack or interactions_off:
             p.error("--pooled does not compose with --lived/--no-lived/"
-                    "--interaction-override/--seed-pack")
+                    "--interaction-override/--interaction-off/--seed-pack")
         build_pooled_corpus(args.oracle, args.qids, args.s1e, args.ingest_surface,
                             args.s2_every_n, args.label, force=args.force,
                             items_per_axis=args.items, seed=args.seed)
@@ -833,7 +851,8 @@ def main():
                  args.s2_every_n, args.label, qids=args.qids, force=args.force,
                  interaction_overrides=overrides or None,
                  lived=(True if args.lived is None else args.lived),
-                 seed_pack=args.seed_pack)
+                 seed_pack=args.seed_pack,
+                 interactions_off=interactions_off or None)
 
 
 if __name__ == "__main__":
