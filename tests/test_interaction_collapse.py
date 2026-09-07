@@ -29,7 +29,7 @@ from tests.isolated_brain import IsolatedBrain
 # One name per verdict, chosen so every branch of the policy loop is exercised.
 MATCHING_COMPARE = 's1e'           # deployed byte-identical to the default
 DIVERGED_COMPARE = 's2_healer'     # a real local override — must survive
-ADOPT_NAME = 's1_scout_quote'
+ADOPT_NAME = 's2_community'
 PIN_NAME = 'trace_recording'
 SKIP_NAME = 'recall_laf'
 RETIRE_NAME = 'boot'               # no code default at all

@@ -155,8 +155,40 @@ claude plugin install entity@anchor
 
 Then start a Claude Code session. First boot sets up the runtime, creates a
 fresh brain, and seeds it with a small pack of identity and mechanism
-memories it grows from. You can add your API key in the plugin's settings
+memories it grows from.
+
+Coming from the old `brain` plugin? Follow [MIGRATING.md](MIGRATING.md) —
+the rename means it is not an in-place update. You can add your API key in the plugin's settings
 when Claude Code asks, or set `ANTHROPIC_API_KEY` in your shell.
+
+### Codex (ChatGPT desktop, Codex mode)
+
+Entity ships a Codex manifest too (`.codex-plugin/plugin.json`, hooks in
+`hooks/hooks.codex.json`). The `codex` CLI lives inside the app at
+`/Applications/ChatGPT.app/Contents/Resources/codex` if it is not on your PATH.
+
+```bash
+codex plugin marketplace add tpac/entity
+codex plugin add entity@anchor
+```
+
+Once Entity's tools are connected, ask **“Finish Entity setup.”** One in-app
+confirmation explains Entity-wide tool permission and automatic memory. Accepting
+saves permission for Entity's current and future tools, including memory changes
+and messages, while preserving your individual tool restrictions. If hooks need
+trust, Codex then opens its own review in a terminal window; you choose which
+hooks to trust without typing commands. Return here to check setup. An existing
+connection may need to reload before using the saved tool permission.
+
+Codex runs plugins from a cache copy. Direct marketplace installs may need to
+finish runtime bootstrap and reconnect before tools appear. The checkout
+installer below prepares the cached runtime before reporting success.
+
+Working from a checkout? Codex copies a plugin's source directory wholesale, so
+never point a marketplace at the repo itself. `scripts/codex-install.sh`
+packages the tree, points your personal marketplace
+(`~/.agents/plugins/marketplace.json`) at it, installs, prepares the runtime,
+and verifies. See [setup behavior and troubleshooting](docs/CODEX-SETUP.md).
 
 ## Where your memories live — and what survives
 

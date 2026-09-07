@@ -29,7 +29,7 @@ Design: docs/SELF-CHANNEL-DESIGN.md · taxonomy: docs/LATERAL-SCALES.md
 """
 
 from servers.trace_contract import REF_TYPES as _REF_TYPES
-from servers.loud_truncation import cap_text_loud
+from servers.loud_truncation import cap_text_loud, compose_block_loud
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -49,7 +49,6 @@ STREAM_TERM_PLURAL = "streams of thought"
 # `peer:<handle>` slots in without a retrofit — see docs/LATERAL-SCALES.md.
 NAMESPACE = "self"
 
-ADDR_NEXT_BOOT = "self:next_boot"   # the next stream to boot (temporal)
 ADDR_BROADCAST = "self:broadcast"   # every live stream
 
 
@@ -58,18 +57,9 @@ def address_for_stream(session_id):
     return "self:%s" % session_id
 
 
-# Which addresses a delivery shim pulls into Observation, keyed by hook:
-ROUTES_AT_BOOT = (ADDR_NEXT_BOOT,)          # boot_brain.py — temporal (but see note below)
-
-
-def routes_at_turn(session_id):             # pre_response_recall — spatial / live
+def routes_at_turn(session_id):
     """Addresses a live stream consumes into O at each hook fire."""
     return (address_for_stream(session_id), ADDR_BROADCAST)
-
-
-def address_from_target(target):
-    """Map an MCP-friendly target — a session_id, or 'broadcast' — to an address."""
-    return ADDR_BROADCAST if target == 'broadcast' else address_for_stream(target)
 
 
 def is_session_id(s):
@@ -103,7 +93,7 @@ def is_session_id(s):
 # ═══════════════════════════════════════════════════════════════
 # TRUNCATION CONTRACT  —  one truncation point, always loud
 # ═══════════════════════════════════════════════════════════════
-# Tom's standing rule (node 8178593a): every truncation point must have an
+# Standing rule: every truncation point must have an
 # EXPLICIT, documented contract — never a bare magic number doing a silent
 # slice. This section IS that contract for the self-channel.
 #
@@ -169,12 +159,6 @@ def ttl_kind_for(address):
     categories — the next_boot letter isn't a stored courier row, so it has no
     TTL here. (A self-message has no `intent` axis — removed 2026-06-06.)"""
     return 'broadcast' if address == ADDR_BROADCAST else 'directed'
-
-
-# ── Phase 3 forward placeholder (NOT yet enforced) ──────────────────────
-# The boot-letter budget — designed when Phase 3 (the first-person letter)
-# lands. Defined so the design-doc reference resolves; nothing enforces it today.
-LETTER_BODY_MAX = 2000
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -325,16 +309,12 @@ def render_received_block(messages, cap=RECEIVED_BLOCK_MAX):
     head = "🧵 from your other streams of thought"
     note = ("   — what they did is theirs; you know it, you didn't do it. "
             "Attribute accordingly if you encode.")
-    parts, used, dropped = [], len(head) + len(note), 0
-    for i, m in enumerate(messages):
-        rendered = _render_one(m).strip()
-        if parts and used + len(rendered) + 2 > cap:   # always keep at least one
-            dropped = len(messages) - i
-            break
-        parts.append(rendered)
-        used += len(rendered) + 2
-    body = "\n\n".join(parts)
+    body, _, dropped = compose_block_loud(
+        messages, _render_one, cap, reserved=len(head) + len(note))
     if dropped:
-        body += ("\n\n(+%d more waiting — over the injection budget; "
+        # Drained means consumed: a cap-dropped message is spent, not queued
+        # for a later Stop — the courier (self_inflight) is the only place
+        # it survives, so the tail must not promise it will come back.
+        body += ("\n\n(+%d more drained but over the injection budget — "
                  "full text in the dashboard Streams tab)" % dropped)
     return "%s\n%s\n\n%s" % (head, note, body)

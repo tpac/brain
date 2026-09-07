@@ -308,7 +308,7 @@ def nodes_for_traces(surface_traces, encode_traces, target_traces,
             # POST-increment counter — so a run at stop S saw exactly the turns
             # with chain-stop < S, never == S. The >= form marked the first turn
             # AFTER each encode as covered (found live: 9-true/1-false where the
-            # replay's own count said 2 unencoded — Tom, dry-run 3, 2026-07-02).
+            # replay's own count said 2 unencoded).
             # LIMIT (proximity is heuristic): the encoder reads a sliding message
             # window, so a single failed run's turns are normally re-covered by
             # the next run's lookback (correct). But if 2+ consecutive runs fail,

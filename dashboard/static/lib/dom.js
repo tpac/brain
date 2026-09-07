@@ -160,6 +160,14 @@ export function identityChipHTML(human, agent) {
     h + '<span style="color:#555;margin:0 3px">→</span>' + a + '</span>';
 }
 
+/** The S0 session stamp as a chip: which model produced the turn, with the
+ *  host runtime in the hover. Empty string when the row predates the stamp. */
+export function modelChipHTML(model, host) {
+  if (!model) return '';
+  const title = 'model' + (host ? ' · host: ' + escapeHtml(host) : '');
+  return '<span class="chip chip--model" title="' + title + '">' + escapeHtml(model) + '</span>';
+}
+
 /** Convenience: clear a node and append a list of children atomically.
  * Avoids the half-rendered flash that `node.innerHTML = ''` + repeated
  * appends causes. */

@@ -66,5 +66,7 @@ DB_PATH="$BRAIN_DB_DIR/brain.db"
 export PYTHONPATH="$PLUGIN_DIR${PYTHONPATH:+:$PYTHONPATH}"
 
 # exec so launchd supervises the daemon directly (not this shell).
-# KeepAlive restarts the daemon, not the shell, when it exits.
-exec "$BRAIN_PYTHON" -m servers.daemon_server "$DB_PATH"
+# KeepAlive restarts the daemon, not the shell, when it exits. The role-named
+# interpreter makes the process read `Entity-daemon` in Activity Monitor
+# (brain-env.sh brain_python_as); the fallback is the plain venv python.
+exec "${BRAIN_PYTHON_DAEMON:-$BRAIN_PYTHON}" -m servers.daemon_server "$DB_PATH"

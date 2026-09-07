@@ -171,7 +171,7 @@ Generalizable lessons surfaced during execution that aren't specific to this fea
 Locked decisions from the design conversation. Each is one line + WHY. New decisions append here as we work through sections.
 
 1. **`source_refs` is a polymorphic field on any node — not a typed category.** Type stays open-text per Anchor's existing convention. *Why*: aligns with the encoder prompt's "type is free text — and emergent" rule; avoids closed enums; lets one field serve every node shape (fact, quote, pattern, correction, ...).
-2. **Targets: S0 + S1 trace events. S2 deferred.** *Why*: S0 and S1 events are already visible to the encoder via conversation + scout reports + node catalog; S2 referencing requires an S2-scale recall mechanism that doesn't exist yet.
+2. **Targets: S0 + S1 trace events. S2 deferred.** *Why*: S0 and S1 events are already visible to the encoder via conversation + node catalog; S2 referencing requires an S2-scale recall mechanism that doesn't exist yet.
 3. **Writers: all encoding paths.** S1E and every S2 encoder (community, consolidation, healer) can write `source_refs`. *Why*: every encoding path benefits from anchoring its outputs to the trace events that drove them.
 4. **Tool calls are first-class trace events today.** Per decision 353135fa (PostToolUse hook, [post_tool_trace.py](hooks/scripts/post_tool_trace.py)), each tool call writes its own row in `trace_events` with `scale='s0'`, `event_type='delta'`, `ref_type='tool_result'`, `summary={human-readable tool call}`, `metadata={"tool": tool_name}`. **`source_refs` can target individual tool calls by trace_event.id directly — no phase split needed.** *Why*: the substrate already supports per-tool addressability; the earlier Phase 1/Phase 2 split was based on incomplete code knowledge.
 5. **S0 captures the full tool stream today.** User turns, assistant text, and tool calls all land in `trace_events` as referenceable rows. No follow-on capture work needed. *Why*: the PostToolUse hook is already in production (decision 353135fa); this design rides on what's there.
@@ -929,12 +929,12 @@ Concrete delete + modify list with line targets so execution applies edits mecha
 | L98-129 (Corrections / contradictions block, four flavors) | All four flavors stay (explicit correction, catalog contradiction, stale value, live contradiction) | **Modify** — add a closing paragraph about source_refs lineage for cases that earn new correction nodes (decision 17). Don't disturb the four flavors themselves. |
 | L267-307 (Flat → Rich examples) | Four worked examples | **Modify** — augment 1-2 of these with source_refs to demonstrate the new field in context. Full text in §7.6. |
 | L194-202 (`content INTERPRETS or EXPANDS the quote`) | Frames `their_raw_quote` as the verbatim anchor that content interprets | **Modify** — extend: source_refs now provides the same role at the trace level; their_raw_quote stays for phrase-level, source_refs adds turn-level. Both coexist; not redundant. |
-| Throughout (encoder-input docs) | The encoder reads catalog + conversation + scout reports | **Modify** — add note that each turn shows its `trace:NNNNN` id, and that ids are what get copied into source_refs (§6.5). |
+| Throughout (encoder-input docs) | The encoder reads catalog + conversation | **Modify** — add note that each turn shows its `trace:NNNNN` id, and that ids are what get copied into source_refs (§6.5). |
 
 **Things explicitly NOT removed:**
 - The atomization-divergence test (still valid — it's a different question from source_refs).
 - The "Default brevity instincts" callout block (still valid).
-- The scout-deference / paraphrase / skip-when-unsure callouts (still valid).
+- The paraphrase / skip-when-unsure callouts (still valid).
 - The four Flat→Rich transformations (augment, don't replace).
 - The `their_raw_quote` / `my_raw_quote` discipline (still load-bearing — phrase-level anchoring is finer-grained than turn-level refs and serves different purposes).
 
@@ -1641,7 +1641,7 @@ If storage ever becomes a concern (today: ~50MB/year growth — comfortable for 
 
 ### 16.8 — Trim historical pre-Phase-5 `co_accessed` edges
 
-Today's graph contains `co_accessed` edges from the pre-Phase-5 era (when every recall created edges between all top-25 candidates, not just the post-Haiku selected ones). The `integrity_audit.py` warning flags this — *"co_accessed edges are X% of all edges — organic but noisy"* — and the noise undermines the new meaningful post-Haiku `co_accessed` mechanism plus the structural `co_anchored` signal (decision 15).
+Today's graph contains `co_accessed` edges from the pre-Phase-5 era (when every recall created edges between all top-25 candidates, not just the post-Haiku selected ones). The noise undermines the new meaningful post-Haiku `co_accessed` mechanism plus the structural `co_anchored` signal (decision 15).
 
 **The trim task** (runs any time after the episodic-references plan ships):
 - Identify pre-Phase-5 `co_accessed` edges (by `created_at` < Phase 5 cutover date, or by lack of selection-source metadata if older edges don't carry it).

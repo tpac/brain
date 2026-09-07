@@ -288,7 +288,7 @@ def _scan_standing_journal_items(conn):
     since 08-17` — counting the runs the subject has stayed unresolved. Past
     JOURNAL_STANDING_RUNS the encoder's own prompt tells it to escalate, but
     the only escalation route it has is... another journal note. That is the
-    closed loop finding id:5732d11c named: the S2 consolidation encoder wrote
+    closed loop: the S2 consolidation encoder wrote
     "operator confirmation still needed" three times running with no path to an
     operator.
 

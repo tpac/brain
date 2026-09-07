@@ -1,6 +1,6 @@
 """Write-boundary guardrails for brain_logs.db (the SQLITE_BUSY_SNAPSHOT fix).
 
-The bug (brain id:371895a8): brain_logs.db writes ran on the same shared
+The bug: brain_logs.db writes ran on the same shared
 connection that serves concurrent reads. An open read cursor pins a WAL
 snapshot on the connection; once ANY other connection commits (a hook
 process, the MCP monitor), a write on the snapshot-holding connection is a

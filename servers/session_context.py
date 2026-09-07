@@ -48,6 +48,12 @@ class SessionContext:
         # client-side, so its stop never updates this → it reads as a heartbeat.
         # -1 = recall has never run for this session.
         self.last_recall_stop: int = -1
+        # Twin of last_recall_stop for delivery continuations: the stop
+        # number a dial-on delivery-block armed (+ when, for the freshness
+        # window) — classified and consumed in post_response_common, cleared
+        # on boot/resume. -1/'' = none armed.
+        self.last_delivery_stop: int = -1
+        self.last_delivery_armed_at: str = ''
         # Integration cadence (every Nth conversational turn → S1 Scribe) is NOT
         # a stored counter anymore — it's derived live from traces via
         # turns_since_last_encode(). A maintained counter desynced across resume
@@ -100,6 +106,13 @@ class SessionContext:
         # written by an agent — derived from cwd at boot, stamped onto every
         # S0/S1 write by the dispatch chokepoints. Read by the LAF proj lane.
         self.project: str = ''
+        # What the stream rides on — the model that produced the latest turn
+        # and the host runtime ('claude-code' / 'codex'). Fed in per turn by the
+        # UserPromptSubmit / Stop hooks; stamped onto every S0 row by the S0
+        # write door (trace_contract.S0_SESSION_STAMP_FIELDS). The value here is
+        # the LATEST one — presence reads it; the per-turn record is the trace.
+        self.model: str = ''
+        self.host: str = ''
         # Segment / conversation-shift state. Were brain_meta keys
         # (`segment_*_{session_id}`); moved here 2026-05-17 because those
         # writes on the hook_recall hot path were saturating brain.db
@@ -215,19 +228,22 @@ class SessionContext:
         return self.node_activity.get(node_id, {})
 
     def set_env(self, cwd: str = '', branch: str = '', worktree=None,
-                project=None) -> None:
-        """Stamp the Claude-side session env — where this stream is working.
+                project=None, model: str = '', host: str = '') -> None:
+        """Stamp the Claude-side session env — where this stream is working and
+        what it rides on.
 
-        Single mutator for the per-session identity fed in from the boot hook and
-        the WorktreeCreate/Remove hooks (the daemon never introspects Claude). The
-        per-session replacement for the global cwd/branch/worktree config that was
-        last-writer-wins across parallel streams.
+        Single mutator for the per-session identity fed in from the boot hook, the
+        WorktreeCreate/Remove hooks and the per-turn recall/Stop hooks (the daemon
+        never introspects the host). The per-session replacement for the global
+        cwd/branch/worktree config that was last-writer-wins across parallel
+        streams.
 
-        cwd/branch refresh only on a truthy value — falsy (''/None) leaves the
-        existing value, so a failed detection never clobbers a known one. worktree
-        and project are three-state: None leaves them unchanged (detection failed
-        — keep what we have), '' CLEARS (main tree / non-repo), a name SETS. That
-        None-vs-'' distinction is why detect_git_env returns None on git failure.
+        cwd/branch/model/host refresh only on a truthy value — falsy (''/None)
+        leaves the existing value, so a failed detection never clobbers a known
+        one. worktree and project are three-state: None leaves them unchanged
+        (detection failed — keep what we have), '' CLEARS (main tree / non-repo),
+        a name SETS. That None-vs-'' distinction is why detect_git_env returns
+        None on git failure.
         """
         if cwd:
             self.cwd = cwd
@@ -237,6 +253,10 @@ class SessionContext:
             self.worktree = worktree
         if project is not None:
             self.project = project
+        if model:
+            self.model = model
+        if host:
+            self.host = host
 
     def save(self, dal):
         """Save session context to DB. Creates or updates.
@@ -247,6 +267,8 @@ class SessionContext:
         data = json.dumps({
             'stop_counter': self.stop_counter,
             'last_recall_stop': self.last_recall_stop,
+            'last_delivery_stop': self.last_delivery_stop,
+            'last_delivery_armed_at': self.last_delivery_armed_at,
             'fatigue': self.fatigue,
             'remember_count': self.remember_count,
             'message_count': self.message_count,
@@ -256,6 +278,8 @@ class SessionContext:
             'branch': self.branch,
             'worktree': self.worktree,
             'project': self.project,
+            'model': self.model,
+            'host': self.host,
             'segment_id': self.segment_id,
             'segment_embeddings': self.segment_embeddings,
             'segment_node_ids': self.segment_node_ids,
@@ -281,6 +305,8 @@ class SessionContext:
                 stop_counter=data.get('stop_counter', 0),
             )
             ctx.last_recall_stop = int(data.get('last_recall_stop', -1))
+            ctx.last_delivery_stop = int(data.get('last_delivery_stop', -1))
+            ctx.last_delivery_armed_at = data.get('last_delivery_armed_at', '') or ''
             ctx.fatigue = {k: int(v) for k, v in data.get('fatigue', {}).items()}
             ctx.remember_count = int(data.get('remember_count', 0))
             ctx.message_count = int(data.get('message_count', 0))
@@ -290,6 +316,8 @@ class SessionContext:
             ctx.branch = data.get('branch', '') or ''
             ctx.worktree = data.get('worktree', '') or ''
             ctx.project = data.get('project', '') or ''
+            ctx.model = data.get('model', '') or ''
+            ctx.host = data.get('host', '') or ''
             ctx.segment_id = int(data.get('segment_id', 0))
             ctx.segment_embeddings = list(data.get('segment_embeddings', []) or [])
             ctx.segment_node_ids = list(data.get('segment_node_ids', []) or [])

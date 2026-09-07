@@ -105,7 +105,7 @@ def validate_taxonomy(data) -> list:
          Presence itself is a seed-curation standard (tests), not a gate —
          emergent aspects and pre-heal working copies legitimately lack them.
 
-    Noise-exclusivity is deliberately NOT an invariant (Tom, 2026-08-23).
+    Noise-exclusivity is deliberately NOT an invariant.
     Noise vetoes instead: a string in noise is machinery whatever else claims
     it, enforced in the registry rather than forbidden here. Requiring
     disjointness made the additive heal refuse whole reconciles — a seed

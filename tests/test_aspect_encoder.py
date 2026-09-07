@@ -91,8 +91,8 @@ class TestMenuDerivation(unittest.TestCase):
 
 
 class TestNoiseDualRouting(unittest.TestCase):
-    """noise + semantic is a LEGAL classification, kept as returned (Tom,
-    2026-08-23). This boundary used to strip noise on the reasoning that a
+    """noise + semantic is a LEGAL classification, kept as returned.
+    This boundary used to strip noise on the reasoning that a
     semantic claim refutes it — which deleted the half that does the
     filtering, silently un-noising machinery the classifier had flagged.
     Noise vetoes at read time instead; here we only record and preserve.

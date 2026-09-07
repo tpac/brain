@@ -209,8 +209,14 @@ class IntegrationUnit:
         if getattr(self, '_journal_binding', None) is None:
             from ..journal import JournalBinding
             self._journal_binding = JournalBinding(
-                self.brain, scale=self.SCALE, unit=self.NAME)
+                self.brain, scale=self.SCALE, source=self.ENCODING_SOURCE,
+                **self._journal_kwargs())
         return self._journal_binding
+
+    def _journal_kwargs(self):
+        """The binding's identity beyond scale and source — an S2 unit is
+        scoped by its NAME; the Scribe overrides with its session (+ arc)."""
+        return {'unit': self.NAME}
 
     def _inject_edge_aspects(self, system_prompt):
         """Append the edge-relation aspect vocabulary so the encoder picks
@@ -561,7 +567,7 @@ class IntegrationUnit:
 
         # read_usage(None) is the all-zero token baseline — reused on the
         # pre-usage failure path.
-        telemetry = {'elapsed_ms': 0, **read_usage(None)}
+        telemetry = {'elapsed_ms': 0, 'model': model, **read_usage(None)}
 
         # Ensure API key
         if not os.environ.get('ANTHROPIC_API_KEY'):

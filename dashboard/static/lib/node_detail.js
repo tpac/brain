@@ -38,7 +38,7 @@ const NODE_FIELDS_HIDDEN_IN_LIST = new Set([
 ]);
 
 // Pretty labels for known keys. Anything not listed renders with the raw
-// snake_case key — never silently drops, because Tom asked for ALL fields.
+// snake_case key — never silently drops. Every field renders.
 const FIELD_LABELS = {
   emotion:            'emotion',
   personal:           'personal',
@@ -204,8 +204,19 @@ function _applyFlashIfPending() {
     _pendingFlashTraceId = null;
     return;
   }
-  const find = () => document.querySelector(
-    '#traces-content .trace-event[data-trace-id="' + _pendingFlashTraceId + '"]');
+  // A rendered row can still be out of the DOM: traces.js collapses runs of
+  // same-ref_type events and builds their members only when opened. So a miss
+  // asks traces.js to open the run holding this id, then looks once more.
+  const find = () => {
+    const sel = '#traces-content .trace-event[data-trace-id="' + _pendingFlashTraceId + '"]';
+    let hit = document.querySelector(sel);
+    if (!hit && typeof window._revealTrace === 'function') {
+      try {
+        if (window._revealTrace(_pendingFlashTraceId)) hit = document.querySelector(sel);
+      } catch (_) {}
+    }
+    return hit;
+  };
   let el = find();
   // Not in the first batch? Click "Load more" once and retry. Two batches
   // cover ~60 chains, enough for nearly every realistic source-ref.

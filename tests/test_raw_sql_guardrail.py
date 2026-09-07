@@ -42,7 +42,7 @@ ALLOWED = {
     'recall_write_queue.py': 1,           # exception: bg-writer connection (off foreground), batched
     'scales/s2/rejection_table.py': 2,    # exception: owns all s2_rejections SQL — record_rejections INSERT + clear_unplaceable_rejections DELETE (relocated out of community.py)
     'channels/self_channel/signal.py': 4, # exception: parallel-stream file (SelfChannelDAL out of this effort); writes ride logs_conn_w under write_lock (2026-08-18)
-    'channels/thalamus/thalamus.py': 9,   # exception: owns all thalamus_items/thalamus_deliveries SQL (the signal.py courier pattern); writes ride logs_conn_w under logs_write_lock. 10→9: file()'s two hand-listed INSERTs became one _insert_item shared by both routes
+    'channels/thalamus/thalamus.py': 3,   # exception: owns all thalamus_items/thalamus_deliveries SQL (the signal.py courier pattern); writes ride logs_conn_w under logs_write_lock. Every item write goes through _insert_item / _touch_where (the two stamps of updated_at)
     # temporal_extraction.py: 0 — entity_dates writes migrated to EntityDatesDAL (Phase 5)
 }
 
@@ -62,7 +62,7 @@ def _scan():
 # A SELECT cursor BOUND to a name on the logs write connection holds a read
 # snapshot; the next write on that connection fails INSTANTLY with 'database
 # is locked' the moment another process commits in between (SQLITE_BUSY_
-# SNAPSHOT — busy_timeout does not apply; brain id:371895a8). The rule:
+# SNAPSHOT — busy_timeout does not apply). The rule:
 # statements on logs_conn_w are fully consumed — `conn.execute(...).fetchone()`
 # / `.fetchall()`, never `cur = conn.execute('SELECT ...')`. DML bindings are
 # fine (the statement completes inside execute(); rowcount is immediate).

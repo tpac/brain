@@ -7,7 +7,8 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
-from servers.loud_truncation import cap_text_loud, cap_list_loud
+from servers.loud_truncation import (cap_text_loud, cap_list_loud,
+                                     compose_block_loud, one_line)
 
 
 # ── SCALES ──
@@ -58,14 +59,28 @@ EVENT_TYPES = {
 # What ref_type values are valid per scale + event_type.
 # ref_type tells you WHAT the event is about. ref_id points to it.
 
+# The Thalamus delivery marker — declared here (not in thalamus_contract)
+# because channels/delivery.py needs it at load and thalamus_contract imports
+# delivery for the moment names; this file imports neither, so the constant
+# is reachable from both without a cycle. thalamus_contract re-exports it.
+REF_THALAMUS_DELIVERY = "thalamus_delivery"
+# The filing-side marker — one row on the PRODUCER's run chain per accepted
+# filing (ref_id = item id), the symmetry journal_note rows already have. An
+# item's life is then joinable across scales: filed (s1 Δ, the encoder's
+# chain) → delivered (s0 K thalamus_delivery, the session's chain) → answered
+# (item state). Written by brain_traces.write_thalamus_filed for every
+# journaling encoder — the S1 Scribe (directed, Stop) and the S2 units
+# (broadcast, boot); never s0 (a filing is a run's act, not a turn's).
+REF_THALAMUS_FILED = "thalamus_filed"
+
 REF_TYPES = {
     # Scale 0: raw exchange
     ("s0", "K"):       ["user_message",
                          "self_message",      # incoming turn from a stream of thought (self↔self),
                                               # not the operator — same exchange, different correspondent
-                         "thalamus_delivery", # Thalamus items rendered into this session at a Stop
-                                              # drain — the brain speaking to its streams; the boot
-                                              # leg's record is the ledger + boot_renders row
+                         REF_THALAMUS_DELIVERY,  # Thalamus items rendered into this session (boot or
+                                              # Stop — channels/delivery.py traces both legs); the
+                                              # brain speaking to its streams
                          "heartbeat"],        # a /watch wakeup re-arm with no real input (no operator
                                               # prompt, empty inbox). Recorded for observability, but
                                               # NOT a conversational turn — see S0 TURN CLASSIFICATION.
@@ -89,10 +104,10 @@ REF_TYPES = {
     # Encode path (chain prefix: s1e-): O=prompt given, K=node catalog, delta=actions+reasoning
     ("s1", "O"):       ["recall",            # candidates with scores
                          "encoding_prompt",    # what the encoder was given
-                         "scout_input"],       # muster scouts: what they saw
+                         "scout_input"],       # retired with the scout muster; history rows read through it
     ("s1", "K"):       ["surface_selected",  # what the surfacer picked
                          "node_catalog",       # which nodes available to encoder
-                         "scout_findings"],    # muster scouts: their candidates
+                         "scout_findings"],    # retired with the scout muster; history rows read through it
     ("s1", "delta"):   ["additionalContext",       # what reached Anchor
                          "encoding_run",            # what the encoder produced
                          "encoding_run_failed",     # LLM loop died — no writes; NOT read by
@@ -105,7 +120,8 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the trace is
                                                     # the only surviving record of the node
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
-                         "journal_note"],           # S1 Scribe residue — one note (subject=ref_id) per row
+                         "journal_note",            # S1 Scribe residue — one note (subject=ref_id) per row
+                         REF_THALAMUS_FILED],       # S1 Scribe filed a Thalamus item (ref_id = item id)
 
     # Scale 2: graph integration
     # Fires during idle hook. Operates on S1's accumulated output (the graph).
@@ -145,7 +161,8 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the retired
                                                     # junk purge wrote these; the trace is the only record
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
-                         "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
+                         "journal_note",            # S2 unit residue (consolidation, community) — one note per row
+                         REF_THALAMUS_FILED],       # S2 unit filed a Thalamus item (ref_id = item id)
 
     # Scale 3: reasoning integration
     # Operates on S2's output (clusters, trajectories, landscapes).
@@ -182,34 +199,97 @@ REF_TYPES = {
 #                        last_user_activity reset this turn)
 #   self_message        inbound msg from another stream            no  (planned)
 #                        (anchor↔anchor)
+#   thalamus_delivery   the brain's own due items rendered into    no  (planned)
+#                        this session (channels/delivery.py)
 #   heartbeat           /watch wakeup re-arm, no real input        no  (never)
 #                        (no prompt + empty inbox)
 #
-# "conversational" means BOTH: (a) the turn counts toward the S1 Scribe's
-# integration CADENCE — derived live from these traces by
-# turns_since_last_encode() (counts s0 user_message turns since the last encode),
-# which the Scribe gates on (>= ENCODE_EVERY). This is distinct from stop_counter,
-# the per-stop SEQUENCE number that advances on EVERY stop (incl. heartbeats) so
-# chain IDs stay unique. And (b) the encoder reads it via get_session_turns.
-# Non-conversational turns are still written to S0 (for observability) but never
-# drive or feed encoding.
+# The dial governs TWO things, both timeline-side:
+#   (a) the encoder's conversation window — get_session_turns selects
+#       CONVERSATIONAL_REF_TYPES, derived below, so a True row's turns enter
+#       the timeline as their own incoming side (the trace's metadata.content
+#       carries the delivered block; channels/delivery.py stamps it);
+#   (b) reaction classification — the stop right after a delivery-block
+#       (post_response_common's delivery-continuation branch) records the
+#       response as a real assistant_message iff any delivered ref_type is
+#       True here; otherwise it stays a heartbeat. Flipping a row therefore
+#       makes the incoming message AND the reaction appear together.
+# The dial does NOT govern the S1 Scribe's CADENCE: turns_since_last_encode
+# counts s0 user_message rows only (dal_logs.conversational_turns_since,
+# hardcoded ref_type), so a flipped correspondent enters the conversation
+# cleanly without ticking encode cadence. Cadence is also distinct from
+# stop_counter, the per-stop SEQUENCE number that advances on EVERY stop
+# (incl. heartbeats) so chain IDs stay unique. Non-conversational turns are
+# still written to S0 (for observability) but never drive or feed encoding.
 #
-# anchor↔anchor encoding is a PLANNED capability, switched OFF today. The single
-# dial to enable it is below: flip self_message to True. heartbeat stays False
-# forever.
+# anchor↔anchor and brain↔anchor encoding are PLANNED capabilities, switched
+# OFF until the encoder prompt is taught the correspondent elements. The
+# single dial per correspondent is below. heartbeat stays False forever.
 S0_CONVERSATIONAL_INCOMING = {
     "user_message": True,
-    "self_message": False,   # recorded today; flip to True to encode anchor↔anchor turns
-    "heartbeat":    False,   # a wakeup re-arm is never a turn
+    "self_message": False,        # another stream of me — flip to include anchor↔anchor turns
+    "thalamus_delivery": False,   # the brain's own items — flip to include brain↔anchor turns
+    "heartbeat":    False,        # a wakeup re-arm is never a turn
 }
 
 # Flat ref_type set the encoder's conversation window (dal.get_session_turns)
 # selects: the conversational incoming types + the assistant response side.
-# DERIVED from S0_CONVERSATIONAL_INCOMING so there is exactly one dial — flipping
-# a type there updates both the Scribe counter gate and the encoder whitelist.
+# DERIVED from S0_CONVERSATIONAL_INCOMING so there is exactly one dial. This
+# whitelist binds at IMPORT; the classification half (arms_continuation,
+# below) reads the dict live so tests can simulate a flip — in production
+# both move together, because a flip is a source edit + daemon restart
+# (deploy semantics, like every contract constant), never a runtime mutation.
 CONVERSATIONAL_REF_TYPES = tuple(
     rt for rt, conv in S0_CONVERSATIONAL_INCOMING.items() if conv
 ) + ("assistant_message",)
+
+def arms_continuation(traced_ref_types):
+    """The dial's classification consumer, named: a Stop-blocking delivery of
+    these (traced) incoming ref_types arms a reaction stamp iff any of them
+    is a dial-on correspondent. Reads the dial dict LIVE by design — a test
+    simulates a flip by patch.dict'ing one row; in production the dict only
+    changes with a source edit + restart, so this and the import-frozen
+    timeline whitelist move together at deploy time."""
+    return any(S0_CONVERSATIONAL_INCOMING.get(rt, False)
+               for rt in traced_ref_types)
+
+
+# The window measures the WHOLE continuation turn — armed at the end of the
+# blocked Stop, compared at the start of the next one — not the resume
+# latency (the counter match already restricts to the very next Stop). So it
+# must accommodate a continuation that runs a test suite or an agent chain,
+# while still refusing an abandoned one: ESC fires no Stop, freezing counter
+# and stamp, and a /watch wakeup HOURS later would otherwise claim the
+# reaction. Wall-clock: hooks are off the grain axis.
+DELIVERY_REACTION_WINDOW_MIN = 60
+
+
+# ── S0 SESSION STAMP ──
+# Per-session facts every S0 row carries, next to the identity stamp: which
+# model produced the turn and which host runtime the stream rides on
+# ('claude-code' / 'codex'). Unlike human_identity / agent_identity — a
+# process-wide property stamped by TraceDAL from env — these vary PER SESSION
+# and per turn (one daemon serves streams on different models; a stream can
+# switch model mid-session), so they live on the SessionContext and are
+# stamped by the S0 write door (brain_traces.stamp_s0_session) from the ctx
+# the hook resolved. Fed in by the UserPromptSubmit / Stop hooks
+# (hook_common.turn_model / host_name): Codex puts `model` on every hook
+# payload; Claude Code exposes it only in the transcript's assistant entries.
+# The session row mirrors the LATEST value so presence can say which model a
+# stream is on right now; the per-turn truth is the S0 row.
+S0_SESSION_STAMP_FIELDS = ('model', 'host')
+
+
+# Operator dialogue — the two ref_types that ARE the operator↔Anchor
+# exchange. Presence (focus / recency ranking / recent_msgs), the
+# recall_episodes conversation default, the LAF trace matrix, and the
+# dual-store trace chain are PINNED here, deliberately NOT dial-derived: a
+# correspondent flipped on in the dial enters the encoder timeline (and its
+# embed lockstep) WITHOUT changing what "the conversation" means to
+# presence, episodes, or scoring. Flipped correspondents stay reachable
+# there explicitly (recall_episodes ref_type='self_message' /
+# 'thalamus_delivery' — the same opt-in convention as tool_result).
+OPERATOR_DIALOGUE_REF_TYPES = ("user_message", "assistant_message")
 
 # The "said + did" timeline: conversation plus tool activity. What the S1
 # encoder's lived timeline reads and what the embed queue eagerly embeds —
@@ -251,6 +331,19 @@ CHAIN_PREFIXES = {
     "s3":         "s3-{date}-{operation}",             # date=YYYYMMDD, operation=synthesis/meta/etc
     "s4":         "s4-{date}-{topic}",                 # date=YYYYMMDD, topic=what was researched
 }
+
+
+def scale_for_chain(chain_id):
+    """The scale a chain id encodes, from its CHAIN_PREFIXES prefix
+    ('s1e-…' → 's1'). A writer handed a run chain by its caller need not be
+    handed the scale too — a second parameter for the same fact drifts (a
+    chain-only call once defaulted the scale to '' and silently lost every
+    row). Raises ValueError on a chain no prefix claims: an unknown chain is
+    a producer bug, not a row."""
+    for key, template in CHAIN_PREFIXES.items():
+        if (chain_id or '').startswith(template.split('{', 1)[0]):
+            return key.split('_', 1)[0]
+    raise ValueError('chain_id %r matches no CHAIN_PREFIXES entry' % (chain_id,))
 
 
 # ── DELTA METADATA SHAPE ──
@@ -311,6 +404,11 @@ DELTA_METADATA_SHAPE = {
     'cache_read_tokens':     int,
     'cache_creation_tokens': int,
     'truncated':             int,
+    # The LLM that produced this Δ (the unit's resolved config model, read off
+    # the runner's result) — same key and meaning as the S0 session stamp: the
+    # model behind the row. Makes the token counts priceable and a model A/B
+    # attributable per run without decoding the K fingerprint. '' = unstamped.
+    'model':                 str,
     'interaction_version':   int,
     'interaction_fingerprint': str,
     'interaction_source':      str,
@@ -338,6 +436,7 @@ RUN_TELEMETRY_FIELDS = (
     'elapsed_ms', 'rounds', 'truncated',
     'input_tokens', 'output_tokens',
     'cache_read_tokens', 'cache_creation_tokens',
+    'model',   # the only str: which LLM the run called (see DELTA_METADATA_SHAPE)
 )
 
 
@@ -495,13 +594,16 @@ def build_failed_run_metadata(*, error, stop_counter, inputs_processed,
 
 def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
                         input_tokens=0, output_tokens=0,
-                        cache_read_tokens=0, cache_creation_tokens=0):
+                        cache_read_tokens=0, cache_creation_tokens=0,
+                        model=''):
     """Build the shared agent-run cost block (a flat dict of RUN_TELEMETRY_FIELDS).
 
     Used by build_delta_metadata (encoders) and the Surface K-trace writer.
-    All int, default 0 — `truncated` is a count of rounds cut at max_tokens,
-    `rounds` the number of LLM calls, the rest wall-clock + token spend. Spread
-    flat into the surrounding metadata dict; never nest it.
+    Counts are int, default 0 — `truncated` is a count of rounds cut at
+    max_tokens, `rounds` the number of LLM calls, the rest wall-clock + token
+    spend. `model` is the LLM the run called ('' when unknown) — the runner
+    returns it next to the usage so callers thread it like the token counts.
+    Spread flat into the surrounding metadata dict; never nest it.
     """
     return {
         'elapsed_ms':            int(elapsed_ms or 0),
@@ -511,6 +613,7 @@ def build_run_telemetry(*, elapsed_ms=0, rounds=0, truncated=0,
         'output_tokens':         int(output_tokens or 0),
         'cache_read_tokens':     int(cache_read_tokens or 0),
         'cache_creation_tokens': int(cache_creation_tokens or 0),
+        'model':                 str(model or ''),
     }
 
 
@@ -525,7 +628,7 @@ def build_delta_metadata(*,
                          classifications=None,
                          elapsed_ms=0, input_tokens=0, output_tokens=0,
                          cache_read_tokens=0, cache_creation_tokens=0,
-                         truncated=0, interaction_version=0,
+                         truncated=0, model='', interaction_version=0,
                          interaction_fingerprint='', interaction_source='',
                          **extras):
     """Build a unified delta trace metadata dict.
@@ -591,7 +694,7 @@ def build_delta_metadata(*,
             elapsed_ms=elapsed_ms, rounds=rounds, truncated=truncated,
             input_tokens=input_tokens, output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
-            cache_creation_tokens=cache_creation_tokens),
+            cache_creation_tokens=cache_creation_tokens, model=model),
         'interaction_version':     int(interaction_version or 0),
         'interaction_fingerprint': str(interaction_fingerprint or ''),
         'interaction_source':      str(interaction_source or ''),
@@ -652,13 +755,64 @@ def build_anchor_touched_metadata(**ids):
 JOURNAL_NOTE_METADATA_SHAPE = {
     'note': str,    # the prose: the why / friction / doubt / surprise (required)
     'tag':  str,    # one open word for the KIND of thing (friction, doubt, ...); '' when absent
+    'undelivered': str,  # an addressed line (tell/ask) the Thalamus door rejected,
+                         # kept as residue: the door's reason. '' for a plain note.
+                         # A field, not prose appended to `note` — the note stays
+                         # the line the encoder wrote, and the reason cannot be
+                         # eaten by the note cap.
 }
 
 JOURNAL_NOTE_LIMIT = 600   # a note is terse residue, not an essay — capped loud like other delta text
 JOURNAL_TAG_LIMIT = 40     # 'one word' — cap drift loud rather than let a sentence become a grouping key
 
 
-def build_journal_note_metadata(*, note, tag=''):
+# ═══════════════════════════════════════════════════════
+# THALAMUS_FILED metadata — a producer's filing, on the producer's run chain
+# ═══════════════════════════════════════════════════════
+# ref_id is the item id; the row is the filed→delivered→answered join's first
+# link. Door vocabulary only — the traces layer knows nothing of the journal
+# grammar that produced the filing (subject = dedup_key; ask/notice falls out
+# of needs_answer). `body` is copied so the row outlives a swept item; a
+# dedup re-file rewrites the item's body while earlier rows keep theirs
+# (each row is what THAT run said). `route` is 'queue' or 'live': a live item
+# is courier-delivered and never yields a thalamus_delivery row, so a
+# filed→delivered join filters route='queue'. `filing` names what the door
+# did: 'new' (inserted), 'refresh' (identical re-file, window only),
+# 'rearm' (changed re-file, delivers again).
+THALAMUS_FILED_METADATA_SHAPE = {
+    'source':         str,   # the producer's encoding_source
+    'body':           str,   # the item body, capped loud
+    'target_session': str,   # '' for broadcast, the session UUID when directed
+    'needs_answer':   bool,  # ask (True) vs notice/reminder (False)
+    'dedup_key':      str,   # producer-owned identity, '' when none
+    'route':          str,   # 'queue' | 'live'
+    'filing':         str,   # 'new' | 'refresh' | 'rearm'
+}
+THALAMUS_FILED_BODY_LIMIT = 1500  # mirrors the delivery render's per-item body cap
+THALAMUS_FILINGS = ('new', 'refresh', 'rearm')
+
+
+def build_thalamus_filed_metadata(*, source, body, target_session='',
+                                  needs_answer=False, dedup_key='',
+                                  route='queue', filing='new'):
+    """Build metadata for one thalamus_filed row. Raises ValueError on an
+    unknown `filing` — the three values are the only states the door's dedup
+    logic can produce, and a fourth would be a producer bug."""
+    if filing not in THALAMUS_FILINGS:
+        raise ValueError('thalamus_filed: filing=%r not in %s'
+                         % (filing, THALAMUS_FILINGS))
+    return {
+        'source': source or '',
+        'body': cap_text_loud(body or '', THALAMUS_FILED_BODY_LIMIT),
+        'target_session': target_session or '',
+        'needs_answer': bool(needs_answer),
+        'dedup_key': dedup_key or '',
+        'route': route or 'queue',
+        'filing': filing,
+    }
+
+
+def build_journal_note_metadata(*, note, tag='', undelivered=''):
     """Build trace metadata for one journal note (ref_type='journal_note').
 
     The SUBJECT is the trace's ref_id, supplied by the writer — not here.
@@ -675,6 +829,8 @@ def build_journal_note_metadata(*, note, tag=''):
     return {
         'note': cap_text_loud(note, JOURNAL_NOTE_LIMIT),
         'tag':  cap_text_loud((tag or '').strip(), JOURNAL_TAG_LIMIT),
+        'undelivered': cap_text_loud((undelivered or '').strip(),
+                                     JOURNAL_NOTE_LIMIT),
     }
 
 
@@ -702,21 +858,49 @@ JOURNAL_OPEN_TAGS = ('open', 'still-open')   # still-open: pre-existing wild ali
 # Verbs whose payload is (tag, subject) — the trailing `why` is optional, so a
 # two-field line is a complete lifecycle note rather than a malformed one.
 JOURNAL_LIFECYCLE_TAGS = JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS
+# ── Addressed verbs ──
+# Notes written to the LIVE SESSION, not to the next run: `tell` (a notice)
+# and `ask` (needs an answer). Same `tag · subject · note` line, same parser;
+# the write door hands them back to a binding that has a source, which files
+# each as a Thalamus item — directed to its session when it has one (the
+# Scribe, delivered at Stop), broadcast when it has none (an S2 unit,
+# delivered at boot). A binding without a source writes them as plain notes
+# and warns — no reader exists for them there.
+JOURNAL_TELL_TAG = 'tell'
+JOURNAL_ASK_TAG = 'ask'
+JOURNAL_ADDRESSED_TAGS = (JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
+JOURNAL_RUN_SUBJECT = 'run'   # the subject a two-field addressed line gets —
+                              # "the run itself", the instruction's third kind
+
+
+def journal_key(value):
+    """The comparison form of a journal tag or subject — stripped and
+    casefolded. Every match against the JOURNAL_*_TAGS vocabulary and every
+    subject-equality test (parser, read door, resolve targets, dedup and
+    withdraw keys) goes through this one normalizer, so no two doors can
+    disagree on what "the same subject" means."""
+    return (value or '').strip().casefold()
+
+
+def journal_subject_refs(subject):
+    """The node refs a journal subject implies — the grammar's own rule: a
+    subject that IS a node id refs that node; a tool, an input or the run
+    itself refs nothing. Returns a list (possibly empty)."""
+    from servers.contract import looks_like_node_id
+    key = journal_key(subject)
+    return [key] if looks_like_node_id(key) else []
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
-JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
-# The escalation type is boot-visible: render_standing_items (frame.py) injects
-# all live nodes of the types in BRAIN_BOOT_INJECT_TYPES at session boot.
-JOURNAL_ESCALATION_TYPE = 'journals-escalation'
+JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the hand-it-up nudge
 
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
 # alone, so a host-prompt edit can't silently shift the journal, and the block
-# is testable in isolation. EAGER by intent (2026-06-23, Tom): no value-filter
+# is testable in isolation. EAGER by intent: no value-filter
 # gate — capture residue freely; dedupe/mine later. The earlier "two tests"
 # (reconstruction/successor) were removed as over-correction against the OLD
 # journal's restatement disease, not an evidenced need. Iterate from LIVE
 # results, not synthetic probes (which can't reproduce the encoder's lived run).
-JOURNAL_REVIEW_INSTRUCTION = (
+_REVIEW_HEAD = (
     "A review — a short note to the next run of this work, about anything "
     "noticed here that won't be visible in the actions taken.\n"
     "The changes made are already recorded automatically; don't restate them. "
@@ -730,24 +914,60 @@ JOURNAL_REVIEW_INSTRUCTION = (
     "— one line per subject.\n"
     "Mark a persisting item once: `open %s subject %s note` — it stays "
     "visible until resolved; don't re-assert it each run.\n\n"
+) % ((JOURNAL_NOTE_DELIMITER,) * 4)
+
+_REVIEW_TAIL = (
     "Put the notes under a `## Review` heading, inside a fenced code block — "
     "one note per line as `tag %s subject %s note`. A clean run is an empty "
     "fence — leave it empty rather than saying there's nothing to note.\n\n"
     "Time is precious — actions are already logged automatically; no need "
     "to rephrase. Stay sharp."
-) % ((JOURNAL_NOTE_DELIMITER,) * 6)
+) % ((JOURNAL_NOTE_DELIMITER,) * 2)
+
+# The residue-only block — the text without the addressed verbs.
+# render_journal_review_block(addressed=False) returns exactly this.
+JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
+
+# ── The addressed verbs, as the encoder reads them ──
+# One text for every encoder (the operator's ruling: same instructions,
+# delivery differs by audience); the door does the routing. Sits between the
+# `open` line and the output-format close. The flag is the one switch for
+# every journaling encoder at once; it shipped dark and was lit on the
+# operator's nod on the wording. It stays a flag so the verbs can be turned
+# off in one place if the week's measurement says noise.
+JOURNAL_ADDRESSED_LIVE = True
+JOURNAL_ADDRESSED_INSTRUCTION = (
+    "Two notes go to the live work, not to your next run:\n"
+    "`%(tell)s %(d)s subject %(d)s note` — the \"wait, one thing\" that "
+    "surfaces while you encode and bears on what they're doing now.\n"
+    "`%(ask)s %(d)s subject %(d)s note` — the \"what about…?\" only they can "
+    "settle.\n"
+    "Interrupt only when it touches the present work, would change it, and "
+    "is worth the stop; otherwise it's a plain note.\n"
+    "Plain words, for a reader with none of your context. One line per "
+    "subject — repeating a subject updates it, no subject means the run "
+    "itself, `resolved %(d)s subject %(d)s why` withdraws it. Next run, "
+    "YOUR MESSAGES shows how each ended.\n\n"
+) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
+     'd': JOURNAL_NOTE_DELIMITER}
 
 
-def render_journal_review_block(examples=''):
+def render_journal_review_block(examples='', addressed=None):
     """The shared review block — self-contained (output structure + close folded
-    in), identical for every encoder.
+    in), identical for every encoder. `addressed` (default: the contract's
+    JOURNAL_ADDRESSED_LIVE) folds the tell/ask paragraph in between the
+    `open` line and the close; while dark the block IS
+    JOURNAL_REVIEW_INSTRUCTION, byte for byte.
 
     `examples` is optional and ships empty by default: a positive example
     anchors *what to notice*, which for residue we deliberately leave open. A
     per-encoder caller may pass its own `tag · subject · note` examples later if
     a unit proves to need them, appended as a fenced block.
     """
-    block = JOURNAL_REVIEW_INSTRUCTION
+    if addressed is None:
+        addressed = JOURNAL_ADDRESSED_LIVE
+    block = (_REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if addressed else '')
+             + _REVIEW_TAIL)
     if examples and examples.strip():
         block += "\n\n```\n" + examples.strip() + "\n```\n"
     return block
@@ -823,8 +1043,7 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
              'to-do list):' % label]
     for n in notes:
         tag = (n.get('tag') or '').strip()
-        head = ('%s · ' % tag) if tag else ''
-        line = '- %s%s · %s' % (head, n.get('subject', ''), n.get('note', ''))
+        line = _journal_line(tag, n.get('subject', ''), n.get('note', ''))
         # Open items render their persistence: the loader computed ×N (distinct
         # runs mentioning the subject) and pins the newest note beyond the
         # window. Past the threshold, the nudge appears ON the item, in the run
@@ -836,17 +1055,78 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
                 tag or 'open', runs,
                 (' since %s' % since) if since else '',
                 n.get('subject', ''), n.get('note', ''))
-            if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-                # Tool-neutral phrasing: encoders write nodes through different
-                # doors (brain_batch remember op, remember_batch) — name the
-                # node type, not a tool signature.
-                line += (
-                    "\n  ⚠ long-lived — resolve it, or promote it out of the "
-                    "journal: create a `%s`-type node carrying it, then write "
-                    "`resolved · %s · promoted to <id>`"
-                    % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
+        if n.get('undelivered'):
+            # The line was addressed to the people working and the door
+            # refused it — the reason is what the encoder reads next run.
+            line += ' — not delivered: %s' % n['undelivered']
+        if runs >= JOURNAL_OPEN_NUDGE_RUNS:
+            # A note that has persisted this long is a question for the live
+            # work, not residue — hand it up through the addressed verb; the
+            # door delivers it, budgets it, expires it, and carries the
+            # answer back (YOUR MESSAGES).
+            line += (
+                "\n  ⚠ long-lived — resolve it, or hand it up: "
+                "`%s %s %s %s <the question>`"
+                % (JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER,
+                   n.get('subject', ''), JOURNAL_NOTE_DELIMITER))
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
+
+
+# ── Producer view: what the encoder told or asked, and how it ended ──
+# The READ side of the addressed verbs, after the residue notes. MINIMAL:
+# outcomes only — open / answered: <text> / dismissed / expired — never
+# delivery counts, moments or dates (the encoder's job is its perspective
+# slice, not managing its mail; delivery state is the Thalamus's). The
+# binding does the join and hands plain rows {tag, subject, note, fate,
+# answer}; the fate tokens are thalamus_contract.FATE_*, phrased here.
+PRODUCER_VIEW_MAX = 10           # rows — loud overflow, never a silent cut
+PRODUCER_VIEW_BLOCK_MAX = 2500   # chars — the block's own budget, like every
+                                 # other injected block
+PRODUCER_VIEW_NOTE_LIMIT = 300   # an item body, or an answer, is one line here
+PRODUCER_VIEW_SUBJECT_LIMIT = 80  # a subject is a key, not prose
+PRODUCER_VIEW_LABEL = ('YOUR MESSAGES — what you told or asked, and how it '
+                       'ended (not a to-do list):')
+
+
+def _journal_line(tag, subject, note):
+    """The one line grammar both journal renders share: `- tag · subject ·
+    note` (tag omitted when empty) — the mirror of the write format."""
+    head = ('%s · ' % tag) if tag else ''
+    return '- %s%s · %s' % (head, subject, note)
+
+
+def _producer_view_line(r):
+    """One row: {tag, subject, note, fate, answer} — the binding built every
+    key. Note and answer are flattened and capped so a long or multi-line
+    answer cannot forge rows or blow the budget."""
+    from servers.channels.thalamus.thalamus_contract import FATE_ANSWERED
+    fate = r['fate']
+    if fate == FATE_ANSWERED:
+        fate = 'answered: %s' % cap_text_loud(one_line(r['answer']),
+                                              PRODUCER_VIEW_NOTE_LIMIT)
+    return '%s — %s' % (
+        _journal_line(r['tag'],
+                      cap_text_loud(one_line(r['subject']),
+                                    PRODUCER_VIEW_SUBJECT_LIMIT),
+                      cap_text_loud(one_line(r['note']),
+                                    PRODUCER_VIEW_NOTE_LIMIT)), fate)
+
+
+def render_producer_view(rows):
+    """Render rows (already ordered open-first, newest-settled first) into
+    the prompt block; '' for none — a producer that never spoke sees no new
+    block. Two loud caps: row count and block chars; the tail names what it
+    dropped."""
+    if not rows:
+        return ''
+    body, kept, _ = compose_block_loud(
+        rows[:PRODUCER_VIEW_MAX], _producer_view_line, PRODUCER_VIEW_BLOCK_MAX,
+        reserved=len(PRODUCER_VIEW_LABEL) + 1, sep='\n')
+    out = PRODUCER_VIEW_LABEL + '\n' + body
+    if len(rows) > kept:
+        out += '\n(+%d older, not shown)' % (len(rows) - kept)
+    return out + '\n\n'
 
 
 def parse_journal_notes(text):
@@ -886,16 +1166,21 @@ def parse_journal_notes(text):
         parts = [p.strip() for p in line.split(JOURNAL_NOTE_DELIMITER, 2)]
         if len(parts) == 3:
             tag, subject, note = parts
-        elif parts[0].casefold() in JOURNAL_LIFECYCLE_TAGS:
+        elif journal_key(parts[0]) in JOURNAL_LIFECYCLE_TAGS:
             # `resolved · subject` — a lifecycle verb carries its payload in
             # (tag, subject) and the trailing `why` is optional. Without this
             # branch the two-field default below reads the VERB as the subject,
             # so the lifecycle action is lost and the line looks well-formed.
             tag, subject, note = parts[0], parts[1], ''
+        elif journal_key(parts[0]) in JOURNAL_ADDRESSED_TAGS:
+            # `tell · message` — an addressed verb with no subject is about
+            # the run itself. Without this branch the message becomes a
+            # residue note whose subject is the word "tell", never delivered.
+            tag, subject, note = parts[0], JOURNAL_RUN_SUBJECT, parts[1]
         else:  # delimiter present + maxsplit=2 → exactly 2 parts here
             tag, subject, note = '', parts[0], parts[1]
         if not subject or (not note
-                           and tag.casefold() not in JOURNAL_LIFECYCLE_TAGS):
+                           and journal_key(tag) not in JOURNAL_LIFECYCLE_TAGS):
             malformed.append(raw)
             continue
         notes.append({'tag': tag, 'subject': subject, 'note': note})
@@ -916,7 +1201,7 @@ def resolve_target(subject, note, known_subjects):
     otherwise a word like `friction` enters the retire set and silently drops
     an unrelated note that happens to use it as a subject.
     """
-    lead = (note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0].strip().casefold()
+    lead = journal_key((note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0])
     return lead if lead and lead in known_subjects else subject
 
 
@@ -1085,7 +1370,7 @@ def salvage_review_fence(text):
 # prompt. Bounds the READ, never storage — notes are append-only and retained
 # (§2.7); a 9th run simply doesn't read the 1st's note, which still exists for
 # the operator + future miner. A contract constant, NOT interaction-tunable
-# (Tom's call): continuity depth is a structural property of each encoder's
+# by design: continuity depth is a structural property of each encoder's
 # cadence, not a knob S2 should self-tune. Keys are the encoder identity used by
 # notes() (S1 chain prefix `s1e`; S2 unit NAME). Unlisted encoders use DEFAULT.
 JOURNAL_CONTINUITY_RUNS = {
@@ -1104,7 +1389,9 @@ JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
 # the ops-delta-vs-residue partition; exclusion-style so it stays
 # behavior-preserving (everything that isn't residue still counts) and
 # forward-compatible (add a residue type here, every consumer excludes it).
-RESIDUE_REF_TYPES = ('journal_note',)
+# A Thalamus filing is residue by the same test: it shares the run's chain
+# and event_type='delta' but is not the run's integration delta.
+RESIDUE_REF_TYPES = ('journal_note', REF_THALAMUS_FILED)
 
 
 # Per-mutation ref_types written by the emitter (servers/mutation_emitter.py).
@@ -1475,9 +1762,9 @@ def build_node_deleted_metadata(*, node_id, type='', title='', deleted_by='',
                                 encoding_source='', reason='', tables_hit=None):
     """Build trace metadata for a HARD delete (delete_node_cascade).
 
-    Ruled by Tom 2026-08-04: hard deletes ARE recorded. The node itself is
-    erased — that decision stands (node:ca66f5bd) — but the operation is
-    observable, one row per node, carrying enough to say what went.
+    Hard deletes ARE recorded. The node itself is erased — that decision
+    stands — but the operation is observable, one row per node, carrying
+    enough to say what went.
 
     `title` matters more here than anywhere else: the only production hard-delete
     path is the junk-vocabulary purge, which targets single-word vocabulary nodes
@@ -1520,6 +1807,7 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
+    REF_THALAMUS_FILED:   THALAMUS_FILED_METADATA_SHAPE,  # a producer's filing, on its run chain
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
     # Node lifecycle, written only by servers/mutation_emitter.py. Enforced from
     # the start — these have exactly one producer and one builder each, so there

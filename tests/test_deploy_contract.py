@@ -24,9 +24,12 @@ adapter: N becomes `entity` and any `com.entity.` occurrence is a leak.
 
 Run: ./dev python3 -m pytest tests/test_deploy_contract.py -v
 """
+import ast
+import functools
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -77,9 +80,36 @@ SCOPE = [
 ]
 
 
+@functools.lru_cache(maxsize=None)
 def _read(rel_path):
+    # the tree does not change during a run; several scans read every file
     with open(os.path.join(REPO, rel_path), 'rb') as f:
         return f.read().decode('utf-8', errors='ignore')
+
+
+@functools.lru_cache(maxsize=None)
+def _manifest():
+    """The package manifest — `build-plugin.sh --list`, the ONE owner of
+    "what ships". Both the manifest sanity test and the reachability scan
+    read it from here; one subprocess per run."""
+    out = subprocess.run(
+        ['bash', os.path.join(REPO, 'build-plugin.sh'), '--list'],
+        capture_output=True, text=True, timeout=60, cwd=REPO,
+    )
+    assert out.returncode == 0, out.stderr
+    return [l for l in out.stdout.splitlines() if l.strip()]
+
+
+@functools.lru_cache(maxsize=None)
+def _public_manifest():
+    """`build-plugin.sh --list-public` — the package manifest plus the
+    public-repo extras, from the same owner. What the export materializes."""
+    out = subprocess.run(
+        ['bash', os.path.join(REPO, 'build-plugin.sh'), '--list-public'],
+        capture_output=True, text=True, timeout=60, cwd=REPO,
+    )
+    assert out.returncode == 0, out.stderr
+    return [l for l in out.stdout.splitlines() if l.strip()]
 
 
 def _load_json(rel_path):
@@ -88,6 +118,11 @@ def _load_json(rel_path):
 
 PLUGIN = _load_json('.claude-plugin/plugin.json')
 MARKETPLACE = _load_json('.claude-plugin/marketplace.json')
+# The Codex host's manifest. Codex discovers `.codex-plugin/plugin.json` BEFORE
+# `.claude-plugin/plugin.json` and treats whichever it finds first as THE
+# manifest (same "Legacy" format, not an overlay) — so it must be complete and
+# stay in lockstep with the CC one.
+CODEX_PLUGIN = _load_json('.codex-plugin/plugin.json')
 PLUGIN_NAME = PLUGIN['name']
 OWNER = re.search(r'github\.com/([^/]+)', PLUGIN['repository']).group(1)
 
@@ -102,11 +137,21 @@ def _files_matching(pattern):
 
 
 class TestVersionLockstep:
-    """plugin.json and marketplace.json must carry the same version.
+    """plugin.json and marketplace.json must carry the same version, and that
+    version must be the one the release is meant to ship.
 
     `/plugin update` compares the two; drift is silent until a user's update
-    no-ops. This is a risk on every release, forever.
+    no-ops. This is a risk on every release, forever. Agreement alone is not
+    enough: gate C in the export script checked only that the pair agreed, so
+    the pair could agree on the private build counter (9.7.x) and ship it as
+    the public launch. The value below is the ONE home of the expected
+    version — a release bump edits it in the same commit as the manifests,
+    which is the point: the bump becomes a reviewable line, not a drift.
     """
+
+    # D-10: public launches at 0.9.0 — "not yet v1" is a claim about delivered
+    # value, and the private plugin's 9.x counter means nothing to a stranger.
+    EXPECTED_VERSION = '0.9.0'
 
     def test_marketplace_entry_exists_for_plugin(self):
         names = [p.get('name') for p in MARKETPLACE['plugins']]
@@ -119,6 +164,49 @@ class TestVersionLockstep:
             f"version drift: plugin.json={PLUGIN['version']!r} "
             f"marketplace.json={entry.get('version')!r} — breaks /plugin update")
 
+    def test_version_is_the_expected_release(self):
+        assert PLUGIN['version'] == self.EXPECTED_VERSION, (
+            f"plugin.json={PLUGIN['version']!r} but the release is pinned at "
+            f"{self.EXPECTED_VERSION!r} — bump EXPECTED_VERSION in the same "
+            'commit as the manifests, or the export ships the wrong version')
+
+    def test_changelog_has_entry_for_expected_version(self):
+        # The release command refuses without one; pinning it here too means
+        # the public changelog cannot drift away from the version pin between
+        # releases — the notes are written in the same commit as the bump.
+        assert f'## [{self.EXPECTED_VERSION}]' in _read('CHANGELOG.md'), (
+            f'CHANGELOG.md has no entry for {self.EXPECTED_VERSION} — write the '
+            'release notes in the same commit as the version bump')
+
+    def test_codex_manifest_in_lockstep(self):
+        assert CODEX_PLUGIN['name'] == PLUGIN_NAME, (
+            f".codex-plugin/plugin.json names {CODEX_PLUGIN['name']!r}, "
+            f".claude-plugin/plugin.json names {PLUGIN_NAME!r} — one plugin, one name")
+        assert CODEX_PLUGIN['version'] == PLUGIN['version'], (
+            f"version drift: .codex-plugin={CODEX_PLUGIN['version']!r} "
+            f".claude-plugin={PLUGIN['version']!r}")
+        # The product copy is one text shown on two hosts' listings.
+        for key in ('description', 'keywords'):
+            assert CODEX_PLUGIN[key] == PLUGIN[key], (
+                f'{key} differs between the Codex and Claude Code manifests — '
+                'the two listings must describe the same plugin')
+        # Codex resolves manifest paths relative to the plugin root and requires
+        # the `./` prefix; a dangling path silently drops that component.
+        for key in ('skills', 'hooks'):
+            rel = CODEX_PLUGIN[key]
+            assert rel.startswith('./'), f'{key} must be a ./-prefixed path, got {rel!r}'
+            assert os.path.exists(os.path.join(REPO, rel)), f'{key} points at a missing path: {rel}'
+        assert 'brain' in CODEX_PLUGIN['mcpServers'], (
+            'the Codex manifest must declare the brain MCP server inline — '
+            'Legacy plugins get no ${CLAUDE_PLUGIN_ROOT} expansion in .mcp.json')
+        # The launcher finds the plugin in Codex's cache by NAME; an adapter
+        # rename (D-11) that updates `name` but not the glob leaves the Codex
+        # host with no MCP server and only a stderr line to say so.
+        launcher = ' '.join(CODEX_PLUGIN['mcpServers']['brain']['args'])
+        assert f'/{PLUGIN_NAME}/' in launcher, (
+            f'the Codex MCP launcher must locate the cache dir by the manifest name '
+            f'{PLUGIN_NAME!r}; its args do not mention it')
+
 
 class TestAdapterNameContainment:
     """Every occurrence of an adapter-name shape sits in a small allowlist.
@@ -129,9 +217,11 @@ class TestAdapterNameContainment:
     """
 
     def test_mcp_tool_prefix_contained(self):
-        # The permission entry is the shape's one legitimate home. This exact
-        # file was the miss that motivated the gate.
-        allowed = {'.claude/settings.json'}
+        # The permission entry is the shape's one legitimate home in CODE —
+        # this exact file was the miss that motivated the gate. The migration
+        # guide names the prefix once because its verification step tells the
+        # user what a correct install looks like.
+        allowed = {'.claude/settings.json', 'MIGRATING.md'}
         pattern = re.compile(re.escape(f'mcp__plugin_{PLUGIN_NAME}_'))
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -151,10 +241,14 @@ class TestAdapterNameContainment:
             f'— service labels stay com.{SERVICE_NAME}.* (D-11)')
 
     def test_repo_slug_contained(self):
-        # The GitHub slug belongs in the manifest (homepage/repository) and
-        # nowhere else in shipped code. Also catches /Users/<owner>/<name>
-        # personal paths, which double as a scrub-grep (5.1) early warning.
-        allowed = {'.claude-plugin/plugin.json'}
+        # The GitHub slug belongs in the manifest (homepage/repository), in
+        # the two install commands users are handed (README, and the migration
+        # guide an old-plugin user gives to Claude on its own), and in gate B's
+        # allowlist entries naming those strings — nowhere else in shipped
+        # code. Also catches /Users/<owner>/<name> personal paths, which double
+        # as a scrub-grep (5.1) early warning.
+        allowed = {'.claude-plugin/plugin.json', '.codex-plugin/plugin.json',
+                   'README.md', 'MIGRATING.md', 'scripts/export-public-tree.sh'}
         pattern = re.compile(rf'{re.escape(OWNER)}/{re.escape(PLUGIN_NAME)}\b')
         leaks = set(_files_matching(pattern)) - allowed
         assert not leaks, (
@@ -162,9 +256,9 @@ class TestAdapterNameContainment:
 
 
 class TestHostNeutrality:
-    """D-11: the service layer must not know it runs under Claude Code.
+    """D-11: the service layer must not know which host it runs under.
 
-    servers/ may reference the CC manifest only for the embedder block. The
+    servers/ may reference a host manifest only for the embedder block. The
     day a service name derives from plugin.json, the rename hazard returns.
     `servers/embedder.py` IS the embedder block, so it is exempt wholesale;
     any other servers/ file must keep each manifest reference within an
@@ -175,7 +269,7 @@ class TestHostNeutrality:
     CONTEXT_LINES = 2
 
     def test_servers_reference_manifest_only_for_embedder(self):
-        pattern = re.compile(r'plugin\.json|\.claude-plugin')
+        pattern = re.compile(r'plugin\.json|\.claude-plugin|\.codex-plugin')
         leaks = []
         for rel in SCOPE:
             if not rel.startswith('servers/') or rel == self.EMBEDDER_FILE:
@@ -199,7 +293,7 @@ class TestHostNeutrality:
         # (Caught live: daemon_launch.py hardcoded a marketplace install path
         # as an interpreter candidate; the manifest-ref check above was blind
         # to it because install paths never mention plugin.json.)
-        pattern = re.compile(r'\.claude/plugins|plugins/marketplaces')
+        pattern = re.compile(r'\.claude/plugins|plugins/marketplaces|\.codex/plugins')
         leaks = [
             rel for rel in SCOPE
             if rel.startswith(('servers/', 'dashboard/')) and pattern.search(_read(rel))
@@ -286,6 +380,102 @@ class TestShippedScriptsReachable:
         assert not orphans, (
             'shipped hooks/scripts files with no wiring path (dead on every '
             f'install — delete them or name their external wiring in ALLOW): {orphans}')
+
+    # ── servers/: reachability by IMPORT, not by name ──
+    # hooks/scripts/* are wired by NAME (hooks.json, plists, skills), so text
+    # containment is the right edge above. servers/* are wired by IMPORT, and
+    # a module's stem (`dal`, `clock`, `contract`) appears in prose
+    # everywhere, so name-matching would vouch for anything. The edge here is
+    # the import graph: ast over every shipped .py, relative and absolute
+    # imports resolved to files, `from pkg import submodule` included, lazy
+    # in-function imports included (ast sees them; a runtime probe would
+    # not). Seeds are the non-servers shipped code (hooks/scripts/*.py,
+    # dashboard/) plus module paths named as strings in the wiring
+    # (`-m servers.daemon_server` in brain-daemon, `servers/brain_mcp.py` in
+    # mcp-launch.sh). `git ls-files` guarantees the manifest cannot ROT and
+    # says nothing about whether a listed file is REACHED; the suite cannot
+    # tell either — it runs inside the tree and exercises only what a test
+    # imports. Eval-only instruments have shipped to every install this way.
+
+    @staticmethod
+    def _imports(rel):
+        """Dotted names a Python file imports. Relative imports resolve against
+        the file's package; `from X import y` yields X and X.y (y may be a
+        submodule)."""
+        try:
+            tree = ast.parse(_read(rel), filename=rel)
+        except SyntaxError:
+            return set()
+        pkg = rel.split('/')[:-1]
+        out = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                out.update(a.name for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:
+                    base = pkg[:len(pkg) - (node.level - 1)]
+                    mod = '.'.join(base + ([node.module] if node.module else []))
+                else:
+                    mod = node.module or ''
+                if mod:
+                    out.add(mod)
+                    out.update(f'{mod}.{a.name}' for a in node.names)
+        return out
+
+    def test_every_shipped_servers_module_reachable(self):
+        manifest = _manifest()
+        shipped = {p for p in manifest if p.startswith('servers/')}
+        py = {p for p in shipped if p.endswith('.py')}
+
+        def resolve(dotted):
+            rel = dotted.replace('.', '/')
+            return {c for c in (rel + '.py', rel + '/__init__.py') if c in py}
+
+        def packages_of(rel):
+            # importing servers.a.b runs servers/__init__ and servers/a/__init__
+            parts = rel.split('/')[:-1]
+            return {'/'.join(parts[:i]) + '/__init__.py'
+                    for i in range(1, len(parts) + 1)} & py
+
+        def edges(rel):
+            out = set(packages_of(rel))
+            for d in imports[rel]:
+                out |= resolve(d)
+            return out
+
+        imports = {p: self._imports(p) for p in py}   # parse each file once
+        seeds = [p for p in manifest if not p.startswith('servers/')]
+        seed_text = '\n'.join(_read(p) for p in seeds)
+        live = set()
+        for p in seeds:
+            if p.endswith('.py'):
+                for d in self._imports(p):
+                    live |= resolve(d)
+        for d in re.findall(r'\bservers(?:\.[A-Za-z_][A-Za-z0-9_]*)+', seed_text):
+            live |= resolve(d)
+        live |= {f for f in re.findall(r'\bservers/[A-Za-z0-9_/]+\.py\b', seed_text) if f in py}
+        # Fixpoint over the frontier: whatever a live module imports is live.
+        frontier = set(live)
+        while frontier:
+            grown = set()
+            for m in frontier:
+                grown |= edges(m)
+            frontier = grown - live
+            live |= grown
+
+        orphans = sorted(py - live)
+        # data files under servers/ (a .json today) follow the hooks/scripts
+        # rule: named by basename or stem somewhere live
+        live_text = seed_text + '\n' + '\n'.join(_read(p) for p in live)
+        for d in sorted(shipped - py):
+            base = os.path.basename(d)
+            if base not in live_text and os.path.splitext(base)[0] not in live_text:
+                orphans.append(d)
+        assert not orphans, (
+            'shipped servers/ files nothing imports from the entrypoints '
+            '(hooks, dashboard, brain_mcp, daemon_server) — dead on every '
+            f'install: delete them, relocate them beside their real consumer '
+            f'(eval/, scripts/), or wire them: {orphans}')
 
 
 class TestMechanismContainment:
@@ -391,6 +581,8 @@ class TestMechanismContainment:
                 'servers/daemon_client.py',      # the client wire, the owner
                 'servers/daemon_server.py',      # the server side — binds, not connects
                 'servers/daemon_launch.py',      # port-occupied probe — binds, not connects
+                'scripts/smoke-lib.sh',          # dev sandbox picking an ephemeral port for
+                                                 # ITS daemon — never ships, never connects
                 'dashboard/daemon_client.py',    # sanctioned copy: the dashboard must
                                                  # run when servers/ is absent or broken
                 'hooks/scripts/post_tool_trace.py',  # fires on EVERY tool call;
@@ -434,31 +626,136 @@ class TestMechanismContainment:
 
 
 class TestPublicTreeExport:
-    """5.1: the export script's three gates, exercised in sandboxes so they
-    are pinned independently of the repo's current cleanliness (the real
-    tree stays red until 5.3 clears the scrub worklist — that redness is
-    the gate working, not a signal to weaken here)."""
+    """5.1: the export script's three gates.
+
+    Two kinds of test live here and they check different things. The sandbox
+    tests plant a leak in a temp dir and assert the gate fires — they pin the
+    gate's MECHANICS. `test_live_tree_exports_clean` runs the real export over
+    the real repo — it pins the TREE. Both are needed: a green mechanics test
+    on a red tree proves only that the alarm works while the house burns."""
 
     SCRIPT = os.path.join(os.path.dirname(__file__), '..',
                           'scripts', 'export-public-tree.sh')
-    BUILDER = os.path.join(os.path.dirname(__file__), '..',
-                           'build-plugin.sh')
 
-    def _run(self, *args):
-        return subprocess.run(['bash', self.SCRIPT, *args],
-                              capture_output=True, text=True, timeout=60)
+    def _run(self, *args, timeout=60):
+        # A developer shell with EXPECT_VERSION exported would turn gate C's
+        # release pin into a spurious drift failure in every export test.
+        env = {k: v for k, v in os.environ.items() if k != 'EXPECT_VERSION'}
+        return subprocess.run(['bash', self.SCRIPT, *args], env=env,
+                              capture_output=True, text=True, timeout=timeout)
 
     def test_manifest_list_mode_is_sane(self):
-        out = subprocess.run(['bash', self.BUILDER, '--list'],
-                             capture_output=True, text=True, timeout=60,
-                             cwd=os.path.dirname(self.BUILDER))
-        assert out.returncode == 0, out.stderr
-        files = [l for l in out.stdout.splitlines() if l.strip()]
+        files = _manifest()
         assert len(files) > 100, 'manifest suspiciously small'
         assert '.claude-plugin/plugin.json' in files
+        assert '.codex-plugin/plugin.json' in files, 'the package must install on the Codex host too'
+        assert 'hooks/hooks.codex.json' in files
         leaked = [f for f in files
                   if f.startswith(('docs/', 'eval/', 'scripts/'))]
         assert not leaked, f'dev-only paths in the package manifest: {leaked}'
+
+    def test_public_manifest_extends_package(self):
+        public = _public_manifest()
+        assert set(_manifest()) <= set(public), 'the public view must contain the package'
+        for f in ('README.md', 'CONTRIBUTING.md', 'MIGRATING.md', 'CHANGELOG.md',
+                  'tests/conftest.py', 'tests/__init__.py'):
+            assert f in public, f'{f} missing from the public view'
+        leaked = [f for f in public if f.startswith(('docs/', 'eval/', 'scripts/'))]
+        assert not leaked, f'dev-only paths in the public manifest: {leaked}'
+        # tests/ ships CODE only. Every personal-data leak found under tests/
+        # was a data file — session logs as fixtures, gold corpora with real
+        # content — so a non-.py file there is a leak until someone argues it
+        # in with a manifest line AND a widening of this check.
+        data = [f for f in public if f.startswith('tests/') and not f.endswith('.py')]
+        assert not data, f'non-code files under tests/ in the public manifest: {data}'
+
+    def test_new_tracked_file_does_not_ship_until_named(self, tmp_path):
+        """5.9: the public tree is OPT-IN. A tracked file under a shipped
+        directory reaches the export only when the manifest names it — by
+        literal, or by a code shape (`tests/test_*.py`, `servers/**/*.py`).
+        Data, docs, fixtures, harnesses and new subdirectories are the shapes
+        personal material has actually taken, and none of them is a shape
+        the manifest knows; committing one must change nothing about what
+        ships. An UNTRACKED file must not ship even when its shape matches.
+
+        Runs the REAL export (the same scripts, copied into a sandbox git
+        repo) so the assertion is on the tree, not on a list."""
+        repo = tmp_path / 'repo'
+        (repo / 'scripts').mkdir(parents=True)
+        shutil.copy(os.path.join(REPO, 'build-plugin.sh'), repo / 'build-plugin.sh')
+        shutil.copy(self.SCRIPT, repo / 'scripts' / 'export-public-tree.sh')
+        v = json.dumps({'name': 'entity', 'version': '0.0.1'})
+        # one file per shape the manifest names, so every MISSING check passes
+        named = {
+            'LICENSE': 'grant\n',
+            '.claude-plugin/plugin.json': v,
+            '.claude-plugin/marketplace.json': json.dumps(
+                {'plugins': [{'name': 'entity', 'version': '0.0.1'}]}),
+            '.codex-plugin/plugin.json': v,
+            '.mcp.json': '{}\n', 'requirements.txt': '\n',
+            'LICENSES/PolyForm-A.md': '# grant\n',
+            'dashboard/server.py': '', 'dashboard/static/app.js': '',
+            'dashboard/static/css/base.css': '', 'dashboard/static/index.html': '',
+            'servers/brain.py': '', 'servers/scales/s2/aspects_v1.json': '{}\n',
+            'servers/scales/s2/new_unit.py': '',        # a new module: shape names it
+            'hooks/hooks.json': '{}\n', 'hooks/hooks.codex.json': '{}\n',
+            'hooks/scripts/boot-brain.sh': '', 'hooks/scripts/boot_brain.py': '',
+            'hooks/scripts/com.brain.daemon.plist': '', 'hooks/scripts/brain-daemon': '',
+            'hooks/adapters/codex_setup.py': '',
+            'skills/brain/SKILL.md': '', 'skills/brain/references/detailed-api.md': '',
+            'skills/newskill/SKILL.md': '',             # a new skill: shape names it
+            'README.md': '', 'CONTRIBUTING.md': '', 'MIGRATING.md': '', 'CHANGELOG.md': '',
+            'tests/__init__.py': '', 'tests/conftest.py': '',
+            'tests/brain_test_base.py': '', 'tests/isolated_brain.py': '',
+            'tests/eval_optional.py': '', 'tests/interaction_override.py': '',
+            'tests/test_core.py': '',                   # a new test module: shape names it
+            'tests/integration/__init__.py': '', 'tests/integration/test_pipeline.py': '',
+        }
+        # tracked, under shipped directories, and named by nothing
+        unnamed = [
+            'tests/fixtures/session_2026.json',   # a session log as a fixture
+            'tests/golden_new.json',              # a gold corpus
+            'tests/bench_new.py',                 # a dev harness
+            'tests/helper_new.py',                # a helper module nobody named
+            'tests/NOTES.md',
+            'tests/probe/test_deep.py',           # a new subdirectory
+            'servers/scratch_dump.json',
+            'servers/DESIGN.md',
+            'servers/scales/s2/archive/retired.py',
+            'hooks/HOOKS.md',
+            'hooks/adapters/NOTES.md',
+            'hooks/scripts/session.jsonl',
+            'hooks/scripts/new-launcher',         # extensionless, not brain-*
+            'dashboard/TODO.md',
+            'skills/brain/draft.txt',
+            'docs/anything.md', 'eval/anything.py', 'scripts/other.sh',
+        ]
+        for rel, text in named.items():
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text(text)
+        for rel in unnamed:
+            (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (repo / rel).write_text('# nothing personal here\n')
+        git = ['git', '-c', 'user.name=t', '-c', 'user.email=t@example.com']
+        subprocess.run([*git, 'init', '-q'], cwd=repo, check=True)
+        subprocess.run([*git, 'add', '-A'], cwd=repo, check=True)
+        subprocess.run([*git, 'commit', '-q', '-m', 'init'], cwd=repo,
+                       check=True, capture_output=True)
+        # matches a code shape, but is not tracked
+        (repo / 'servers' / 'untracked_probe.py').write_text('')
+
+        out = tmp_path / 'out'
+        env = {k: v for k, v in os.environ.items() if k != 'EXPECT_VERSION'}
+        r = subprocess.run(['bash', str(repo / 'scripts' / 'export-public-tree.sh'), str(out)],
+                           env=env, capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}'
+        shipped = {os.path.relpath(os.path.join(d, f), out)
+                   for d, _, fs in os.walk(out) for f in fs}
+        assert set(named) <= shipped, f'named files missing: {sorted(set(named) - shipped)}'
+        leaked = sorted(set(unnamed) & shipped)
+        assert not leaked, f'tracked files nothing named reached the export: {leaked}'
+        assert 'servers/untracked_probe.py' not in shipped, 'an untracked file shipped'
+        assert shipped == set(named), f'unexpected extras: {sorted(shipped - set(named))}'
 
     def test_scrub_gate_catches_planted_leak(self, tmp_path):
         (tmp_path / 'mod.py').write_text('# see /Users/tpac/brain for setup\n')
@@ -488,6 +785,24 @@ class TestPublicTreeExport:
         assert self._run('--denylist-only', str(tmp_path)).returncode != 0, \
             'real-session fixture dir must be denylisted'
 
+    def test_secrets_gate(self, tmp_path):
+        assert self._run('--secrets-only', str(tmp_path)).returncode == 0
+        (tmp_path / 'mod.py').write_text('KEY = "sk-ant-api03-' + 'A' * 40 + '"\n')
+        r = self._run('--secrets-only', str(tmp_path))
+        assert r.returncode != 0 and 'mod.py' in r.stderr, r.stderr
+        (tmp_path / 'mod.py').unlink()
+        # files that have no business in a public tree, whatever they hold
+        (tmp_path / 'scratch.db').write_bytes(b'')
+        r = self._run('--secrets-only', str(tmp_path))
+        assert r.returncode != 0 and 'scratch.db' in r.stderr, r.stderr
+
+    def test_secrets_gate_ignores_short_fixture_keys(self, tmp_path):
+        # the suite ships fixture keys shaped like sk-ant-test-abc123 by design;
+        # the gate looks for real key lengths, not the assignment
+        (tmp_path / 't.py').write_text(
+            "os.environ['ANTHROPIC_API_KEY'] = 'sk-ant-test-abc123'\n")
+        assert self._run('--secrets-only', str(tmp_path)).returncode == 0
+
     def test_scrub_allowlist_cannot_mask_a_colocated_leak(self, tmp_path):
         # review finding: line-level subtraction hid a leak sharing a line
         # with an allowed attribution — the gate must strip only the allowed
@@ -497,8 +812,278 @@ class TestPublicTreeExport:
         r = self._run('--scrub-only', str(tmp_path))
         assert r.returncode != 0, 'co-located leak masked by attribution'
 
+    def test_live_tree_exports_clean(self, tmp_path):
+        """THE RATCHET: the LIVE repo must export clean, not just sandboxes.
+
+        Gate B drifted 67 → 69 within hours of being cleared, from another
+        stream merging two comments nobody reviewed. Nothing stops any stream
+        from writing a name into a comment, so a one-time sweep starts rotting
+        the moment it lands. This is what makes cleanliness hold.
+
+        A failure names the file and line. Fix the LINE — reword the comment,
+        drop the attribution, rename the fixture. Do NOT add it to the export
+        script's ALLOWLIST unless the string is genuinely shipped behaviour
+        (the legacy `AgentsContext` rung), deliberate attribution (LICENSE),
+        or a test that asserts ON the literal and would assert nothing without
+        it. Widening the allowlist to get green defeats the gate.
+        """
+        out = tmp_path / 'public-tree'
+        r = self._run(str(out), timeout=300)
+        # Don't name the cause in the headline: the export also dies when a
+        # tracked file is missing from the working tree (a half-finished `git
+        # mv`), and "grew a personal-information hit" would send the reader
+        # hunting for a leak that isn't there. The gate's own output says which.
+        assert r.returncode == 0, (
+            'the live tree no longer exports clean — the failing gate names '
+            'itself below (gate B = a personal-information hit; gate A = a '
+            'denylisted path; gate D = a credential shape or a forbidden file; '
+            'a `cp` error = a tracked file missing on disk).\n'
+            f'--- stdout ---\n{r.stdout}\n--- stderr ---\n{r.stderr}')
+        # D-8's graceful skip must not rot: eval/ is absent from this tree,
+        # and a test module that reaches it without require_eval() aborts
+        # the WHOLE exported suite at collection. Collecting the exported
+        # tests catches every coupling shape — a module import, a bare
+        # import via a sys.path insert, a helper module, an in-body path —
+        # by running the thing instead of pattern-matching for it. The
+        # export's conftest warns that its own venv is absent and proceeds.
+        c = subprocess.run(
+            [sys.executable, '-m', 'pytest', '--collect-only', '-q',
+             '-p', 'no:cacheprovider', 'tests'],
+            cwd=str(out), capture_output=True, text=True, timeout=120)
+        assert c.returncode == 0, (
+            'the exported suite does not collect — a test reaches eval/ (or '
+            'another excluded path) without the D-8 graceful skip; add '
+            '`from tests.eval_optional import require_eval; require_eval()` '
+            f'above the import.\n--- stdout ---\n{c.stdout[-3000:]}\n'
+            f'--- stderr ---\n{c.stderr[-2000:]}')
+
+    # ── the allowlist must not be able to grow quietly ──
+
+    @staticmethod
+    def _allowlist():
+        """The ALLOWLIST pairs, parsed out of the export script."""
+        src = open(TestPublicTreeExport.SCRIPT, encoding='utf-8').read()
+        body = src.split('ALLOWLIST=(', 1)[1].split('\n)', 1)[0]
+        return [tuple(m.split(':', 1))
+                for m in re.findall(r'^\s*"([^"]+)"', body, re.M)]
+
+    # Bumping this is the point: a new allowlist entry is a deliberate,
+    # reviewable line in a diff, never a quiet way to turn a red gate green.
+    # 19: the Codex manifest (.codex-plugin/plugin.json) carries the same
+    # author attribution and repository URL already allowed for the Claude
+    # Code manifest — two entries, same rationale as theirs.
+    ALLOWLIST_SIZE = 19
+
+    def test_allowlist_cannot_grow_quietly(self):
+        """The one way to make gate B green WITHOUT fixing the leak is to add
+        an allowlist entry — two lines, no review, and the leak still ships.
+        Pinning the count makes that an explicit diff someone has to defend."""
+        entries = self._allowlist()
+        assert len(entries) == self.ALLOWLIST_SIZE, (
+            f'gate B allowlist is {len(entries)} entries, pinned at '
+            f'{self.ALLOWLIST_SIZE}. Adding one EXEMPTS a real string from the '
+            'personal-information gate — if that is genuinely what you mean '
+            '(shipped behaviour, deliberate attribution, or a test asserting ON '
+            'the literal), bump this number in the same commit and say why.')
+
+    def test_no_stale_allowlist_entries(self):
+        """A stale entry is an exemption nothing is using — dead permission that
+        silently covers whatever lands in that file next. Same discipline as
+        test_capture_grep_pin.test_allowlist_entries_still_exist."""
+        repo = os.path.join(os.path.dirname(__file__), '..')
+        for rel, pat in self._allowlist():
+            path = os.path.join(repo, rel)
+            assert os.path.exists(path), (
+                f'allowlisted file is gone: {rel} — drop the entry')
+            with open(path, encoding='utf-8', errors='replace') as f:
+                assert pat in f.read(), (
+                    f'allowlisted pattern {pat!r} no longer appears in {rel} — '
+                    'drop the entry rather than leaving a dead exemption')
+
+    def test_gate_c_rejects_unexpected_version(self, tmp_path):
+        # The release command passes the version it is releasing; agreement on
+        # the wrong value must fail before anything is materialized.
+        r = subprocess.run(['bash', self.SCRIPT, str(tmp_path / 'out')],
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, 'EXPECT_VERSION': '0.0.0-never'})
+        assert r.returncode != 0
+        assert 'gate C' in r.stderr and '0.0.0-never' in r.stderr
+        assert not (tmp_path / 'out').exists(), 'gate C must fail before the copy'
+
     def test_export_refuses_to_clobber_foreign_dir(self, tmp_path):
         (tmp_path / 'precious.txt').write_text('mine')
         r = self._run(str(tmp_path))
         assert r.returncode != 0
         assert (tmp_path / 'precious.txt').exists()
+
+
+class TestReleaseCommand:
+    """5.7: the release command's REFUSALS, which are its whole value.
+
+    Only the preflight is exercised: it runs before anything expensive and
+    before the tree is staged, so a refusal here proves the door stays shut
+    without paying for the export, the suite or the smoke. The commit the
+    release adds — author, e-mail, messages, target URL — is the one artifact
+    the export gates never see; these pin that it is gated anyway."""
+
+    SCRIPT = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'release.sh')
+
+    def _run(self, tmp_path, *args, email=None, previous='none'):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('RELEASE_AUTHOR_EMAIL', 'RELEASE_PREVIOUS')}
+        env['RELEASE_STAGE'] = str(tmp_path / 'stage')
+        if email is not None:
+            env['RELEASE_AUTHOR_EMAIL'] = email
+        if previous is not None:
+            env['RELEASE_PREVIOUS'] = previous
+        return subprocess.run(['bash', self.SCRIPT, *args], capture_output=True,
+                              text=True, timeout=120, env=env)
+
+    def test_refuses_without_explicit_author_email(self, tmp_path):
+        # git's configured identity must never be the fallback — on the dev
+        # machine it is a work address
+        r = self._run(tmp_path, '0.9.0')
+        assert r.returncode != 0
+        assert 'RELEASE_AUTHOR_EMAIL' in r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists(), 'refused, yet staged'
+
+    def test_refuses_without_a_predecessor_statement(self, tmp_path):
+        # the upgrade test cannot be forgotten, only declined by name
+        r = self._run(tmp_path, '0.9.0', email='a@example.org', previous=None)
+        assert r.returncode != 0
+        assert 'RELEASE_PREVIOUS' in r.stderr
+        r = self._run(tmp_path, '0.9.0', email='a@example.org',
+                      previous=str(tmp_path / 'not-a-tree'))
+        assert r.returncode != 0
+        assert 'not a plugin tree' in r.stderr
+
+    def test_refuses_personal_author_email(self, tmp_path):
+        r = self._run(tmp_path, '0.9.0', email='someone@playbuzz.com')
+        assert r.returncode != 0
+        assert 'gate B' in r.stderr, r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists()
+
+    def test_refuses_malformed_version(self, tmp_path):
+        r = self._run(tmp_path, '9.7', email='a@example.org')
+        assert r.returncode != 0
+        assert 'X.Y.Z' in r.stderr
+
+    def test_refuses_without_changelog_entry(self, tmp_path):
+        # A release with no notes is the one artifact no export gate sees;
+        # the changelog rots the moment one ships without touching it.
+        r = self._run(tmp_path, '0.0.1', email='a@example.org')
+        assert r.returncode != 0
+        assert 'CHANGELOG.md' in r.stderr and '0.0.1' in r.stderr, r.stderr
+        assert not (tmp_path / 'stage' / 'tree').exists(), 'refused, yet staged'
+
+    def test_publish_refuses_a_foreign_remote(self, tmp_path):
+        # a mis-aimed push is the one way history could leak
+        r = self._run(tmp_path, '0.9.0', '--publish', 'git@github.com:someone/else.git',
+                      email='a@example.org')
+        assert r.returncode != 0
+        assert 'repository' in r.stderr and 'someone/else' in r.stderr
+
+    def test_publish_refuses_skipped_steps(self, tmp_path):
+        r = self._run(tmp_path, '0.9.0', '--publish', PLUGIN['repository'],
+                      '--skip', 'suite', email='a@example.org')
+        assert r.returncode != 0
+        assert '--skip' in r.stderr
+
+
+class TestProcessNames:
+    """Every long-lived brain process reads as its ROLE in Activity Monitor,
+    not `python3.11`.
+
+    The kernel names a process after the final filename its exec resolved
+    to, so venv/bin/python (a symlink) made a 25 GB daemon and a stray test
+    run indistinguishable. brain-env.sh's `brain_python_as` hard-links the
+    interpreter under a role name; every launcher must exec THROUGH it, and
+    the names must fit the 15-char Linux comm limit (macOS shows 16). A
+    per-session role carries `-XXXX`, the session id's first four hex chars.
+    """
+
+    ROLE_VARS = {
+        'BRAIN_PYTHON_DAEMON': 'Entity-daemon',
+        'BRAIN_PYTHON_DASH': 'Entity-dash',
+        'BRAIN_PYTHON_HOOK': 'Entity-hook',
+    }
+    # launcher → the role its exec line must carry
+    LAUNCHERS = {
+        'hooks/scripts/brain-daemon': 'BRAIN_PYTHON_DAEMON',
+        'hooks/scripts/brain-dashboard': 'BRAIN_PYTHON_DASH',
+        'hooks/scripts/mcp-launch.sh': 'brain_python_as Entity-mcp',
+        'hooks/scripts/brain-watch': 'brain_python_as Entity-in',
+    }
+    COMM_LIMIT = 15
+
+    @staticmethod
+    def _shell_scripts():
+        return [p for p in TRACKED if p.startswith('hooks/scripts/')
+                and (p.endswith('.sh') or '.' not in os.path.basename(p))]
+
+    def test_no_launcher_execs_the_bare_interpreter(self):
+        # Shape-scan, not a list: a new hook that `exec python3`s ships as
+        # python3.11 and fails here.
+        bare = []
+        for rel in self._shell_scripts():
+            for n, line in enumerate(_read(rel).splitlines(), 1):
+                s = line.strip()
+                if not s.startswith('exec '):
+                    continue
+                if 'python' not in s and 'BRAIN_PYTHON' not in s:
+                    continue  # exec of a shell script, not an interpreter
+                if 'BRAIN_PYTHON_' not in s and 'brain_python_as' not in s:
+                    bare.append(f'{rel}:{n}: {s}')
+        assert not bare, 'exec lines that skip the role-named interpreter:\n' + '\n'.join(bare)
+
+    def test_launchers_carry_their_role(self):
+        for rel, token in self.LAUNCHERS.items():
+            assert token in _read(rel), f'{rel} must exec through {token}'
+
+    def test_names_fit_the_kernel_limit(self):
+        env = _read('hooks/scripts/brain-env.sh')
+        for var, name in self.ROLE_VARS.items():
+            assert f'export {var}="$(brain_python_as {name})"' in env
+        text = '\n'.join(_read(p) for p in self._shell_scripts())
+        seen = set()
+        for role, tag in re.findall(r'brain_python_as\s+([A-Za-z][\w-]*)(\s+"\$[^"]*")?', text):
+            full = role + ('-XXXX' if tag else '')
+            seen.add(full)
+            assert len(full) <= self.COMM_LIMIT, f'{full!r} is {len(full)} chars — truncated by the kernel'
+        assert {'Entity-daemon', 'Entity-mcp-XXXX', 'Entity-in-XXXX'} <= seen
+
+    @pytest.mark.skipif(not os.path.exists(os.path.join(REPO, 'venv', 'bin', 'python')),
+                        reason='needs the bundled venv')
+    def test_role_interpreter_is_the_venv_under_the_role_name(self):
+        # Functional: the role path IS the venv interpreter, and the kernel
+        # reports the role. Uses a throwaway session tag and removes its links.
+        tag = 'f00d'
+        out = subprocess.run(
+            ['bash', '-c',
+             'source hooks/scripts/brain-env.sh >/dev/null 2>&1; '
+             'echo "$BRAIN_PYTHON_DAEMON"; brain_python_as Entity-mcp ' + tag],
+            cwd=REPO, capture_output=True, text=True, timeout=60, check=True).stdout.split()
+        assert [os.path.basename(p) for p in out] == ['Entity-daemon', f'Entity-mcp-{tag}']
+        venv_bin = os.path.join(REPO, 'venv', 'bin')
+        try:
+            for path in out:
+                assert os.path.dirname(path) == venv_bin
+                prefix = subprocess.run([path, '-c', 'import sys; print(sys.prefix)'],
+                                        capture_output=True, text=True, timeout=30,
+                                        check=True).stdout.strip()
+                assert prefix == os.path.join(REPO, 'venv'), path
+            proc = subprocess.Popen([out[1], '-c', 'import time; time.sleep(5)'])
+            try:
+                col = 'ucomm=' if sys.platform == 'darwin' else 'comm='
+                name = subprocess.run(['ps', '-o', col, '-p', str(proc.pid)],
+                                      capture_output=True, text=True, timeout=10).stdout.strip()
+                assert name == f'Entity-mcp-{tag}'
+            finally:
+                proc.kill()
+                proc.wait()
+        finally:
+            link = os.path.join(venv_bin, f'Entity-mcp-{tag}')
+            real = os.path.realpath(link) if os.path.lexists(link) else ''
+            for p in (link, real):
+                if p and os.path.lexists(p):
+                    os.unlink(p)

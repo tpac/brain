@@ -65,10 +65,7 @@ RETIRE = 'retire'
 # ADOPT    drop unconditionally. These have a code default but their row can
 #          never converge with it, so COMPARE would guarantee permanent override
 #          status for content nothing wants: `s2_community`'s row holds 8 keys
-#          against the code dict's 25 with one in common and no reader at all,
-#          and the two mustered-out scouts carry an `output_schema` the code
-#          dicts deliberately omit — an omission tests/test_scout_contract.py
-#          asserts, so code and DB are held apart by contract.
+#          against the code dict's 25 with one in common and no reader at all.
 # PIN      never touched. `trace_recording` is the one name where activating the
 #          wrong version turns on full payload capture for every LLM round, and
 #          it is the only name whose active version is deliberately not its
@@ -90,7 +87,6 @@ COLLAPSE_POLICY = {
     's1e':                          COMPARE,
     's1e_gist':                     COMPARE,
     'surface':                      COMPARE,
-    's1_scout_facts':               COMPARE,
     's2_aspects':                   COMPARE,
     's2_healer':                    COMPARE,
     's2_community_enrichment':      COMPARE,
@@ -99,8 +95,6 @@ COLLAPSE_POLICY = {
     'recall_query_expansion':       COMPARE,
 
     's2_community':                 ADOPT,
-    's1_scout_quote':               ADOPT,
-    's1_scout_temporal':            ADOPT,
 
     'trace_recording':              PIN,
 

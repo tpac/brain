@@ -146,10 +146,9 @@ class ConsolidationDecoder(IntegrationUnit):
         archived = []
 
         # Find community nodes with no active community_member edges.
-        # TODO(v25-dal): dedicated helper like
-        # GraphDAL.find_communities_without_members() — the NOT EXISTS
-        # shape doesn't fit any existing method cleanly and this is the
-        # only caller. Stay raw with archived=0 filter for now.
+        # Sanctioned raw-SQL exception: the NOT EXISTS shape doesn't fit any
+        # existing GraphDAL method cleanly and this is the only caller.
+        # Raw with an archived=0 filter until a second caller surfaces.
         orphan_communities = self.brain.conn.execute("""
             SELECT n.id, n.title FROM nodes n
             WHERE n.type = 'community' AND n.archived = 0
@@ -209,9 +208,9 @@ class ConsolidationDecoder(IntegrationUnit):
         # archive direction: add_relation reuses the pair's existing physical
         # edge row in either orientation (surface-pick Hebbian co-access
         # creates those rows in recall order), so a later `supersedes` can be
-        # stored inverted — see brain node id:c3f37710 ("co_accessed fixing
-        # direction by accident is the steady state"). The edge tells us a
-        # supersession relationship EXISTS for the pair; created_at decides
+        # stored inverted: co_accessed fixing direction by accident is the
+        # steady state. The edge tells us a supersession relationship EXISTS
+        # for the pair; created_at decides
         # which node retires. Older-by-created_at is ground truth for opener
         # chains (a successor is by definition newer). Equal timestamps or
         # self-loops → skip, fail-safe.
@@ -960,8 +959,8 @@ class ConsolidationDecoder(IntegrationUnit):
         # cross-type clusters as likely_keep flipped the encoder's burden of proof
         # ("why override the keep?") and was the dominant under-merge cause — corpus
         # targets 5,6,7,8,12,13 were all type_mismatch + likely_keep. needs_judgment
-        # hands the call to the claim test, backed by the cross-type-duplicate example
-        # in the prompt. See docs/archive/session-handoffs/S2-CONSOLIDATION-ABSORB-SESSION-HANDOFF.md §8.1.
+        # hands the call to the claim test, backed by the cross-type-duplicate
+        # example in the prompt.
         types = set()
         for nid in cluster['nodes']:
             t = cluster.get('node_details', {}).get(nid, {}).get('type', '')

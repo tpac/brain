@@ -1,14 +1,13 @@
-"""Single source of truth for "now" across S1/S2/encoder/scouts.
+"""Single source of truth for "now" across S1/S2/encoder.
 
 Why this file exists
 --------------------
-Bug surfaced 2026-05-11 during temporal-eval analysis: build_muster_context()
-defaulted current_date to _dt.date.today() when not supplied. In eval replays
-(encoder running over a historical conversation dated 2023-03-19), the
-temporal scout resolved "today/yesterday/last Tuesday" against the wall-clock
-(2026-05-11) instead of the conversation date. Trace evidence on
-gpt4_b0863698: candidate_handles included 2026-05-11, 2026-03-05, 2026-05-10
-— all relative phrases mis-anchored to NOW.
+Grain-axis code runs in two clocks: production (the conversation is happening
+now) and eval replay (the encoder runs over a historical conversation dated,
+say, 2023-03-19). A caller that defaults to the wall-clock resolves
+"today/yesterday/last Tuesday" against the replay date instead of the
+conversation date, and every relative phrase mis-anchors to NOW. Routing every
+"now" through this module is what keeps replays honest.
 
 The architectural fix: ONE function for "now". Callers state which "now" they
 want — wall-clock (operator's TZ) or conversation-anchored. Eval inherits the
@@ -30,7 +29,7 @@ operator TZ). Deferred for now — see BACKLOG.md "UTC-internal clock refactor".
 Contract
 --------
 DO NOT call `datetime.now()`, `date.today()`, or `time.time()` directly in
-S1/S2 code or scouts. Use brain_now() / conversation_now(). A contract test
+S1/S2 code. Use brain_now() / conversation_now(). A contract test
 (tests/test_clock_contract_sync.py) scans for direct calls and fails.
 Exempt: telemetry/perf timers (use time.monotonic explicitly), schema files.
 """
@@ -266,7 +265,7 @@ def conversation_now(messages: Optional[Iterable[Any]] = None,
                       tz: Optional[str] = None) -> _dt.datetime:
     """Return the 'now' this CONVERSATION thinks it's happening.
 
-    Used by encoder/scout for resolving relative dates ("today", "yesterday",
+    Used by the encoder for resolving relative dates ("today", "yesterday",
     "last Tuesday") in the conversation under encoding. Always returns a
     timezone-aware datetime.
 

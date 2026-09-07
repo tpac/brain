@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Files that contain trace writes (production code only, not tests)
 TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
+    'servers/channels/delivery.py',  # the last-mile leg traces each delivery (s0/K per source)
     'servers/brain.py',            # stamp_boot_liveness writes a boot heartbeat (s0/K/heartbeat)
     'servers/brain_traces.py',     # write_journal_notes batches journal_note rows
     'servers/mutation_emitter.py', # THE mutation-trace writer (node_created/archived/deleted)
@@ -53,7 +54,7 @@ TRACE_WRITER_FILES = [
 #     ref_type=)
 #   x._trace_dal.append_batch([{...}, ...])   each element's 'scale' key
 #   _s0_trace(brain, ctx, event_type=,        the helper — it hardcodes 's0'
-#     ref_type=)                              (daemon_hooks._s0_trace)
+#     ref_type=)                              (brain_traces._s0_trace)
 #   self.trace(event_type, ref_type, ...)     the enclosing class's SCALE
 #     (S2Unit.trace)                          attribute, inherited if needed
 #   dispatch*('trace_append', {...})          the dict's 'scale' key
@@ -303,9 +304,14 @@ class TestTraceContractSync:
         # Validates itself instead: _emit_mutation_traces calls
         # validate_trace_event(scale, 'delta', ref_type) per row before writing.
         'servers/mutation_emitter.py',
-        # ref_type is the literal 'journal_note', but `scale` is a parameter —
-        # the caller's (s1 Scribe or an S2 unit). Both are covered by the
-        # (s1|s2, delta, journal_note) registrations the contract already holds.
+        # Two variable-scale doors. write_journal_notes: ref_type is the
+        # literal 'journal_note', `scale` is the caller's (s1 Scribe or an
+        # S2 unit) — covered by the (s1|s2, delta, journal_note)
+        # registrations. write_thalamus_filed: scale is DERIVED from the
+        # chain (scale_for_chain), ref_type is the REF_THALAMUS_FILED name —
+        # covered by the (s1|s2, delta) registrations; an unregistered scale
+        # is caught at the write boundary and pinned by
+        # test_thalamus.TestFiledTrace.
         'servers/brain_traces.py',
     }
 
@@ -651,12 +657,26 @@ class TestS0TurnClassification:
         assert ok, "heartbeat must be a valid (s0, K) ref_type"
 
     def test_only_user_message_is_conversational_today(self):
-        # Locks the decisions: operator prompts encode; anchor↔anchor is OFF for
-        # now; heartbeats never. Flipping self_message is a deliberate change.
+        # Locks the decisions: operator prompts encode; anchor↔anchor and
+        # brain↔anchor are OFF until the encoder prompt is taught the
+        # correspondent elements; heartbeats never. Flipping a row is a
+        # deliberate change gated on that encoder work.
         from servers.trace_contract import S0_CONVERSATIONAL_INCOMING
         assert S0_CONVERSATIONAL_INCOMING['user_message'] is True
         assert S0_CONVERSATIONAL_INCOMING['self_message'] is False
+        assert S0_CONVERSATIONAL_INCOMING['thalamus_delivery'] is False
         assert S0_CONVERSATIONAL_INCOMING['heartbeat'] is False
+
+    def test_operator_dialogue_is_a_subset_of_conversational(self):
+        # Option A's safety property: every pinned consumer (presence,
+        # episodes default, LAF, dual-store) selects only ref_types the
+        # encoder whitelist also carries — so a pinned scope can never see a
+        # row the timeline excludes. Aliasing the two constants back together
+        # ("dedupe the twin tuples") is the regression this guards.
+        from servers.trace_contract import (
+            CONVERSATIONAL_REF_TYPES, OPERATOR_DIALOGUE_REF_TYPES)
+        assert set(OPERATOR_DIALOGUE_REF_TYPES) <= set(CONVERSATIONAL_REF_TYPES)
+        assert OPERATOR_DIALOGUE_REF_TYPES == ('user_message', 'assistant_message')
 
     def test_conversational_ref_types_derived_from_one_dial(self):
         # CONVERSATIONAL_REF_TYPES must be DERIVED from S0_CONVERSATIONAL_INCOMING
@@ -686,6 +706,67 @@ class TestJournalNoteContract:
     s1 + s2 delta only — never s0 (notes are an encoder concern, and keeping
     them off s0 is part of the recall guard: s1/s2 traces aren't embedded)."""
 
+    def test_thalamus_filed_is_encoder_delta_residue(self):
+        """The filing-side marker rides a journaling encoder's run chain —
+        the S1 Scribe's and the S2 units' — is residue (never counted as a
+        run), and is NOT registered for s0: a filing is a run's act, not a
+        turn's; an s0 chain must fail loudly at the write boundary."""
+        from servers.trace_contract import (REF_TYPES, RESIDUE_REF_TYPES,
+                                            REF_THALAMUS_FILED,
+                                            validate_trace_event)
+        for scale in ('s1', 's2'):
+            assert REF_THALAMUS_FILED in REF_TYPES[(scale, 'delta')]
+            assert validate_trace_event(scale, 'delta', REF_THALAMUS_FILED)[0]
+        assert REF_THALAMUS_FILED in RESIDUE_REF_TYPES
+        assert not validate_trace_event('s0', 'delta', REF_THALAMUS_FILED)[0]
+
+    def test_thalamus_filed_metadata_is_a_registered_shape(self):
+        """The payload is contract-owned and ENFORCED at the write boundary,
+        like journal_note — a permissive (unregistered) ref_type is how two
+        writers once emitted two shapes undetected."""
+        from servers.trace_contract import (
+            REF_THALAMUS_FILED, METADATA_REQUIRED_BY_REF_TYPE,
+            THALAMUS_FILED_METADATA_SHAPE, build_thalamus_filed_metadata,
+            validate_trace_metadata, THALAMUS_FILED_BODY_LIMIT)
+        assert METADATA_REQUIRED_BY_REF_TYPE[REF_THALAMUS_FILED] is \
+            THALAMUS_FILED_METADATA_SHAPE
+        m = build_thalamus_filed_metadata(
+            source='encoder:sonnet', body='x' * (THALAMUS_FILED_BODY_LIMIT + 50),
+            target_session='abc', needs_answer=1, dedup_key='7e6decd2',
+            route='queue', filing='rearm')
+        assert set(m) == set(THALAMUS_FILED_METADATA_SHAPE)
+        assert m['needs_answer'] is True
+        assert len(m['body']) < THALAMUS_FILED_BODY_LIMIT + 50  # capped, loud
+        assert validate_trace_metadata('delta', REF_THALAMUS_FILED, m)[0]
+        ok, err = validate_trace_metadata('delta', REF_THALAMUS_FILED,
+                                          {'source': 'x'})
+        assert not ok and 'body' in err
+        try:
+            build_thalamus_filed_metadata(source='x', body='y', filing='bumped')
+        except ValueError as e:
+            assert 'filing' in str(e)
+        else:
+            raise AssertionError('unknown filing value must raise')
+
+    def test_scale_for_chain_derives_from_chain_prefixes(self):
+        """A writer handed a run chain is not also handed the scale — the
+        prefix already says it; an unclaimed chain raises (producer bug)."""
+        from servers.trace_contract import scale_for_chain, CHAIN_PREFIXES
+        assert scale_for_chain('s1e-aaaaaaaa-3') == 's1'
+        assert scale_for_chain('s1r-aaaaaaaa-3') == 's1'
+        assert scale_for_chain('s0-aaaaaaaa-3') == 's0'
+        assert scale_for_chain('s2-20260905120000-consolidation') == 's2'
+        for key, template in CHAIN_PREFIXES.items():
+            assert scale_for_chain(template.split('{', 1)[0] + 'x') == \
+                key.split('_', 1)[0]
+        for bad in ('', 'chain-1', 's9-abc'):
+            try:
+                scale_for_chain(bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('%r must not resolve to a scale' % bad)
+
     def test_registered_for_s1_and_s2_delta(self):
         from servers.trace_contract import REF_TYPES
         for scale in ('s1', 's2'):
@@ -707,12 +788,13 @@ class TestJournalNoteContract:
 
     def test_metadata_shape_keys(self):
         from servers.trace_contract import JOURNAL_NOTE_METADATA_SHAPE
-        assert set(JOURNAL_NOTE_METADATA_SHAPE.keys()) == {'note', 'tag'}
+        assert set(JOURNAL_NOTE_METADATA_SHAPE.keys()) == {'note', 'tag',
+                                                           'undelivered'}
 
     def test_build_defaults_tag_empty(self):
         from servers.trace_contract import build_journal_note_metadata
         m = build_journal_note_metadata(note='merged a1/b2 but unsure')
-        assert m == {'note': 'merged a1/b2 but unsure', 'tag': ''}
+        assert m == {'note': 'merged a1/b2 but unsure', 'tag': '', 'undelivered': ''}
 
     def test_build_strips_tag(self):
         from servers.trace_contract import build_journal_note_metadata

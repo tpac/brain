@@ -28,7 +28,7 @@ Design: docs/THALAMUS-DESIGN.md
 import json
 import uuid
 
-from servers.clock import iso_now
+from servers.clock import iso_now, iso_cutoff
 from servers.channels.thalamus import thalamus_contract as tc
 
 
@@ -38,7 +38,8 @@ from servers.channels.thalamus import thalamus_contract as tc
 # every field after it into the wrong key.
 _ITEM_COLS = ('id', 'source', 'body', 'refs', 'audience', 'target_session',
               'needs_answer', 'dedup_key', 'deliver_at', 'expires_at',
-              'state', 'answer', 'created_at', 'armed_epoch')
+              'state', 'answer', 'answered_at', 'created_at', 'updated_at',
+              'armed_epoch')
 
 _ITEM_SELECT = ', '.join(_ITEM_COLS)
 
@@ -77,7 +78,10 @@ def _insert_item(conn, **fields):
     not a silent NULL in the row. The caller holds the write lock and
     commits."""
     item_id = 'th_%s' % uuid.uuid4().hex[:8]
-    row = dict(fields, id=item_id, answer='')
+    # updated_at is stamped HERE and in _touch_where — the two write helpers
+    # — so no caller carries the clock: a birth is the first update.
+    row = dict(fields, id=item_id, answer='', answered_at=None,
+               updated_at=fields['created_at'])
     conn.execute(
         'INSERT INTO thalamus_items (%s) VALUES (%s)'
         % (', '.join(_INSERT_COLS), ', '.join('?' * len(_INSERT_COLS))),
@@ -85,8 +89,42 @@ def _insert_item(conn, **fields):
     return item_id
 
 
+# Columns a caller may never pass to _touch_where: the row's identity, the
+# two clocks the helpers stamp themselves, and the epoch (bump_epoch is the
+# only way it moves). Passing `updated_at=` would silently lose to the stamp.
+_TOUCH_OWNED = {'id', 'created_at', 'updated_at', 'armed_epoch'}
+
+
+def _touch_where(conn, where, params, now, bump_epoch=False, **cols):
+    """The one UPDATE shape: set `cols` on every row matching `where`, stamp
+    updated_at=now, optionally bump the delivery generation (armed_epoch — a
+    re-arm, see file()/resolve). Every state change, re-file and sweep goes
+    through here or _touch, so updated_at can never be forgotten at a new
+    write site (the producer view's settled-recently window reads it). A
+    column outside _ITEM_COLS is a programmer error and raises before SQL
+    does. The caller holds the write lock and commits. Returns rowcount."""
+    bad = set(cols) - (set(_ITEM_COLS) - _TOUCH_OWNED)
+    if bad:
+        raise ValueError('thalamus._touch_where: column(s) %s are unknown or '
+                         'owned by the helper (identity, clocks, epoch)'
+                         % sorted(bad))
+    sets = ['%s = ?' % c for c in cols] + ['updated_at = ?']
+    if bump_epoch:
+        sets.append('armed_epoch = armed_epoch + 1')
+    cur = conn.execute(
+        'UPDATE thalamus_items SET %s WHERE %s' % (', '.join(sets), where),
+        list(cols.values()) + [now] + list(params))
+    return cur.rowcount or 0
+
+
+def _touch(conn, item_id, now, bump_epoch=False, **cols):
+    """Per-item form of _touch_where."""
+    return _touch_where(conn, 'id = ?', [item_id], now, bump_epoch, **cols)
+
+
 def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
-         refs=None, dedup_key=None, expires=None, session_id=''):
+         refs=None, dedup_key=None, expires=None, session_id='',
+         run_chain=''):
     """The single producer door: validate → resolve the grammars → route.
 
     Returns {'ok': True, 'id': …} or a LOUD synchronous rejection
@@ -94,12 +132,23 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
     boundary, where the rejection lands in the caller's loop while it can
     still adapt (never in a sweeper hours later).
 
+    Tracing: a producer filing from a RUN passes its chain (`run_chain`; the
+    scale is the chain's) and every ACCEPTED filing leaves one
+    `thalamus_filed` row on that chain through the traces door
+    (brain.write_thalamus_filed) — the filed→delivered→answered join across
+    scales. No chain, no row: an interactive `remind` call is already in the
+    caller's own tool trail.
+
     Routing: for_whom 'live' delegates to the courier broadcast (requires a
     filing session — the locked stream-speech render must stay honest) and the
     row goes terminal 'sent'. Everything else queues for pull delivery.
 
-    Identity: a repeat (source, dedup_key) UPDATES the open item instead of
-    inserting — identity is producer-owned or absent, never derived from text.
+    Identity: a repeat (source, dedup_key, target_session) UPDATES the open
+    item instead of inserting — identity is producer-owned or absent, never
+    derived from text. The target is part of it for the same reason it is
+    part of the budget key: one producer string (the Scribe's) serves every
+    session, and a key re-used for another session is another item, not a
+    retarget of the first.
     Both forms return updated=True; they differ in `rearmed`. A repeat that
     CHANGES any producer-controlled delivery attribute — body, refs, when,
     needs_answer, for_whom — rewrites the item to what this call describes
@@ -133,6 +182,13 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
         # stay open forever and die silently at expiry.
         return _reject('thalamus.file: internal audience %r is not one of %s'
                        % (audience, tc.AUDIENCES))
+    if expires_at and deliver_at and expires_at <= deliver_at:
+        # window_for anchors the DEFAULT window at deliver_at exactly to
+        # prevent expiry-before-due; an explicit `expires` must meet the same
+        # bar or the item never becomes due (a false loud dead-letter for asks).
+        return _reject(
+            'thalamus.file: expires (%s) is not after when (%s) — the item '
+            'would expire before it ever becomes due' % (expires_at, deliver_at))
 
     now = iso_now()
     refs_json = json.dumps(list(refs or []))
@@ -151,13 +207,24 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
                 "thalamus.file: for_whom='live' requires a filing session "
                 "(the stream-speech render needs an honest sender); "
                 "machine live-now is Phase 3")
-        return _file_live(brain, source, body, refs, refs_json, session_id,
-                          now)
-
-    return _file_queued(brain, source, body, refs_json, now,
-                        audience=audience, target_session=target_session,
-                        needs_answer=needs_answer, dedup_key=dedup_key,
-                        deliver_at=deliver_at, expires_at=expires_at)
+        result = _file_live(brain, source, body, refs, refs_json, session_id,
+                            now)
+    else:
+        result = _file_queued(brain, source, body, refs_json, now,
+                              audience=audience, target_session=target_session,
+                              needs_answer=needs_answer, dedup_key=dedup_key,
+                              deliver_at=deliver_at, expires_at=expires_at)
+    if run_chain and result.get('ok'):
+        # The door owns its result envelope, so it names what it did — the
+        # traces layer never learns the envelope's shape.
+        filing = ('rearm' if result.get('rearmed') else
+                  'refresh' if result.get('updated') else 'new')
+        brain.write_thalamus_filed(
+            chain_id=run_chain, session_id=session_id, item_id=result['id'],
+            source=source, body=body, target_session=target_session,
+            needs_answer=needs_answer, dedup_key=dedup_key or '',
+            route=result['route'], filing=filing)
+    return result
 
 
 def _file_live(brain, source, body, refs, refs_json, session_id, now):
@@ -195,8 +262,9 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
             existing = conn.execute(
                 'SELECT id, body, refs, deliver_at, needs_answer, audience,'
                 ' target_session FROM thalamus_items '
-                'WHERE source = ? AND dedup_key = ? AND state = ? LIMIT 1',
-                (source, dedup_key, tc.STATE_OPEN)).fetchone()
+                'WHERE source = ? AND dedup_key = ? AND target_session = ?'
+                ' AND state = ? LIMIT 1',
+                (source, dedup_key, target_session, tc.STATE_OPEN)).fetchone()
             if existing:
                 # The gate compares EVERY producer-controlled delivery
                 # attribute, and the UPDATE sets each one it compares: a
@@ -219,36 +287,31 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
                     body, refs_json, deliver_at, needs_answer_col, audience,
                     target_session)
                 if changed:
-                    conn.execute(
-                        'UPDATE thalamus_items SET body = ?, refs = ?, '
-                        'deliver_at = ?, expires_at = ?, needs_answer = ?, '
-                        'audience = ?, target_session = ?, '
-                        'armed_epoch = armed_epoch + 1, updated_at = ? '
-                        'WHERE id = ?',
-                        (body, refs_json, deliver_at, expires_at,
-                         needs_answer_col, audience, target_session, now,
-                         existing[0]))
+                    _touch(conn, existing[0], now, bump_epoch=True,
+                           body=body, refs=refs_json, deliver_at=deliver_at,
+                           expires_at=expires_at, needs_answer=needs_answer_col,
+                           audience=audience, target_session=target_session)
                 else:
-                    conn.execute(
-                        'UPDATE thalamus_items SET expires_at = ?, '
-                        'updated_at = ? WHERE id = ?',
-                        (expires_at, now, existing[0]))
+                    _touch(conn, existing[0], now, expires_at=expires_at)
                 conn.commit()
                 return _ok(id=existing[0], updated=True, rearmed=changed,
                            route='queue')
 
+        # Budget key = (source, target_session) — see MAX_OPEN_PER_SOURCE.
         # expires_at filter: expired-but-unswept items must not wedge a
         # producer at its cap while being invisible to delivery.
         open_count = conn.execute(
             'SELECT COUNT(*) FROM thalamus_items WHERE source = ? '
-            'AND state = ? AND expires_at > ?',
-            (source, tc.STATE_OPEN, now)).fetchone()[0]
+            'AND target_session = ? AND state = ? AND expires_at > ?',
+            (source, target_session, tc.STATE_OPEN, now)).fetchone()[0]
         if open_count >= tc.MAX_OPEN_PER_SOURCE:
             return _reject(
-                'thalamus budget: %r has %d open items (cap %d) — '
+                'thalamus budget: %r has %d open items%s (cap %d) — '
                 'resolve, update (same dedup_key), or withdraw before '
                 'filing new ones; thalamus_list shows them'
-                % (source, open_count, tc.MAX_OPEN_PER_SOURCE))
+                % (source, open_count,
+                   ' for session %s' % target_session[:8] if target_session
+                   else '', tc.MAX_OPEN_PER_SOURCE))
 
         item_id = _insert_item(
             conn, source=source, body=body, refs=refs_json, audience=audience,
@@ -264,14 +327,17 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
 def _due_filter(session_id, via, now):
     """The due predicate — WHERE clause + params, shared by pull()'s fetch and
     its overflow count so the two cannot drift (the signal._PENDING_INBOX_SQL
-    pattern). Asks (needs_answer) are due at tc.ASK_MOMENTS only."""
+    pattern). Asks (needs_answer) are due at their audience's
+    tc.ASK_MOMENTS only."""
     sql = (' WHERE state = ?'
            ' AND (deliver_at IS NULL OR deliver_at <= ?)'
            ' AND expires_at > ?'
            " AND (target_session = '' OR target_session = ?)")
     params = [tc.STATE_OPEN, now, now, session_id]
-    if via not in tc.ASK_MOMENTS:
-        sql += ' AND needs_answer = 0'
+    for audience, moments in tc.ASK_MOMENTS.items():
+        if via not in moments:
+            sql += ' AND NOT (needs_answer = 1 AND audience = ?)'
+            params.append(audience)
     # The ledger is append-only across re-arms: only CURRENT-epoch rows
     # block delivery — a defer bumps the item's armed_epoch, so prior
     # generations' deliveries stay as history without suppressing the re-arm.
@@ -344,14 +410,13 @@ def pull(brain, session_id, via):
     """Due items for this session at a delivery moment ('boot' | 'stop') —
     rendered block + count of items actually shown. Writes the ledger at
     render for exactly those items (INSERT OR IGNORE: the PK makes re-render
-    idempotent per session and epoch). Asks (needs_answer)
-    deliver at BOOT ONLY — an architecture question arriving mid-thread
-    trains reflex-deferral; at boot there is no thread to protect.
+    idempotent per session and epoch). Asks (needs_answer) deliver at their
+    audience's tc.ASK_MOMENTS — broadcast at boot only, directed at Stop.
 
-    The caller owns tracing (the Stop hook holds the chain); at boot the
-    ledger + boot_renders row are the record. Two sessions racing a
-    once-item can each deliver it — rare and harmless (a reminder seen
-    twice beats one lost); the ledger stays truthful about both.
+    The caller owns tracing (channels/delivery.py holds the chain at both
+    moments); the ledger here is the delivery-policy record. Two sessions
+    racing a once-item can each deliver it — rare and harmless (a reminder
+    seen twice beats one lost); the ledger stays truthful about both.
     """
     if via not in tc.MOMENTS:
         # via is written to the ledger verbatim — vocabulary, not free text.
@@ -395,11 +460,48 @@ def pull(brain, session_id, via):
     return block, kept
 
 
-def list_items(brain, include_closed=False, limit=50):
-    """The pullable view — open items (default) with their delivery counts,
-    newest first. include_closed adds terminal items for audit."""
-    where, params = ('', []) if include_closed else ('WHERE state = ?',
-                                                     [tc.STATE_OPEN])
+def producer_items(brain, source, target_session, settled_days=None):
+    """A producer's OWN items for one recipient — the binding's read behind
+    the journal (open keys for withdraw; the producer view). Identity-exact:
+    (source, target_session) with '' meaning the broadcast items. Every open
+    item, plus — when `settled_days` is given — the items that reached a fate
+    a producer hears about (tc.FATE_STATES) within that many days. Ordered
+    open-first, then by when they last changed, so a consumer that cuts rows
+    never cuts an open one and sees the freshest answer first. No delivery
+    counts: those are the audit view's (list_items). Wall-clock over
+    updated_at, a transaction-time column — the channel's documented
+    exemption (thalamus_contract docstring)."""
+    if settled_days is None:
+        state_sql, params = 'state = ?', [tc.STATE_OPEN]
+    else:
+        fate_states = tuple(s for s in tc.FATE_STATES if s != tc.STATE_OPEN)
+        state_sql = ('(state = ? OR (state IN (%s) AND updated_at >= ?))'
+                     % ', '.join('?' * len(fate_states)))
+        params = [tc.STATE_OPEN, *fate_states, iso_cutoff(days=settled_days)]
+    rows = brain.logs_conn.execute(
+        'SELECT %s FROM thalamus_items WHERE source = ? AND target_session = ?'
+        ' AND %s ORDER BY (state <> ?), updated_at DESC'
+        % (_ITEM_SELECT, state_sql),
+        [source, target_session or '', *params, tc.STATE_OPEN]).fetchall()
+    return [_row_to_item(r) for r in rows]
+
+
+def list_items(brain, include_closed=False, limit=50, source='',
+               target_session=''):
+    """The audit view — open items (default) with their delivery counts,
+    newest first. include_closed adds terminal items; `source` /
+    `target_session` narrow to one producer / one directed recipient."""
+    clauses, params = [], []
+    if not include_closed:
+        clauses.append('state = ?')
+        params.append(tc.STATE_OPEN)
+    if source:
+        clauses.append('source = ?')
+        params.append(source)
+    if target_session:
+        clauses.append('target_session = ?')
+        params.append(target_session)
+    where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
     rows = brain.logs_conn.execute(
         'SELECT %s,'
         ' (SELECT COUNT(*) FROM thalamus_deliveries d'
@@ -459,10 +561,8 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
                     % (item_id, item['state'])}
         now = iso_now()
         if answer is not None:
-            conn.execute(
-                'UPDATE thalamus_items SET state = ?, answer = ?, '
-                'answered_at = ?, updated_at = ? WHERE id = ?',
-                (tc.STATE_ANSWERED, str(answer), now, now, item_id))
+            _touch(conn, item_id, now, state=tc.STATE_ANSWERED,
+                   answer=str(answer), answered_at=now)
             result = {'ok': True, 'id': item_id, 'state': tc.STATE_ANSWERED}
         elif defer_until is not None:
             try:
@@ -478,25 +578,22 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
             # item delivers again when due — while the ledger keeps truthful
             # history ("delivered, then deferred" ≠ "never delivered";
             # Phase 3 retry gates on unacked).
-            conn.execute(
-                'UPDATE thalamus_items SET deliver_at = ?, expires_at = ?, '
-                'armed_epoch = armed_epoch + 1, updated_at = ? WHERE id = ?',
-                (new_deliver, new_expires, now, item_id))
+            _touch(conn, item_id, now, bump_epoch=True,
+                   deliver_at=new_deliver, expires_at=new_expires)
             result = {'ok': True, 'id': item_id, 'state': tc.STATE_OPEN,
                       'deliver_at': new_deliver, 'expires_at': new_expires}
         else:
-            conn.execute(
-                'UPDATE thalamus_items SET state = ?, updated_at = ? '
-                'WHERE id = ?', (tc.STATE_DISMISSED, now, item_id))
+            _touch(conn, item_id, now, state=tc.STATE_DISMISSED)
             result = {'ok': True, 'id': item_id, 'state': tc.STATE_DISMISSED}
         conn.commit()
     return result
 
 
-def withdraw(brain, source, item_id=None, dedup_key=None):
-    """Producer retraction — a producer may close ITS OWN open item (by id or
-    dedup_key). Without this, a condition that resolved itself waits as a
-    stale ask: the wallpaper defect one level up. Source must match."""
+def withdraw(brain, source, item_id=None, dedup_key=None, target_session=''):
+    """Producer retraction — a producer may close ITS OWN open item (by id, or
+    by the (dedup_key, target_session) identity it filed under). Without
+    this, a condition that resolved itself waits as a stale ask: the
+    wallpaper defect one level up. Source must match."""
     if not (item_id or dedup_key):
         return {'ok': False, 'error':
                 'thalamus.withdraw: pass item_id or dedup_key'}
@@ -509,8 +606,10 @@ def withdraw(brain, source, item_id=None, dedup_key=None):
         else:
             row = conn.execute(
                 'SELECT source, state, id FROM thalamus_items WHERE '
-                'source = ? AND dedup_key = ? AND state = ?',
-                (source, dedup_key, tc.STATE_OPEN)).fetchone()
+                'source = ? AND dedup_key = ? AND target_session = ?'
+                ' AND state = ?',
+                (source, dedup_key, target_session or '',
+                 tc.STATE_OPEN)).fetchone()
             item_id = row[2] if row else None
         if not row:
             return {'ok': False, 'error': 'thalamus.withdraw: no such item'}
@@ -521,9 +620,7 @@ def withdraw(brain, source, item_id=None, dedup_key=None):
         if row[1] != tc.STATE_OPEN:
             return {'ok': False, 'error': 'thalamus.withdraw: %s is already %r'
                     % (item_id, row[1])}
-        conn.execute(
-            'UPDATE thalamus_items SET state = ?, updated_at = ? WHERE id = ?',
-            (tc.STATE_WITHDRAWN, iso_now(), item_id))
+        _touch(conn, item_id, iso_now(), state=tc.STATE_WITHDRAWN)
         conn.commit()
     return {'ok': True, 'id': item_id, 'state': tc.STATE_WITHDRAWN}
 
@@ -541,11 +638,9 @@ def expire_due(brain):
             'SELECT id, source, body FROM thalamus_items '
             'WHERE state = ? AND expires_at <= ? AND needs_answer = 1',
             (tc.STATE_OPEN, now)).fetchall()
-        cur = conn.execute(
-            'UPDATE thalamus_items SET state = ?, updated_at = ? '
-            'WHERE state = ? AND expires_at <= ?',
-            (tc.STATE_EXPIRED, now, tc.STATE_OPEN, now))
-        expired = cur.rowcount or 0
+        expired = _touch_where(conn, 'state = ? AND expires_at <= ?',
+                               [tc.STATE_OPEN, now], now,
+                               state=tc.STATE_EXPIRED)
         conn.commit()
     for item_id, source, body in dead_asks:
         brain._log_error(

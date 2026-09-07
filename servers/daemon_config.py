@@ -10,6 +10,8 @@ import sys
 import time
 import hashlib
 
+from servers.brain_constants import user_config_dir
+
 # ─── Force CPU-only BEFORE any downstream import ───
 # On macOS Apple Silicon, CoreML/Metal XPC connections cause SIGABRT in
 # background/daemon processes that lack GPU context. DAEMON_CPU_ENV is the SINGLE
@@ -241,8 +243,7 @@ def _resolve_daemon_port() -> int:
     launched through brain-env.sh (the MCP server — CC spawns it with a bare
     env), then to the uid formula. A malformed value warns and uses the
     formula instead of crash-looping the daemon under KeepAlive."""
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     raw = (os.environ.get("BRAIN_DAEMON_PORT")
            or _read_env_file_key(os.path.join(xdg, 'brain', 'env'),
                                  'BRAIN_DAEMON_PORT'))
@@ -298,8 +299,7 @@ def _validate_instance_env() -> None:
     # formula when the var is unset, so every shell-launched process arrives
     # here with production's port already "set". Refuse production's VALUE —
     # the formula and the user env file are the two sources production reads.
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     prod_port = (_read_env_file_key(os.path.join(xdg, 'brain', 'env'),
                                     'BRAIN_DAEMON_PORT')
                  or str(47200 + (os.getuid() % 100)))
@@ -349,8 +349,7 @@ def resolve_db_dir(trust_env: bool = True) -> str:
     d = os.environ.get('BRAIN_DB_DIR')
     if d and trust_env:
         return d
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
+    xdg = user_config_dir()
     cfg = _read_env_file_key(os.path.join(xdg, 'brain', 'env'), 'BRAIN_DB_DIR')
     if cfg and os.path.isfile(os.path.join(cfg, 'brain.db')):
         return cfg

@@ -63,6 +63,62 @@ def _resolve_time_bound(value):
         raise ValueError('time bound %r %s' % (value, e))
 
 
+def stamp_s0_session(metadata, env):
+    """Merge the session stamp (trace_contract.S0_SESSION_STAMP_FIELDS — model,
+    host) into an S0 row's metadata. `env` is a mapping carrying those fields
+    (vars(ctx) on the hook path, session_env_for() on the dispatched path).
+    setdefault semantics — an explicit per-event value wins; an unknown (empty)
+    field is left out rather than stamped blank, so a row from before the value
+    was learned carries no key at all. Returns the metadata unchanged when
+    nothing is known, and unchanged when it is not a dict (None stays None; a
+    non-dict wire payload is the DAL's to warn about, never a raise here — the
+    same posture as TraceDAL._stamp_identity)."""
+    from .trace_contract import S0_SESSION_STAMP_FIELDS
+    stamp = {k: env.get(k, '') for k in S0_SESSION_STAMP_FIELDS if env.get(k, '')}
+    if not stamp or (metadata is not None and not isinstance(metadata, dict)):
+        return metadata
+    metadata = dict(metadata or {})
+    for k, v in stamp.items():
+        metadata.setdefault(k, v)
+    return metadata
+
+
+def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None,
+              content=None, ref_id=''):
+    """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
+    chain (ctx.s0_chain()), scale ('s0'), the session (ctx.session_id), the
+    session stamp (model/host from ctx, via stamp_s0_session) — and the
+    stored-content cap: pass the turn's full text as `content` and it
+    lands in metadata['content'] capped LOUDLY at the pipeline store limit
+    (a marker names the dropped count — never a silent slice, per the
+    standing truncation rule), so the timeline's sides can neither drift
+    apart nor get cut invisibly. The S0 turn events differ only in
+    event_type / ref_type / summary / metadata / ref_id; everything else is
+    turn-fixed. Routing them all through here keeps session_id from being
+    dropped — the self_message append once omitted it, leaving cross-stream
+    deliveries unattributable to the recipient session.
+
+    Callers: the hooks (daemon_hooks) and the delivery leg (channels/
+    delivery.py). Call it by BARE NAME — test_trace_contract_sync resolves
+    `_s0_trace(...)` as a scale-binding helper; an attribute call would be
+    extractor-blind.
+
+    Returns the appended trace_event id (hook_recall passes the current
+    prompt's id to get_session_turns as exclude_trace_id)."""
+    if content:
+        from .pipeline_contract import PIPELINE as _PL
+        from .loud_truncation import cap_text_loud
+        metadata = dict(metadata or {})
+        metadata['content'] = cap_text_loud(
+            content, _PL['assistant_response_store'],
+            marker='…[+%d chars truncated at trace store]')
+    metadata = stamp_s0_session(metadata, vars(ctx))
+    return brain._trace_dal.append(
+        chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
+        event_type=event_type, ref_type=ref_type, summary=summary,
+        metadata=metadata, ref_id=ref_id)
+
+
 class BrainTracesMixin:
     """Brain-level trace capabilities: the generic query door, journal/arc
     residue, episodic recall, and conversation reads. Composed onto Brain."""
@@ -194,7 +250,8 @@ class BrainTracesMixin:
         from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
                                       JOURNAL_CONTINUITY_RUNS_DEFAULT,
                                       JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
-                                      JOURNAL_OPEN_PIN_CAP, resolve_target)
+                                      JOURNAL_OPEN_PIN_CAP, resolve_target,
+                                      journal_key)
         events = self.query_traces(
             ref_type='journal_note', scale=scale, ref_id=subject,
             session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
@@ -206,10 +263,10 @@ class BrainTracesMixin:
                 k = JOURNAL_CONTINUITY_RUNS.get(key, JOURNAL_CONTINUITY_RUNS_DEFAULT)
 
             def _tag(e):
-                return ((e.get('metadata') or {}).get('tag') or '').strip().casefold()
+                return journal_key((e.get('metadata') or {}).get('tag'))
 
             def _subj(e):
-                return (e.get('ref_id') or '').strip().casefold()
+                return journal_key(e.get('ref_id'))
 
             def _note(e):
                 return (e.get('metadata') or {}).get('note') or ''
@@ -301,6 +358,7 @@ class BrainTracesMixin:
         return [{
             'tag': (e.get('metadata') or {}).get('tag', ''),
             'note': (e.get('metadata') or {}).get('note', ''),
+            'undelivered': (e.get('metadata') or {}).get('undelivered', ''),
             'subject': e.get('ref_id', ''),
             'chain_id': e.get('chain_id', ''),
             'created_at': e.get('created_at', ''),
@@ -313,9 +371,16 @@ class BrainTracesMixin:
         own journal_note trace row (event_type='delta', ref_id=subject), all
         sharing the run's chain_id.
 
+        The JOURNAL_ADDRESSED_TAGS notes (tell/ask) are NOT written — they are
+        messages to the people working, not residue for the next run — and
+        come back under 'addressed' for the caller to route; this run's
+        resolve-verb lines come back under 'resolved' ({subject, note}) so the
+        caller can close what they name. The traces layer only partitions; it
+        never imports a channel and holds no routing policy.
+
         Returns a structured result so the caller (and the trace) can see what
-        happened: `{'written': int, 'malformed': int, 'status': str}` where
-        status is one of:
+        happened: `{'written': int, 'malformed': int, 'status': str,
+        'addressed': [...], 'resolved': [...]}` where status is one of:
           • 'ok'                 — a non-empty review processed (counts tell the rest)
           • 'salvaged'           — no `## Review` heading, but a heading-less fence
                                    of valid notes was harvested (drift, logged loud)
@@ -334,9 +399,16 @@ class BrainTracesMixin:
         a journal write must never break or roll back the encoder's actual run.
         """
         from .trace_contract import (extract_review_block, parse_journal_notes,
-                                      build_journal_note_metadata,
                                       salvage_review_fence,
-                                      JOURNAL_REVIEW_MARKER)
+                                      JOURNAL_REVIEW_MARKER,
+                                      JOURNAL_ADDRESSED_TAGS,
+                                      JOURNAL_RESOLVE_TAGS, journal_key)
+
+        def _result(written, malformed, status, addressed=(), resolved=()):
+            return {'written': written, 'malformed': malformed,
+                    'status': status, 'addressed': list(addressed),
+                    'resolved': list(resolved)}
+
         try:
             salvaged = False
             block = extract_review_block(final_text)
@@ -358,58 +430,127 @@ class BrainTracesMixin:
                         'journal_note_no_review_extracted',
                         'chain=%s: %r present but no parseable fenced block'
                         % (chain_id, JOURNAL_REVIEW_MARKER))
-                    return {'written': 0, 'malformed': 0,
-                            'status': 'no_review_extracted'}
+                    return _result(0, 0, 'no_review_extracted')
                 else:
                     self._log_warning(
                         'journal_note_no_review_section',
                         'chain=%s: encoder final_text (%d chars) has no %r section'
                         % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
-                    return {'written': 0, 'malformed': 0,
-                            'status': 'no_review_section'}
+                    return _result(0, 0, 'no_review_section')
             if block == '':
                 # Fenced review present but empty — the legit "clean run, nothing
                 # to note" case. Visible (debug), not an alarm.
                 self.log_debug('journal_note_empty_review', 'write_journal_notes',
                                chain_id=chain_id)
-                return {'written': 0, 'malformed': 0, 'status': 'empty_review'}
+                return _result(0, 0, 'empty_review')
 
             notes, malformed = parse_journal_notes(block)
             for raw in malformed:
                 self._log_warning('journal_note_malformed',
                                   'chain=%s: %s' % (chain_id, raw[:200]))
-            events = []
+
+            # One pass partitions the parsed notes (parse_journal_notes
+            # already strips every field and rejects empty subjects):
+            # addressed lines go back to the caller, the rest are residue,
+            # and resolve lines are also named so the caller can close items.
+            residue, addressed, resolved = [], [], []
             for n in notes:
-                subject = (n.get('subject') or '').strip()
-                if not subject:
-                    self._log_warning('journal_note_no_subject',
-                                      'chain=%s: %s' % (chain_id, str(n)[:200]))
+                tag = journal_key(n.get('tag'))
+                if tag in JOURNAL_ADDRESSED_TAGS:
+                    addressed.append(n)
                     continue
-                try:
-                    meta = build_journal_note_metadata(note=n['note'],
-                                                       tag=n.get('tag', ''))
-                except ValueError as e:
-                    self._log_warning('journal_note_build_failed',
-                                      'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
-                    continue
-                events.append({
-                    'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
-                    'ref_type': 'journal_note', 'ref_id': subject,
-                    'summary': meta['note'][:80], 'metadata': meta,
-                    'session_id': session_id,
-                })
-            if events:
-                self._trace_dal.append_batch(events)
-            if notes and not events:
-                self._log_warning(
-                    'journal_note_all_dropped',
-                    'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
-                    % (chain_id, len(notes)))
-            return {'written': len(events), 'malformed': len(malformed),
-                    'status': 'salvaged' if salvaged else 'ok'}
+                residue.append(n)
+                if tag in JOURNAL_RESOLVE_TAGS:
+                    resolved.append(n)
         except Exception as e:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
-            return {'written': 0, 'malformed': 0, 'status': 'error'}
+            return _result(0, 0, 'error')
+        # The row write is isolated on its own: a failed batch must not take
+        # the addressed lines down with it — those are messages to a person,
+        # and the caller still routes them (and can keep them as residue).
+        try:
+            written = self.write_journal_note_rows(
+                residue, chain_id=chain_id, scale=scale, session_id=session_id)
+        except Exception as e:
+            self._log_error('journal_note_write_failed', e,
+                            'chain=%s: %d residue row(s) lost; addressed lines '
+                            'handed back' % (chain_id, len(residue)))
+            return _result(0, len(malformed), 'error', addressed, resolved)
+        if residue and not written:
+            self._log_warning(
+                'journal_note_all_dropped',
+                'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
+                % (chain_id, len(residue)))
+        return _result(written, len(malformed),
+                       'salvaged' if salvaged else 'ok', addressed, resolved)
+
+    def write_journal_note_rows(self, notes, *, chain_id, scale, session_id=''):
+        """Write notes ({tag, subject, note[, undelivered]} dicts) as
+        journal_note rows on `chain_id` — the row-writing half of
+        write_journal_notes, also the door a binding uses to keep an
+        addressed line as residue when the Thalamus rejected it
+        (`undelivered` = the door's reason). Notes here may be hand-built, so
+        the per-note guards stay: a subject-less or unbuildable note is
+        skipped and warned, never sinks the batch. Returns the number of rows
+        written."""
+        from .trace_contract import build_journal_note_metadata
+        events = []
+        for n in notes:
+            subject = (n.get('subject') or '').strip()
+            if not subject:
+                self._log_warning('journal_note_no_subject',
+                                  'chain=%s: %s' % (chain_id, str(n)[:200]))
+                continue
+            try:
+                meta = build_journal_note_metadata(
+                    note=n.get('note') or '', tag=n.get('tag', ''),
+                    undelivered=n.get('undelivered', ''))
+            except (ValueError, KeyError) as e:
+                self._log_warning('journal_note_build_failed',
+                                  'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
+                continue
+            events.append({
+                'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
+                'ref_type': 'journal_note', 'ref_id': subject,
+                'summary': meta['note'][:80], 'metadata': meta,
+                'session_id': session_id,
+            })
+        if events:
+            self._trace_dal.append_batch(events)
+        return len(events)
+
+    def write_thalamus_filed(self, *, chain_id, session_id, item_id, source,
+                             body, target_session='', needs_answer=False,
+                             dedup_key='', route='queue', filing='new'):
+        """Write door for a Thalamus filing made from a producer's RUN — one
+        `thalamus_filed` delta row on the run's chain (ref_id = item id), the
+        sibling of write_journal_notes' rows. The scale is the chain's
+        (trace_contract.scale_for_chain); the payload shape is the contract's
+        (build_thalamus_filed_metadata, validated at the write boundary).
+
+        Failure-isolated: the item is already committed when this runs, and a
+        trace failure must never undo or mask a filing — logged loud, the
+        caller's result stands. A chain whose scale the contract does not
+        register for this ref_type (an s0 chain — a filing is a run's act,
+        not a turn's) is exactly such a failure: LOUD in the errors log, no
+        row."""
+        try:
+            from .trace_contract import (REF_THALAMUS_FILED, scale_for_chain,
+                                          build_thalamus_filed_metadata)
+            meta = build_thalamus_filed_metadata(
+                source=source, body=body, target_session=target_session,
+                needs_answer=needs_answer, dedup_key=dedup_key, route=route,
+                filing=filing)
+            return self._trace_dal.append(
+                chain_id=chain_id, scale=scale_for_chain(chain_id),
+                session_id=session_id, event_type='delta',
+                ref_type=REF_THALAMUS_FILED, ref_id=item_id,
+                summary=meta['body'][:80], metadata=meta)
+        except Exception as e:
+            self._log_error('thalamus_filed_trace_failed', e,
+                            'chain=%s item=%s — filing stands, trace lost'
+                            % (chain_id, item_id))
+            return None
 
     def write_session_arc(self, *, final_text, session_id, limit=800):
         """Write door for the session arc — the journal mechanism's second
@@ -501,7 +642,9 @@ class BrainTracesMixin:
         older_than is left as-is (no forced floor).
 
         ref_type: a str (one type) or a list (several). UNSET → the conversation
-        default, sourced from the trace_contract dial (CONVERSATIONAL_REF_TYPES)
+        default, PINNED to operator dialogue (OPERATOR_DIALOGUE_REF_TYPES —
+        deliberately not the dial: flipped correspondents like self_message /
+        thalamus_delivery stay opt-in via explicit ref_type, like tool_result)
         at s0 — so the default tracks the contract and can't drift, and
         non-conversational s0 traffic (tool_result, heartbeat, structural
         deltas) stays out of the common query. Pass ref_type='tool_result' for
@@ -523,7 +666,7 @@ class BrainTracesMixin:
                  candidate cap). Truthiness works for both; only the dict
                  form carries coverage details (and triggers the MCP banner).
         """
-        from .trace_contract import CONVERSATIONAL_REF_TYPES
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES
         # Honest limit (mirrors filter_nodes): the signature default is a
         # bounded page (EPISODE_DEFAULT_LIMIT), and EXPLICIT limit=None is the
         # opt-in for unbounded (all episodes in the window — internal window
@@ -545,7 +688,7 @@ class BrainTracesMixin:
         if ref_type:
             ref_types = [ref_type] if isinstance(ref_type, str) else list(ref_type)
         elif scale == 's0':
-            ref_types = list(CONVERSATIONAL_REF_TYPES)
+            ref_types = list(OPERATOR_DIALOGUE_REF_TYPES)
         else:
             ref_types = None
         common = dict(
@@ -635,7 +778,11 @@ class BrainTracesMixin:
         N turns. No timestamp resolution, no JSONL fallback (historic
         center-on-a-moment lookups are get_conversation_around's job).
 
-        Returns: [{role, content, timestamp, trace_id, judge_output}]
+        Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
+            ref_type: the CORRESPONDENT axis (user_message = operator,
+                      self_message = a stream, thalamus_delivery = the brain)
+                      passed through from get_session_turns — the encoder's
+                      render keys speaker elements on it.
             trace_id: 8-char hex id from trace_events (v29) — used by S1 encoder
                       to populate source_refs via `[trace:<hex>]` inline markers.
             judge_output: surface selection from S1R for the user turn (if any).
@@ -661,6 +808,7 @@ class BrainTracesMixin:
             out = []
             for t in turns:
                 row = {'role': t['role'],
+                       'ref_type': t.get('ref_type', ''),
                        'trace_id': t.get('trace_id'),
                        'content': t.get('content', ''),
                        'timestamp': t.get('timestamp', ''),
@@ -745,7 +893,7 @@ class BrainTracesMixin:
         Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
         first. `updated_at` is the last real-turn time; `focus` is that
         session's latest conversational turn — user_message OR assistant_message
-        per trace_contract.CONVERSATIONAL_REF_TYPES, excluding the wake-envelope
+        per trace_contract.OPERATOR_DIALOGUE_REF_TYPES, excluding the wake-envelope
         marker (raw — render layer trims it).
         """
         from .clock import iso_cutoff
@@ -880,7 +1028,12 @@ class BrainTracesMixin:
                 with_judge_output=False,
             )
             if turns:
-                return [{'role': t['role'], 'content': t.get('content', ''),
+                # Same passthrough contract as get_conversation: ref_type is
+                # the correspondent axis — dropping it here would render every
+                # correspondent as the operator in historic lookups.
+                return [{'role': t['role'], 'ref_type': t.get('ref_type', ''),
+                          'trace_id': t.get('trace_id'),
+                          'content': t.get('content', ''),
                           'timestamp': t.get('timestamp', '')} for t in turns]
         except Exception:
             pass

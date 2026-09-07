@@ -11,7 +11,7 @@ import json
 import re
 import sys
 
-from .dispatch_common import _pop_session_ctx, caller_session, CALLER_SESSION_KEY
+from .dispatch_common import _pop_session_ctx, caller_session, CALLER_SESSION_KEY, CALLER_SIG_KEY
 from .scales.dispatch import stamp_scope_provenance
 
 
@@ -307,8 +307,8 @@ def _handle_remember(brain, args, graph_changes):
     # Manifest for the emitter: the node's birth row + connect_to edge rows
     # (made-entries are src-tagged with edge_id/deltas via _apply_connect_to).
     # Session/chain attribution comes from the chokepoint's PRE-handler capture
-    # — the pop-then-read bug (session_id='' on every remember-path edge trace,
-    # id:89262c96) dies here, structurally.
+    # — the pop-then-read bug (session_id='' on every remember-path edge
+    # trace) dies here, structurally.
     enc_src = args.get('encoding_source', '')
     edge_rows = _connect_to_rows(
         result.get('connect_to_result') if isinstance(result, dict) else None,
@@ -355,11 +355,12 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
-        # defensive: neither identity key is a node field. _pop_session_ctx
+        # defensive: no identity key is a node field. _pop_session_ctx
         # already stripped the top-level args; this guards a spec that bundled
-        # either key per-node (so it can't cascade into node_metadata_kv).
+        # one per-node (so it can't cascade into node_metadata_kv).
         spec.pop('session_id', None)
         spec.pop(CALLER_SESSION_KEY, None)
+        spec.pop(CALLER_SIG_KEY, None)
         if spec.get('reason') and not spec.get('reasoning'):
             reason_warnings.append(
                 "nodes[%d]: `reason` is not a node field and was dropped — "
@@ -403,7 +404,7 @@ def _handle_remember_batch(brain, args, graph_changes):
     # `connect_to_made` is the brain method's edge record — popped into the
     # manifest so it doesn't bloat the agent-facing payload. Attribution comes
     # from the chokepoint's pre-handler capture (kills the pop-then-read
-    # session_id='' bug, id:89262c96).
+    # session_id='' bug).
     made = result.pop('connect_to_made', None) if isinstance(result, dict) else None
     edge_rows = _connect_to_rows({'created': made or []}, enc_src)
     # co_anchored edges fire inside each per-node remember(); popped for
@@ -446,10 +447,11 @@ def _handle_revise(brain, args, graph_changes):
     scope_warnings = _stamp_session_scope(brain, 'revise', args)
 
     # Reserve known dispatch keys so they don't get treated as field updates.
-    # CALLER_SESSION_KEY is the ambient identity the proxy stamps — reserve it
-    # too so it never lands in `updates` as a bogus node field.
+    # The identity keys (the ambient session the proxy stamps, and the hook
+    # signature it strips) are reserved too, so neither lands in `updates` as
+    # a bogus node field.
     DISPATCH_KEYS = {"node_id", "reason", "encoding_source", "chain_id",
-                     "session_id", CALLER_SESSION_KEY}
+                     "session_id", CALLER_SESSION_KEY, CALLER_SIG_KEY}
     updates = {k: v for k, v in args.items() if k not in DISPATCH_KEYS}
 
     # v29 / Phase B Step 4 — source_refs validation on revise
@@ -926,7 +928,7 @@ def _handle_brain_batch(brain, args, graph_changes):
             if isinstance(op_spec, str):
                 # Same serialization quirk one level down: a string ELEMENT
                 # that parses to a dict is the intended op (seen in S2
-                # community batches, id:ce8d9aef). Unrecoverable elements
+                # community batches). Unrecoverable elements
                 # keep the existing per-op error — fan-out is bounded by
                 # the element count the caller actually sent.
                 try:

@@ -9,6 +9,7 @@ Tests cover:
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -195,6 +196,20 @@ class TestBrainVoiceRenderBoot(BrainTestBase):
         self.assertIsNotNone(result['for_operator'])
         self.assertIn("@priority:", result['for_operator'])
         self.assertIn("nodes", result['for_operator'])
+
+    def test_boot_section_isolates_a_raise_and_logs_it(self):
+        """A boot part that raises is logged under boot_<what>_failed and the
+        section yields its default — boot never dies on one part's read."""
+        voice = BrainVoice(self.brain)
+
+        def boom():
+            raise RuntimeError('part exploded')
+        with patch.object(self.brain, '_log_error') as log:
+            self.assertEqual(voice._boot_section('frame_build', boom), '')
+            self.assertIsNone(voice._boot_section('session_ctx', boom, default=None))
+            self.assertEqual(voice._boot_section('fine', lambda: 'text'), 'text')
+        self.assertEqual([c.args[0] for c in log.call_args_list],
+                         ['boot_frame_build_failed', 'boot_session_ctx_failed'])
 
     def test_render_boot_v2_stance_first(self):
         """The SKILL.md stance is injected FIRST, before the state block."""

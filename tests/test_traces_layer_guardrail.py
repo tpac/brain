@@ -1,6 +1,6 @@
 """Traces-layer guardrail: no trace READS on TraceDAL outside brain_traces.py.
 
-The traces consolidation (docs/TRACES-LAYER-DESIGN.md, commit c827d28) set one
+The traces consolidation (docs/TRACES-LAYER-DESIGN.md) set one
 routing rule: reading traces through the API is a `brain.` method living in
 brain_traces.py — only that file touches TraceDAL's read surface. Four operator
 corrections and an audit's worth of bypasses came from this rule being enforced

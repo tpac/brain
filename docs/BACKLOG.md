@@ -243,7 +243,7 @@ new inter-layer channel to prove it isn't just async S0 (brain `bfc6d106`).
   nodes). Rename to `haiku_id_from_prior_context`, downgrade to debug so real errors
   aren't buried. ~20 min.
 - **29 pre-existing test failures** from the `session_context` signature drift
-  (scout_muster / trace_system / s1_data_assembly still call stale signatures). Pure
+  (trace_system / s1_data_assembly still call stale signatures). Pure
   test maintenance.
 - **`judge_output` → `surface_output`** across the trace metadata contract. Derived
   field, no data migration. Defer until something else touches `dal.py`.
@@ -283,13 +283,21 @@ These aren't builds — they gate other work. Each needs the operator.
 | **Fencing** | Multi-user: fence sessions/traces per operator, or intentionally shared? Operator's own framing — "not sharing is a function not a structure" (brain `030be61c`) | multi-user completeness | soft fencing (display/routing) |
 | **Watchdog** | Daemon `memory_watchdog`: enable now or after the next leak? (rss 1.14 GB, +139 MB growth 2026-08-04 unlocated, brain `b92443f3`) | daemon stability | enable now |
 | **Aspects** | AspectIntegration auto-merge, or operator-review gate in production? | S2 autonomy | auto-merge for now |
-| **Dormant prompts** | Three versions registered DORMANT since May (`s1e` v24-era multi-ref anchoring, `s1_scout_facts` v7, `s1_scout_quote` v4) — activate or retire? Note the methodological floor: **LLM encoders are stochastic at N=1**, so any re-run decision needs N≥3 | prompt hygiene | retire what nobody has needed in three months |
+| **Dormant prompts** | One version registered DORMANT since May (`s1e` v24-era multi-ref anchoring; the `s1_scout_*` rows are inert since the muster removal) — activate or retire? Note the methodological floor: **LLM encoders are stochastic at N=1**, so any re-run decision needs N≥3 | prompt hygiene | retire what nobody has needed in three months |
 | **S1S rubric** | The per-node/per-run Haiku-judge rubric was designed and never built — still wanted, or drop the design intent? | validation infra | drop |
 
 ---
 
 ## Parked with a design — the brain holds it, don't redesign
 
+- **Thalamus Prompt moment + clock re-anchor assist** — the Thalamus injects at the
+  user prompt (third delivery moment, `delivery.PROMPT`), and its first rider is a
+  computed *assist*: one gap-as-event line when the session's last `assistant_message`
+  is older than `ROSTER_LIVE_WINDOW_MIN` (the entity's "now" is the newest stamp in
+  context and goes stale silently). Plus `remind`/`thalamus_resolve` echoing `now`.
+  Ruled by Tom 2026-09-04 into the thalamus-arch thread: `THALAMUS-ARCH-PLAN.md`
+  Step 12 (spec), `THALAMUS-DESIGN.md` §Delivery + Phase 2.5 (design). Brain
+  `3ed231ee` (design), `8ece8811` (the lesson).
 - **`remind()` / prospective memory** — guaranteed time-triggered delivery (recall is
   probabilistic; a reminder must fire). Full design + scope guards: brain `ee7224ed`.
   It has since argued for itself in the wild — one ping needed three mechanisms because

@@ -1,14 +1,14 @@
 {
-  "name": "brain",
+  "name": "entity",
   "displayName": "Entity",
-  "version": "9.7.2",
+  "version": "0.9.0",
   "description": "Persistent identity for an AI assistant — a self-healing knowledge graph that survives across sessions, learns from every conversation, and surfaces the right memory at the right moment. The substrate an identity accumulates into, not a RAG store.",
   "author": {
     "name": "Tom Pachys",
     "url": "https://github.com/tpac"
   },
-  "homepage": "https://github.com/tpac/brain",
-  "repository": "https://github.com/tpac/brain",
+  "homepage": "https://github.com/tpac/entity",
+  "repository": "https://github.com/tpac/entity",
   "license": "PolyForm-Noncommercial-1.0.0 OR PolyForm-Internal-Use-1.0.0",
   "keywords": [
     "identity",

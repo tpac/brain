@@ -29,19 +29,25 @@ from servers.scales.s1.encode_contract import build_node_catalog  # noqa: E402
 
 SHORT = 'abcd1234'
 
-# The plugin-adapter tool prefix, built from the manifest — never the literal
+# The plugin-adapter tool prefix, built from the manifests — never the literal
 # (test_deploy_contract's containment gate keeps the adapter shape out of
-# source; .claude/settings.json is its one legitimate home).
+# source; .claude/settings.json is its one legitimate home). CC's shape is
+# mcp__plugin_<plugin>_<server>__<tool>: the plugin name comes from plugin.json,
+# the server name is the .mcp.json key — two namespaces (D-11), not one.
 import json  # noqa: E402
 with open(os.path.join(ROOT, '.claude-plugin', 'plugin.json')) as _f:
     _PLUGIN = json.load(_f)['name']
-PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _PLUGIN)) + '%s'
+with open(os.path.join(ROOT, '.mcp.json')) as _f:
+    _servers = list(json.load(_f))
+assert _servers == ['brain'], f'.mcp.json servers changed: {_servers}'
+_SERVER = _servers[0]
+PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _SERVER)) + '%s'
 
 
 # ── the flag ──
 
 def test_flag_on_by_default(monkeypatch):
-    # Activated 2026-08-18 (Tom's gate): unset means the policy; 0 is the
+    # Activated 2026-08-18 on an operator gate: unset means the policy; 0 is the
     # emergency off-switch and the A/B control arm.
     monkeypatch.delenv('BRAIN_S1E_VIEW_POLICY', raising=False)
     assert view_policy_enabled() is True
@@ -427,8 +433,8 @@ def test_catalog_aging_trims_old_rounds_keeps_new_full():
     # fresh round keeps the full render
     assert 'Edges:' in new_entry
     assert 'corrector body' in new_entry
-    # no aged tag or catalog header (Tom, 2026-08-18: the render is
-    # self-describing); provenance tags speak first-person TURN coordinates
+    # no aged tag or catalog header (the render is self-describing);
+    # provenance tags speak first-person TURN coordinates
     assert '[encoded(me, turn 5)]' in text
     assert '[body only]' not in text and '[aged]' not in text
     assert '[encoded] ' not in text                  # legacy tag retired here

@@ -165,7 +165,7 @@ class TestOverlapGuard(unittest.TestCase):
         self.assertEqual(result[0][0], '2023-05-22')
 
     def test_two_distinct_mentions_both_emit(self):
-        # "Tom finished in May 2023 on May 27, 2023" — there ARE two
+        # "Ada finished in May 2023 on May 27, 2023" — there ARE two
         # distinct mentions (a month and a day). Both should emit.
         result = _intervals("Ada finished in May 2023 on May 27, 2023")
         self.assertEqual(len(result), 2)

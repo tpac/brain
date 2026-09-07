@@ -726,6 +726,17 @@ def validate_encoding_source(value):
     return True, None
 
 
+# Node id = uuid4().hex[:8]. Trace ids share the shape, different namespace —
+# their predicates stay their own.
+_NODE_ID_RE = re.compile(r'[0-9a-f]{8}')
+
+
+def looks_like_node_id(value):
+    """True when `value` has the node-id shape. Shape only — existence is the
+    graph's question."""
+    return isinstance(value, str) and _NODE_ID_RE.fullmatch(value) is not None
+
+
 # ── NODE FORMATTING ──
 # The standard way any LLM consumer sees a node.
 # A node is never naked — it always includes edges, corrections, metadata.
@@ -922,7 +933,7 @@ def render_corrections(corrections, mode='lean',
 
     Single rendering path — both render_rich_node and consumer-specific
     formatters (HealerEncoder._format_batch) call this. Per the data/format
-    separation contract (decision id:3c3a3046): one formatter, configs drive
+    separation contract: one formatter, configs drive
     verbosity.
 
     Args:

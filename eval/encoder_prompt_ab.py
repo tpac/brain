@@ -122,7 +122,7 @@ def assemble_arm(brain, session_id, inputs, view_policy, window_aligned,
     preamble, body, _t, _i = _build_user_content(
         brain, messages, 0, session_id, lived_sequence=True,
         precomputed=(catalog_text, catalog_ids, streams),
-        scout_outputs=None, view_policy=view_policy, view_now=now)
+        view_policy=view_policy, view_now=now)
     return preamble + "\n\n" + body, head
 
 

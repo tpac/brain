@@ -778,6 +778,29 @@ class TestMomentStack(BrainTestBase):
             self._mk_row('mta%02d' % i, 'assistant_message', anchor_text,
                          self.T[2 * i + 1])
 
+    def test_correspondent_rows_dropped_from_moment_stack(self):
+        # A dial-on delivery row reaching get_conversation must not occupy a
+        # j-slot (it has no vector in the pinned matrix) — it is dropped
+        # entirely, counted under its OWN ledger key (machine_dropped keeps
+        # the slot; this drop removes the row — different shapes).
+        from unittest import mock
+        from servers import trace_contract as tc
+        self._mk_turn(0, 'real question', 'real answer')
+        self._mk_row('mtd01', 'thalamus_delivery',
+                     'delivered 1 thalamus item(s) at stop',
+                     self.T[3], with_vec=False)
+        self._mk_turn(2, 'second question', 'second answer')
+        eng = self._engine()
+        with mock.patch.object(
+                tc, 'CONVERSATIONAL_REF_TYPES',
+                tc.CONVERSATIONAL_REF_TYPES + ('thalamus_delivery',)):
+            stack, ledger = eng._moment_stack(self.brain, self.SESS, 3)
+        self.assertEqual(ledger.get('correspondent_dropped', 0), 1)
+        self.assertEqual(ledger['machine_dropped'], 0)
+        # Both real turns still pair up; the delivery holds no slot.
+        self.assertEqual({(s, j) for s, j, _v, _t in stack},
+                         {('o', 1), ('a', 1), ('o', 2), ('a', 2)})
+
     def _engine(self, moment_K=None, moment_gains=None):
         import time as _t
         eng = LafV1Engine()

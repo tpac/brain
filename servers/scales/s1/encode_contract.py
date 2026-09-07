@@ -147,7 +147,7 @@ MAX_CONCURRENT_ENCODES = 4
 # Encoding agent v3.2 (Sonnet) — split node catalog + timeline with references
 ENCODING_AGENT = {
     'message_content_limit': 2500,    # per message stored in message_stream (both roles equally)
-    'message_display_limit': 2500,    # per message in timeline (both roles — shared learnings, not just Tom's words)
+    'message_display_limit': 2500,    # per message in timeline (both roles — shared learnings, not one side's words)
     'max_messages': 20,               # last N messages (~10 turns)
     'recall_candidates_limit': 5,     # candidates per turn (pre-attached)
     'max_rounds': 5,                  # Sonnet API round limit (target: 2-3)
@@ -230,7 +230,7 @@ WINDOW_TURNS_FALLBACK = 20
 # encoder time (+8.1% vs lean, vs balanced's +11.4%) AND answerer tokens
 # (+1.0% vs balanced's +17.5%) at equal pass rate. Correction context is
 # targeted signal, not noise — heavy lets the encoder converge faster, not
-# flood it. The locked principle (id:eaf833c5) "more signal ≠ better
+# flood it. The locked principle "more signal ≠ better
 # encoding" still holds for ARBITRARY signal flooding; correction-aspect
 # context is the structured exception that demonstrably helps.
 # Healer also uses 'heavy' (set in HealerEncoder._format_batch).
@@ -260,7 +260,7 @@ PROVENANCE_TAGS = (
     ('encoded',  '[encoded]'),
 )
 
-# The subconscious tag (Tom's ruling 2026-08-21): nodes production recall
+# The subconscious tag: nodes production recall
 # ranked near this window that did NOT make the surface cut render as the
 # catalog's LAST entries under this tag — same reading protocol as the other
 # provenance tags, origin carried by the tag grammar. Not in PROVENANCE_TAGS:

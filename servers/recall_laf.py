@@ -17,7 +17,7 @@ registry entry + a 'gain_<name>' config key. v1 fields:
              they become fitted columns at P3, see eval/laf/maxsim_decomp.md)
     pick   — nodes Haiku surfaced AND selected at past moments similar to the query
              (uncapped full-history trace scan — the newest-500 recall_episodes cap is
-             deliberately NOT inherited; Tom 2026-07-02: structurally wrong for a field)
+             deliberately NOT inherited — structurally wrong for a field)
     enc    — nodes created/revised at similar past moments
     idf    — production's idf2 rare-token title boost re-expressed as a lane
     sit    — cosine(query, node _situation vector) as its own lane (NOT folded into
@@ -76,13 +76,13 @@ try:
     from . import embedder
     from .brain_constants import _TITLE_BOOST_STOPWORDS
     from .pipeline_contract import EMBEDDING_GROUPS
-    from .trace_contract import CONVERSATIONAL_REF_TYPES, is_machine_turn
+    from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, is_machine_turn
     from .scales.s1.trace_links import gather, nodes_for_traces, _stop_of
 except ImportError:                                    # direct-script import shape
     import embedder
     from brain_constants import _TITLE_BOOST_STOPWORDS
     from pipeline_contract import EMBEDDING_GROUPS
-    from trace_contract import CONVERSATIONAL_REF_TYPES, is_machine_turn
+    from trace_contract import OPERATOR_DIALOGUE_REF_TYPES, is_machine_turn
     from scales.s1.trace_links import gather, nodes_for_traces, _stop_of
 
 # v1 gains + knobs — the measured static composition. Overridable via the interactions
@@ -641,7 +641,7 @@ class LafV1Engine:
     # ── trace matrix: block list — appends never copy the resident rows ──
     def _refresh_traces(self, brain):
         rows = brain._trace_dal.event_vector_rows(
-            scale='s0', ref_types=list(CONVERSATIONAL_REF_TYPES),
+            scale='s0', ref_types=list(OPERATOR_DIALOGUE_REF_TYPES),
             since=self._tr_last or None)
         if not rows:
             return
@@ -893,6 +893,15 @@ class LafV1Engine:
         ledger['rows'] = len(rows)
         turns = []                       # [[op_row_or_None, anchor_row_or_None]]
         for r in rows:
+            # The moment stack is operator↔Anchor pairs — pinned like the
+            # vector matrix above (_refresh_traces), or a dial-on delivery
+            # row would occupy a vec-less j-slot and displace real turns.
+            # Own ledger key: a correspondent drop removes the ROW, while a
+            # machine drop keeps its j-slot ([None, None]) — different shapes.
+            if r.get('ref_type') and r['ref_type'] not in OPERATOR_DIALOGUE_REF_TYPES:
+                ledger['correspondent_dropped'] = (
+                    ledger.get('correspondent_dropped', 0) + 1)
+                continue
             role = r.get('role')
             if role == 'user':
                 if is_machine_turn(r.get('content')):

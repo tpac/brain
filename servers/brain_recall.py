@@ -17,9 +17,8 @@ import time
 # Recall result cache (2026-05-08) — short-TTL dedup on top of the
 # single-flight gate. 10s window covers multi-hook bursts (pre_edit +
 # pre_bash_safety + hook_recall fire on every tool call) without
-# letting suggestions go stale on natural pauses. Tom: "let's increase
-# pre_edit and bash cache to 10 seconds" — both go through this single
-# recall layer now, so one TTL knob covers both.
+# letting suggestions go stale on natural pauses. They all go through this
+# single recall layer, so one TTL knob covers every caller.
 _RECALL_CACHE_TTL_S = 10.0
 _RECALL_CACHE_MAX_ENTRIES = 100
 
@@ -92,8 +91,8 @@ def _expand_query_via_llm(brain, query: str) -> List[str]:
         # The encoder lane's 600s ceiling is the wrong shape here — a recall
         # that waits ten minutes has already failed. max_retries=0 keeps the
         # bound hard (the SDK default of 2 would triple the worst case); recall
-        # proceeds on the primary query when expansion misses, which is the
-        # same best-effort posture scouts/base.py takes.
+        # proceeds on the primary query when expansion misses — best-effort,
+        # never blocking.
         client = anthropic.Anthropic(
             timeout=RECALL_EXPANSION_TIMEOUT_S, max_retries=0)
     except Exception:
@@ -1268,7 +1267,8 @@ class BrainRecallMixin:
         query -> top-T s0 DIALOGUE traces -> each trace's STORED vector -> top-N nodes.
         Returns {node_id: combined tcos*ncos} for the top TRACE_CHAIN_RESERVE nodes NOT already
         found by embedding/keyword/fts5 (exclude_ids). The trace de-dilutes a buried query: it is
-        specific, un-pooled conversation text, so it pulls EX.CO nodes the diluted query cosine missed.
+        specific, un-pooled conversation text, so it pulls the buried topical nodes the diluted
+        query cosine missed.
 
         Design: docs/RECALL-DUAL-STORE-DESIGN.md §3.3 form 1 (the semantic chain — the burial FIX).
         Hygiene (§4): s0 user/assistant only; tool_result dropped (the 82% recall-echo poison).
@@ -1276,13 +1276,14 @@ class BrainRecallMixin:
         OFF by default so this never touches the live hot path until eval-gated activation.
         """
         from .brain_constants import TRACE_CHAIN_T, TRACE_CHAIN_N, TRACE_CHAIN_RESERVE
-        from .trace_contract import CONVERSATIONAL_REF_TYPES
+        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES
         try:
-            # rows: (chain_id, session_id, created_at, vector) — indexed pull of
-            # exactly the embedded conversational traces (same door recall_laf
-            # uses); the conversational dial lives in trace_contract.
+            # rows: (chain_id, session_id, created_at, vector) — indexed pull
+            # of exactly the embedded operator-dialogue traces (same door
+            # recall_laf uses); PINNED per this lane's own hygiene rule
+            # (user/assistant only), not the timeline dial.
             trows = self._trace_dal.event_vector_rows(
-                scale='s0', ref_types=list(CONVERSATIONAL_REF_TYPES))
+                scale='s0', ref_types=list(OPERATOR_DIALOGUE_REF_TYPES))
             tr = [(embedder.cosine_similarity(query_vec, r[3]), r[3])
                   for r in trows]
             if not tr:
@@ -1352,7 +1353,7 @@ class BrainRecallMixin:
         (pre_edit, pre_bash_safety, hook_recall, MCP) now benefits.
         """
         # Resolve session_id from ctx when caller passed an object; ctx wins
-        # over session_id if both supplied (Tom's convention: pass the object).
+        # over session_id if both supplied (the convention is to pass the object).
         if ctx is not None and not session_id:
             session_id = ctx.session_id
 
@@ -2031,7 +2032,7 @@ class BrainRecallMixin:
         # STEP 4.6: Trace-chain lane (episodic dual-store rescue) — flag-gated, additive, default OFF.
         # docs/RECALL-DUAL-STORE-DESIGN.md §3.3 form 1. Off -> trace_chain_scores empty -> zero impact.
         # exclude_ids = fts5_only only (its own reserved lane). We deliberately do NOT exclude
-        # embedding/keyword hits: the buried EX.CO nodes ARE in embedding_scores (scored but below the
+        # embedding/keyword hits: the buried topical nodes ARE in embedding_scores (scored but below the
         # cut) — rescuing them from below the cut is the whole point. Dedup vs the main TOP is at merge.
         import os as _os_tc
         trace_chain_scores = {}
@@ -2055,14 +2056,14 @@ class BrainRecallMixin:
         #           whitespace terms (punctuation kept), substring containment.
         #           Verified failure mode on episodic queries: flood terms ('on'
         #           hits 98/100 titles, 'session' 82/100) lift low-cosine nodes
-        #           +0.18 while the discriminative term ('ex.co?') matches nothing
-        #           — buried gold dabb3078 at rank 92 with rank-12 cosine.
+        #           +0.18 while the discriminative term (the topic name) matches nothing
+        #           — buried gold at rank 92 with rank-12 cosine.
         #   'off' — no title boost (null arm).
         #   'idf' — punctuation-stripped terms, each weighted by rarity across
         #           node titles (log idf); flood terms ≈ 0, rare terms dominate.
         #   'idf2' — idf + three calibration fixes from the TO1/TO4/TO6 decomp
-        #           (ab_topic_decomp.py): real tokenization (keeps 'ex.co',
-        #           'spread_activation'; kills the em-dash df=2303 pseudo-term),
+        #           (ab_topic_decomp.py): real tokenization (keeps dotted and
+        #           underscored identifiers; kills the em-dash df=2303 pseudo-term),
         #           stopword floor (df-over-titles misprices conversational
         #           words — 'does' df=58 looked as rare as 'fatigue' df=41),
         #           and word-boundary matching ('do' no longer hits 'docs').
@@ -2089,7 +2090,7 @@ class BrainRecallMixin:
             _idf_total = sum(_title_idf.values()) or 1.0
         elif _title_boost_mode == 'idf2' and query:
             import re as _re_tb
-            # Dots/underscores join identifiers (ex.co, spread_activation, v15.2);
+            # Dots/underscores join identifiers (spread_activation, v15.2);
             # hyphens join prose words ("Scouts-in-examples") and must SPLIT, or
             # compound title words match none of their parts.
             _tok = _re_tb.compile(r"[a-z0-9]+(?:[._][a-z0-9]+)*")

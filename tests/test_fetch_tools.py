@@ -407,7 +407,7 @@ class TestExpandNodeEndToEnd(BrainTestBase):
     {'neighbors': [...], 'corrections': {...}, 'metadata': {...}} but
     expand_node iterated the dict itself (string keys → AttributeError,
     swallowed by the except) — so the tool returned 0 candidates on every
-    production call (finding id:18e4a651)."""
+    production call."""
     needs_embedder = False
 
     def _node(self, title):

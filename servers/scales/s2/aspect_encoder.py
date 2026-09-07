@@ -159,6 +159,7 @@ class AspectEncoder(IntegrationUnit):
                        output_tokens=telemetry.get('output_tokens', 0),
                        cache_read_tokens=telemetry.get('cache_read_tokens', 0),
                        cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
+                       model=telemetry.get('model', ''),
                    ))
 
         return {
@@ -193,6 +194,7 @@ class AspectEncoder(IntegrationUnit):
                        output_tokens=telemetry.get('output_tokens', 0),
                        cache_read_tokens=telemetry.get('cache_read_tokens', 0),
                        cache_creation_tokens=telemetry.get('cache_creation_tokens', 0),
+                       model=telemetry.get('model', ''),
                    ))
 
     # ─── prompt construction ─────────────────────────────────────────
@@ -346,8 +348,8 @@ class AspectEncoder(IntegrationUnit):
                         value, category, dropped, valid_for_cat))
                 aspects_list = valid_for_cat
 
-            # Noise + semantic is a LEGAL answer, kept as returned (Tom,
-            # 2026-08-23). Noise vetoes at read time, so the noise member is
+            # Noise + semantic is a LEGAL answer, kept as returned.
+            # Noise vetoes at read time, so the noise member is
             # the load-bearing half: stripping it — as this boundary used to,
             # on the reasoning that a semantic claim refutes noise — deleted
             # exactly the half that does the filtering and silently un-noised

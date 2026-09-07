@@ -16,6 +16,8 @@ the canonical write-command CLASSIFICATION the attribution chokepoint reads.
 import os
 import re
 
+from ..brain_constants import user_config_dir
+
 
 # ── Provider failure classification (the LLM seam) ──
 #
@@ -141,9 +143,7 @@ def load_env():
     """
     if os.environ.get('ANTHROPIC_API_KEY'):
         return
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
-    env_path = os.path.join(xdg, 'brain', 'env')
+    env_path = os.path.join(user_config_dir(), 'brain', 'env')
     if not os.path.exists(env_path):
         return
     try:
@@ -173,9 +173,7 @@ def resolve_api_key() -> str:
     is the fallback. Read every call — one stat + tiny read, only ever on
     LLM-availability checks, not the recall hot path.
     """
-    xdg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(
-        os.path.expanduser('~'), '.config')
-    env_path = os.path.join(xdg, 'brain', 'env')
+    env_path = os.path.join(user_config_dir(), 'brain', 'env')
     try:
         with open(env_path) as f:
             for line in f:

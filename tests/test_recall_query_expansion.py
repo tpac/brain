@@ -197,7 +197,7 @@ class ExpansionGateTest(unittest.TestCase):
 class ExpansionEffectiveConfigTest(unittest.TestCase):
     """Interaction parameters are authoritative — assert the EFFECTIVE values.
 
-    The known trap (brain id:a6dfcfe3): an override that lands on the
+    The known trap: an override that lands on the
     fallback side of a `get(key, fallback)` chain fails silently and the
     caller measures noise. So these tests assert what reaches
     `messages.create`, never what was passed upstream.

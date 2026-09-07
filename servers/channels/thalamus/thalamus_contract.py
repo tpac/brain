@@ -14,18 +14,19 @@ This file owns: states, audiences, caps and default windows, the `when` /
 drift guard. Mechanics live in thalamus.py; DDL in servers/schema.py
 (thalamus_items / thalamus_deliveries, logs DB).
 
-Time is WALL-CLOCK (iso_now / iso_after) — delivery windows are courier-class
-real-elapsed deadlines, the same documented exemption as the self-channel;
-nothing here is on the eval-replay conversation-time path.
+Time is WALL-CLOCK (iso_now / iso_after / iso_cutoff) — delivery windows and
+the producer's settled-recently window are courier-class real-elapsed spans
+over transaction-time columns, the same documented exemption as the
+self-channel; nothing here is on the eval-replay conversation-time path.
 
 Design: docs/THALAMUS-DESIGN.md
 """
 
 from datetime import datetime as _dt
 
-from servers.trace_contract import REF_TYPES as _REF_TYPES
-from servers.loud_truncation import cap_text_loud
+from servers.loud_truncation import cap_text_loud, compose_block_loud
 from servers.clock import iso_after, resolve_offset, FUTURE
+from servers.channels.delivery import BOOT as _BOOT, STOP as _STOP
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -42,9 +43,10 @@ STATE_EXPIRED = 'expired'      # window ended — LOUD for an unanswered ask
                                # (the dead-letter fix), natural for a notice
 STATE_SENT = 'sent'            # terminal at file(): delegated live-now
                                # broadcast — the courier owns its death
-
-TERMINAL_STATES = (STATE_ANSWERED, STATE_DISMISSED, STATE_WITHDRAWN,
-                   STATE_EXPIRED, STATE_SENT)
+STATES = (STATE_OPEN, STATE_ANSWERED, STATE_DISMISSED, STATE_WITHDRAWN,
+          STATE_EXPIRED, STATE_SENT)  # the closed lifecycle — every
+                                      # partition of it (fate_of) is checked
+                                      # against this tuple
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -73,24 +75,42 @@ def default_audience(needs_answer):
 
 
 # ═══════════════════════════════════════════════════════════════
-# MOMENTS  —  the delivery moments a session pulls at. `via` is written to
-# the ledger verbatim, so it must be vocabulary, not free text — pull()
+# MOMENTS  —  the delivery moments a session pulls at. The vocabulary is
+# OWNED by channels/delivery.py (the last-mile leg both channels ride);
+# these are its names, kept here so the pull predicate and ledger speak
+# them without reaching around the contract. `via` is written to the
+# ledger verbatim, so it must be vocabulary, not free text — pull()
 # validates against MOMENTS loudly (a typo'd via would behave as Stop and
 # ledger the typo).
 # ═══════════════════════════════════════════════════════════════
-VIA_BOOT = 'boot'
-VIA_STOP = 'stop'
+VIA_BOOT = _BOOT.name
+VIA_STOP = _STOP.name
 MOMENTS = (VIA_BOOT, VIA_STOP)
-ASK_MOMENTS = (VIA_BOOT,)  # asks deliver at boot only — an architecture
-                           # question arriving mid-thread trains
-                           # reflex-deferral; at boot there is no thread
+# Asks deliver at moments chosen by their AUDIENCE. A broadcast ask (every
+# session) renders at boot only — an architecture question arriving
+# mid-thread trains reflex-deferral; at boot there is no thread. A directed
+# ask (one named session) renders at that session's Stop: the Scribe asking
+# the session it just encoded IS mid-thread by design, and a session you can
+# name has already had its one boot — boot-only would dead-letter it.
+ASK_MOMENTS = {AUDIENCE_EVERY: (VIA_BOOT,),
+               AUDIENCE_FIRST: (VIA_STOP,)}
 
 
 # ═══════════════════════════════════════════════════════════════
 # CAPS & WINDOWS  —  policy as data. Volume is owned HERE, not by producer
 # discretion (v1's fatal finding #2 — brain node 6789e133).
 # ═══════════════════════════════════════════════════════════════
-MAX_OPEN_PER_SOURCE = 8    # file() REJECTS (loudly, synchronously) at the cap
+MAX_OPEN_PER_SOURCE = 8    # file() REJECTS (loudly, synchronously) at the cap.
+                           # Keyed on (source, target_session): a broadcast
+                           # item counts against its producer's global slots
+                           # (target_session ''), a directed item against the
+                           # producer's slots FOR THAT SESSION — the cap
+                           # protects a reader from one producer's flood, and
+                           # the Scribe's source (`encoder:sonnet`) is one
+                           # string for every session's runs (the
+                           # encoding_source grammar has no session slot), so
+                           # a source-only key would let one busy session
+                           # starve every other
 PULL_MAX_ITEMS = 5         # per render moment (boot / stop), overflow named
 BLOCK_MAX = 4000           # whole injected block — loud cap, mirror of the
                            # self-channel RECEIVED_BLOCK_MAX discipline
@@ -100,6 +120,9 @@ RENDER_REFS_MAX = 3        # refs resolved inline per item, rest named
 ASK_EXPIRES_DAYS = 14      # needs_answer window; expiry past it is LOUD
 NOTICE_EXPIRES_DAYS = 7    # undated-notice window
 REMIND_GRACE_DAYS = 7      # dated items: expiry = deliver_at + grace
+PRODUCER_VIEW_SETTLED_DAYS = 7  # a producer sees its item's settled outcome
+                                # this long after it settled; open items it
+                                # sees regardless (the open-pin rule)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -127,6 +150,31 @@ def kind_of(item):
     if item.get('deliver_at'):
         return KIND_REMINDER
     return KIND_NOTICE
+
+
+# FATE — how an item ENDED, as its producer should hear it: the one
+# derivation mirroring kind_of, so no consumer re-partitions the state space
+# (an expired ASK is the dead-letter case and says so). None = the producer's
+# own act (withdrawn) or the courier's (sent): nothing to report back.
+FATE_OPEN = 'open'
+FATE_ANSWERED = 'answered'
+FATE_DISMISSED = 'dismissed'
+FATE_EXPIRED = 'expired'
+FATE_EXPIRED_UNANSWERED = 'expired, unanswered'
+_FATE_BY_STATE = {STATE_OPEN: FATE_OPEN, STATE_ANSWERED: FATE_ANSWERED,
+                  STATE_DISMISSED: FATE_DISMISSED, STATE_EXPIRED: FATE_EXPIRED}
+FATE_STATES = tuple(_FATE_BY_STATE)  # the states a producer hears about
+NO_FATE_STATES = (STATE_WITHDRAWN, STATE_SENT)  # its own act / the courier's
+assert set(FATE_STATES) | set(NO_FATE_STATES) == set(STATES), \
+    'fate_of must partition STATES — a new state needs a fate or a reason'
+
+
+def fate_of(item):
+    """item dict (state + needs_answer suffice) → FATE_* or None."""
+    fate = _FATE_BY_STATE.get(item.get('state'))
+    if fate == FATE_EXPIRED and kind_of(item) == KIND_ASK:
+        return FATE_EXPIRED_UNANSWERED
+    return fate
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -209,16 +257,13 @@ def resolve_for_whom(for_whom, needs_answer):
 # ═══════════════════════════════════════════════════════════════
 # A Thalamus delivery is an incoming K to the receiving session, next to
 # self_message. Untraced delivery IS the visibility problem this system
-# exists to fix. The Stop hook writes it (the caller owns tracing — it holds
-# the chain); at boot the ledger + boot_renders row are the record.
-REF_THALAMUS_DELIVERY = 'thalamus_delivery'
-
-# Loud-by-default: fail at import, not at the first delivery.
-if REF_THALAMUS_DELIVERY not in _REF_TYPES.get(('s0', 'K'), ()):
-    raise RuntimeError(
-        "thalamus_contract ↔ trace_contract drift: %r is missing from "
-        "REF_TYPES[('s0','K')]. Add it (next to 'self_message')."
-        % REF_THALAMUS_DELIVERY)
+# exists to fix. channels/delivery.py writes it at BOTH moments (the caller
+# owns tracing — it holds the chain); the ledger stays the delivery-policy
+# record (who got which item, which epoch), the trace is the S0-stream join.
+# The constant LIVES in trace_contract (which registers it in REF_TYPES by
+# construction and is import-cycle-free from channels/); re-exported here for
+# this package's callers.
+from servers.trace_contract import REF_THALAMUS_DELIVERY
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -250,6 +295,22 @@ def render_item(item):
     return '\n'.join(lines)
 
 
+_HEAD = '🧠 from the brain (thalamus) — %d item(s)'
+# The reader's standing instruction, the mirror of the self-channel's note
+# line. An item's render is a work order addressed to the entity (id, verb,
+# exit call); a human hears only the question and its stakes — the envelope
+# leaking into the operator channel is the defect this line prevents
+# (brain node 3e549ac4). The second line names the read routes so an item
+# is explorable without guessing at tools.
+_HEAD_NOTE = (
+    '   — to the operator, say it in plain words: what is asked and why it '
+    'matters; never the id, the moment, or the producer.\n'
+    '     Explore: get_nodes(↳ refs) or recall(the question) for context · '
+    'thalamus_list for the queue · '
+    "recall_episodes(ref_type='thalamus_delivery') for who saw it · "
+    'thalamus_resolve to act.')
+
+
 def render_block(items, overflow=0, cap=BLOCK_MAX):
     """Compose due items into ONE budgeted block. Two loud caps — per item
     (BODY_MAX, in render_item) and whole block (`cap`); overflow items are
@@ -266,18 +327,11 @@ def render_block(items, overflow=0, cap=BLOCK_MAX):
     # Budget against the widest possible head, then rebuild it from the
     # kept count — the head must claim what the block SHOWS, never what
     # was fetched (head, tail, ledger, and pull's count all say `kept`).
-    parts, used, dropped = [], len('🧠 from the brain (thalamus) — %d item(s)'
-                                   % len(items)), 0
-    for i, item in enumerate(items):
-        rendered = render_item(item).strip()
-        if parts and used + len(rendered) + 2 > cap:  # always keep one
-            dropped = len(items) - i
-            break
-        parts.append(rendered)
-        used += len(rendered) + 2
-    head = '🧠 from the brain (thalamus) — %d item(s)' % len(parts)
-    body = '\n\n'.join(parts)
+    body, kept, dropped = compose_block_loud(
+        items, render_item, cap,
+        reserved=len(_HEAD % len(items)) + len(_HEAD_NOTE))
+    head = _HEAD % kept
     tail = dropped + max(0, overflow)
     if tail:
         body += '\n\n(+%d more due — thalamus_list shows them)' % tail
-    return '%s\n\n%s' % (head, body), len(parts)
+    return '%s\n%s\n\n%s' % (head, _HEAD_NOTE, body), kept

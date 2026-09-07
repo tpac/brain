@@ -35,9 +35,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
-import os
 import sys
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -47,7 +45,7 @@ sys.path.insert(0, str(ROOT))
 
 from eval.agent_introspect._common import load_env, write_report, write_json  # noqa: E402
 from eval.agent_introspect.encoder_replay import (  # noqa: E402
-    _build_user_content, _load_conversation, _run_scouts,
+    _build_user_content, _load_conversation,
 )
 
 
@@ -282,19 +280,12 @@ def main():
 
     qids = [q.strip() for q in args.qids.split(",") if q.strip()]
 
-    # Build fresh brain (for scouts)
-    tmpdir = tempfile.mkdtemp(prefix="thinking_probe_")
-    os.environ["BRAIN_DB_DIR"] = tmpdir
-    from eval.longmem.fresh_brain import create_fresh_eval_brain
-    brain = create_fresh_eval_brain(path=tmpdir, wipe=True)
-
-    # Per-qid: build user_content once (scouts are deterministic, same across configs+trials)
-    print(f"[thinking_probe] building per-qid user_content via scouts...", flush=True)
+    # Per-qid: build user_content once (same across configs+trials)
+    print(f"[thinking_probe] building per-qid user_content...", flush=True)
     per_qid: Dict[str, str] = {}
     for qid in qids:
         conv = _load_conversation(qid)
-        scout = _run_scouts(brain, conv["turns"], conv["conversation_now"])
-        user_content = _build_user_content(conv, scout["report"])
+        user_content = _build_user_content(conv)
         per_qid[qid] = user_content
         print(f"  {qid}: user_content {len(user_content)} chars", flush=True)
 

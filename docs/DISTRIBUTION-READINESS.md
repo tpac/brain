@@ -1,6 +1,92 @@
 # Distribution Readiness — Sharing Anchor
 
-## §ACTIVE ARC (2026-09-01) — **5.0c phase 4 merged bar the two s1e hunks; next is the 5.3 comment audit**
+## §ACTIVE ARC (2026-09-05) — **5.7 BUILT and dry-run green; 5.9 opt-in export DONE; the push waits on Tom (e-mail domain, repo, go).**
+
+**5.7 built 2026-09-03/04 — `scripts/release.sh`, `install-smoke.sh`,
+`upgrade-smoke.sh` (harness `smoke-lib.sh`), NOT published.** One command,
+dry-run by default, seven steps that each refuse the rest on red: preflight
+(version shape, author identity, a named predecessor or `none`, publish
+preconditions) → export (gates A/B/C, plus new **gate D** secrets) →
+deploy-gate → **install smoke** (a stranger's first run under a scratch
+`$HOME`: cold boot, detached bootstrap, XDG birth, keyless daemon, both
+entrypoints import, both resolvers find the brain unaided) → **upgrade
+smoke** (the previous release's user updates and keeps their brain: daemon
+reloads onto the new code, no node lost, the lived one still served) → the
+suite on a COPY, keyless → squash repo + tag with author asserted on the
+objects. `--publish <url>` opens the door only on a clean `main`, URL equal
+to the manifest's `repository`, nothing skipped, and `RELEASE_PREVIOUS=none`
+only against a remote with no refs. Rollback is fix-forward, and the command
+says so on every run. **Day one it refused twice for real:** a dead
+`servers/integrity_audit.py` (caught by the new servers/ reachability test —
+deleted on Tom's call) and `test_gold_surfaces.py` importing `eval/` without
+the D-8 skip (fixed; the live-tree test now `--collect-only`s the export so
+that class cannot rot again). A high-effort review then found ten defects in
+the command itself, two of them welding it shut; all ten fixed and
+re-verified. Detail in the 5.7 item. **Waiting on Tom:** the public
+committer e-mail (a domain to be opened — the command requires one
+explicitly and scrubs it), `tpac/entity` creation, and the `--publish` go.
+**5.9 (opt-in export) landed 2026-09-05** — `build-plugin.sh` names every
+shipped path by literal or shape; the export materializes `--list-public`.
+
+**5.2 landed 2026-09-03.** Both manifests read `entity` / `anchor` / `0.9.0`;
+the 15 product-name sites (`boot-brain.sh`, `setup.html`) say **Entity**; the
+`com.entity.` check armed at the rename and passed. D-10 is now enforced twice:
+`TestVersionLockstep.EXPECTED_VERSION` (the ONE home of the literal — a release
+bump edits it in the same commit as the manifests) and gate C's optional
+`EXPECT_VERSION=X` (the release command passes what it is releasing; unset keeps
+agreement-only). `.claude/settings.json` carries BOTH permission strings until
+the redeploy has happened and pre-rename sessions have cycled — drop
+`mcp__plugin_brain_brain` then. **Not done in 5.2, by design:** the redeploy
+itself (Tom's timing — it flips every new session on his machine to the
+`entity` name, and his install is a *directory* marketplace whose outer
+`marketplace.json` still says `brain`; observe one session before deciding
+whether the outer entry needs the rename too), and the D-12 xfail (re-measured
+2026-09-03: **55 shipped files / 150 occurrences** still carry `Anchor` — the
+deferred one-at-a-time sweep, not a SCOPE question; the 7 never-ship files /
+53 occurrences are the SCOPE question and can wait until that sweep is done).
+
+**5.3 closed its gated half 2026-09-01. Gate B: 69 → 0, and it now STAYS
+there** — `TestPublicTreeExport::test_live_tree_exports_clean` runs the export
+over the live repo on every suite run. Verified against a 13-commit merge from
+main immediately after arming: clean.
+
+**What actually mattered was not on the worklist.** The audit's headline number
+(614 dated/removal-verb lines) is polish; the real find was that gate B scrubbed
+the employer's FORMER name and not its current one, leaking `ex.co` 20 times
+including three real project names hardcoded in a shipped migration. Gate B now
+also scans `\btpac\b` and `\bex\.co\b|\bexco\b`. Detail in the 5.3 item.
+
+**Tom's standing directive, 2026-09-01:** *"i want things that are released to
+the public repo to be opt in not opt out so we dont accidentally launch personal
+stuff."* Measured: 413 of 429 public files arrive by opt-out. Item **5.9** —
+done 2026-09-05.
+
+**Deliberately NOT done, and this is a ruling not a gap:** the ~487
+dated/removal-verb comment lines. They carry no personal data and no broken
+reference, 95% of them are good comments, and sweeping 487 judgment calls is a
+plausible net negative. Reopen only with a sample in front of Tom.
+
+### STILL OPEN after 5.3 — read this before assuming the audit finished
+
+5.3 closed the **personal-information** class. It did not close the **name**
+class, and two of the items below are bigger than they look.
+
+| # | Open | Where it is written up |
+|---|---|---|
+| 1 | **The encoder's system prompt says `"I am Anchor"`** — 3 occurrences in `encoding_prompt.py`'s `SYSTEM_PROMPT`, so every install's encoder claims that name. Eval-gated: a prompt change, not a comment edit | 5.3 → the Anchor inventory |
+| 2 | **`Anchor` across 62 files / 203 occurrences** (re-measured post-rename 2026-09-03: **150 in 55 shipped files** — the real blocker — and 53 in 7 never-ship files) — comments, docstrings, prompt/rubric files. Tom ruled it a deliberate one-at-a-time sweep with him engaged, NOT a mechanical pass | same table |
+| 3 | **`encoding_source='anchor'`** — 41 data-model literals + the lock gate's `startswith('anchor')`. Rename target recorded as `interactive`/`session` | same, final paragraph |
+| 4 | ~~The public tree is opt-out~~ — **closed by 5.9** (2026-09-05): every shipped path is named by literal or shape; a tracked file nothing names does not ship | **5.9** |
+| 5 | ~~Nothing covers what the release step adds~~ — **closed by 5.7**: author name asserted equal to the manifest's, e-mail + commit/tag messages through gate B, publish URL by equality; committer identity asserted on the git objects. Repo *description* is set on GitHub, outside the command | **5.7** |
+| 6 | **The v30 slug-map collapse is lossy** for 9 local pre-v30 copies, four of them Tom's own backups | 5.3 → the ⚠ note |
+| 7 | 116 dangling `docs/`/`eval/` references | 5.3 → the split table |
+
+Items 1–3 are one thread, and it is **not** a comment audit. Items 4 and 5 are
+the two places where the gates genuinely do not reach.
+
+---
+
+### Prior arc head (2026-09-01) — 5.0c phase 4
 
 **Handoff node: `id:bc154094`. Phase-4 detail lives in the 5.0c item below.**
 
@@ -29,23 +115,24 @@ shrinking, the ungated comment part grows on its own.
 
 **Two corrections to what this section used to claim** — both measured, both
 were false:
-- **5.0c does NOT un-xfail gate assertion 4.** It scans a scope wider than
-  what ships and still matches 69 files / 239 occurrences. Blocker list in the
-  5.0b gate note; two of the four classes are **unowned** and neither ships.
+- **5.0c does NOT un-xfail gate assertion 4**, and neither does 5.3. It scans
+  a scope wider than what ships and still matches 203 occurrences / 62 files
+  (post-rename 2026-09-03; 150 of them in files that ship, so SCOPE alone
+  cannot arm it).
+  The class the plan assigned to the comment audit is **not a comment
+  problem** — `Anchor` there names an architectural role that is also a data
+  literal (`encoding_source='anchor'`, `anchor_touched`). Detail in the 5.3
+  ratchet note; it needs a D-12 ruling, not a sweep.
 - **The frozen-corpus harness cannot A/B a code change.** Its address omits
   the repo's code state, so a two-tree A/B silently cache-hits and reports
   clean. Detail in the 5.0c item.
 
 **Remaining, in dependency order:**
-1. **5.3 comment audit** — 614 lines / 111 files. Ungated: nothing fails if it
-   is wrong, so it needs care rather than speed. No longer conflicts with
-   5.0c — that pass is complete.
-2. **5.2 rename + D-10** — three manifests, plus the `0.9.0` assertion the doc
-   wrongly claimed already existed (gate C currently reports **9.7.2** and only
-   checks that the two manifests *agree*), plus the product-name sites
-   (`boot-brain.sh` ×11, `setup.html` ×4 — D-11's *product* namespace, they
-   become **Entity**, not a config read).
-3. **5.7 release command → publish** — the one-way door. Must include an
+1. ~~**5.3 comment audit**~~ — **gated half DONE + ratcheted 2026-09-01.** The
+   ungated ~487 dated/removal-verb lines are a ruling, not a gap (see 5.3).
+2. ~~**5.2 rename + D-10**~~ — **DONE 2026-09-03** (see the arc head).
+3. ~~**5.9 opt-in export**~~ — **DONE 2026-09-05** (see the item).
+4. **5.7 release command → publish** — the one-way door. Must include an
    **install smoke test**: the suite runs *inside* the export tree, so it
    cannot catch a file that ships, is never imported by tests, and is needed
    at first run on a stranger's machine.
@@ -149,7 +236,7 @@ the fleet; the rename soak clock starts when existing installs take it.
 **5.4 DONE** same day. **5.6 / D-5 DONE 2026-08-30** — the design gate is
 closed; the publish path has no design questions left. Unstarted: **5.0c**
 (classes 1–2 only — class 3 dissolved with the name-free pack) · **5.3** ·
-**5.5** · **5.2** (rename — `plugin.json` still `name: brain`) · **5.7**.
+**5.5** · ~~**5.2**~~ (done 2026-09-03) · **5.7**.
 Arch-plan steps 7–10 remain open but gate nothing.
 
 **All counts re-measured live 2026-08-31 against the materialized export tree**
@@ -267,19 +354,19 @@ while execution drifts at the substrate* (community id:3350ea51), proven twice o
 | D-3 | yes | `daemon_launch.py` treats a missing `launchctl` as "no launchd platform" and falls through to `subprocess.Popen` |
 | D-4 | yes | `plugin.json.userConfig` carries `api_key` + `brain_path`; the `~/.config/brain/env` ladder rung is intact |
 | D-5 | yes | the Nursery pack, `tests/test_seed_pack.py::TestNurseryPackContracts` |
-| D-6 | not yet — **this is 5.2** | `plugin.json` `name: brain`, `homepage`/`repository` still `tpac/brain`; marketplace `name: brain`. MCP server key correctly stays `brain` (`.mcp.json`) ✓; `displayName: Entity` already shipped ✓ |
-| D-7 | export yes, **release no** | `export-public-tree.sh` materializes and gates; the exported tree correctly carries no `.git`. The squash-push/tag command is unbuilt (5.7) |
-| D-8 | **partial — one defect** | `eval/` denylisted ✓, `tests/` ship ✓. But the coupled files **have no graceful skip** — they raise `ModuleNotFoundError: No module named 'eval'` at *collection*, which aborts the whole run (`Interrupted: 6 errors during collection`). D-8 says they "degrade to graceful skip"; nothing implements that |
+| D-6 | yes (2026-09-03) | `plugin.json` `name: entity`, `homepage`/`repository` `tpac/entity`; marketplace `name: anchor`, entry `entity`. MCP server key stays `brain` (`.mcp.json`) → tools `mcp__plugin_entity_brain__*` ✓; `displayName: Entity` ✓ |
+| D-7 | yes (2026-09-03) — **push not yet run** | `export-public-tree.sh` materializes and gates; `scripts/release.sh` squash-commits the export into a fresh repo (one commit, tag, author asserted on the objects, global git excludes disabled) and pushes only under `--publish` on a clean `main` to the manifest's URL. Dry-run verified; the push itself awaits Tom |
+| D-8 | yes (2026-09-01, ratcheted 2026-09-03) | `eval/` denylisted ✓, `tests/` ship ✓, `tests/eval_optional.py::require_eval()` is the one skip door (8 modules). The ratchet: `test_live_tree_exports_clean` runs `pytest --collect-only` over the exported tree, so a new eval-coupled test aborts the deploy gate at merge time instead of the release |
 | D-9 | yes | `CONTRIBUTING.md` states issues-only, PRs not accepted, plus the never-paste-memories privacy note |
-| D-10 | not yet — **and nothing enforces it** | both manifests read `9.7.2`. The doc claimed "5.1 asserts it" — **false**: gate C asserts `plugin.json == marketplace.json` *equality only*; no `0.9.0` literal exists in `export-public-tree.sh` or `test_deploy_contract.py`. Release day could ship `9.7.x` silently |
-| D-11 | yes | `test_deploy_contract` host-neutrality + repo-slug + MCP-prefix containment all live; the `com.N.` sub-check correctly self-skips while adapter name == service name and arms at the rename |
+| D-10 | yes (2026-09-03) — **enforced** | both manifests read `0.9.0`. `TestVersionLockstep.test_version_is_the_expected_release` pins the value (`EXPECTED_VERSION`, the one home of the literal); gate C fails on `EXPECT_VERSION=X` mismatch, and `test_gate_c_rejects_unexpected_version` pins that it fails *before* the copy. The earlier "5.1 asserts it" claim was false until this landed |
+| D-11 | yes | `test_deploy_contract` host-neutrality + repo-slug + MCP-prefix containment all live; the `com.N.` sub-check **armed at the rename 2026-09-03 and passed** (zero `com.entity.` in scope) |
 | D-12 | not yet — **and unguarded** | 143 `Anchor` literals / 43 shipped files. Gate assertion 4 (`test_agent_name_only_in_config`) is `xfail(strict=True)`, so **a new `Anchor` literal added today produces no signal**. 5.0c closes the window |
 | D-13 | yes | XDG birth + adoption net + `resolved.env` single authority, all shipped |
 
-**Score: 8 conformant · 3 pending by design (D-6/D-10/D-12 = 5.2 and 5.0c) ·
-2 substantive defects (D-1 packaging, D-8 graceful-skip) · 1 false enforcement
-claim (D-10).** The three pending are the known work; the two defects and the
-false claim were invisible before this sweep.
+**Score at the 2026-08-31 sweep: 8 conformant · 3 pending by design (D-6/D-10/D-12
+= 5.2 and 5.0c) · 2 substantive defects (D-1 packaging, D-8 graceful-skip) · 1
+false enforcement claim (D-10).** Since then: D-1 fixed (phase 4), D-6 and D-10
+closed by 5.2 (2026-09-03). **Still open: D-8's graceful skip and D-12's gate.**
 
 | # | Decision | Rationale |
 |---|----------|-----------|
@@ -853,12 +940,17 @@ Original spec for reference:
 Also asserts `plugin.json.version == marketplace.json.version` (they must never
 drift — `/plugin update` compares versions). *Reversible · no-regret · M.*
 
-**5.2 Rename pass (D-6, scoped by D-11).** The **CC adapter only** — the service
-layer keeps the name `brain`:
+**5.2 Rename pass (D-6, scoped by D-11) — DONE 2026-09-03.** The **CC adapter
+only** — the service layer keeps the name `brain`:
   1. `plugin.json` — `name: entity`, `version: 0.9.0`, `homepage` + `repository`
-     → `tpac/entity`, and `displayName` (**open**, see below)
-  2. `marketplace.json` — `name: anchor`, plugin entry `entity`, `version: 0.9.0`
-  3. `.claude/settings.json` — the permission string (see the correction below)
+     → `tpac/entity` ✓
+  2. `marketplace.json` — `name: anchor`, plugin entry `entity`, `version: 0.9.0` ✓
+  3. `.claude/settings.json` — both permission strings during the transition
+     (see the correction below) ✓
+  4. product-name sites `boot-brain.sh` ×11 + `setup.html` ×4 → **Entity** ✓
+  5. `test_repo_slug_contained` allowlist grew by two *argued* homes — the
+     README install command and gate B's allowlist entry naming it (the slug
+     was never in the README while it read `tpac/brain`)
 Skill prefixes follow automatically (`brain:brain` → `entity:brain`); no dir
 renames required. **`com.brain.*` launchd labels do NOT change** — D-11. The old
 "change now or never, a later change orphans services" hazard is void.
@@ -899,7 +991,10 @@ tracked `.claude/settings.json` carries
 `permissions.allow: ["mcp__plugin_brain_brain"]` — the **server-wide** form, no
 trailing `__<tool>`. After the rename it stops matching and every brain MCP call
 in this repo's sessions starts prompting. Scope is the dev repo only (the file is
-not in the plugin package); end users are unaffected.
+not in the plugin package); end users are unaffected. **Resolved 2026-09-03 by
+carrying both strings:** live sessions run the pre-rename plugin until the
+redeploy, post-redeploy sessions run `entity` — a swap breaks one population or
+the other; the pair breaks neither. Drop the old entry once both have cycled.
 
 *How it survived an audit:* the claim was "verified" by grepping the doc's own
 string, `mcp__plugin_brain_brain__`, which cannot match the entry. **Verifying a
@@ -910,38 +1005,212 @@ for gating by shape-scan rather than by list (5.0b). *S.*
 Conflating them is what made 5.3 look like a single M-sized blocker. Split
 2026-08-31; each has a different gate, size, and decision-maker:
 
-| Class | Size (2026-08-31) | Gated? | Where it goes |
+| Class | Size | Gated? | Status |
 |---|---|---|---|
-| **A — runtime scrub** (`Tom` in shipped `servers/`+`dashboard/`) | **59 hits / 26 files** | **hard-fails gate B** | merges into the 5.0c sweep — same files, same eval gate |
-| **B — test-data scrub** (`Tom`/paths in `tests/`) | **163 hits** | **hard-fails gate B** | needs the gold-data ruling below; the rest is free deletions |
-| **C — comment audit** (dated / removal-verb / dead pointers) | **614 lines / 111 files** | **no gate at all** | **Tom ruled 2026-08-31: full audit BEFORE publish** — on the critical path |
+| **A — runtime scrub** (`Tom` in shipped `servers/`+`dashboard/`) | 59 → **0** | hard-fails gate B | **DONE** — 51 comment/docstring lines cleared 2026-09-01 |
+| **B — test-data scrub** (`Tom`/paths in `tests/`) | 163 → **0** | hard-fails gate B | **DONE** — gold data excluded + fixture rename (`6fb57ed`), last 18 attribution comments 2026-09-01 |
+| **C — comment audit** (dated / removal-verb / dead pointers) | 614 → **525** | **no gate at all** | split below — the defect half is done, the polish half is deliberately not |
 
-**Class C, re-measured 2026-08-31** across 13,148 comment lines in the 237-file
-manifest: 327 removal-verb · 307 dated · **33 naming the operator (20 files)** ·
-21 dead `docs/` pointers · 14 brain-node ids · 4 TODO/FIXME. Up from 472/88 —
-it grows on its own, because nothing gates it. Against Tom's own bar — *"if code
-should be public, it should be up to the standard of public repos"* (id:b99bfa36)
-— and Tom ruled it **in**, before publish: no gate, but the bar is the standard.
-Two long poles now: **5.0c class 2** (the prompt/rubric rewrite, the only
-eval-gated item) and this.
+**Class A + B CLEARED 2026-09-01. Gate B: 69 → 0, export tree clean on all
+three gates.** 69 lines across 40 files, every one an attribution comment. Two
+moves chosen per line: **drop the attribution** where the surrounding prose
+already carries the reason (most of them), **generalize to the role** where "a
+human ruled this deliberately" is the load-bearing signal that stops a future
+reader filing it as a bug. Dates survive where they are provenance for a live
+default (`encoder_view`'s arm-D gate); they go where they only record when
+someone decided. Verified by AST diff: every changed `.py` is identical after
+stripping docstrings, so **no code and no runtime string moved** — the
+eval-gated S1 prompt artifacts are untouched in substance and this needed no
+eval gate.
+
+**Class C splits — and the split is the finding (2026-09-01).** Re-measured
+with a token-aware scanner (`tokenize` + `ast`, so a COMMENT token is never
+confused with a docstring or a string literal) over 13,935 comment lines in the
+238-file manifest. The doc's 614 came from a removal-verb list between the
+narrow and wide sets; both are reported here so the number stops drifting:
+
+| | Count | Class |
+|---|---|---|
+| dated (`20xx-xx-xx`) | 278 | polish |
+| removal-verb (removed/retired/deprecated/no longer) | 215 | polish |
+| ↳ wider verbs (previously/formerly/obsolete/superseded/…) | 127 | polish |
+| **dead `docs/` pointers** | **22** | **defect** — `docs/` is denylisted, so these point at nothing in the public repo |
+| **brain-node ids** (`id:27db2472`) | **12** | **defect** — resolve only on this install |
+| **TODO/FIXME** | **4** | **defect** |
+| commit SHAs | 2 | defect |
+| naming the operator | 0 | cleared above |
+
+**THE EMPLOYER'S NAME WAS LEAKING AND GATE B COULD NOT SEE IT (2026-09-01).**
+Found while auditing the defect class, not by any gate: `SCRUB_PATTERNS` carried
+`playbuzz` — the employer's **former** name — and not `ex.co`, the current one.
+**20 hits** in the public tree. Worse, `servers/schema.py`'s v30 migration
+hardcoded three real project names (`{'EX.CO CTV kit', 'ex.co',
+'CTVOnboarding'}`) as a slug map, shipping in every install.
+
+Resolved: comments generalized (a real recall failure used as a worked example
+became "buried topical nodes"), six test fixtures renamed `exco` → `acme-site`
+with their assertions in lockstep, and the v30 slug map collapsed to *every
+legacy value → 'brain'*.
+
+⚠ **That last one is NOT a no-op — an earlier draft of this paragraph said it
+was, and a review caught it against §5.0's own numbers.** The claim was that
+only the already-migrated live brain ever held those values. But **623 local
+`brain*.db` files are still below v30, and 9 of them carry the trio**: four
+backups/clones (2026-05-17, 06-15, 06-28) and five `eval/reports/snapshot_replay`
+corpora from 2026-04-25. Opening any of them through `Brain(db_path=...)` runs
+`_backfill_data` → `if from_version < 30` → the map, so those nodes now slug
+`'brain'` rather than `'ex.co'`.
+
+**Accepted anyway, and here is the honest cost.** Ranking is unaffected —
+`recall_laf`'s `gain_proj` is **0.0**, so the project slug feeds dict filters
+and the "⚠ From another project" render, not scoring. Nothing ships from those
+9 files. `ensure_schema` takes `backup_before_destructive` before any
+sub-`BRAIN_VERSION` migration, so a restore is recoverable. Weighed against
+shipping three real project names to every install, that is the right trade —
+but it is a **lossy change confined to local pre-v30 copies**, not a no-op, and
+anyone restoring one of those four backups should know the EX.CO distinction
+collapses.
+
+The index-drop and column-drop steps are untouched: deleting the whole
+migration (the first thing proposed, and Tom stopped it) would have lost real
+structural work.
+
+**Gate B widened in the same pass** (this is the ratchet, not the cleanup):
+`\btpac` (bare, not just `/Users/tpac` — the path form missed *"never left
+tpac's laptop"* in a comment), `\bex\.co\b`, `\bexco\b`. Three allowlist entries
+cover the deliberate `github.com/tpac` publish target. Negative-tested: planted
+lines for all three patterns fail the gate.
+
+**Then an adversarial review was run against the widened gate, and it got
+through 7 of 11 planted leaks.** Every content-level leak in ordinary shipped
+text was caught — Python comment, shell comment, JSON manifest key, SKILL.md
+line — and ordinary English (`tomorrow`, `TOML`, `atom`, `custom`, `Thomas`)
+did not false-positive. The holes were all at the edges, and five of them are
+now closed:
+
+| Hole | Closed by |
+|---|---|
+| **Filenames were never scanned** — `grep` prints matching *content*, so `tests/fixtures/tom_pachys_session.json` full of anodyne JSON passed clean | gate B now walks the tree and matches the patterns against every **path** |
+| **`grep -I` silently skips binaries** — a NUL-prefixed fixture carrying the operator's name and home path exported clean | any file the scrub cannot read now **hard-fails**. Free to assert: the export has zero binaries today |
+| **`\btpac\b` was NARROWER than the `/Users/tpac` it replaced** — missed a sibling checkout like `/Users/tpac_old` | trailing `\b` dropped |
+| **An allowlist entry masked anything it was a prefix of** — allowing `github.com/tpac` also allowed `github.com/tpachys` | the strip is boundary-aware: `re.escape(pat) + (?![\w-])` |
+| **The allowlist could only grow, and two unreviewed lines turn any red green while the leak still ships** | `test_allowlist_cannot_grow_quietly` pins the entry count at 16, and `test_no_stale_allowlist_entries` deletes dead exemptions — the discipline `test_capture_grep_pin` already uses |
+
+**Left open, deliberately, with severity honest:** `\btom\b` misses suffixed
+forms (`Toms-MacBook-Pro`) and dropping that boundary would match `tomorrow`;
+percent-encoded paths (`%2Ftpac`) evade the boundary; a multi-token pattern
+split across two wrapped comment lines evades a line-based grep; unicode
+homoglyphs evade everything. All need either bad luck or intent. **The
+structural one worth naming:** the gate scans the materialized tree, so nothing
+covers what the *release step* adds after materialization — commit message, tag,
+repo description, committer identity. **5.7 owns that boundary** — built
+2026-09-03: `release.sh` asserts the author name against the manifest, scrubs
+the e-mail and both messages through gate B, vets the push URL by equality,
+and re-reads the identity off the commit objects.
+
+**The lesson worth keeping:** a scrub pattern list is a record of what someone
+once thought of. `playbuzz`-without-`ex.co` is that failure exactly — the
+employer *was* considered, and the entry went stale when the company renamed.
+Gate B's pattern set needs re-reading whenever a name in the operator's life
+changes, or it silently protects against the past.
+
+**Dangling internal references: 122, and they are NOT one class.** `docs/` and
+`eval/` are absent from the public tree entirely (not by denylist — they were
+never in the manifest or the extras), so shipped code points into a void 68 +
+54 times across 40+ files. Tom ruled 2026-09-01 that the docs themselves do
+**not** ship: *"i dont know if they are relevant nor do i want to expose all of
+our thinking publicaly until vetted."* Splitting what remains by what the
+reference actually reveals:
+
+| | Count | Disposition |
+|---|---|---|
+| refs naming the two artifacts denylisted **for privacy** — `docs/DISTRIBUTION-READINESS.md`, `docs/archive/session-handoffs/…` | 6 | **STRIPPED 2026-09-01** — these advertise the existence of the internal plan doc and the session-log archive |
+| refs naming `eval/` probes and harnesses | 54 | **open** — D-8 keeps the harness out because *"a published harness is a claim"*; naming `eval/longmem/replay.py` in a comment half-makes that claim |
+| refs naming `docs/*-DESIGN.md` architecture docs | ~62 | **left alone** — topic names only, no privacy content, and genuinely useful breadcrumbs in the dev tree |
+
+The 6 were the only ones with a privacy dimension. The remaining two rows are
+a judgment call about how a partial export should read, not a leak.
+
+**The ~487 dated/removal-verb lines are deliberately NOT swept.** The earlier
+scan of this same class concluded 95% of these comments are good and that *"the
+best ones are exactly the kind a 'make it professional' pass would delete"*
+(id:091f8fd6). They carry no personal data and no broken reference; they are
+readability polish with real downside risk, since each is a judgment call and a
+wrong call deletes a load-bearing *why*. Sweeping 487 of them is a plausible
+net negative. **Reopen this only with a sample in front of the operator** —
+against Tom's own bar (*"if code should be public, it should be up to the
+standard of public repos"*, id:b99bfa36), a comment that explains why code is
+shaped a certain way already meets that bar whether or not it carries a date.
 
 **ARM THE RATCHET WHEN CLASS C IS CLEAN (Tom, 2026-09-01).** Both halves of
 the "no new names" gate already exist; one is disarmed and one is
 deliberately sandbox-only. Extend them — do not add a third mechanism.
-- **`Anchor`:** `test_deploy_contract.py::test_agent_name_only_in_config`
-  already scans the whole tracked tree, comments included. It is
-  `xfail(strict=True)`. ⚠ **Correction (measured 2026-09-01):** the line
-  above said 5.0c's completion un-xfails it. It does not — 5.0c phase 4 has
-  landed and the assertion still matches 69 files / 239 occurrences, because
-  it scans a scope wider than what ships. The blocker list and the two
-  unowned classes are in the 5.0b gate note above. Nothing to *write*, but it
-  is **not** already scheduled: it needs 5.3, 5.2, and a ruling on scope.
-- **`Tom` / personal data:** gate B lives in `export-public-tree.sh`, and
-  `TestPublicTreeExport` pins it **in sandboxes only** — on purpose, because
-  the real tree is still red and a live-tree assertion would fail today. Once
-  class C is clean, add that live-tree assertion to `TestPublicTreeExport`
-  (the gate's own test class — it already owns this concern). That is what
-  makes cleanliness a ratchet instead of a one-time sweep.
+- **`Anchor` — NOT a 5.3 item, and this is the correction that matters.**
+  `test_agent_name_only_in_config` is `xfail(strict=True)` and still matches
+  **203 occurrences / 62 files** (re-measured post-rename 2026-09-03; it read
+  216 / 63 on 2026-09-01, and class 1 went 148 → 154 across one 13-commit
+  merge — it drifts like gate B did, and 5.2's 15 sites moved it down). The plan assigned class 1 — *comments + docstrings in `servers/` and
+  `tests/`*, 154 of the 216 — to the comment audit. **Reading them says that
+  assignment is wrong.**
+
+  In these comments `Anchor` is not a personal name the way `Tom` is. It names
+  an **architectural role** — the S0 agent holding the conversation, in
+  contrast to Haiku (surface) and Sonnet (S1E): *"Showing it to
+  Anchor/Haiku/encoders is false authority"*, *"what Anchor receives after
+  Haiku's selection"*, *"Anchor (MCP): 1-5 nodes → want full detail"*.
+
+  And the name is **in the data model**, not just the prose: `encoding_source
+  = 'anchor'` (41 sites), `anchor_touched` traces, `anchor_message_limit`,
+  `anchor_raw_quote`, `anchored_to`. CLAUDE.md states the contract — *"Only
+  `anchor*` can lock a node."* Rewriting the comments to "the entity" while
+  every literal two lines down still says `anchor` **splits the vocabulary and
+  leaves the reader worse off than the name did**.
+
+  So the un-xfail path does not run through 5.3. It runs through a D-12
+  decision nobody has taken: **does the data model rename with the product, or
+  does `anchor` stay as the role token it already is?** Until that is answered,
+  sweeping the comments is a rename that stops half-way through the system.
+
+  **THE OPEN `Anchor` INVENTORY — 203 occurrences / 62 files: 150 in 55 files
+  that ship (plugin manifest or public-tree extras), 53 in 7 that never do.
+  Re-measured post-rename 2026-09-03 by the 5.2 stream and independently
+  reproduced by the 5.3 stream.** Tom ruled 2026-09-02 that this is *"a thorough sweep with me
+  highly engaged in changes"*, one site at a time — not a mechanical pass.
+  Classified by what each occurrence IS, because the classes need different
+  answers:
+
+| Class | Count | What it is | Who decides |
+|---|---|---|---|
+| **`encoding_prompt.py` SYSTEM_PROMPT** | **3** | **The encoder's opening line is literally `"I am Anchor, and this is me encoding my own memory."`** Every install's encoder claims that name whatever the entity is called. **Eval-gated** — this is a prompt change, not a comment edit | **the sharp one.** Needs the D-12 answer *and* an eval |
+| shipped runtime comments + docstrings | 74 | `Anchor` naming the S0 role against Haiku/Sonnet | follows the D-12 answer |
+| `tests/` comments + docstrings | 53 | same | follows |
+| other prompt/rubric files | 20 | comments in `surface_contract`, `encoder_view`, `encode_contract` | follows |
+| `seed_pack.py` origin-story tributes | 3 | deliberate CONTENT, ratified D-5 2026-08-30, allowlisted | **settled — leave** |
+| ~~product-name sites~~ | ~~15~~ **0** | `boot-brain.sh` ×11, `setup.html` ×4 → **Entity**, done by 5.2 (`633329e`) | **closed** |
+| unowned, never ship | 53 / 7 files | `servers/BOOT-ARCHITECTURE.md` (18), `scripts/consolidation_edge_recovery/output/plan.json` (21) + `apply.log.jsonl` (4), `servers/scales/s1/ARCHITECTURE.md` (4), `scripts/migrate_trace_identity.py` (3), `CHANGELOG.md` (2), `scripts/compute_zscore_stats.py` (1) — reaches neither the manifest nor the public tree | test-scope question only (narrow `SCOPE` or clean) — and it does NOT arm the gate: the 150 shipped hits do |
+
+  **And the piece that is not a string at all:** `encoding_source='anchor'` is
+  a **channel category**, not a name — the daemon stamps it on every
+  interactive TCP/MCP write, nothing reads the configured entity name, and an
+  install whose entity is called Jarvis still writes `'anchor'` (id:40d10386).
+  Tom's read 2026-09-02 — *"on the encoding_source it should actually either
+  use the current entity name or a generic entity label"* — matches the rename
+  target already recorded: **`interactive` or `session`** (id:efafd723). Cost:
+  the lock gate's `startswith('anchor')` predicate, the write default, and
+  ~1,465 existing nodes. Deferred 2026-08-31 as "a spelling coincidence, not a
+  coupling"; Tom's ruling reopens it as part of the same sweep.
+- **`Tom` / personal data — ARMED 2026-09-01.**
+  `TestPublicTreeExport::test_live_tree_exports_clean` runs the full export
+  over the LIVE repo and fails on any personal-information hit, naming the
+  file and line. The sandbox tests around it pin the gate's *mechanics*; this
+  one pins the *tree* — a green mechanics test on a red tree proves only that
+  the alarm works while the house burns. Negative-tested both ways: planting
+  `Tom` + `/Users/tpac` in a tracked file fails it with the exact line;
+  reverting passes. The test lives in a denylisted file, so it never runs in
+  the public repo (where it would shell out to `scripts/`, outside the
+  manifest). **When it fails, fix the LINE, never widen the ALLOWLIST** —
+  allowlist entries are for shipped behaviour (`AgentsContext`), deliberate
+  attribution (LICENSE), or a test that asserts ON the literal.
 - **Why it matters, measured:** gate B went **67 → 69** on 2026-08-31 within
   hours, from another stream's thalamus work adding two comments. The gated
   classes shrink; the ungated comment class grows with every merge. Without a
@@ -1010,6 +1279,10 @@ to done than the item implied: nothing outside the eval coupling breaks. No
   (asserts `eval/longmem/connect_ab.py` exists on disk).
 Plus the gold-data consumers, once those three files are denylisted (ruled
 2026-08-31: exclude, not sanitize).
+**A 9th arrived within a week** — `test_gold_surfaces.py` (2026-09-01) imported
+`eval/` at module level and aborted the exported suite; the release dry run
+caught it. Fixed the same way, and the class is now ratcheted: the live-tree
+export test collects the exported suite on every run (D-8 row above).
 
 **Set RE-DERIVED — no longer an estimate:**
 - **Import-coupled: exactly 6 files**, all `ModuleNotFoundError: No module
@@ -1057,21 +1330,117 @@ new-vs-old encoder eval on the frozen-corpus harness. *Was L; shipped.*
 **5.7 [LAST — one-way door] Publish.** Fresh public repo `tpac/entity`, clean
 history, only after 5.1–5.6 are verifiably clean.
 
-**The `release` command — scoped 2026-08-31, NOT built (needs an explicit go).**
-One command, and its whole value is that it *refuses*:
-  1. assert the working tree is clean and on `main`
-  2. `export-public-tree.sh` → materialize; **abort on any red gate** (A, B, C)
-  3. assert `plugin.json.version == marketplace.json.version == 0.9.0` — the
-     D-10 assertion that does not exist today; fold the bump in here so the two
-     manifests can never be bumped apart
-  4. run the suite **against a copy** of the tree, not the tree itself
-     (`.pytest_cache/` pollution — see 5.5); abort on red
-  5. secrets scan
-  6. `git init` a fresh checkout, one commit, tag `vX.Y.Z`, push
-Small now that tree-building and gating exist. It should absorb what the
-abandoned release-ratchet rebuild (BACKLOG item 4) was for. **The exported tree
-already carries no `.git` (verified)** — history cannot leak through the export
-itself; only a mis-aimed push could.
+**The `release` command — BUILT 2026-09-03/04 (`scripts/release.sh`), dry-run
+verified, NOT published.** `release.sh <version> [--publish <url>]
+[--skip <step>]`. Two things it refuses to guess: `RELEASE_AUTHOR_EMAIL`
+(the public commit's identity — git's configured identity is a work address)
+and `RELEASE_PREVIOUS` (the previous release's tree, or the word `none` for a
+first release — unset refuses, so the upgrade test can be declined by name
+but never forgotten). Dry-run by default; seven steps, the first red refuses
+everything after it, cheap gates before the long suite:
+  1. **preflight** — `X.Y.Z` shape; `CHANGELOG.md` carries a `## [X.Y.Z]`
+     entry (the notes are the one release artifact no export gate sees);
+     author e-mail present and scrubbed through
+     gate B together with the commit and tag messages (`--scrub-only` door);
+     author *name* asserted equal to `plugin.json.author` (the manifest's
+     allowlist entry vets it); `--publish` additionally needs URL ==
+     `plugin.json.repository`, no `--skip`, branch `main`, clean tree, and
+     `RELEASE_PREVIOUS=none` only against a remote with **no refs**
+     (`git ls-remote`, no prompt) — a second release cannot skip the upgrade
+     gate by declaration
+  2. **export** — `EXPECT_VERSION=<version> export-public-tree.sh` → gates A,
+     B, C (the version literal lives once, in
+     `TestVersionLockstep.EXPECTED_VERSION`; the command passes its own
+     argument) and the new **gate D** (credential shapes with real-key length
+     floors — `sk-…` bodies may be segmented, the 40-char floor is what
+     separates a key from a fixture; forbidden files: `*.db`, `.env`, private
+     keys, caches; gitleaks too when installed, output shown on any non-zero,
+     and the gate line says which detectors ran)
+  3. **deploy-gate** — `tests/test_deploy_contract.py`: version lockstep,
+     `servers/` reachability (ast import graph from the entrypoints), the
+     live-tree export + `--collect-only` ratchet
+  4. **smoke** — `scripts/install-smoke.sh` on a copy (harness:
+     `scripts/smoke-lib.sh`): scratch `$HOME`/XDG, `env -i`, `BRAIN_INSTANCE`
+     + ephemeral port; cold hook answers in ~1s and detaches the bootstrap
+     (~15s warm-cached); warm boot births the brain at `$XDG_DATA_HOME/brain`,
+     daemon up keyless, MCP imports; both entrypoints import; daemon round
+     trip; then the shell and the Python resolvers each find the brain
+     *without* `BRAIN_DB_DIR` and `resolved.env` is persisted. ~40s.
+     Production daemon and dashboard verified untouched
+  5. **upgrade** — `scripts/upgrade-smoke.sh <old> <new>`: install OLD as a
+     stranger (the whole install smoke), write one lived memory through the
+     daemon, lay NEW over it the way a marketplace update does (the tree
+     replaced, the bootstrapped runtime kept — **an assumption**: an update
+     that also discards the runtime is a cold re-bootstrap this does not
+     model), then the sessions after: the daemon must reload onto NEW's code
+     (bounded wait — `ensure_daemon` gives an in-place reload 20s before it
+     defers, so the NEXT session's boot is what is judged), no node lost and
+     the lived one still served by id (the count may grow: a release that adds
+     a seed node gap-fills it on first boot), entrypoints import, a command
+     answers. ~50s. Skipped, and shown as skipped, on a first release
+  6. **suite** — the full suite against a COPY of the export under the dev
+     venv (the export has no venv, no `pytest.ini`; timeout passed
+     explicitly), with **no key in the shell** — a stranger's `pytest`
+  7. **repo** — `git init`, one commit, tag `v<version>`; `-c
+     core.excludesFile=/dev/null add -A -f` so a personal global ignore cannot
+     drop a shipped file; every exported file present in the commit (missing
+     ones listed); author and committer read back off the objects
+Then the report, the fix-forward notice, the would-be push commands, and exit
+— or, under `--publish`, `remote add` + `push -u origin main` + `push origin
+v<version>`. **Rollback is fix-forward** and the command says so on every
+run: Claude Code offers no downgrade from a marketplace repo and the schema
+migrations are one-way; a bad release is undone by the next release, and the
+user's data is protected by the daemon's pre-destructive backups.
+
+**Measured 2026-09-03/04.** Dry run #1 refused at deploy-gate: the new
+reachability test found `servers/integrity_audit.py` shipping with zero
+importers (dead since the `signal_queue` removal; Tom: delete). Dry run #2
+refused at suite: `test_gold_surfaces.py` aborted collection on the export
+(see 5.5). Dry run #3 ran the whole suite green — **3037 passed, 0 failed** —
+and was still refused, correctly: 31 test scopes had overwritten the hermetic
+fake key with the developer's REAL key, because `llm_available` writes the
+env FILE's key into the process (file wins, so key replacement needs no
+restart) and the conftest pin covered only the variable. Invisible under
+`./dev`, where the shell already carries that key; red for a stranger, whose
+guard report would have printed their key 31 times. Fixed at the root: the
+conftest pins a per-run `XDG_CONFIG_HOME` holding the fake key and only the
+brain-location pointer, before `daemon_config` is imported, and the leak
+report prints credentials as fingerprints. Two high-effort code reviews
+(Opus finder angles + one verifier per candidate) found **ten** defects
+each, nineteen confirmed by execution: `--publish` could never pass preflight
+(the URL it requires contains the org name gate B forbids), the secrets
+pattern matched 16 shipped fixture keys, `if fn; then` had disabled errexit
+inside every step body, the smoke's own ladder assertion was a tautology, a
+slow reload would have failed the upgrade gate, `RELEASE_PREVIOUS=none` could
+skip it under `--publish`, the entity refusal in `relocate-brain.sh` ran after
+the resolver had already persisted the entity's brain, and more. All fixed;
+lessons id:488d5ad7. **Rode along:** `ensure-dashboard.sh` lacked the
+`BRAIN_INSTANCE` guard `install-daemon-service.sh` had — a smoke or entity
+boot under a scratch `$HOME` would have booted out the production dashboard
+and re-bootstrapped it onto the scratch tree. The predicate now lives once in
+`launchd-install.sh` (`brain_launchd_entity`), the mutators refuse under it,
+all three callers check it before touching anything, and two tests pin that
+neither installer reaches `launchctl` under an instance.
+**Dry run #4 (everything, with a synthetic 0.8.9 predecessor), 2026-09-04 —
+GREEN end to end:** preflight 0s · export 8s (A, B, C=0.9.0, D clean) ·
+deploy-gate 15s · smoke 42s · upgrade 51s · suite 2009s (**3037 passed, 0
+failed, no leak report**, bare keyless shell) · repo 2s — one commit, 431
+files, tag `v0.9.0`, author and committer read back off the objects — then
+the fix-forward notice and the would-be push commands, nothing pushed.
+
+**What is left before the door opens — all Tom's:** the public committer
+e-mail (Tom will open a domain; anything with his name or handle trips gate B
+by design, so the address either is name-free or gets a deliberate allowlist
+entry), `gh repo create tpac/entity`, the release date in `CHANGELOG.md`'s
+`[0.9.0]` heading (committed on main — the export copies the working tree),
+and the `--publish` go. **5.9** landed
+2026-09-05, so the export is opt-in before the first push. The first REAL upgrade test runs at 0.9.1 with 0.9.0's public tree as
+`RELEASE_PREVIOUS`. Follow-on worth its own item: run the suite inside the
+smoke's freshly bootstrapped runtime rather than the dev venv, so the tests
+see the dependency set a new user actually resolves. **The exported tree
+carries no `.git` (verified)** — history cannot leak through the export
+itself; only a mis-aimed push could, and `--publish` refuses any URL but the
+manifest's.
 
 **Irreversible: git history is forever, and this repo's history carries the
 personal data.** Re-counted 2026-08-31 — **89 tracked files across 2138
@@ -1107,6 +1476,55 @@ worry was the wrong worry, and "the official directory" is not submittable.**
   conformance defect) so the grant is legible wherever the entry is rendered.
 Only once the self-hosted marketplace has real installs. Mechanics in §10.1. *S.*
 
+**5.9 The public tree is OPT-IN — DONE 2026-09-05.** Tom's ruling: *"I want
+things that are released to the public repo to be opt in not opt out so we
+don't accidentally launch personal stuff."* `build-plugin.sh` stays the ONE
+owner of "what ships" and names every path — by literal or by shape — through
+`git ls-files` pathspecs; a tracked file nothing names does not ship, and an
+untracked file cannot ship even when its shape matches. `--list` is the
+package; `--list-public` adds the public-repo extras (README, CONTRIBUTING,
+MIGRATING, CHANGELOG, the suite) and is what `scripts/export-public-tree.sh` materializes
+before its denylist and gates. The export's interface is unchanged (5.7
+consumes only its exit code).
+
+| Path | Named by |
+|---|---|
+| root, `LICENSES/` | literal (`LICENSE`, the three manifests, `.mcp.json`, `requirements.txt`); `LICENSES/*.md` |
+| `servers/` | shape `**/*.py` minus `/archive/`; `aspects_v1.json` by literal |
+| `hooks/` | the two manifests by literal; `scripts/*.sh`, `*.py`, `*.plist`, `brain-*` launchers by shape |
+| `dashboard/` | shapes `**/*.py`, `*.js`, `*.css`, `*.html` |
+| `skills/` | shapes `*/SKILL.md`, `*/references/*.md` |
+| `tests/` | shapes `test_*.py`, `integration/test_*.py`; seven infrastructure modules by literal |
+
+Shapes cover CODE only, and each is backed by an existing reachability test
+(a shipped `hooks/scripts` file must be wired; a shipped `servers/` module must
+be imported from an entrypoint) — the reason a hand-list of modules is not
+used is that the last one rotted 62 files behind reality. Data, docs,
+fixtures, harnesses and new subdirectories are the shapes personal material
+has actually taken, and none of them is a shape the manifest knows. A literal
+that matches nothing fails the build, so a named path cannot rot silently.
+`tests/` ships code only (`test_public_manifest_extends_package` pins it).
+
+Enforced by `TestPublicTreeExport::test_new_tracked_file_does_not_ship_until_named`:
+a sandbox git repo with one file per named shape plus seventeen tracked files
+nothing names (a session-log fixture, a gold corpus, a bench harness, dev
+notes, a new `tests/` subdirectory, an extensionless non-`brain-*` launcher,
+…) and one untracked shape match; the REAL export runs over it and the output
+must equal the named set exactly.
+
+Export count 440 → **435** (434 after the opt-in cut, plus `CHANGELOG.md`,
+rewritten as the public 0.9.x changelog; `scripts/release.sh` refuses a
+release whose version has no entry in it, and `TestVersionLockstep` pins the
+expected version's entry). The six files that shipped only by subtraction
+and are no longer named: `tests/bench_identifier_split.py`, `run_all.py`,
+`metrics.py`, `transcript_parser.py` (harnesses and helpers with no shipped
+importer), `golden_dataset_conversation_cases.json` (consumed only by a
+denylisted benchmark), `TEST-STANDARDS.md` (a dev note whose run
+instructions point at a harness that does not ship). The 15 `tests/`
+denylist entries are no longer what keeps anything out; the copy filter
+binds on one entry (`tests/test_deploy_contract.py` matches the suite shape
+and is the gate itself), the rest remain as gate A's result check. *Was M.*
+
 ---
 
 ## 5. Sequencing & dependencies
@@ -1117,7 +1535,7 @@ Only once the self-hosted marketplace has real installs. Mechanics in §10.1. *S
 2.x onboarding  (independent of Phase 1)
 3.1 ──► 3.2     (3.1 first; 3.3 deferred)
 4.1             (independent; needs the 127.0.0.1 guard)
-DONE: 5.0 · 5.0a · 5.0b · 5.1 · 5.4 · 5.6 · 9.7.2
+DONE: 5.0 · 5.0a · 5.0b · 5.1 · 5.4 · 5.6 · 5.9 · 9.7.2
 
 (1) free deletions ──┐   (RELOCATE the 2 eval-only contracts into eval/,
                      │    gate self-exemption, legacy-rung allowlist,

@@ -14,19 +14,19 @@ the encoder's prompt view. Every filter marks itself in place (a stubbed
 absence can never be misread as "nothing happened" — which is why no prompt
 version registration rides this change: there are zero new how-to-read lines.
 
-Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 —
-Tom's gate). Set to 0 for the emergency off-switch and the A/B control arm
+Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 on an
+operator gate). Set to 0 for the emergency off-switch and the A/B control arm
 (eval/encoder_prompt_ab.py renders both arms per capture). Off is the
 pre-policy render minus the retired encoded-turn trim.
 
-Measured basis (id:155ddb64, re-measured 2026-08-16 at 80-89% catalog share):
+Measured basis (re-measured 2026-08-16 at 80-89% catalog share):
 a catalog node renders at ~4-5K chars of which content is only ~22% — edges
 and heavy corrections dominate. So aging drops edges + heavy corrections and
 keeps the content WHOLE; cutting content saves almost nothing and a truncated
 body is what let the encoder rewrite nodes from fragments — 6/36 runs revised
 an aged entry from its visible head, destroying the tail, even under a prompt
-that said to expand first (id:8aa7e7d7). Body-whole makes that failure
-structurally impossible (id:ffb0f7a4).
+that said to expand first. Body-whole makes that failure
+structurally impossible.
 """
 import os
 
@@ -38,7 +38,7 @@ def view_policy_enabled():
     return os.environ.get('BRAIN_S1E_VIEW_POLICY', '1') in ('1', 'true', 'True')
 
 
-# ── Associated stubs (the encoder's subconscious — Tom's ruling 2026-08-21) ──
+# ── Associated stubs (the encoder's subconscious) ──
 
 def associated_stubs_enabled():
     """BRAIN_S1E_ASSOCIATED_STUBS: render the subconscious — nodes production
@@ -70,11 +70,11 @@ ASSOCIATED_QUERY_CAP = 1500
 ASSOCIATED_SEED_CAP = 20
 
 
-# ── Catalog aging (id:f3302000 / id:f011dc76 — the ~80-89% lever) ──
+# ── Catalog aging (the ~80-89% lever) ──
 
 # Newest N encode rounds render full depth: the encoder keeps seeing complete
-# bodies for what it wrote most recently (the quality-bar feedback loop,
-# id:3e245ff7). Everything older trims to a stub.
+# bodies for what it wrote most recently (the quality-bar feedback loop).
+# Everything older trims to a stub.
 CATALOG_FULL_ROUNDS = 2
 
 # The aged entry: id + type + title (recognition + dedup key), situation (the
@@ -93,7 +93,7 @@ AGED_NODE_CONFIG = {
     'show_encoding_source': False,
 }
 
-# No tag on aged entries (Tom, 2026-08-18): with the body whole, everything an
+# No tag on aged entries: with the body whole, everything an
 # aged entry withholds announces itself in place — render_rich_node's
 # "Edges (N, not shown — get_nodes for them):" line — so a marker would add
 # nothing the encoder can't see.
@@ -112,8 +112,8 @@ CATALOG_TIME_CONFIG = {'time_format': 'relative', 'time_fine': True}
 def timeline_now_attr(now):
     """The <timeline now="…"> stamp — the absolute anchor that makes every
     relative label in the prompt invertible, and the current-time declaration
-    the encoder's date resolution never had (only the scouts got a
-    current_date). `now` is conversation time (replay-safe); renders UTC to
+    the encoder's date resolution never had before the view policy. `now` is
+    conversation time (replay-safe); renders UTC to
     match the Frame's 'Now:' vocabulary. Returns '' when unstampable."""
     try:
         from datetime import timezone
@@ -137,7 +137,7 @@ def catalog_view(ids, stops, run_stops, protected=(), cutoff=None):
     """Order + tier the catalog: returns (ordered_ids, aged_id_set).
 
     ordered_ids — oldest→newest by each id's last-touched stop, so the most
-    recent encodes sit last, adjacent to the timeline (id:f3302000). Ids with
+    recent encodes sit last, adjacent to the timeline. Ids with
     no known stop are the CURRENT window's surfaced nodes — they sort last and
     never age. Ties break on id for a deterministic render.
 
@@ -164,7 +164,7 @@ def catalog_view(ids, stops, run_stops, protected=(), cutoff=None):
 
 # ── Actions (the <actions> block inside timeline turns) ──
 
-# Brain node-op tools whose lines leave <actions> (Tom's ruling, id:27db2472),
+# Brain node-op tools whose lines leave <actions>,
 # split by what the drop would lose:
 #   DROPPED — the turn's <provenance> already carries everything actionable
 #     (verb + ids + titles for writes; for get_node[s]/enrich the arguments ARE
@@ -238,17 +238,17 @@ PATH_KEEP_SEGMENTS = 3
 def action_mode(tool_name):
     """'full' | 'stub' | 'drop' for a tool_result line. Keys on the raw tool
     name the trace metadata carries (`mcp__<server>__<tool>` — post_tool_trace
-    records CC's name verbatim), matching any brain MCP server registration
-    (plugin or user-scope). Non-brain and unknown tools render full."""
+    records the host's name verbatim); which names are the brain's own is
+    dispatch_common.is_brain_tool's call, on either host. Non-brain and unknown
+    tools render full."""
+    from ...dispatch_common import is_brain_tool
     name = str(tool_name or '')
-    if not name.startswith('mcp__'):
+    if not is_brain_tool(name):
         return 'full'
-    parts = name.split('__')
-    if len(parts) < 3 or 'brain' not in parts[1]:
-        return 'full'
-    if parts[-1] in DROPPED_ACTION_TOOLS:
+    tool = name.split('__')[-1]
+    if tool in DROPPED_ACTION_TOOLS:
         return 'drop'
-    if parts[-1] in STUBBED_ACTION_TOOLS:
+    if tool in STUBBED_ACTION_TOOLS:
         return 'stub'
     return 'full'
 
@@ -268,7 +268,7 @@ def action_stub(summary):
 def actions_stub_line(n_actions):
     """The <actions> body for an already-encoded turn. The element renders with
     this stub rather than disappearing — absence would read as "nothing
-    happened this turn"; the stub states the filter (Tom's design). First
+    happened this turn"; the stub states the filter. First
     person — the prompt speaks as the encoder, and the reader of this line IS
     the one who read them last run."""
     return ('trimmed — %d action(s) recorded on this turn; I already read '
@@ -279,8 +279,8 @@ def actions_stub_line(n_actions):
 
 # Node-op categories rendered per turn when the policy is on, replacing the
 # merged `encoded(Anchor)` (= created∪revised) with the verbs, plus the
-# categories the merged form dropped (Tom's ruling, id:27db2472). Labels use
-# the timeline's identity vocabulary — (me), matching <me>/<other>. Each entry
+# categories the merged form dropped. Labels use the timeline's identity
+# vocabulary — (me), matching <me>/<other>. Each entry
 # is (label, link-keys): recalled(me) merges the by-id reads (`recalled`,
 # catalog-folded) with the search-tool results (`looked_up`, provenance-only)
 # into ONE line — the reader's question is "what did I look at", not which

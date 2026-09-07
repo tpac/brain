@@ -31,7 +31,8 @@ sys.path.insert(0, ROOT)
 
 from tests.isolated_brain import IsolatedBrain
 from tests.interaction_override import override_interaction
-from servers.trace_contract import extract_review_block, parse_journal_notes
+from servers.trace_contract import (extract_review_block, parse_journal_notes,
+                                    journal_key, JOURNAL_ADDRESSED_TAGS)
 from eval.s2_community_decoder_eval import run_decoder
 from servers.scales.s2.community_contract import COMMUNITY_DETECTION
 from servers.scales.s2.community_encoder import CommunityEncoder
@@ -91,7 +92,10 @@ def _parse_per_batch(final_text):
             continue
         sections += 1          # block == '' (clean empty) or fence content
         notes, mal = parse_journal_notes(block)
-        well_formed += len(notes)
+        # Addressed lines (tell/ask) are Thalamus items, not journal rows —
+        # the parsed==persisted check counts residue only.
+        well_formed += sum(1 for n in notes
+                           if journal_key(n.get('tag')) not in JOURNAL_ADDRESSED_TAGS)
         malformed += len(mal)
     return well_formed, malformed, sections
 
@@ -182,7 +186,8 @@ def main():
         # sections>0 guards a vacuous 0==0 pass (encoder emitted no ## Review).
         residue_ok = (sections > 0 and mal == 0 and wf == len(rows))
         supp_ok = (skipped == 0) or (rej_after > rej_before)
-        print('  %s residue clean (parsed==persisted, 0 malformed)' % ('✓' if residue_ok else '✗'))
+        print('  %s residue clean (parsed residue==persisted, 0 malformed; '
+              'tell/ask lines are items, not rows)' % ('✓' if residue_ok else '✗'))
         print('  %s suppression intact (skipped → s2_rejections grew, or nothing skipped)'
               % ('✓' if supp_ok else '✗'))
         print('  %s ran (≥1 write OR a deliberate all-skip)'

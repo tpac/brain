@@ -3,10 +3,12 @@ Fires on Stop. Stores conversation to message stream and sets stop_agent_prompt
 config every 5th stop so the Stop agent hook runs encoding.
 Thin client: sends hook_post_response_track to daemon.
 """
-import sys, os, json, time
+import sys, os, time
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import get_hook_input, daemon_available, daemon_call_raw, daemon_unavailable_error, brain_debug, run_hook
+from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
+                         daemon_unavailable_error, brain_debug, emit_hook_output, run_hook,
+                         turn_model, host_name)
 
 hook_input = get_hook_input()
 
@@ -69,21 +71,20 @@ def main():
             "hook_event_name": event_name,
             "last_assistant_message": last_msg,
             "session_id": hook_input.get("session_id", ""),
+            # The S0 session stamp — what produced this turn (see hook_common).
+            # At Stop the transcript's last assistant entry IS this turn's.
+            "model": turn_model(hook_input),
+            "host": host_name(),
         }, timeout=4.0)  # Encoding runs in background thread — hook must return in <5s
         latency = (time.time() - t0) * 1000
         if resp.get("ok"):
             result = resp.get("result", {})
             # Stop self-message backstop: the daemon signals a block to force the
-            # turn to continue so a pending tap is seen. On Stop, only the JSON
-            # `decision` field reaches Claude — plain stdout is invisible.
-            if result.get("decision") == "block":
-                print(json.dumps({"decision": "block", "reason": result.get("reason", "")}))
-                brain_debug("track: Stop blocked to deliver self-message(s)")
-            else:
-                output = result.get("output", "")
-                brain_debug("track: completed in %dms%s" % (latency, ", output=%d chars" % len(output) if output else ""))
-                if output:
-                    print(output)
+            # turn to continue so a pending tap is seen. On Stop, only a JSON
+            # decision reaches the host — plain stdout is invisible in Claude
+            # Code and invalid in Codex — so the daemon's `output` is debug-only.
+            emit_hook_output(event_name or "Stop", result)
+            brain_debug("track: completed in %dms, decision=%s" % (latency, result.get("decision") or "none"))
         else:
             brain_debug("track: daemon returned ok=false")
     else:

@@ -214,7 +214,8 @@ def _call_surface(brain, candidates_data, user_message,
             **read_usage(api_resp),
             elapsed_ms=int((time.time() - _t0) * 1000),
             rounds=1,
-            truncated=1 if getattr(api_resp, 'stop_reason', None) == 'max_tokens' else 0)
+            truncated=1 if getattr(api_resp, 'stop_reason', None) == 'max_tokens' else 0,
+            model=SURFACE_MODEL)
 
     # Parse JSON — robust to the three shapes Haiku sometimes returns:
     #   (a) bare JSON: {"selected": [...]}
@@ -314,7 +315,7 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
         return build_run_telemetry(
             **usage_total,
             elapsed_ms=int((time.time() - _t0) * 1000),
-            rounds=rounds_used, truncated=truncated)
+            rounds=rounds_used, truncated=truncated, model=model)
 
     def _absorb_response(resp):
         """Fold one Haiku response into the running cost totals and capture

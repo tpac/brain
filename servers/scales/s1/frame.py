@@ -17,9 +17,8 @@ recency-by-type pulls that filled with engineering nodes and polluted Haiku's
 per-turn prior; the wisdom section ("What I've learned") was removed
 2026-07-16/2026-08-05 — un-measured selection ("organized priming" is the
 recorded return-intent, behind the identity-prior redesign). Seed-brain
-operator/identity scaffolding lives in the conditional Zero-Memory boot block
-(docs/DISTRIBUTION-READINESS.md §7); everything else is recoverable via
-recall() on demand.
+operator/identity scaffolding lives in the conditional Zero-Memory boot
+block; everything else is recoverable via recall() on demand.
 """
 
 import datetime as _dt
@@ -117,12 +116,13 @@ def build_frame(brain, session_id: str, at=None) -> str:
 # render_boot_v2 after the Frame.
 #
 # BRAIN_BOOT_INJECT_TYPES (~/.config/brain/env, comma-separated) picks which
-# node types surface at boot. Ships with `journals-escalation` — the landing
-# type for journal open-items the encoders promoted (trace_contract
-# JOURNAL_ESCALATION_TYPE) — so escalations reach a human by default. Users
-# extend their boot with their own types the same way.
+# node types surface at boot. Ships EMPTY: a long-lived journal item reaches
+# a human through the Thalamus `ask` (budgeted, expiring, answerable, read
+# back by its producer), not through a node type printed at every boot. The
+# mechanism stays for operators who want a type of their own on the wake-up
+# ritual.
 
-BOOT_INJECT_TYPES_DEFAULT = 'journals-escalation'
+BOOT_INJECT_TYPES_DEFAULT = ''
 BOOT_INJECT_CAP = 10
 
 

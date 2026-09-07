@@ -127,8 +127,7 @@ brain_config_option_db_dir() {
 # userConfig: the "I already have a brain, here's where" install answer.
 # Shell/env BRAIN_DB_DIR still wins (fill only when unset), mirroring the
 # api_key rule. NOTE: reaches the daemon on the hook/Popen path; a
-# launchd-spawned daemon won't see CLAUDE_PLUGIN_OPTION_* (see
-# docs/DISTRIBUTION-READINESS.md §2.1).
+# launchd-spawned daemon won't see CLAUDE_PLUGIN_OPTION_*.
 if [ -z "${BRAIN_DB_DIR:-}" ]; then
   # Expanded inline, not through the accessor: this runs on every hook and a
   # $(...) around a pure parameter expansion is a fork for nothing. The

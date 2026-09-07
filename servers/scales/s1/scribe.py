@@ -15,8 +15,7 @@ What stays S1-specific:
   single source (SessionContext.s1e_chain).
 - **The encode logic** — `encode.run_encoding(brain, dispatch, counter,
   session_id)` stays the standalone callable so the eval harnesses
-  (`longmem/replay`, `s1s_ab_wiring_check`) drive it directly with their own
-  brain + dispatch. `S1Scribe` is the *production* wrapper: it binds the
+  (`longmem/replay`) drive it directly with their own brain + dispatch. `S1Scribe` is the *production* wrapper: it binds the
   daemon's brain + the in-process dispatch + the run chain.
 
 Execution: in-process on the daemon's brain — writes serialize under
@@ -77,4 +76,12 @@ class S1Scribe(IntegrationUnit):
         run_encoding core."""
         from servers.scales.s1.encode import run_encoding
         dispatch_fn = self._make_encoder_dispatch()
-        return run_encoding(self.brain, dispatch_fn, self.counter, self.session_id)
+        return run_encoding(self.brain, dispatch_fn, self.counter, self.session_id,
+                            journal=self.journal)
+
+    def _journal_kwargs(self):
+        # Session-walled residue + the `## Arc` opt-in: the shape that makes
+        # tell/ask lines file DIRECTED at this session (the unit default —
+        # scoped by NAME, no session — would file them broadcast).
+        from .encode import scribe_journal_kwargs
+        return scribe_journal_kwargs(self.session_id)

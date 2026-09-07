@@ -23,7 +23,7 @@ from servers.scales.s2.base import IntegrationUnit
 
 def test_review_block_is_closure_free():
     """The review block defines the `## Review` artifact ONLY — it must carry no
-    closure/terminal-turn/DONE language (Tom's decoupling: removing or relocating
+    closure/terminal-turn/DONE language (the decoupling: removing or relocating
     the review must never drag the closure)."""
     rb = render_journal_review_block()
     assert rb == JOURNAL_REVIEW_INSTRUCTION       # unchanged by the closure split

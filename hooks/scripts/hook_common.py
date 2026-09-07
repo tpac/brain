@@ -3,7 +3,7 @@
 Eliminates repeated boilerplate: path setup, Brain import, input parsing,
 daemon connection helpers, error logging. Every hook .py file imports this.
 """
-import sys, os, json, traceback, sqlite3
+import sys, os, re, json, traceback, sqlite3
 from datetime import datetime, timezone
 
 # ── Path setup ──
@@ -180,9 +180,10 @@ def run_hook(name, fn, on_error=None):
     """Single error boundary for a hook script — the standard every hook runs through.
 
     Runs fn() (the hook body). If it raises, logs ONCE to hook_errors (via
-    log_hook_error, the canonical hook-side sink) and invokes on_error() for the
-    hook's fail-safe output — e.g. a PreToolUse hook printing its `approve`
-    decision so the tool isn't blocked by the hook's own crash.
+    log_hook_error, the canonical hook-side sink) and invokes on_error() for any
+    fail-safe output the hook still owes. Most hooks owe none: exit 0 with no
+    stdout reads as "nothing to report" on every host (see emit_hook_output),
+    so a crashed PreToolUse hook simply doesn't block the tool.
 
     Catches Exception only — SystemExit/KeyboardInterrupt propagate, so a hook's
     own `sys.exit(0)` skip-path (and Ctrl-C) still work. Never re-raises: a
@@ -257,6 +258,231 @@ def get_hook_input():
         if env_sid:
             data["session_id"] = env_sid
     return data
+
+
+# ── Host + model (the S0 session stamp) ──
+# What a turn rides on, fed to the daemon by the UserPromptSubmit / Stop hooks
+# and stamped onto the turn's S0 rows (trace_contract.S0_SESSION_STAMP_FIELDS).
+# Two hosts, two sources: Codex puts `model` on every hook payload; Claude Code
+# does not, but every assistant entry in the transcript carries message.model.
+
+def host_name():
+    """Which runtime this hook runs under: 'claude-code', 'codex', or '' when
+    neither tell is present. Claude Code exports CLAUDE_CODE_SESSION_ID into
+    every hook process; Codex injects bare PLUGIN_DATA (Claude Code sets only
+    the CLAUDE_-prefixed alias). The tell must be one the HOST supplies: bare
+    PLUGIN_ROOT is not one — our own resolve-brain-db.sh exports it on both."""
+    if os.environ.get("CLAUDE_CODE_SESSION_ID"):
+        return "claude-code"
+    if os.environ.get("PLUGIN_DATA"):
+        return "codex"
+    return ""
+
+
+# Tail window for the transcript read: assistant entries land on every tool
+# call, so the last one is always within a few KB of the end — a full
+# readlines() over a session-long transcript (tens of MB) on the prompt hot
+# path is the cost this avoids.
+_TRANSCRIPT_TAIL_BYTES = 256 * 1024
+
+
+def turn_model(hook_input):
+    """The model this turn ran on, or '' when the payload doesn't say.
+
+    Codex: the payload's `model`. Claude Code: the LAST main-thread assistant
+    entry in the transcript — at Stop that is this turn's model; at
+    UserPromptSubmit it is the previous turn's (the model the operator was
+    talking to when the prompt arrived; '' on a session's first prompt, and the
+    Stop hook fills it). Sidechain entries (subagents, which may run on a
+    different model) are skipped — they are not the operator's turn.
+
+    The tail window is the normal read; when it holds no main-thread assistant
+    entry (one oversized tool result, or a subagent's sidechain, can push the
+    last one out of the window) the whole file is scanned once — rare, and
+    the alternative is an unstamped turn plus a spurious model-unset error."""
+    m = hook_input.get("model")
+    if isinstance(m, str) and m.strip():
+        return m.strip()
+    path = hook_input.get("transcript_path")
+    if not path:
+        return ""
+    path = os.path.expanduser(path)
+    try:
+        size = os.path.getsize(path)
+        model = _last_main_assistant_model(path, max(0, size - _TRANSCRIPT_TAIL_BYTES))
+        if not model and size > _TRANSCRIPT_TAIL_BYTES:
+            model = _last_main_assistant_model(path, 0)
+        return model
+    except OSError:
+        return ""
+
+
+def _last_main_assistant_model(path, start):
+    """message.model of the last non-sidechain assistant entry at or after byte
+    `start` of the transcript, or ''. Raises OSError on a read failure."""
+    with open(path, "rb") as f:
+        f.seek(start)
+        lines = f.read().decode("utf-8", errors="replace").splitlines()
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue   # the first line of a tail window is usually a partial record
+        if not isinstance(entry, dict) or entry.get("type") != "assistant" \
+                or entry.get("isSidechain"):
+            continue
+        msg = entry.get("message")
+        model = msg.get("model") if isinstance(msg, dict) else None
+        if isinstance(model, str) and model.strip():
+            return model.strip()
+    return ""
+
+
+# ── Host tool-input shapes ──
+# Codex's file tool is apply_patch: its PreToolUse/PostToolUse input is
+# {"command": <patch text>} with no file_path — the target sits in the patch
+# header. Claude Code sends file_path directly. One resolver for every hook that
+# keys on the edited file, so the two hosts never diverge per script.
+_PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.M)
+
+
+def tool_target_file(tool_input):
+    """The file an Edit/Write/apply_patch call targets, or "" when there is none.
+    A multi-file patch resolves to its first file — the daemon's rule lookup is
+    single-file."""
+    if not isinstance(tool_input, dict):
+        return ""
+    path = tool_input.get("file_path", "")
+    if path:
+        return path
+    m = _PATCH_FILE_RE.search(tool_input.get("command", "") or "")
+    return m.group(1).strip() if m else ""
+
+
+# ── Hook stdout contract ──
+# The ONLY writers of a hook script's stdout live here — emit_hook_output for
+# what the brain has to SAY, emit_updated_input for the one tool input it
+# REWRITES. Two hosts read it — Claude Code and Codex — against strict per-event
+# JSON schemas, so the daemon protocol ({decision, reason} / {additionalContext})
+# is translated to the host wire in exactly one place. The brain informs, it
+# never gates: a block is honored only on Stop, where it is how a pending
+# self-message is delivered (the host continues the turn with the reason as its
+# next prompt). Printing `{"decision":"approve"}` is never right — Codex rejects
+# it as invalid output (hook run FAILED), and on Claude Code it meant "allow,
+# skip the permission prompt", a decision a memory plugin must not make for its
+# user.
+
+_BLOCKING_EVENTS = ("Stop",)
+
+
+def _as_text(value):
+    """Coerce a payload field to text. The daemon sends strings; anything else
+    is a daemon-side bug we still want to SEE (as text), not a crash that
+    swallows the whole output."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = json.dumps(value, ensure_ascii=False, default=str)
+    return value.strip()
+
+
+def emit_hook_output(hook_event_name, payload):
+    """Write this hook's stdout for `hook_event_name` from a decision payload.
+
+    `payload` keys (any subset, or None): `decision` ("approve" | "block"),
+    `reason`, `additionalContext`.
+
+      nothing / approve with no text       → no output ("no opinion" on both hosts)
+      additionalContext, or approve+reason  → {"hookSpecificOutput": {…, "additionalContext"}}
+                                             (Stop: Codex's Stop schema has no
+                                             context channel — dropped, logged)
+      block on Stop                         → {"decision": "block", "reason"}
+      block on any other event, an unknown  → logged to hook_errors (warning);
+      decision, a non-dict payload            the text is still emitted as context
+
+    Both hosts reject a block without a non-empty reason, so one is supplied.
+    Flushes stdout so a caller may os._exit() right after.
+    """
+    def _warn(msg):
+        log_hook_error(_get_hook_name(), msg, "emit_hook_output(%s)" % hook_event_name, level="warning")
+
+    if payload is not None and not isinstance(payload, dict):
+        _warn("non-dict hook payload (%s) — nothing to emit" % type(payload).__name__)
+        payload = {}
+    payload = payload or {}
+    decision = payload.get("decision")
+    reason = _as_text(payload.get("reason"))
+    context = _as_text(payload.get("additionalContext"))
+    if decision and decision not in ("approve", "block"):
+        _warn("unknown hook decision %r — emitted as context, not a decision" % (decision,))
+        decision = None
+    if decision == "block" and hook_event_name not in _BLOCKING_EVENTS:
+        _warn("block on %s — the brain informs, it never gates; emitted as context" % hook_event_name)
+        decision = None
+    out = None
+    if decision == "block":
+        out = {"decision": "block", "reason": reason or "blocked by a brain hook"}
+    else:
+        text = context or reason
+        if text:
+            if hook_event_name == "Stop":
+                _warn("Stop context dropped (%d chars): Codex's Stop schema has no additionalContext channel" % len(text))
+            else:
+                out = {"hookSpecificOutput": {
+                    "hookEventName": hook_event_name,
+                    "additionalContext": text,
+                }}
+    if out is not None:
+        sys.stdout.write(json.dumps(out))
+        sys.stdout.flush()
+
+
+def strip_caller_stamp(tool_input):
+    """A tool input without the proxy-bound identity pair. The stamp hook
+    rewrites the brain's tool arguments with `_caller_session` + `_caller_sig`
+    (servers.dispatch_common owns both keys); anything that RECORDS a tool
+    input — the PostToolUse trace — must drop them first, or a valid pair lands
+    in a trace the model can recall and replay as another stream's identity.
+    Keyed on the shared `_caller_` prefix rather than an import: this runs on
+    every tool call."""
+    if not isinstance(tool_input, dict):
+        return tool_input
+    return {k: v for k, v in tool_input.items() if not k.startswith("_caller_")}
+
+
+def emit_updated_input(hook_event_name, tool_name, updated_input):
+    """PreToolUse only, brain tools only: hand the host a rewritten tool input.
+
+    Both hosts apply `permissionDecision: "allow"` + `updatedInput` the same
+    way — the object REPLACES the tool's arguments before the call runs — and
+    neither applies the rewrite without the `allow`. That `allow` is the brain
+    permitting its OWN MCP tools, the one tool family a memory plugin may
+    approve for itself, so this writer refuses any other `tool_name`
+    (servers.dispatch_common.is_brain_tool) — a widened matcher cannot turn it
+    into an auto-approve of a user's tool. Any other event, tool, or a non-dict
+    input emits nothing and is logged. Flushes stdout so a caller may os._exit()
+    right after.
+    """
+    def _warn(msg):
+        log_hook_error(_get_hook_name(), msg, "emit_updated_input(%s)" % hook_event_name, level="warning")
+
+    if hook_event_name != "PreToolUse":
+        _warn("updatedInput is a PreToolUse-only shape — nothing emitted")
+        return
+    from servers.dispatch_common import is_brain_tool
+    if not is_brain_tool(tool_name):
+        _warn("updatedInput refused for %r — the brain rewrites only its own MCP tools; "
+              "check the PreToolUse matcher" % (tool_name,))
+        return
+    if not isinstance(updated_input, dict):
+        _warn("non-dict updatedInput (%s) — nothing emitted" % type(updated_input).__name__)
+        return
+    sys.stdout.write(json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "allow",
+        "updatedInput": updated_input,
+    }}))
+    sys.stdout.flush()
 
 
 def daemon_unavailable_error(hook_name=None):

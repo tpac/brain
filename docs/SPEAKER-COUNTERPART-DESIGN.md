@@ -439,17 +439,21 @@ its naming.
 ### 5.2 The single stamp site — `_s0_trace`
 
 `_s0_trace(brain, ctx, event_type, ref_type, summary, metadata)`
-(`daemon_hooks.py:576`) is the one writer for every S0 turn event; its docstring
-already states its charter — binding "the per-turn invariants in ONE place …
-the four S0 turn events — user_message, assistant_message, heartbeat,
-self_message." **Speaker is a per-turn invariant, so it belongs here by that
-function's own contract**, and the site has both `brain` and `ctx` in hand. Both
-dialogue writes already route through it: `:201` (user_message, at
-prompt-arrival) and `:626` (assistant_message, at Stop).
+(`brain_traces.py` — moved there from daemon_hooks in the Step 8 delivery
+work; call sites remain bare-name, which the trace guardrail requires) is the
+one writer for every S0 turn event; its docstring already states its charter —
+binding the per-turn invariants in ONE place. **Speaker is a per-turn
+invariant, so it belongs here by that function's own contract**, and every
+site has both `brain` and `ctx` in hand. Dialogue writes routing through it:
+user_message (daemon_hooks, at prompt-arrival), assistant_message
+(daemon_hooks post_response_common, at Stop — including the
+delivery-continuation reaction), and the delivery K events self_message +
+thalamus_delivery (channels/delivery.py) — the census below predates the
+last two; thalamus_delivery needs a policy row when this arc ships.
 
 **Two census corrections (2026-07-27) to the "one writer" claim:**
 1. `_s0_trace` also emits a FIFTH ref_type the policy must own:
-   `anchor_touched` (`daemon_hooks.py:674`) — takes the structural row (omit),
+   `anchor_touched` (daemon_hooks, post_response_common) — takes the structural row (omit),
    and the §8.1 policy-derived fixture must include it.
 2. One S0 turn event bypasses `_s0_trace` entirely: `Brain.stamp_boot_liveness`
    (`brain.py:1002-1006`, called from `brain_voice.py:349`) writes the boot
@@ -488,7 +492,7 @@ this was the last open unknown, and it was worse than assumed):
 Both apply the same policy row (`speaker = self_name`). **Neither needs `ctx`** —
 and that is the §5.1 asymmetry paying off directly: `self_name` is global, so any
 site can stamp it correctly regardless of what it holds. Only `user_message`
-requires session scope, and its single site (`daemon_hooks.py:201`) has `ctx` in
+requires session scope, and its single site (daemon_hooks hook_recall) has `ctx` in
 hand. Had the policy needed a per-session value on `tool_result`, the
 `brain_remember` site would have been an unfixable gap.
 
@@ -824,7 +828,7 @@ migration test noticing it has no mapping.
 | `servers/brain.py:275-278` | init: `self_name` + seed default counterpart; drop `operator_name`/`set_identity` |
 | `servers/daemon_config.py:69-76` | `get_self_name()` / `get_default_counterpart()` |
 | `servers/dal_logs.py:497-576` | **delete** identity state (`set_identity`, `_human_identity`, `_agent_identity`, `_stamp_identity`); keep + rename the loud check → validates dialogue rows carry `speaker` (§5.3) |
-| `servers/daemon_hooks.py:576` (`_s0_trace`) | **the single stamp site** — apply `SPEAKER_POLICY` using `brain.self_name` / `ctx.counterpart` (§5.2) |
+| `servers/brain_traces.py` (`_s0_trace`) | **the single stamp site** — apply `SPEAKER_POLICY` using `brain.self_name` / `ctx.counterpart` (§5.2) |
 | `hooks/scripts/post_tool_trace.py:86` | `tool_result` → `self_name` (no ctx needed, §5.2) |
 | `servers/brain_remember.py:369` | second `tool_result` writer — same policy (§5.2) |
 | `servers/trace_contract.py` | `SPEAKER_POLICY` + render (1123-1126) + payload validation |
@@ -892,7 +896,7 @@ Do **not** mass-rename these. Verified 2026-07-24 across all nine files:
 - **~90% are decision-provenance comments** — `"Tom 2026-07-02"`, `"per Tom"`,
   `"Tom's spec"`, `"Tom's standing rule (node 8178593a)"` (`encode.py`,
   `encode_contract.py`, `surface_contract.py`, `trace_links.py`,
-  `scouts/muster.py`, `scouts/runners.py`, `presence.py`, `self_contract.py`).
+  `presence.py`, `self_contract.py`).
   These attribute *who decided what*. **Leave them untouched** — they are
   legitimate attribution history, and rewriting them would destroy provenance
   for zero gain. (Census note 2026-07-27, **revised 2026-08-09**: the runtime
@@ -1033,7 +1037,7 @@ than the trace migration), the MCP agent-facing schema (→ `redeploy.sh` + new
 session), all four encoder prompt defaults (edit `SYSTEM_PROMPT` in each
 prompt `.py`), the full contract-sync chain (`remember()` → MCP schema → dispatch →
 encoder tools → SKILL.md), `contract.py`, `dal_metadata.py`, the S2
-healer/community/consolidation contracts, quality + surface contracts, scouts.
+healer/community/consolidation contracts, quality + surface contracts.
 **Verify before executing:** whether the quote *values* feed any node
 embedding group — if they do, the same zero-re-embedding invariant as §6 holds
 (keys don't enter vector space, values do), but confirm rather than assume.

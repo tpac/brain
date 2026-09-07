@@ -3,7 +3,19 @@ brain — Shared Constants
 
 Constants used across multiple brain mixin modules.
 Extracted to avoid circular imports (mixins can't import from brain.py).
+This module imports nothing from the brain, so per-tool-call hooks can
+reach it without paying for the daemon's config import.
 """
+import os
+
+
+def user_config_dir() -> str:
+    """`${XDG_CONFIG_HOME:-~/.config}` — the root of the brain's user-owned
+    files (`brain/env`, `brain/resolved.env`, `brain/hook-secret`). The Python
+    half of the shell resolver's spelling (api-key-env.sh); one accessor so the
+    readers of one directory cannot split."""
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+
 
 # ═══════════════════════════════════════════════════════════════
 # CONSTANTS: Decay rates by node type (hours until weight halves)
@@ -112,7 +124,7 @@ CONTEXT_BOOT_RECENT_LIMIT = 10
 # Zero-Memory boot block (the Nursery's spoken half, rendered by brain_voice).
 # Fires while the brain is young; retires only when BOTH thresholds are
 # exceeded — at least this old AND at least this many lived (non-seed)
-# memories (Tom, 2026-08-30).
+# memories.
 ZERO_MEMORY_MIN_DAYS = 10
 ZERO_MEMORY_MIN_LIVED = 100
 
@@ -190,7 +202,8 @@ FTS5_PASSTHROUGH_SCORE = 0.20  # Score for FTS5-only candidates (above noise flo
 
 # Trace-chain lane — episodic dual-store rescue (flag-gated via BRAIN_TRACE_CHAIN=1, default OFF).
 # Design: docs/RECALL-DUAL-STORE-DESIGN.md §3.2 + §3.3 form 1. Tier-1 proven (dual_store_merge_probe:
-# #11 0->8 EX.CO rescued against the real buried baseline). Mirrors the fts5_only reserved-lane shape.
+# #11 0->8 buried topical nodes rescued against the real baseline).
+# Mirrors the fts5_only reserved-lane shape.
 TRACE_CHAIN_RESERVE = 5      # reserved tail slots for trace-chain rescues (additive; never reorders top)
 TRACE_CHAIN_T = 5            # top dialogue traces to chain FROM (answer trace may not be rank-1)
 TRACE_CHAIN_N = 25           # nodes each trace pulls before dedup/merge
@@ -344,7 +357,7 @@ LLM_REJECT_STRIKE_RESET_SECONDS = 2 * 60 * 60
 
 # ── LLM transport ──
 # Hard upper bound on any single Anthropic SDK call (S1 surface, S1 encode, S2
-# encoders, scouts). The SDK default is roughly 600s but is measured against
+# encoders). The SDK default is roughly 600s but is measured against
 # time.monotonic(), which does NOT advance while the process is suspended
 # (macOS sleep). A call started right before sleep can therefore hang
 # indefinitely after wake. A post-sleep hang is recovered reactively

@@ -21,6 +21,7 @@ from datetime import datetime
 
 # ── Constants (canonical definitions in brain_voice.py) ──
 
+from servers.brain_traces import _s0_trace
 from servers.brain_voice import BrainVoice
 # Hoisted — if this import ever breaks, the daemon fails at boot instead of
 # silently degrading recall 16s in.
@@ -190,6 +191,11 @@ def hook_recall(brain, args, graph_changes):
     # already filtered, so reaching hook_recall means a real prompt.
     # See trace_contract S0 TURN CLASSIFICATION.
     ctx.last_recall_stop = ctx.stop_counter
+    # What this turn rides on, fed in by the hook (hook_common.turn_model /
+    # host_name) — stamped onto the S0 rows below and mirrored on the session.
+    # Empty leaves the known value (a session's first prompt has no transcript
+    # entry yet on Claude Code; the Stop hook fills it).
+    ctx.set_env(model=args.get('model', ''), host=args.get('host', ''))
 
     # Write the user_message S0 trace NOW, at prompt-arrival — not at Stop. This
     # is what lets presence/peek surface a stream's current prompt mid-turn
@@ -201,8 +207,8 @@ def hook_recall(brain, args, graph_changes):
     _user_msg_trace_id = _s0_trace(
         brain, ctx, event_type='K', ref_type='user_message',
         summary=user_message[:200] if user_message else '',
-        metadata={'content': user_message[:4000],
-                  'recall_chain': ctx.s1r_chain()} if user_message else None)
+        metadata={'recall_chain': ctx.s1r_chain()} if user_message else None,
+        content=user_message or None)
 
     # Write current stop counter to tmp file — PostToolUse reads this (cross-process)
     try:
@@ -541,33 +547,24 @@ def hook_recall(brain, args, graph_changes):
 
 
 
-def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None):
-    """Append one S0 turn-trace, binding the per-turn invariants in ONE place:
-    chain (ctx.s0_chain()), scale ('s0'), and the session (ctx.session_id). The
-    four S0 turn events — user_message, assistant_message, heartbeat,
-    self_message — differ only in event_type / ref_type / summary / metadata;
-    everything else is turn-fixed. Routing them all through here keeps
-    session_id from being dropped — the self_message append once omitted it,
-    leaving cross-stream deliveries unattributable to the recipient session.
-
-    Returns the appended trace_event id (hook_recall passes the current
-    prompt's id to get_session_turns as exclude_trace_id)."""
-    return brain._trace_dal.append(
-        chain_id=ctx.s0_chain(), scale='s0', session_id=ctx.session_id,
-        event_type=event_type, ref_type=ref_type, summary=summary,
-        metadata=metadata)
-
-
-def post_response_common(brain, session_id, user_message, assistant_response):
+def post_response_common(brain, session_id, user_message, assistant_response,
+                         model='', host=''):
     """Shared post-response path: S0 traces, heartbeat, stop counter
     increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
+    `model` / `host`: what produced this turn (trace_contract
+    S0_SESSION_STAMP_FIELDS), fed in by the Stop hook — stamped onto the
+    turn's S0 rows and mirrored as the session's latest. Empty (the eval
+    harness) leaves the known value.
+
     Returns the SessionContext after increment.
     """
-    from .pipeline_contract import PIPELINE as _PL
     ctx = brain.get_or_create_session(session_id)
-    assistant_response = (assistant_response or "")[:_PL['assistant_response_store']]
+    ctx.set_env(model=model, host=host)
+    # No pre-cap here: _s0_trace owns the one (loud) stored-content cap; a
+    # second slice against the same constant is how the sides drift apart.
+    assistant_response = assistant_response or ""
 
     # Turn classification (trace_contract S0 TURN CLASSIFICATION): a turn is
     # conversational iff a real UserPromptSubmit ran hook_recall THIS stop (which
@@ -579,21 +576,41 @@ def post_response_common(brain, session_id, user_message, assistant_response):
     # poll-driven reactor derives the count from traces (turns_since_last_encode
     # counts s0 user_message turns), which heartbeats never write.
     is_conversational = (ctx.last_recall_stop == ctx.stop_counter)
-    ctx.last_turn_conversational = is_conversational
+    # Delivery-continuation: this stop is the reaction to a delivery that
+    # blocked the previous one — the Stop hook arms the stamp only for a
+    # dial-on, traced correspondent (trace_contract.arms_continuation), so
+    # dial-off leaves this structurally dead and the stop stays a heartbeat.
+    # One-shot read-and-clear; the freshness window is the real guard against
+    # a stale stamp — an ESC'd continuation fires no Stop, so counter and
+    # stamp freeze, and a /watch wakeup hours later would otherwise match.
+    # Cadence is untouched either way (it counts user_message rows only).
+    from .clock import iso_cutoff as _iso_cutoff
+    from .trace_contract import DELIVERY_REACTION_WINDOW_MIN as _RW
+    armed_stop, armed_at = ctx.last_delivery_stop, ctx.last_delivery_armed_at
+    ctx.last_delivery_stop, ctx.last_delivery_armed_at = -1, ''
+    is_delivery_reaction = (
+        not is_conversational
+        and armed_stop == ctx.stop_counter
+        and armed_at >= _iso_cutoff(minutes=_RW))
+    ctx.last_turn_conversational = is_conversational or is_delivery_reaction
 
     # S0 traces (using SessionContext for chain IDs)
     try:
-        if is_conversational:
-            # user_message is written at UserPromptSubmit (hook_recall), when the
-            # prompt ARRIVES — so presence/peek can surface a stream's current
-            # prompt mid-turn (rendezvous identity) instead of only after the turn
-            # completes. Only the assistant half is written here, at Stop. Same
-            # chain_id: stop_counter is unchanged between hook_recall and this Stop
-            # (incremented below), so the pair stays grouped.
+        if is_conversational or is_delivery_reaction:
+            # For an operator turn: user_message was written at
+            # UserPromptSubmit (hook_recall), when the prompt ARRIVED — so
+            # presence/peek can surface a stream's current prompt mid-turn.
+            # Only the assistant half is written here, at Stop; stop_counter
+            # is unchanged between hook_recall and this Stop (incremented
+            # below), so the pair shares the chain. For a delivery REACTION:
+            # the incoming K was written by deliver() at the PREVIOUS stop's
+            # hook, after that stop's increment — which put it on THIS chain,
+            # so the pair shares the chain by the same invariant from the
+            # other side.
             _s0_trace(
                 brain, ctx, event_type='delta', ref_type='assistant_message',
-                summary=assistant_response[:200] if assistant_response else '',
-                metadata={'content': assistant_response[:4000]} if assistant_response else None)
+                summary=assistant_response[:200],
+                content=assistant_response or None)
         else:
             # Heartbeat: wakeup re-arm, no real prompt. One observability marker
             # (off CONVERSATIONAL_REF_TYPES → never encoded). The peer message,
@@ -649,56 +666,67 @@ def hook_post_response_track(brain, args, graph_changes):
     truth, current — and delivers pending self-messages. One trigger owner (the
     poll) means no hook/poll double-fire race.
     """
+    # Loud at the write boundary: every Stop payload must say which model
+    # produced the turn (Codex puts it on the hook payload; Claude Code's
+    # transcript carries it on every assistant entry — hook_common.turn_model
+    # reads it). A gap here means the S0 record goes down without a model, and
+    # a boot-time check would fire once and be easy to bypass — this fires at
+    # the write, per session (the error text carries the session, so the
+    # dedup fingerprint is per stream: one row per session per dedup window,
+    # and a second stream's gap is never masked by the first's). Logged, never
+    # blocking: the turn is still recorded.
+    if args.get("hook_event_name") == "Stop" and not args.get("model"):
+        _sid_short = (args.get('session_id', '') or '')[:8]
+        brain._log_error(
+            's0_model_unset',
+            ValueError('no model on Stop for session %s (host=%s)'
+                       % (_sid_short, args.get('host', '') or '?')),
+            'the turn\'s S0 rows carry no model stamp')
     ctx = post_response_common(
         brain,
         args.get('session_id', ''),
         args.get("prompt", "") or args.get("message", ""),
         args.get("last_assistant_message", "") or "",
+        model=args.get("model", "") or "",
+        host=args.get("host", "") or "",
     )
     session_id = ctx.session_id
 
-    # Self-message + Thalamus delivery — the SOLE push path (Stop-only,
-    # 2026-06-04). The prominent Stop block reliably reaches the model; the old
-    # PreToolUse additionalContext leg was missed (consumed the tap into context
-    # the model didn't act on), so it was removed. Two sources compose here,
-    # each failure-isolated: the courier drain (stream speech, consume-once)
-    # and the Thalamus pull (the brain's own due items — ledger-recorded, asks
-    # excluded at Stop, they deliver at boot). Blocks at most once per batch
-    # per source (next Stop finds nothing and allows it). Only on the Stop
-    # event — this handler also runs on UserPromptSubmit, where blocking would
-    # be wrong.
+    # Delivery — the Stop moment, the forcing leg: a `decision:block` reason
+    # compels a read, where a passive mid-thread additionalContext competes
+    # with recall and can be missed. channels/delivery.py owns the leg:
+    # eligible sources (courier drain + Thalamus pull — asks excluded at
+    # Stop, they deliver at boot), each failure-isolated and traced. Blocks
+    # at most once per batch per source (the next Stop finds nothing and
+    # allows it). Gated on the Stop event: hooks.json wires this handler to
+    # Stop, and the guard keeps any future second wiring from blocking where
+    # blocking would be wrong.
+    _reason = ''
     if args.get("hook_event_name") == "Stop":
-        _parts = []
         try:
-            from servers.channels.self_channel import signal as _self_signal
-            _block, _n = _self_signal.drain_and_render(brain, session_id)
-            if _n:
-                _s0_trace(
-                    brain, ctx, event_type='K', ref_type='self_message',
-                    summary='delivered %d self-message(s) via Stop block' % _n)
-                _parts.append(_block)
-        except Exception as _self_err:
-            brain._log_error('self_delivery_stop', _self_err,
-                             'Stop self-message delivery (session=%s)' % session_id)
-        try:
-            from servers.channels.thalamus import thalamus as _thalamus
-            from servers.channels.thalamus.thalamus_contract import (
-                REF_THALAMUS_DELIVERY as _REF_TH, VIA_STOP as _VIA_STOP)
-            _th_block, _th_n = _thalamus.pull(brain, session_id, via=_VIA_STOP)
-            if _th_n:
-                _s0_trace(
-                    brain, ctx, event_type='K', ref_type=_REF_TH,
-                    summary='delivered %d thalamus item(s) via Stop block' % _th_n)
-                _parts.append(_th_block)
-        except Exception as _th_err:
-            brain._log_error('thalamus_delivery_stop', _th_err,
-                             'Stop thalamus delivery (session=%s)' % session_id)
-        if _parts:
-            brain.save()
-            return {"output": "(stored)",
-                    "decision": "block", "reason": "\n\n".join(_parts)}
-
+            from .channels.delivery import deliver, STOP
+            from .trace_contract import arms_continuation
+            from .clock import iso_now as _iso_now
+            # post_response_common already advanced the counter, so the
+            # delivery traces land on the NEXT chain — deliberately: a
+            # delivery that blocks this stop OPENS the next turn as its
+            # incoming side, and the continuation's response completes that
+            # turn on the same chain (incoming K + assistant delta, the same
+            # shape as an operator turn). The stamp arms that continuation's
+            # classification; it stays inside this try because everything
+            # after deliver() runs post-consume — a raise here must never
+            # cost the block.
+            _reason, _traced = deliver(brain, ctx, STOP)
+            if _reason and arms_continuation(_traced):
+                ctx.last_delivery_stop = ctx.stop_counter
+                ctx.last_delivery_armed_at = _iso_now()
+        except Exception as _dlv_err:
+            brain._log_error('delivery_stop', _dlv_err,
+                             'Stop delivery leg raised (session=%s)' % session_id)
     brain.save()
+    if _reason:
+        return {"output": "(stored)",
+                "decision": "block", "reason": _reason}
     return {"output": "(stored)"}
 
 
@@ -709,8 +737,8 @@ def hook_post_response_track(brain, args, graph_changes):
 
 
 def hook_pre_edit(brain, args, graph_changes):
-    """PreToolUse(Edit|Write) — surface brain rules before file edits, and
-    deliver any pending self-messages (drain → prepend to reason).
+    """PreToolUse(Edit|Write) — surface brain rules before file edits.
+    (Self-message delivery lives on Stop alone — hook_post_response_track.)
 
     Returns JSON {"decision":"approve","reason":"..."}.
     """
@@ -773,9 +801,11 @@ def hook_pre_edit(brain, args, graph_changes):
 
 
 def hook_pre_bash_safety(brain, args, graph_changes):
-    """PreToolUse(Bash) — safety check for destructive commands.
+    """PreToolUse(Bash) — safety context for destructive commands.
 
-    Returns JSON {"decision":"approve"|"block","reason":"..."}.
+    Returns JSON {"decision":"approve","reason":"..."} — the brain informs the
+    model about critical brain-tracked resources and matching warnings; it never
+    blocks the command (the host's own permission rules decide).
     """
     command = args.get("command", "")
 
@@ -802,10 +832,10 @@ def hook_pre_bash_safety(brain, args, graph_changes):
             lines.append("  [%s] %s" % (cm.get("type", "?"), title))
             lines.append("    %s" % content)
             lines.append("")
-        lines.append("Review the above before proceeding. This command has been BLOCKED.")
+        lines.append("Review the above before proceeding.")
         lines.append("[/BRAIN]")
 
-        return {"json": {"decision": "block", "reason": "\n".join(lines)}}
+        return {"json": {"decision": "approve", "reason": "\n".join(lines)}}
 
     elif warnings:
         lines = ["[BRAIN] \u26a0\ufe0f WARNING: Destructive command detected. Relevant brain context:"]

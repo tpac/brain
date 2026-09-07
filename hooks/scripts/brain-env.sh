@@ -7,10 +7,15 @@
 # After sourcing:
 #   $PLUGIN_DIR    resolves to plugin root
 #   $BRAIN_PYTHON  points to the venv's python (the ONLY python hooks use)
+#   $BRAIN_PYTHON_DAEMON / _DASH / _HOOK
+#                  the same interpreter under a role name (see brain_python_as)
 #   $PATH          has $PLUGIN_DIR/venv/bin prepended so `python3` resolves there too
 #
 # First invocation triggers ensure-runtime.sh (blocks ~60-90s on fresh install).
 # Subsequent invocations are instant — just PATH + env var wiring.
+# BRAIN_MCP_BOOTSTRAP_WAIT_S is consumed by mcp-launch.sh before sourcing us:
+# the host manifest may extend its cold-start wait (default 25s; Codex 300s).
+# Keep the host startup timeout larger to leave time for MCP initialization.
 
 # Resolve plugin dir from whichever .sh sourced us.
 # ${BASH_SOURCE:-$0}, NOT ${BASH_SOURCE[0]}: the subscripted form resolves to
@@ -81,6 +86,65 @@ esac
 # Ensure nothing in the shell environment overrides venv resolution
 unset PYTHONHOME
 
+# ── Process names ─────────────────────────────────────────────────────────
+# Activity Monitor, top and pgrep show the kernel's process name: the final
+# filename the exec resolved to. Through venv/bin/python (a symlink into the
+# standalone interpreter) every brain process read `python3.11`, so a 25 GB
+# daemon and a stray test run were indistinguishable. A HARD LINK to the
+# interpreter binary is the same file under a different final name: it keeps
+# the venv (pyvenv.cfg is found from the venv/bin symlink) and the dylib load
+# path (@executable_path/../lib, relative to the link's own directory) while
+# the kernel reports the role. Names stay within 15 chars — the Linux comm
+# limit (macOS shows 16). Per-session roles carry the session id's first 4
+# hex chars, the short prefix self_presence shows:
+#
+#   brain_python_as Entity-mcp "$CLAUDE_CODE_SESSION_ID"  → venv/bin/Entity-mcp-3207
+#
+# Degrades to $BRAIN_PYTHON (still runs, just named python3.11) whenever the
+# link cannot be made — a naming failure must never take a launcher down.
+brain_python_as() {
+    _role="$1"
+    _name="$1"
+    [ -n "${2:-}" ] && _name="$1-$(printf '%.4s' "$2")"
+    if [ ${#_name} -gt 15 ]; then
+        echo "[brain-env] WARN: process name '$_name' exceeds 15 chars — running as python" >&2
+        echo "$BRAIN_PYTHON"; return 0
+    fi
+    if [ ! -x "$BRAIN_PYTHON" ]; then
+        echo "$BRAIN_PYTHON"; return 0
+    fi
+    _real="$(readlink -f "$BRAIN_PYTHON" 2>/dev/null)" || _real=""
+    _bindir="${_real%/*}"
+    _venv_bin="${BRAIN_PYTHON%/*}"
+    if [ -n "$_real" ] && [ ! -e "$_bindir/$_name" ]; then
+        ln "$_real" "$_bindir/$_name" 2>/dev/null || true
+    fi
+    if [ -e "$_bindir/$_name" ] && [ ! -e "$_venv_bin/$_name" ]; then
+        ln -s "$_bindir/$_name" "$_venv_bin/$_name" 2>/dev/null || true
+    fi
+    if [ ! -x "$_venv_bin/$_name" ]; then
+        echo "[brain-env] WARN: could not name process '$_name' — running as python" >&2
+        echo "$BRAIN_PYTHON"; return 0
+    fi
+    # Per-session names leave one link per session behind. Sweep this role's
+    # siblings whose session has no live process (pgrep -x matches the kernel
+    # name). Skipped without pgrep: a sweep that cannot see live processes
+    # would unlink them.
+    if [ -n "${2:-}" ] && command -v pgrep >/dev/null 2>&1; then
+        # find, not a glob: a zsh consumer aborts on an unmatched glob.
+        for _l in $(find "$_venv_bin" -maxdepth 1 -type l -name "$_role-*" 2>/dev/null || true); do
+            _n="${_l##*/}"
+            [ "$_n" = "$_name" ] && continue
+            pgrep -x "$_n" >/dev/null 2>&1 && continue
+            rm -f "$_l" "$_bindir/$_n"
+        done
+    fi
+    echo "$_venv_bin/$_name"
+}
+export BRAIN_PYTHON_DAEMON="$(brain_python_as Entity-daemon)"
+export BRAIN_PYTHON_DASH="$(brain_python_as Entity-dash)"
+export BRAIN_PYTHON_HOOK="$(brain_python_as Entity-hook)"
+
 # Surface variant — v5_agentic enables the Haiku tool-use loop (recall_*,
 # expand_node, etc.) plus the final-round force-select code path. Without
 # this, the registered surface prompt runs under the legacy v4 single-shot
@@ -111,8 +175,7 @@ export BRAIN_S1E_ASSOCIATED_STUBS="0"
 
 # S1 Scribe lived-sequence input — ON activates the v28/v29 encoder rebuild:
 # XML lived-sequence timeline (<other>/<me> + tool actions + provenance),
-# widened catalog, facts-only scout (temporal+quote retired), inline scout
-# notes, `## Arc`/`## Review` residue. Paired with s1e active=v29 (medium
+# widened catalog, `## Arc`/`## Review` residue. Paired with s1e active=v29 (medium
 # effort). Gate: LongMemEval do-no-harm A/B 2026-07-03 — raw pass 70%→77%,
 # encode-miss 6→0, temporal held 1.0 (brain finding bab8d86a). Read by the
 # DAEMON's S1 Scribe (encode._lived_sequence_enabled) — takes effect at

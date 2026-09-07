@@ -94,6 +94,39 @@ class TestFile(ThalamusBase):
     def test_empty_body_rejects(self):
         self.assertFalse(self._file('  ')['filed'])
 
+    def test_directed_ask_files_and_targets(self):
+        # A nameable session has already booted, so a directed ask is only
+        # deliverable because its moment is Stop (TestPull pins the moment).
+        r = self._file('judge this?', needs_answer=True, for_whom=S1)
+        self.assertTrue(r['filed'])
+        _, audience, needs_answer, _, _, target = self._row(r['id'])
+        self.assertEqual((audience, needs_answer, target),
+                         (tc.AUDIENCE_FIRST, 1, S1))
+
+    def test_expires_before_when_rejects(self):
+        r = self._file(when='3d', expires='1d')
+        self.assertFalse(r['filed'])
+        self.assertIn('before it ever becomes due', r['error'])
+
+    def test_dedup_identity_includes_the_target(self):
+        """(source, dedup_key, target_session): the same key filed for two
+        sessions is two items; withdraw by key closes only the named
+        target's item. One producer string serves every session."""
+        a = self._file('for A', dedup_key='k', for_whom=S1)
+        b = self._file('for B', dedup_key='k', for_whom=S2)
+        c = self._file('broadcast', dedup_key='k')
+        self.assertEqual(len({a['id'], b['id'], c['id']}), 3)
+        self.assertFalse(b.get('updated'))
+        r = thalamus.withdraw(self.brain, 'test', dedup_key='k',
+                              target_session=S2)
+        self.assertTrue(r['ok'])
+        self.assertEqual([self._row(x['id'])[0] for x in (a, b, c)],
+                         [tc.STATE_OPEN, tc.STATE_WITHDRAWN, tc.STATE_OPEN])
+        # Without a target, the key names the broadcast item.
+        self.assertTrue(thalamus.withdraw(self.brain, 'test',
+                                          dedup_key='k')['ok'])
+        self.assertEqual(self._row(c['id'])[0], tc.STATE_WITHDRAWN)
+
     def test_dedup_key_updates_not_duplicates(self):
         r1 = self._file('v1 of the concern', dedup_key='concern-x')
         r2 = self._file('v2 of the concern', dedup_key='concern-x')
@@ -126,17 +159,23 @@ class TestFile(ThalamusBase):
         # notice audience would deliver to exactly one session, ever.
         self.assertEqual(audience, tc.AUDIENCE_EVERY)
 
-    def test_dedup_refile_retargets_and_rearms(self):
-        """for_whom is producer-controlled too: re-filing the same text to a
-        different recipient set must move the row, not silently keep the old
-        one."""
+    def test_dedup_refile_to_another_reader_is_another_item(self):
+        """The reader is part of an item's identity — (source, dedup_key,
+        target_session), the budget's triple. Re-filing a key for a different
+        session is a new item, never a retarget: one producer string serves
+        every session's runs, so a retarget would let one session silently
+        take another's item. Moving an item = withdraw, then file."""
         r1 = self._file('heads up', dedup_key='aim')
         self.assertEqual(self._row(r1['id'])[1], tc.AUDIENCE_FIRST)
         r2 = self._file('heads up', dedup_key='aim', for_whom=S1)
-        self.assertTrue(r2['rearmed'])
-        _, audience, _, _, _, target = self._row(r2['id'])
-        self.assertEqual(target, S1)
-        self.assertEqual(audience, tc.AUDIENCE_FIRST)
+        self.assertNotEqual(r1['id'], r2['id'])
+        self.assertFalse(r2.get('updated'))
+        self.assertEqual(self._row(r1['id'])[5], '')
+        self.assertEqual(self._row(r2['id'])[5], S1)
+        # Within one reader the key still updates, not duplicates.
+        r3 = self._file('heads up, louder', dedup_key='aim', for_whom=S1)
+        self.assertEqual((r3['id'], r3['updated'], r3['rearmed']),
+                         (r2['id'], True, True))
 
     def test_dated_item_keeps_full_window(self):
         """Expiry anchors at deliver_at, not now — an ask due in 3 weeks must
@@ -200,6 +239,23 @@ class TestFile(ThalamusBase):
         ).fetchone()[0]
         thalamus.resolve(self.brain, first, dismiss=True)
         self.assertTrue(self._file('fits again')['filed'])
+
+    def test_budget_keys_on_source_and_target_session(self):
+        """One producer string serves every session's runs (the Scribe's
+        encoder:sonnet), so directed items are budgeted per (source,
+        target_session): a session at its cap starves neither another
+        session nor the producer's broadcast slots, and vice versa."""
+        for i in range(tc.MAX_OPEN_PER_SOURCE):
+            self.assertTrue(self._file('s1 %d' % i, for_whom=S1)['filed'])
+        r = self._file('s1 over', for_whom=S1)
+        self.assertFalse(r['filed'])
+        self.assertIn('budget', r['error'])
+        self.assertIn(S1[:8], r['error'])
+        self.assertTrue(self._file('s2 fits', for_whom=S2)['filed'])
+        self.assertTrue(self._file('broadcast fits')['filed'])
+        for i in range(tc.MAX_OPEN_PER_SOURCE - 1):
+            self.assertTrue(self._file('broadcast %d' % i)['filed'])
+        self.assertFalse(self._file('broadcast over')['filed'])
 
     def test_live_now_requires_filing_session(self):
         r = self._file(for_whom='live')
@@ -277,13 +333,26 @@ class TestPull(ThalamusBase):
         _, n3 = thalamus.pull(self.brain, S2, via='boot')
         self.assertEqual(n3, 1)
 
-    def test_ask_boot_only(self):
+    def test_broadcast_ask_boot_only(self):
         r = self._file('decide X?', needs_answer=True)
         _, n_stop = thalamus.pull(self.brain, S1, via='stop')
         self.assertEqual(n_stop, 0)
         block, n_boot = thalamus.pull(self.brain, S1, via='boot')
         self.assertEqual(n_boot, 1)
         self.assertIn('thalamus_resolve("%s"' % r['id'], block)
+
+    def test_directed_ask_stop_only_and_only_its_target(self):
+        """The Scribe asking the session it just encoded: Stop, not boot
+        (the named session has already had its boot), and never another
+        session."""
+        r = self._file('revise, or leave?', needs_answer=True, for_whom=S1)
+        _, n_boot = thalamus.pull(self.brain, S1, via='boot')
+        self.assertEqual(n_boot, 0)
+        _, n_other = thalamus.pull(self.brain, S2, via='stop')
+        self.assertEqual(n_other, 0)
+        block, n_stop = thalamus.pull(self.brain, S1, via='stop')
+        self.assertEqual(n_stop, 1)
+        self.assertIn('thalamus_resolve("%s", answer=' % r['id'], block)
 
     def test_future_deliver_at_not_due_yet(self):
         self._file('later', when='1w')
@@ -534,6 +603,16 @@ class TestVocabulary(ThalamusBase):
             'omitting the column would be undeliverable' % (default,
                                                             tc.AUDIENCES))
 
+    def test_ask_moments_cover_every_audience_with_real_moments(self):
+        """ASK_MOMENTS is keyed by audience: an audience without an entry
+        would make its asks due at NO moment (the directed-ask dead-letter
+        of 2026-09-01, id:178f4727, reborn), and a moment outside MOMENTS
+        would never be pulled."""
+        self.assertEqual(set(tc.ASK_MOMENTS), set(tc.AUDIENCES))
+        for moments in tc.ASK_MOMENTS.values():
+            self.assertTrue(moments)
+            self.assertTrue(set(moments) <= set(tc.MOMENTS))
+
     def test_kind_is_one_derivation_for_verb_and_span(self):
         self.assertEqual(tc.kind_of({'needs_answer': 1}), tc.KIND_ASK)
         self.assertEqual(tc.kind_of({'deliver_at': '2027-01-01T00:00:00+00:00'}),
@@ -650,12 +729,196 @@ class TestRender(ThalamusBase):
         self.assertIn('— %d item(s)' % n, block)
         self.assertIn('(+%d more due' % (4 - n), block)
 
+    def test_block_head_carries_relay_note(self):
+        """The reader's standing instruction sits between the head and the
+        first item — plain words to the operator, never id/moment/producer —
+        and names the read routes; it is reserved from the budget."""
+        self._file('note')
+        block, _ = thalamus.pull(self.brain, S1, via='boot')
+        head, rest = block.split('\n', 1)
+        self.assertIn('— 1 item(s)', head)
+        self.assertTrue(rest.startswith(tc._HEAD_NOTE + '\n\n• th_'))
+        for phrase in ('plain words', 'never the id, the moment, or the producer',
+                       'thalamus_list', "recall_episodes(ref_type='thalamus_delivery')",
+                       'thalamus_resolve'):
+            self.assertIn(phrase, tc._HEAD_NOTE)
+        self.assertLessEqual(len(block), tc.BLOCK_MAX)
+
+    def test_list_items_filters_by_source_and_target(self):
+        """The producer's own-items read behind the journal continuity
+        join: one producer, one directed recipient, closed items on request."""
+        a = self._file('for s1', source='encoder:sonnet', for_whom=S1)
+        self._file('for s2', source='encoder:sonnet', for_whom=S2)
+        self._file('broadcast', source='encoder:sonnet')
+        self._file('other producer', source='anchor', for_whom=S1)
+        ids = lambda **kw: {i['id'] for i in
+                            thalamus.list_items(self.brain, **kw)['items']}
+        self.assertEqual(len(ids(source='encoder:sonnet')), 3)
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1),
+                         {a['id']})
+        self.assertEqual(len(ids(target_session=S1)), 2)
+        thalamus.resolve(self.brain, a['id'], dismiss=True)
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1),
+                         set())
+        self.assertEqual(ids(source='encoder:sonnet', target_session=S1,
+                             include_closed=True), {a['id']})
+
+    def test_producer_items_is_identity_exact_windowed_and_open_first(self):
+        """The producer's own read: (source, target) exact — '' IS the
+        broadcast recipient; every open item regardless of age; settled items
+        only within the window and only in a fate the producer hears about
+        (withdrawn/sent excluded in SQL); open rows first, then by when they
+        last changed."""
+        b = self._file('broadcast', dedup_key='b')
+        d = self._file('directed', dedup_key='d', for_whom=S1)
+        ids = lambda *a, **kw: [i['id'] for i in
+                                thalamus.producer_items(self.brain, 'test',
+                                                        *a, **kw)]
+        self.assertEqual(ids(''), [b['id']])
+        self.assertEqual(ids(S1), [d['id']])
+        old_open = self._file('ancient but open', dedup_key='o', for_whom=S1)
+        thalamus.resolve(self.brain, d['id'], answer='yes')
+        w = self._file('withdrawn', dedup_key='w', for_whom=S1)
+        thalamus.withdraw(self.brain, 'test', dedup_key='w', target_session=S1)
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET created_at = ?, updated_at = ? '
+                'WHERE id = ?', (iso_cutoff(days=40), iso_cutoff(days=40),
+                                 old_open['id']))
+            self.brain.logs_conn_w.commit()
+        # open only (no window)
+        self.assertEqual(ids(S1), [old_open['id']])
+        # windowed: open first, then the answered one; withdrawn never
+        self.assertEqual(ids(S1, settled_days=7), [old_open['id'], d['id']])
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET updated_at = ? WHERE id = ?',
+                (iso_cutoff(days=8), d['id']))
+            self.brain.logs_conn_w.commit()
+        self.assertEqual(ids(S1, settled_days=7), [old_open['id']])
+        self.assertNotIn(w['id'], ids(S1, settled_days=365))
+
+    def test_fate_of_mirrors_kind_of(self):
+        self.assertEqual(tc.fate_of({'state': tc.STATE_OPEN}), tc.FATE_OPEN)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_ANSWERED}),
+                         tc.FATE_ANSWERED)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_EXPIRED}),
+                         tc.FATE_EXPIRED)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_EXPIRED,
+                                     'needs_answer': True}),
+                         tc.FATE_EXPIRED_UNANSWERED)
+        for own_act in (tc.STATE_WITHDRAWN, tc.STATE_SENT):
+            self.assertIsNone(tc.fate_of({'state': own_act}))
+        self.assertEqual(set(tc.FATE_STATES),
+                         {tc.STATE_OPEN, tc.STATE_ANSWERED,
+                          tc.STATE_DISMISSED, tc.STATE_EXPIRED})
+
+    def test_touch_rejects_unknown_and_owned_columns_before_sql(self):
+        r = self._file('x')
+        for bad in ({'staet': tc.STATE_DISMISSED}, {'updated_at': iso_now()},
+                    {'armed_epoch': 3}, {'id': 'th_x'}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                with self.brain.logs_write_lock:
+                    thalamus._touch(self.brain.logs_conn_w, r['id'], iso_now(),
+                                    **bad)
+
+    def test_list_items_carries_updated_at(self):
+        """Settled-recently reads key on updated_at: stamped at insert, moved
+        by every state change."""
+        r = self._file('note')
+        item = thalamus.list_items(self.brain)['items'][0]
+        self.assertTrue(item['updated_at'])
+        thalamus.resolve(self.brain, r['id'], dismiss=True)
+        closed = thalamus.list_items(self.brain, include_closed=True)['items'][0]
+        self.assertGreaterEqual(closed['updated_at'], item['updated_at'])
+
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')
         thalamus.pull(self.brain, S1, via='boot')
         out = thalamus.list_items(self.brain)
         item = next(i for i in out['items'] if i['id'] == r['id'])
         self.assertEqual(item['deliveries'], 1)
+
+
+class TestFiledTrace(ThalamusBase):
+    """Step 13(d): a filing made from a producer's run leaves ONE
+    `thalamus_filed` delta row on the run chain (ref_id = item id) through
+    the traces door — the filed→delivered→answered join. No chain, no row."""
+
+    CHAIN = 's1e-aaaaaaaa-3'
+
+    def _filed_rows(self, chain=CHAIN):
+        return [e for e in self.brain.query_traces(chain_id=chain)['chain']
+                if e['ref_type'] == 'thalamus_filed']
+
+    def test_run_filing_writes_one_row_on_the_run_chain(self):
+        r = self._file('you are proceeding on "I wonder if", not a yes',
+                       source='encoder:sonnet', for_whom=S1, session_id=S1,
+                       run_chain=self.CHAIN)
+        rows = self._filed_rows()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        # scale is the chain's — derived, never a second parameter
+        self.assertEqual((row['scale'], row['event_type'], row['ref_id'],
+                          row['session_id']),
+                         ('s1', 'delta', r['id'], S1))
+        meta = row['metadata']
+        from servers.trace_contract import THALAMUS_FILED_METADATA_SHAPE
+        # the boundary adds its provenance stamps; the shape's keys all land
+        self.assertTrue(set(THALAMUS_FILED_METADATA_SHAPE) <= set(meta))
+        self.assertEqual((meta['source'], meta['target_session'],
+                          meta['needs_answer'], meta['route'], meta['filing']),
+                         ('encoder:sonnet', S1, False, 'queue', 'new'))
+        self.assertIn('I wonder if', meta['body'])
+
+    def test_no_chain_no_row(self):
+        self._file('interactive remind', session_id=S1)
+        self.assertEqual(
+            self.brain.query_traces(ref_type='thalamus_filed', scale='s1',
+                                    hours=None)['events'], [])
+
+    def test_rejected_filing_leaves_no_row(self):
+        r = self._file('  ', run_chain=self.CHAIN)
+        self.assertFalse(r['ok'])
+        self.assertEqual(self._filed_rows(), [])
+
+    def test_refile_rows_name_what_the_door_did(self):
+        """Three runs, one item: new → refresh (identical re-file, window
+        only) → rearm (changed re-file, delivers again). Each run's row says
+        what THAT run did; the 13(g) dedup-updates-vs-inserts count reads
+        `filing`."""
+        chains = ['s1e-aaaaaaaa-3', 's1e-aaaaaaaa-4', 's1e-aaaaaaaa-5']
+        for chain, body in zip(chains, ('v1', 'v1', 'v2')):
+            self._file(body, dedup_key='7e6decd2', needs_answer=True,
+                       for_whom=S1, run_chain=chain)
+        rows = [self._filed_rows(c) for c in chains]
+        self.assertEqual([len(r) for r in rows], [1, 1, 1])
+        self.assertEqual(len({r[0]['ref_id'] for r in rows}), 1)
+        self.assertEqual([r[0]['metadata']['filing'] for r in rows],
+                         ['new', 'refresh', 'rearm'])
+        self.assertTrue(rows[2][0]['metadata']['needs_answer'])
+        self.assertEqual(rows[2][0]['metadata']['dedup_key'], '7e6decd2')
+
+    def test_s2_run_filing_is_traced_on_its_chain(self):
+        """An S2 unit files broadcast (no session) — its row lands on the
+        s2 run chain with the derived scale."""
+        r = self._file('s2 asks', source='s2:consolidation', needs_answer=True,
+                       run_chain='s2-20260905120000-consolidation')
+        rows = self._filed_rows('s2-20260905120000-consolidation')
+        self.assertEqual([(e['scale'], e['ref_id']) for e in rows],
+                         [('s2', r['id'])])
+        self.assertEqual(rows[0]['metadata']['target_session'], '')
+
+    def test_unregistered_scale_is_loud_and_never_masks_the_filing(self):
+        """A filing is a run's act, not a turn's: an s0 chain fails at the
+        write boundary, is logged, and the item still files."""
+        r = self._file('s0 tried', run_chain='s0-aaaaaaaa-3')
+        self.assertTrue(r['ok'])
+        self.assertEqual(self._filed_rows('s0-aaaaaaaa-3'), [])
+        n = self.brain.logs_conn.execute(
+            "SELECT COUNT(*) FROM debug_log WHERE event_type='error' "
+            "AND source = ?", ('thalamus_filed_trace_failed',)).fetchone()[0]
+        self.assertEqual(n, 1)
 
 
 class TestDispatchEnvelope(ThalamusBase):

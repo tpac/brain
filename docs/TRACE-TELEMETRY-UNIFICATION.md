@@ -44,7 +44,7 @@ A unified telemetry stack exists and the encoders use it:
 
 | Primitive | Definition | Reused by |
 |---|---|---|
-| `run_llm_loop` | `scales/runner.py` | S1 Scribe (`encode.py`), 3 S2 encoders, scouts |
+| `run_llm_loop` | `scales/runner.py` | S1 Scribe (`encode.py`), 3 S2 encoders |
 | `USAGE_FIELDS` + `read_usage()` | `scales/runner.py:43,47` | runner, S2 base |
 | `_sum_telemetry()` | `scales/s2/base.py:464` | healer / consolidation / community |
 | `build_delta_metadata()` | `trace_contract.py:281` | S1 Scribe + all 4 S2 units |

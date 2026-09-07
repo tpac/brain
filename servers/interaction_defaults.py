@@ -48,13 +48,6 @@ from .scales.s1.encode_contract import (
     validate_s1e_gist_config)
 from .scales.s1.encoding_gist_prompt import SYSTEM_PROMPT as _S1E_GIST_PROMPT
 from .scales.s1.encoding_prompt import SYSTEM_PROMPT as _S1E_PROMPT
-from .scales.s1.scouts.contract import (
-    SCOUT_FACTS_INTERACTION_DEFAULT,
-    SCOUT_QUOTE_INTERACTION_DEFAULT,
-    SCOUT_TEMPORAL_INTERACTION_DEFAULT)
-from .scales.s1.scouts.prompts.facts_prompt import SYSTEM_PROMPT as _FACTS_PROMPT
-from .scales.s1.scouts.prompts.quote_prompt import SYSTEM_PROMPT as _QUOTE_PROMPT
-from .scales.s1.scouts.prompts.temporal_prompt import SYSTEM_PROMPT as _TEMPORAL_PROMPT
 from .scales.s1.surface_contract import SURFACE_INTERACTION_DEFAULT
 from .scales.s1.surface_prompt import SYSTEM_PROMPT as _SURFACE_PROMPT
 from .scales.s2.aspect_contract import ASPECT_INTERACTION_DEFAULT
@@ -73,9 +66,6 @@ INTERACTION_DEFAULTS = {
     's1e':                   (_S1E_PROMPT, S1E_INTERACTION_DEFAULT),
     's1e_gist':              (_S1E_GIST_PROMPT, S1E_GIST_INTERACTION_DEFAULT),
     'surface':               (_SURFACE_PROMPT, SURFACE_INTERACTION_DEFAULT),
-    's1_scout_quote':        (_QUOTE_PROMPT, SCOUT_QUOTE_INTERACTION_DEFAULT),
-    's1_scout_temporal':     (_TEMPORAL_PROMPT, SCOUT_TEMPORAL_INTERACTION_DEFAULT),
-    's1_scout_facts':        (_FACTS_PROMPT, SCOUT_FACTS_INTERACTION_DEFAULT),
     's2_community_enrichment':     (_COMMUNITY_PROMPT, COMMUNITY_ENRICHMENT),
     's2_consolidation_enrichment': (_CONSOLIDATION_PROMPT, CONSOLIDATION_ENRICHMENT),
     's2_healer':             (_HEALER_PROMPT, HEALER_INTERACTION_DEFAULT),

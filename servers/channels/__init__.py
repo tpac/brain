@@ -19,9 +19,9 @@ The placement rule and why it is load-bearing live in one place —
 
 A delivery is traced as an s0 K event (`self_message`, `thalamus_delivery`),
 so a channel rides the S0 loop as an incoming correspondent rather than
-introducing a grain of its own. Caveat while Step 8 is open: only the STOP leg
-writes that trace. The boot leg delivers untraced, so
-`query_traces(ref_type='thalamus_delivery')` is not yet the complete record.
+introducing a grain of its own. The leg itself — which source speaks at which
+moment, the render walk, the trace — has ONE owner: `delivery.py`, which both
+hooks call; the channel packages own storage and policy only.
 
 `world` is NOT a channel — it is ingestion, a source you read rather than a
 correspondent you address, and must not ride this transport

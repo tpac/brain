@@ -37,10 +37,19 @@ cd "$REPO"
 #    bin/uv) are NOT in the package and survive — bin/ is mixed (ships launchers,
 #    holds the runtime uv), so it is left to unzip -o overlay, not pruned.
 #    ${PLUGIN:?} guards against an empty var turning this into `rm -rf /…`.
-for _d in servers hooks skills dashboard data .claude-plugin; do
+for _d in servers hooks skills dashboard data .claude-plugin .codex-plugin; do
   rm -rf "${PLUGIN:?}/$_d"
 done
 unzip -o -q "$REPO/brain.plugin" -d "$PLUGIN"
+
+# 2b. Refresh the Codex marketplace source from the SAME package. Codex installs
+#     a plugin by copying the directory its marketplace entry points at,
+#     wholesale — no .gitignore, no manifest filter — so that directory must be
+#     the packaged tree, never this checkout (.git/, conversations/, venv/:
+#     ~10 GB, 120k files). scripts/codex-install.sh points the personal
+#     marketplace here and re-installs; Codex loads from its own cache copy.
+CODEX_SRC="$REPO/dist/codex/entity"
+rm -rf "${CODEX_SRC:?}" && mkdir -p "$CODEX_SRC" && unzip -o -q "$REPO/brain.plugin" -d "$CODEX_SRC"
 
 # 3. Refresh deps only when requirements.txt actually changed.
 NEWHASH="$(shasum "$REPO/requirements.txt" | awk '{print $1}')"
@@ -85,5 +94,8 @@ cat <<'EOF'
   MCP-surface or wiring changes — START A NEW SESSION:
     • servers/brain_mcp.py             (resident MCP proxy, loaded once per session)
     • contract.py tool/field schemas   (tool list is fixed at the session handshake)
-    • hooks/hooks.json, .mcp.json, .claude-plugin/plugin.json (read at session/plugin load)
+    • hooks/hooks*.json, .mcp.json, .claude-plugin/ and .codex-plugin/ manifests (read at session/plugin load)
+
+  Codex (ChatGPT desktop) loads its OWN cache copy — dist/codex/entity is fresh,
+  but the install is not: run scripts/codex-install.sh, then a NEW Codex chat.
 EOF

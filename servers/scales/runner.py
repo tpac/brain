@@ -92,9 +92,9 @@ def make_client():
     Every encoder execution path (the run_llm_loop callers and run_llm_once)
     builds its client here, so the provider SDK stays behind this module's
     seam — swapping providers means reimplementing this module's internals,
-    nothing above it. (Recall-lane sites — surface, scouts, query expansion,
-    the daemon's shared warm client — have their own lifecycles and sit
-    outside this seam.)
+    nothing above it. (Recall-lane sites — surface, query expansion, the
+    daemon's shared warm client — have their own lifecycles and sit outside
+    this seam.)
     """
     import anthropic
     import httpx
@@ -141,6 +141,7 @@ def run_llm_once(client, model, max_tokens, system_prompt, user_content):
         messages=[{"role": "user", "content": user_content}])
     telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
                  'stop_reason': getattr(response, 'stop_reason', None),
+                 'model': model,   # rides with the usage → build_delta_metadata
                  **read_usage(response)}
     raw = response.content[0].text.strip() if response.content else ''
     return raw, telemetry
@@ -800,5 +801,6 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         "elapsed_ms": int((time.time() - t0) * 1000),
         # USAGE_FIELDS keys match the four token return keys exactly.
         **usage_total,
+        "model": model,   # which LLM the loop called — threaded into the delta
         "truncations": truncations,
     }

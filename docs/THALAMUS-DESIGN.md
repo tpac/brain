@@ -62,7 +62,7 @@ the locked stream-speech render stays honest. Machine live-now needs the
 thalamus_items:      id (th_xxxx) · source · body · refs · audience ·
                      deliver_at · expires_at · needs_answer · dedup_key? ·
                      state · answer · created_at · armed_epoch
-thalamus_deliveries: item_id · session_id · delivered_at · via (boot|stop) ·
+thalamus_deliveries: item_id · session_id · delivered_at · via (boot|prompt|stop) ·
                      armed_epoch — PK (item_id, session_id, armed_epoch);
                      APPEND-ONLY: a re-arm (defer, dedup re-file) bumps the
                      item's armed_epoch instead of deleting rows, so
@@ -94,23 +94,66 @@ never on *still-open*.
   the agent's loop mid-run, where it can adapt. Per-render caps bound the read
   side.
 
-### Delivery — pull at the two proven moments
+### Delivery — pull at the two proven moments, on the shared last mile
 
 Sessions pull; the Thalamus never enumerates sessions, never pushes, holds no
-roster.
+roster. The leg itself is owned by `servers/channels/delivery.py` — the last
+mile every channel rides (ruling id:7c7e805c: the Thalamus owns NO transport).
+Both hooks call `deliver(brain, ctx, moment)`; a source opts into a moment by
+guarantee — `serves(source, moment) ⇔ moment.forcing ∨ source.survives_a_miss`
+(ruling id:bb0513ae) — which is why the Thalamus speaks at both moments while
+the consume-once courier is Stop-only.
 
-- **Stop drain** — beside stream mail, in its own render section. The locked
-  `render_signal` containment contract ("other stream says:") is untouched.
-- **Boot render** — replaces the `journals-escalation` standing-items block.
+- **Stop** (`decision:block`, forcing) — beside stream mail, in its own render
+  section. The locked `render_signal` containment contract ("other stream
+  says:") is untouched.
+- **Boot** (`additionalContext`, passive) — replaces the `journals-escalation`
+  standing-items block. Fires on fresh sessions only (resume/compaction get no
+  boot render).
+- **Prompt** (`additionalContext` ahead of the recall surface, passive; Tom,
+  2026-09-04; plan Step 12) — the third moment, the moment a stale context is
+  about to be reasoned from. Queued kinds do **not** ride it yet (asks stay
+  boot; notices/reminders stay boot|stop — a cadence ruling, one policy line
+  when taken). What rides it are **assists**.
+
+**Two channels, two effects — pick the moment by the effect wanted** (Tom,
+2026-09-04): a Stop `decision:block` is for the entity to *react* to something;
+injected context is for the entity to *be aware* of something. Passive
+injection does not fail, it influences differently. An ask wants a reaction, so
+it rides Stop or the boot ask. A clock, a roster change, a "things moved while
+you were away" wants awareness, so it rides the prompt — and awareness is the
+whole job for a timestamp.
+
+**Assists — the brain computing, not queuing.** An assist is a brain-side
+condition evaluated at pull time for a moment, rendered inside the Thalamus
+block when it holds and silent otherwise. No row, no ledger, nothing to answer
+or dismiss — the condition is the identity, so it is durable without being
+stored. It rides the same `thalamus_delivery` trace as the moment's queued
+items (`ref_id` = moment), so it is joinable and dial-gated like every brain
+utterance. The first assist is the **clock re-anchor**: the entity's "now" is
+the newest timestamp in its context and goes stale silently across an idle gap
+(id:8ece8811). At Prompt, when the session's last `assistant_message` is older
+than the self-channel's live window (`ROSTER_LIVE_WINDOW_MIN`, the "operator
+away" ceiling — one constant, one judgment), it renders one line: the gap as an
+event, the UTC clock, and a nudge to re-check streams and queue before reasoning
+about time. Gated, so it stays an alert and never becomes wallpaper; anchored
+on the last *assistant* turn because heartbeats do not re-anchor the entity and
+`hook_recall` writes the current prompt's `user_message` trace before the
+surface runs. Belongs here by the admission test (id:6a11f45f: clock → Thalamus)
+and by the axis rule (`servers/scales/__init__.py`: a real-elapsed clock is a
+channel's, never a grain's — it is not a Frame render, though the boot Frame's
+conversation-time "Now" stays as is).
 
 Pull predicate: `state=open ∧ deliver_at ≤ now < expires_at ∧ audience matches
 ∧ no ledger row (item, this session, CURRENT armed_epoch)` — only
 current-generation deliveries block; prior generations are history. The
 ledger is written at render, for exactly the items the block shows —
 annotate-at-render is the only visibility mechanism that survives receipt
-expiry (id:8a170558). Each delivery also writes a trace event (new ref_type;
-sync `trace_contract` + its test) — untraced delivery *is* the visibility
-problem this system exists to fix.
+expiry (id:8a170558). `delivery.py` also writes one s0 K `thalamus_delivery`
+trace per moment that shows items, at boot and Stop alike. The two records
+answer different questions: the LEDGER is the delivery-policy record and
+already measures drain-and-answer; the TRACE buys joinability with the S0
+stream (what else happened in that session's turns).
 
 Asks default to `next-boot`: an architecture question arriving mid-thread
 trains reflex-deferral; at boot there is no thread to protect.
@@ -158,17 +201,38 @@ boot → resolve → ledger + trace verified. Deploy is two-step — daemon rest
 (`servers/*`) AND `./redeploy.sh` + new session (`brain_mcp.py`) — before any
 behavioral test can run.
 
-**Phase 2 — producers.** `remind` into consolidation's and the Scribe's
-toolsets; the journal-view join; retire `journals-escalation`, the `open ×5`
-promotion, and the standing-items renderer **in the same commit as their
-replacement**. Then measure the two behavioral unknowns: do encoders file
-sanely (spam / under-use), and does Anchor drain and answer.
-`bridge_proposals` died built-but-unused (id:bfc6d106) — delivery alone is not
-success.
+**Phase 2 — producers, S1 first (plan Step 13).** The Scribe reaches its own
+live session at Stop through the review block it already writes: two addressed
+verbs, `tell` (a notice) and `ask` (needs an answer), in the same
+`verb · subject · note` grammar. The journal component routes them to the door
+at harvest as the non-LLM entrance (source = the binding's encoding_source,
+target = the binding's session); they are items, never journal notes. The
+encoder's next run sees their fate by render-join in `continuity()` — delivered,
+answered, dismissed, rejected — never by a note written back (id:defbdf8b,
+id:e63c41dd). Directed asks deliver at Stop (broadcast asks stay boot-only).
+The `remind` tool stays in encoder toolsets for the mid-run case. Built dark
+(no encoder writes the verbs until the S1 review paragraph ships, eval-gated),
+then measured over a window: filed per run, rejected at the door, delivered
+latency, answered vs dismissed — `bridge_proposals` died built-but-unused
+(id:bfc6d106), delivery alone is not success.
+
+**Phase 2b — widen, and retire the boot channel.** `remind` for the S2 units'
+mid-run asks; retire `journals-escalation`, the `open ×5` promote nudge, and
+the standing-items renderer **in the same commit as their replacement**.
+Deliberately after S1 proves the loop (Tom, 2026-09-05: "keep S2 as is in boot
+for the moment").
+
+**Phase 2.5 — the Prompt moment and the first assist** (plan Step 12): the
+third delivery moment, the assist mechanism, the clock re-anchor, and the door
+echo (`remind` / `thalamus_resolve` return `now` beside the deadline they
+resolved — the anchor appears exactly when the entity is doing time arithmetic).
+Awareness is the effect wanted here, so the passive channel is the right one by
+design; there is no "was it acted on" gate to pass.
 
 **Phase 3 — policy.** Retry-on-unacked; machine live-now (`brain`-origin
-render); the `on_topic` moment — deliver when a session touches related ground,
-the salience gate that fully earns the name.
+render); queued kinds at the Prompt moment (cadence ruling); the `on_topic`
+moment — deliver when a session touches related ground, the salience gate that
+fully earns the name.
 
 ## Open / carried constraints
 
@@ -195,4 +259,4 @@ Measured against 2,381 journal notes (2026-06-24 → 2026-08-10):
 | no viable volume setting | floor ~0.1/day, ceiling ~10.6/day on a 2.6/day channel | volume owned at the door, not by encoder discretion |
 | delivered ≠ acted on (id:ab520c77) | a consumed self-message, still missed | Stop buys one turn, not a decision — asks go to boot; Phase 2 measures draining, not delivery |
 | receipts expire (id:8a170558) | 1h / 24h TTL | Thalamus owns its ledger; annotate-at-render |
-| passive injection fails (removed PreToolUse leg, `364269f`) | — | pull renders at the two moments that provably land |
+| passive injection produces awareness, not reaction (removed PreToolUse leg, `364269f`; reframed by Tom 2026-09-04) | — | choose the moment by the effect wanted — Stop to react, injected context to be aware; asks ride Stop/boot, awareness items (assists) ride the prompt |

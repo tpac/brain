@@ -3,7 +3,7 @@
 Thin command surface over servers/channels/self_channel/{presence,signal}.py.
 - presence (self_presence / self_peek): read-only look at other streams.
 - signal   (self_send / self_inbox):    directed message + consume-once drain.
-Signal's brain_logs.db writes go through brain.write_lock inside signal.py;
+Signal's brain_logs.db writes go through brain.logs_write_lock inside signal.py;
 none of these touch brain.db, so all register is_write=False.
 
 Handler contract (shared by all daemon commands):

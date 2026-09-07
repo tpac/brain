@@ -13,6 +13,7 @@ stderr gets a message and the caller gets a real error.
 import json
 import os
 import sys
+import threading
 
 # Ensure parent dir is on sys.path so `from servers.X` works
 # even when this file is run as a standalone script (not -m servers.brain_mcp)
@@ -387,44 +388,83 @@ def _build_revise_batch_schema():
 # session_id. CALLER_SESSION_KEY is the single source of truth (servers.
 # dispatch_common); the daemon's identity handlers read it via caller_session().
 # Importing it here keeps the wire key from drifting across the proxy boundary.
-from servers.dispatch_common import CALLER_SESSION_KEY
+from servers.dispatch_common import (CALLER_SESSION_KEY, CALLER_SIG_KEY, BRAIN_MCP_SERVER,
+                                     verify_caller_session)
 
 
-def _stamp_caller_session(args):
-    """Stamp the calling session (CLAUDE_CODE_SESSION_ID) under the RESERVED
-    `_caller_session` key, so attribution / per-session handlers always have the
-    caller's identity WITHOUT it colliding with `session_id`.
+def _stamp_caller_session(args, note=None):
+    """Resolve the calling session under the RESERVED `_caller_session` key, so
+    attribution / per-session handlers always have the caller's identity
+    WITHOUT it colliding with `session_id`.
 
     `session_id` stays a PURE caller-supplied cross-session FILTER: when a read
     omits it, the daemon defaults to all streams — the natural default for a
     freshly-awoken stream reaching all of itself, never the calling session.
     Identity ≠ filter, by design, not by per-command exception. Pure +
-    testable: the socket path stays out of it.
+    testable: the socket path stays out of it, and so does logging — `note`
+    receives one reason string when a call ends up unattributed.
 
-    The proxy is the SOLE writer of `_caller_session`: a tool-call payload may
-    carry an arbitrary `_caller_session` (MCP schemas don't forbid extra keys),
-    so we always set it from the env when present and SCRUB it otherwise —
-    never trust an inbound value the daemon would otherwise honor as identity."""
+    The env var Claude Code sets per session wins outright; else a stamp the
+    PreToolUse hook signed into the tool input (hosts whose proxy gets no
+    session identity — Codex) is accepted when its HMAC verifies. Anything
+    else is SCRUBBED: a payload may carry an arbitrary `_caller_session` (MCP
+    schemas don't forbid extra keys), and an unsigned, mis-signed or
+    unverifiable claim is the model's, not the hook's. `_caller_sig` never
+    crosses to the daemon in any branch, and a broken secret file degrades to
+    an unattributed call, never a failed one."""
+    sig = args.pop(CALLER_SIG_KEY, None)
     sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if sid:
         args[CALLER_SESSION_KEY] = sid
+        return args
+    claimed = args.get(CALLER_SESSION_KEY)
+    if claimed and sig:
+        try:
+            if verify_caller_session(claimed, sig):
+                return args
+            reason = "dropped an inbound _caller_session carrying a bad signature"
+        except Exception as e:
+            reason = "could not verify the inbound _caller_session (%s: %s)" % (type(e).__name__, e)
+    elif claimed:
+        reason = "dropped an inbound _caller_session carrying no signature"
     else:
-        args.pop(CALLER_SESSION_KEY, None)
+        reason = "no identity source: CLAUDE_CODE_SESSION_ID unset and no signed stamp"
+    args.pop(CALLER_SESSION_KEY, None)
+    if note is not None:
+        note(reason)
     return args
 
 
-def daemon_send(cmd, args=None, timeout=30.0):
+# Identity gaps are logged ONCE per reason per proxy process — an unattributed
+# Codex session (hooks not trusted yet, a stale secret) shows up in hook_errors
+# instead of silently writing anonymous traces, without a row per tool call.
+_noted_identity_gaps = set()
+
+
+def _note_identity_gap(reason):
+    if reason in _noted_identity_gaps:
+        return
+    _noted_identity_gaps.add(reason)
+    _log_proxy_error("mcp_caller_identity", reason,
+                     "brain tool calls from this MCP process are unattributed — the host "
+                     "gave the proxy no session identity (Claude Code: CLAUDE_CODE_SESSION_ID "
+                     "unset; Codex: plugin hooks not trusted, or the stamp hook failing)",
+                     level="warning")
+
+
+def daemon_send(cmd, args=None, timeout=30.0, note=None):
     """Send command to brain daemon via TCP, return result dict.
 
-    Stamps the calling session under the reserved `_caller_session` key (from
-    CLAUDE_CODE_SESSION_ID, the env var Claude Code sets per session) so every
-    write / per-session handler can attribute to the caller — see
-    _stamp_caller_session. `session_id` is left untouched: it reaches the daemon
-    only when the caller explicitly scopes a read, so cross-session filter reads
-    (recall_episodes, query_traces) default to all streams. The daemon is a
-    singleton per user; each MCP subprocess carries its own session env.
+    Resolves the calling session under the reserved `_caller_session` key (the
+    Claude Code env var, else the hook-signed stamp) so every write /
+    per-session handler can attribute to the caller — see
+    _stamp_caller_session; `note` is forwarded to it. `session_id` is left
+    untouched: it reaches the daemon only when the caller explicitly scopes a
+    read, so cross-session filter reads (recall_episodes, query_traces) default
+    to all streams. The daemon is a singleton per user; each MCP subprocess
+    carries its own session env.
     """
-    args = _stamp_caller_session(dict(args) if args else {})
+    args = _stamp_caller_session(dict(args) if args else {}, note=note)
     resp = send_command(cmd, args, timeout=timeout)
     # The wire lives in daemon_client — including the guarantee that this is a
     # dict. What stays here is the stamping above and the operator-facing prose
@@ -456,9 +496,10 @@ def ensure_daemon_running():
 
 # ── MCP Protocol ──
 
-SERVER_NAME = "brain"
+SERVER_NAME = BRAIN_MCP_SERVER
 SERVER_VERSION = "1.0.0"
 PROTOCOL_VERSION = "2024-11-05"
+SUPPORTED_PROTOCOL_VERSIONS = (PROTOCOL_VERSION, "2025-06-18", "2025-11-25")
 
 # Tool definitions — what Claude sees as native tools
 # Memory operations only. No operational tools (ping, save, health_check, config).
@@ -724,10 +765,10 @@ def _build_tools():
     {"name": "remind",
      "description": "File a Thalamus item — the brain's standing-intent queue (a durable note-to-future-self with delivery policy). One verb, three shapes: a REMINDER (what + when — it fires at the first session after it's due), a NOTICE (for_whom='all' — every session sees it once at boot/stop inside its window; for_whom='live' — one-shot broadcast to streams alive right now), or an ASK (needs_answer=true — renders at each session's boot until answered via thalamus_resolve, expires loudly). Use it to make something surface later without relying on recall: 'remind me tomorrow', 'every session should know X this week', 'flag this question until it's answered'.",
      "inputSchema": {"type": "object", "required": ["what"], "properties": {
-         "what": {"type": "string", "description": "The body — written for a reader with none of this session's context."},
+         "what": {"type": "string", "description": "The body — written for a reader with none of this session's context: plain words, no node ids as the subject, no internal vocabulary. It may be relayed to a human verbatim."},
          "when": {"type": "string", "description": "When it becomes due: relative shorthand ('30m','2h','3d','1w'), an ISO timestamp, or omit/'now' for next opportunity."},
          "for_whom": {"type": "string", "description": "Audience: omit for the default (asks → every session until answered; else → first session after due). 'live' = one-shot broadcast to live streams now. 'all' = every session in the window. A full session UUID = that session only."},
-         "needs_answer": {"type": "boolean", "description": "Ask semantics: delivered at session boot only, stays up until thalamus_resolve(answer=…), expiry is loud (dead-letter logged).", "default": False},
+         "needs_answer": {"type": "boolean", "description": "Ask semantics: stays up until thalamus_resolve(answer=…), expiry is loud (dead-letter logged). Delivered at session boot; a directed ask (for_whom = a session UUID) delivers at that session's next Stop instead.", "default": False},
          "refs": {"type": "array", "items": {"type": "string"}, "description": "Node ids for context — resolved to id · title at render."},
          "dedup_key": {"type": "string", "description": "Producer-owned identity: re-filing the same (source, dedup_key) updates the open item instead of duplicating it."}}}},
 
@@ -761,7 +802,7 @@ def _build_tools():
          "rich": {"type": "boolean", "description": "Default false → bounded rows (metadata gist; summary-only past ~20 rows). true → full metadata per row — when you need a row's verbatim payload.", "default": False}}}},
 
     {"name": "recall_episodes",
-     "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to conversation (messages); pass ref_type='tool_result' to recall what you DID with files/commands, or ref_type=['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
+     "description": "Episodic recall over the trace substrate — the brain's universal record of the whole fractal (S0 exchanges, S1 runs, S2 runs). Search/filter trace_events and get the actual episodes back, verbatim, with attribution (which stream, when, who spoke). The decode-over-traces sibling of `recall` (which searches distilled nodes): use this for 'what did I — or another stream — actually SAY/DO about X, lately', where the answer is raw recent activity, not an encoded memory. Two needles, composable: `query` (semantic — ranks by meaning against existing trace embeddings) and/or `contains` (exact substring over summary+metadata). Defaults to OPERATOR DIALOGUE (what the operator and I said — never widened by enabling other correspondents); everything else is opt-in via ref_type: 'tool_result' for what you DID, 'thalamus_delivery' / 'self_message' for brain/stream deliveries, or a list like ['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. NOTE: semantic `query` currently covers s0 conversation; other scales fall back to time order. Returns full episode records (incl. metadata.content), newest-first, or relevance-ranked when `query` is set.",
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "Semantic needle — ranks candidate episodes by meaning against the existing trace embeddings; finds them even when the literal words differ. When set, results are relevance-ranked (each carries _score)."},
          "contains": {"type": "string", "description": "Lexical needle — exact substring matched over the episode's summary AND full metadata (SQL LIKE). Use for a precise token: a function name, an error string, a flag."},
@@ -769,7 +810,7 @@ def _build_tools():
          "session_ids": {"type": "array", "items": {"type": "string"}, "description": "Multi-stream filter (cross-session pulls). Mutually exclusive with session_id."},
          "scale": {"type": "string", "description": "Trace scale: 's0' (conversation — default, the 'what was said' layer), 's1', 's2'… Empty = all scales.", "default": "s0"},
          "event_type": {"type": "string", "description": "Filter by event type: 'O', 'K', 'delta'. Empty = all."},
-         "ref_type": {"type": ["string", "array"], "items": {"type": "string"}, "description": "One ref_type (str) or several (array). UNSET = conversation default sourced from the trace-contract dial (user/assistant messages — drops tool_result, heartbeats, structural deltas) at s0; all types at other scales. Pass 'tool_result' for the 'what I did' lens, or ['user_message','assistant_message','tool_result'] for the interleaved said+did timeline."},
+         "ref_type": {"type": ["string", "array"], "items": {"type": "string"}, "description": "One ref_type (str) or several (array). UNSET = OPERATOR DIALOGUE only (user_message + assistant_message — what the operator and I actually said; drops tool_result, heartbeats, structural deltas, and incoming brain/stream deliveries) at s0; all types at other scales. Everything else is OPT-IN by explicit ref_type: 'tool_result' for the 'what I did' lens, 'thalamus_delivery' for what the BRAIN delivered into sessions (full block in metadata.content; ref_id says which moment — 'boot' or 'stop' — as does the summary), 'self_message' for what OTHER STREAMS said to a session, or combine e.g. ['user_message','assistant_message','tool_result'] for the interleaved said+did timeline. The default never widens when a correspondent is enabled for encoding — deliveries stay one explicit ref_type away."},
          "younger_than": {"type": "string", "description": "Only episodes more recent than this. ISO timestamp or relative shorthand ('30m','2h','3d','1w')."},
          "older_than": {"type": "string", "description": "Only episodes older than this. ISO timestamp or relative shorthand. With no session scope and no younger_than, a default 7-day lower bound is applied (bounds the scan)."},
          "sort_order": {"type": "string", "description": "'desc' (latest first, default) or 'asc' (oldest first). Ignored when `query` is set — then results are relevance-ranked.", "default": "desc"},
@@ -783,7 +824,7 @@ def _build_tools():
          "hours": {"type": "integer", "description": "Look back window in hours (default 24)", "default": 24}}}},
 
     {"name": "list_interactions",
-     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surface, s1e, scouts, S2 units, etc.). Returns per name: max_version (highest registered), total_versions, active_version (the deployed override, or null when the name runs on its code default), and active_set_by / active_set_at (who deployed that override, and when).",
+     "description": "List all registered interactions — versioned templates for every learnable boundary in the system (surface, s1e, S2 units, etc.). Returns per name: max_version (highest registered), total_versions, active_version (the deployed override, or null when the name runs on its code default), and active_set_by / active_set_at (who deployed that override, and when).",
      "inputSchema": {"type": "object", "properties": {}}},
 
     {"name": "get_interaction",
@@ -915,16 +956,43 @@ def make_error(request_id, code, message):
     return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
 
 
-def handle_initialize(request_id):
+# Server-wide guidance the host may hand the model alongside the tool list.
+# Codex reads it (first 512 chars self-contained, per its docs); Claude Code
+# stores and never reads it, so on that host it is inert. Behavioral guidance
+# only — identity lives in the boot injection, not here.
+SERVER_INSTRUCTIONS = (
+    "brain is the assistant's persistent memory across sessions. Recall before "
+    "answering about past work, decisions, or people: `recall` for what is known, "
+    "`recall_episodes` for what was actually said. Keep what should outlive this "
+    "session with `remember` (decisions, corrections, lessons), each with a "
+    "`situation` line saying when it applies. If a memory proves stale, `revise` "
+    "it rather than adding a duplicate. Memory is accumulated experience, not a "
+    "verdict: lean on it and update it when proven wrong."
+)
+
+
+def handle_initialize(request_id, params=None, extension=None):
+    params = params or {}
+    version = params.get('protocolVersion', PROTOCOL_VERSION)
+    if version not in SUPPORTED_PROTOCOL_VERSIONS:
+        version = PROTOCOL_VERSION
+    if extension is not None:
+        capabilities = dict(params.get('capabilities', {}))
+        # The legacy protocol predates elicitation. Capability advertisement
+        # alone cannot enable operations outside the negotiated revision.
+        if version == PROTOCOL_VERSION:
+            capabilities.pop('elicitation', None)
+        extension.initialize({'protocolVersion': version, 'capabilities': capabilities})
     return make_response(request_id, {
-        "protocolVersion": PROTOCOL_VERSION,
+        "protocolVersion": version,
         "capabilities": {"tools": {}},
-        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
+        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        "instructions": SERVER_INSTRUCTIONS + (" " + extension.instructions if extension else ""),
     })
 
 
-def handle_tools_list(request_id):
-    return make_response(request_id, {"tools": TOOLS})
+def handle_tools_list(request_id, extension=None):
+    return make_response(request_id, {"tools": TOOLS + (extension.tools if extension else [])})
 
 
 def _render_nodes(rich_nodes, config):
@@ -1152,10 +1220,30 @@ def _format_result(tool_name, result, get_nodes_config=None, rich=False):
     return json.dumps(result, indent=2, default=str)
 
 
-def handle_tools_call(request_id, params):
+def handle_tools_call(request_id, params, extension=None):
     import time as _time
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    if not isinstance(arguments, dict):
+        return make_error(request_id, -32602, 'Tool arguments must be an object.')
+    if extension is not None and extension.handles(tool_name):
+        clean = _stamp_caller_session(dict(arguments))
+        verified = bool(clean.pop(CALLER_SESSION_KEY, None))
+        extension.start(request_id, clean, identity_verified=verified)
+        return None  # The extension owns its response, possibly deferred.
+
+    identity_missing = False
+
+    def identity_gap(reason):
+        nonlocal identity_missing
+        identity_missing = True
+        _note_identity_gap(reason)
+
+    def content(text):
+        blocks = [{"type": "text", "text": text}]
+        if identity_missing and extension is not None:
+            blocks.append({"type": "text", "text": extension.notice})
+        return blocks
 
     # Try up to 3 times with backoff — daemon may be restarting
     backoff = [0, 0.5, 1.5]  # immediate, 0.5s, 1.5s
@@ -1164,7 +1252,9 @@ def handle_tools_call(request_id, params):
         if delay > 0:
             _time.sleep(delay)
 
-        resp = daemon_send(tool_name, arguments)
+        # Only TOOL calls carry identity; the proxy's own pings run headless by
+        # design, so the identity-gap note is armed here and nowhere else.
+        resp = daemon_send(tool_name, arguments, note=identity_gap)
         if resp.get("ok"):
             # `rich` is the MCP render opt-in for get_node/get_nodes (full view).
             # filter_nodes' own `rich` is a data-layer flag handled in dispatch;
@@ -1181,7 +1271,7 @@ def handle_tools_call(request_id, params):
                 result_text = "%s\n\n%s" % (
                     truncation_banner(_res["truncated"]), result_text)
             return make_response(request_id, {
-                "content": [{"type": "text", "text": result_text}]
+                "content": content(result_text)
             })
 
         # Distinguish a real daemon error from a missing-envelope response. A
@@ -1207,7 +1297,7 @@ def handle_tools_call(request_id, params):
             break
 
     return make_response(request_id, {
-        "content": [{"type": "text", "text": "ERROR: {}".format(last_error)}],
+        "content": content("ERROR: {}".format(last_error)),
         "isError": True
     })
 
@@ -1216,11 +1306,15 @@ def handle_ping(request_id):
     return make_response(request_id, {})
 
 
+_stdout_lock = threading.Lock()
+
+
 def send(msg):
     """Write JSON-RPC message to stdout."""
     line = json.dumps(msg)
-    sys.stdout.write(line + "\n")
-    sys.stdout.flush()
+    with _stdout_lock:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
 
 
 def send_notification(method):
@@ -1252,6 +1346,29 @@ def _read_stdin():
     sys.stderr.write("[brain-mcp] stdin closed — shutting down cleanly.\n")
 
 
+def _log_proxy_error(hook_name, error, context, level="error"):
+    """Persist a proxy-side event to brain_logs.db.hook_errors — the
+    daemon-independent table hook_common.log_hook_error writes to, so the
+    dashboard errors panel, query_logs and the next boot surface it whether the
+    daemon is up or not. The hook_errors SQL lives in LogsDAL (no raw SQL in the
+    MCP layer). Never raises: a failure to log is reported on stderr, not
+    allowed to take the proxy down."""
+    try:
+        import sqlite3
+        from servers.daemon_config import resolve_db_dir
+        db_dir = resolve_db_dir()
+        if not (db_dir and os.path.isdir(db_dir)):
+            return
+        from servers.dal_logs import LogsDAL
+        conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
+        try:
+            LogsDAL(conn).log_hook_error(hook_name, error, context=context, level=level)
+        finally:
+            conn.close()
+    except Exception as e:
+        sys.stderr.write("[brain-mcp] could not log %s to hook_errors: %s\n" % (hook_name, e))
+
+
 def _health_monitor():
     """Background health monitor — pings daemon every 2s.
 
@@ -1263,7 +1380,6 @@ def _health_monitor():
     Runs as daemon thread — dies when MCP process exits.
     """
     import time
-    import sqlite3
     from servers.daemon_client import recover_daemon
 
     consecutive_failures = 0
@@ -1292,26 +1408,12 @@ def _health_monitor():
             sys.stderr.write("[brain-mcp] ALERT: Daemon unreachable for %ds — attempting restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
 
-            # Persist the outage to brain_logs.db.hook_errors — the same
-            # daemon-independent table hook_common.log_hook_error writes to, so
-            # the dashboard errors panel + query_logs surface it whether the
-            # hook-side detector or this idle ping-loop detector fires first.
-            # The hook_errors SQL lives in LogsDAL (no raw SQL in the MCP layer).
-            try:
-                from servers.daemon_config import resolve_db_dir
-                db_dir = resolve_db_dir()
-                if db_dir and os.path.isdir(db_dir):
-                    from servers.dal_logs import LogsDAL
-                    conn = sqlite3.connect(os.path.join(db_dir, "brain_logs.db"), timeout=3)
-                    try:
-                        LogsDAL(conn).log_hook_error(
-                            "DAEMON_DOWN",
-                            "Daemon unreachable — MCP health monitor detected failure",
-                            context="mcp_health_monitor", level="critical")
-                    finally:
-                        conn.close()
-            except Exception:
-                pass
+            # Persist the outage so the dashboard errors panel + query_logs
+            # surface it whether the hook-side detector or this idle ping-loop
+            # detector fires first.
+            _log_proxy_error("DAEMON_DOWN",
+                             "Daemon unreachable — MCP health monitor detected failure",
+                             "mcp_health_monitor", level="critical")
 
             # Force-recover the hung daemon — kill + launchd respawn.
             # (ensure_daemon_running() only pings; a corpse won't exit on its
@@ -1331,7 +1433,7 @@ def _health_monitor():
                 pass
 
 
-def main():
+def main(extension=None):
     # Ensure daemon is running — retry a few times since boot hook may be starting it concurrently
     sys.stderr.write("[brain-mcp] Starting MCP server...\n")
     import time, threading
@@ -1345,7 +1447,8 @@ def main():
             time.sleep(2)
     if daemon_ready:
         check_daemon_fingerprint()  # Record initial fingerprint
-        sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(len(TOOLS)))
+        count = len(TOOLS) + (len(extension.tools) if extension else 0)
+        sys.stderr.write("[brain-mcp] Daemon connected. Serving {} tools.\n".format(count))
     else:
         sys.stderr.write("[brain-mcp] WARNING: Daemon not available at startup. Will retry on each tool call.\n")
 
@@ -1371,19 +1474,31 @@ def main():
         request_id = msg.get("id")
         params = msg.get("params", {})
 
+        # Server-originated elicitation responses have an id but no method.
+        # Consume even unknown/expired replies; never bounce a response back
+        # as a Method not found request and never reopen a cancelled review.
+        if not method and ('result' in msg or 'error' in msg):
+            if extension is not None:
+                extension.receive(msg)
+            continue
+
         # Notifications (no id) — acknowledge silently
         if request_id is None:
             if method == "notifications/initialized":
                 pass  # Client acknowledged init
+            elif method == 'notifications/cancelled' and extension is not None:
+                extension.cancel(params.get('requestId'))
             continue
 
         try:
             if method == "initialize":
-                send(handle_initialize(request_id))
+                send(handle_initialize(request_id, params, extension))
             elif method == "tools/list":
-                send(handle_tools_list(request_id))
+                send(handle_tools_list(request_id, extension))
             elif method == "tools/call":
-                send(handle_tools_call(request_id, params))
+                response = handle_tools_call(request_id, params, extension)
+                if response is not None:
+                    send(response)
             elif method == "ping":
                 send(handle_ping(request_id))
             else:
@@ -1395,6 +1510,46 @@ def main():
             except Exception:
                 pass  # stdout broken — nothing we can do
 
+    if extension is not None:
+        extension.close()
+
+
+def load_extension(name):
+    """Load only a packaged adapter; a broken extension leaves core tools usable."""
+    if not name:
+        return None
+    import importlib.util
+    from pathlib import Path
+    import re
+    try:
+        if not re.fullmatch(r'[a-z][a-z0-9_]*\.py', name):
+            raise ValueError('adapter must be a packaged Python filename')
+        directory = Path(_parent).resolve() / 'hooks' / 'adapters'
+        path = (directory / name).resolve()
+        if path.parent != directory or not path.is_file():
+            raise ValueError('adapter is missing or outside the package')
+        spec = importlib.util.spec_from_file_location('_brain_host_extension', path)
+        module = importlib.util.module_from_spec(spec)
+        # The adapter may import siblings. Restrict this path addition to load.
+        sys.path.insert(0, str(directory))
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.remove(str(directory))
+        extension = module.create_extension(send, _parent, log=_log_proxy_error)
+        names = [tool['name'] for tool in extension.tools]
+        if len(set(names)) != len(names) or set(names) & {tool['name'] for tool in TOOLS}:
+            raise ValueError('adapter tool names conflict with the shared tool inventory')
+        return extension
+    except Exception as error:
+        message = 'Host extension unavailable: %s' % error
+        sys.stderr.write('[brain-mcp] %s\n' % message)
+        _log_proxy_error('mcp_extension', message, 'extension loading', level='warning')
+        return None
+
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description='Brain MCP proxy')
+    parser.add_argument('--adapter', help='Packaged host extension filename')
+    main(extension=load_extension(parser.parse_args().adapter))

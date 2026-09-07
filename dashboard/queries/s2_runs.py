@@ -30,7 +30,7 @@ from .journals import notes_by_chain
 # unit's per-RUN integration delta, so an unfiltered pull renders them as phantom
 # run cards: residue is encoder *notes* (journal_note); emitter rows are per-WRITE
 # mutations (one per node/edge touched).
-_RESIDUE_REF_TYPES = ('journal_note',)
+_RESIDUE_REF_TYPES = ('journal_note', 'thalamus_filed')
 _EMITTER_REF_TYPES = (
     'node_created', 'node_archived', 'node_deleted',
     'node_revised', 'edge_relation_revised',

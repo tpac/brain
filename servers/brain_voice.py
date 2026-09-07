@@ -233,7 +233,7 @@ class BrainVoice:
         lines.append("[/BRAIN]")
         return "\n".join(lines)
 
-    # ── Operator channel (Brain → Tom) ──
+    # ── Operator channel (Brain → operator) ──
 
     @staticmethod
     def format_for_operator(items: List[str]) -> Optional[str]:
@@ -305,6 +305,18 @@ class BrainVoice:
                 'SKILL.md stance unreadable — boot proceeding without identity prior')
             return ''
 
+    def _boot_section(self, what, build, default=''):
+        """One failure-isolated boot section: a raise is logged LOUDLY to the
+        errors table (key boot_<what>_failed) and boot continues without that
+        section's output. Boot must never die on one part's read."""
+        try:
+            return build()
+        except Exception as e:
+            self.brain._log_error(
+                'boot_%s_failed' % what, e,
+                'render_boot_v2: %s raised — boot continues without it' % what)
+            return default
+
     # ── Clean boot (v2) — wake-up, not system report ──
 
     def render_boot_v2(self, user: str = 'User', project: str = 'default',
@@ -316,7 +328,11 @@ class BrainVoice:
              read via _load_stance().
           2. Brain state: identity line (name + memory/locked counts) +
              MY_STREAM_ID, the Frame (ctx.get_frame(brain) — Session /
-             Current focus / Recent moves), and standing items.
+             Current focus / Recent moves), standing items, and the boot
+             delivery (channels/delivery.py — the brain's due items).
+
+        Each brain-state part runs as a _boot_section: failure-isolated,
+        logged loudly, boot continues without it.
 
         The operator channel (for_operator) carries the stats summary.
         """
@@ -334,10 +350,13 @@ class BrainVoice:
         # ── Gather data ──
         ctx = brain.context_boot(user=user, project=project,
                                  task="session start", session_id=session_id)
-        # render does NOT reset the session — rendering is read-only. The session
-        # is reset once by the caller (boot_brain's reset_session(cwd), or
-        # _boot_via_direct's explicit reset); resetting here too made boot a
-        # double-reset that forced the cwd-preserve band-aid (removed 2026-06-08).
+        # Boot COMMITS: the liveness stamp (next line), health auto-fix, the
+        # session row (get_or_create_session), the delivery ledger rows + the
+        # s0 delivery trace (deliver()), and brain.save() at the end. What it
+        # does NOT do is reset the session — the caller owns that (boot_brain's
+        # reset_session(cwd), or _boot_via_direct's explicit reset); a second
+        # reset here once made boot a double-reset that needed a cwd-preserve
+        # band-aid.
         # Boot-stamp liveness so this fresh stream shows up in presence
         # immediately — before its first turn — closing the rendezvous gap where
         # two just-booted streams can't see each other (2026-06-06).
@@ -400,13 +419,16 @@ class BrainVoice:
         # partnership, active threads are brain-scoped (filter_nodes reads).
         # When session_id is missing or Frame Constructor fails, log loudly
         # and continue without the prior — explicit degraded mode.
-        try:
-            session_ctx = brain.get_or_create_session(session_id) if session_id else None
-            frame_md = session_ctx.get_frame(brain) if session_ctx else ''
-        except Exception as e:
-            brain._log_error('boot_frame_build_failed', e,
-                             'render_boot_v2: Frame Constructor raised — boot continues without prior')
-            frame_md = ''
+        # session_ctx is its own section, not the Frame's: the delivery leg
+        # below needs it too (the caller owns the trace chain), and a Frame
+        # failure must not take the context down with it.
+        session_ctx = self._boot_section(
+            'session_ctx',
+            lambda: brain.get_or_create_session(session_id) if session_id else None,
+            default=None)
+        frame_md = self._boot_section(
+            'frame_build',
+            lambda: session_ctx.get_frame(brain) if session_ctx else '')
 
         if frame_md:
             out.append(frame_md.rstrip())
@@ -417,34 +439,29 @@ class BrainVoice:
 
         # ── Standing items — boot-only, BRAIN_BOOT_INJECT_TYPES-driven ──
         # Escalated journal items (and any operator-configured types) reach
-        # a human here. Failure-isolated like the Frame: boot never breaks
-        # on an injection read.
-        try:
+        # a human here.
+        def standing_items():
             from servers.scales.s1.frame import render_standing_items
-            standing = render_standing_items(brain, session_id=session_id)
-        except Exception as e:
-            brain._log_error('boot_standing_items_failed', e,
-                             'render_boot_v2: standing-items build raised — boot continues without it')
-            standing = ''
+            return render_standing_items(brain, session_id=session_id)
+        standing = self._boot_section('standing_items', standing_items)
         if standing:
             out.append(standing)
             out.append("")
 
-        # ── Thalamus — due items for this session (the boot delivery
-        # moment). Pull-based: the queue never pushes; this render records
-        # its own deliveries in the ledger. Failure-isolated like the rest
-        # of boot. Asks deliver here (boot-only), notices at boot or Stop.
-        try:
-            from servers.channels.thalamus import thalamus as _thalamus
-            from servers.channels.thalamus.thalamus_contract import (
-                VIA_BOOT as _VIA_BOOT)
-            th_block, _ = _thalamus.pull(brain, session_id, via=_VIA_BOOT)
-        except Exception as e:
-            brain._log_error('boot_thalamus_failed', e,
-                             'render_boot_v2: thalamus pull raised — boot continues without it')
-            th_block = ''
-        if th_block:
-            out.append(th_block)
+        # ── Delivery — the boot moment; eligibility, tracing, and the
+        # source walk live in channels/delivery.py. Its own section: a Frame
+        # failure must not silently cancel delivery (asks are boot-only — a
+        # skipped boot here is an ask nobody ever sees).
+        def delivery():
+            if not session_ctx:
+                return ''
+            # Boot never arms a continuation stamp (nothing blocks at a
+            # passive moment), so the traced ref_types are unused here.
+            from .channels.delivery import deliver, BOOT
+            return deliver(brain, session_ctx, BOOT)[0]
+        delivery_block = self._boot_section('delivery', delivery)
+        if delivery_block:
+            out.append(delivery_block)
             out.append("")
 
         brain.save()

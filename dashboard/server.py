@@ -241,8 +241,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                              a query body, not because it writes: the flag makes
                              it a pure read, so the operator's searching never
                              enters access_count / fatigue and never shows up as
-                             recall heat in the graph. Observing, not requesting
-                             (principle id:818febd7).
+                             recall heat in the graph. Observing, not requesting.
         """
         if not self._loopback_guard():
             return self._json(403, {"error": "Forbidden"})

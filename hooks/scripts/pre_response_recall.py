@@ -6,19 +6,18 @@ This script just passes the user message to the daemon and prints the result.
 Flow:
 1. Send user message to daemon via "hook_recall" command
 2. Daemon does recall → judge → graph expand → formats additionalContext
-3. This script prints the result (additionalContext or approve)
+3. This script prints the result (additionalContext), or nothing at all
 """
-import sys, os, json, time
+import sys, os, time
 
 _t0 = time.time()
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
-                         daemon_unavailable_error, brain_debug, run_hook)
+                         daemon_unavailable_error, brain_debug, emit_hook_output, run_hook,
+                         turn_model, host_name)
 from datetime import datetime as _dt
 def _ts(): return _dt.now().strftime("%H:%M:%S.%f")[:-3]
 sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
-
-APPROVE = json.dumps({"decision": "approve"})
 
 # Answers with fewer meaningful chars than this register the turn but skip the
 # recall + Haiku surface (register_only). A bare answer carries no recall signal.
@@ -32,7 +31,6 @@ user_message = hook_input.get("prompt", "") or hook_input.get("message", "")
 # read as heartbeats at Stop (no user_message trace, never encoded).
 if not user_message.strip() or user_message.startswith("/") or user_message.startswith("!"):
     brain_debug("recall: skipped (slash/bang/empty)")
-    print(APPROVE)
     sys.exit(0)
 
 # Short real answers ("yes", "ok", "no") ARE conversational but carry no recall
@@ -89,14 +87,11 @@ def main():
     t0 = time.time()
     if not daemon_available():
         # Register-only is best-effort: there's nothing to recall, so a down
-        # daemon must fail SILENT (approve) — not surface the recall-unavailable
-        # banner for a bare "yes". Worst case the turn goes unregistered, which
-        # is exactly the old pre-fix behavior, not a regression.
+        # daemon must fail SILENT — not surface the recall-unavailable banner
+        # for a bare "yes". Worst case the turn simply goes unregistered.
         if register_only:
-            print(APPROVE)
             sys.exit(0)
-        err = daemon_unavailable_error("recall")
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": err}}))
+        emit_hook_output("UserPromptSubmit", {"additionalContext": daemon_unavailable_error("recall")})
         sys.exit(0)
 
     # Call daemon — it handles Layer 1 + Layer 2 judge + Layer 3 graph expand.
@@ -116,38 +111,35 @@ def main():
         "message": hook_input.get("message", ""),
         "session_id": hook_input.get("session_id", ""),
         "register_only": register_only,  # short answers: register turn, skip recall+Haiku
+        # The S0 session stamp — what this turn rides on (see hook_common).
+        "model": turn_model(hook_input),
+        "host": host_name(),
     }, timeout=_recall_timeout)
 
     if not resp.get("ok"):
-        # Register-only failure is best-effort too — approve silently rather than
+        # Register-only failure is best-effort too — stay silent rather than
         # surface RECALL FAILED for a turn that had nothing to recall.
         if register_only:
-            print(APPROVE)
             sys.exit(0)
         err_msg = resp.get("error", "unknown error")
         # daemon_call_raw already logged this failure to hook_errors (single
         # source of truth). We only render the user-facing message here.
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext":
-            "[BRAIN]\n⚠️ RECALL FAILED: %s\nThe brain could not search for relevant memories.\n[/BRAIN]" % err_msg}}))
+        emit_hook_output("UserPromptSubmit", {"additionalContext":
+            "[BRAIN]\n⚠️ RECALL FAILED: %s\nThe brain could not search for relevant memories.\n[/BRAIN]" % err_msg})
         sys.exit(0)
 
     result = resp.get("result", {})
     elapsed = int((time.time() - t0) * 1000)
 
-    # The daemon returns either additionalContext (judge completed) or approve (no results/judge failed)
+    # The daemon returns either additionalContext (judge completed) or approve
+    # (no results/judge failed) — emit_hook_output turns approve into silence.
     result_json = result.get("json", {})
-    if "additionalContext" in result_json:
-        context = result_json["additionalContext"]
-        brain_debug("recall: daemon returned context (%d chars) in %dms" % (len(context), elapsed))
-        sys.stderr.write("[recall-hook %s] total: %dms, printing and exiting\n" % (_ts(), (time.time() - _t0) * 1000))
-        sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}))
-        sys.stdout.flush()
-        os._exit(0)  # Fast exit — skip Python cleanup
-    else:
-        brain_debug("recall: daemon returned approve in %dms" % elapsed)
-        sys.stdout.write(json.dumps(result_json))
-        sys.stdout.flush()
-        os._exit(0)
+    context = result_json.get("additionalContext", "") if isinstance(result_json, dict) else ""
+    brain_debug("recall: daemon returned %s in %dms" % (
+        "context (%d chars)" % len(context) if context else "no context", elapsed))
+    sys.stderr.write("[recall-hook %s] total: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
+    emit_hook_output("UserPromptSubmit", result_json)
+    os._exit(0)  # Fast exit — skip Python cleanup
 
 
-run_hook("recall", main, on_error=lambda: print(APPROVE))
+run_hook("recall", main)

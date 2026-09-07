@@ -16,7 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tests.isolated_brain import IsolatedBrain  # noqa: E402
 
-_Q = "what did we do on the last session we work on ex.co?"
+_Q = "what did we do on the last session we work on the dashboard?"
 
 
 def _recall(brain, limit=25):

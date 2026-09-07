@@ -924,9 +924,11 @@ _SPREAD_MAX_STEPS = 3
 # Per-source neighbor cap during spread expansion. Held at 50 after
 # 2026-05-01 partial-rollback: lim=30 was tried (variant C, iter_M
 # 14/15 on seed=42) but iter_O on a different sample (seed=1) revealed
-# the narrowing starves muster recall during ingestion → encoder
-# misses specific facts → quality drops 80%→60% on that sample. The
-# narrower lim hurt 5 items on seed=1, helped 0. Reverted.
+# the narrowing starves recall during ingestion → encoder misses
+# specific facts → quality drops 80%→60% on that sample. The narrower
+# lim hurt 5 items on seed=1, helped 0. Reverted. Measured while the
+# since-removed scout muster was in the ingestion loop; a re-bench is
+# what would license moving this.
 #
 # The latency win lives entirely in HOP_SCRUTINY_DEFAULT (variant D in
 # the bench): scrutiny alone reduces avg recall 11.2s → 6.3s (44%) by
@@ -943,7 +945,7 @@ SPREAD_NEIGHBOR_LIMIT_DEFAULT = 50
 # strength of LongMemEval iter_M (14/15) but the eval is N=15 with ~20pp
 # variance, and scrutiny was never A/B'd in isolation against baseline.
 # Real-world conversational use (where ambient context lives 2-3 hops out)
-# regressed — see the ex.co class of failure: the brain held rich operator
+# regressed — see the buried-topic class of failure: the brain held rich operator
 # context but it lived past the scrutiny cut and stopped surfacing.
 # Override BRAIN_SPREAD_HOP_SCRUTINY=on to re-enable for benchmarking.
 HOP_SCRUTINY_DEFAULT = False
@@ -1914,7 +1916,7 @@ def select_edges(connections, query_vec, limit=3, prior_vecs=None,
 #
 # No SURFACE_FORMAT whitelist. No hardcoded "show content but not reasoning."
 # Fields with high activation surface; fields with low activation don't.
-# Tom's framing: "fading means less and less data surfaced."
+# Fading means less and less data surfaced.
 # ═══════════════════════════════════════════════════════════════
 
 # Minimum per-node budget — below this, we stop rendering further nodes
@@ -1950,7 +1952,7 @@ def _event_time_line(node):
     Returns '' when no event_time is present, so callers can unconditionally
     prepend without guarding.
 
-    Future generalization (per Tom): query-aware kv field promotion. A query
+    Future generalization: query-aware kv field promotion. A query
     asking 'what did X say' should promote their_raw_quote / my_raw_quote
     similarly; 'when' queries promote event_time/created_at. Current scope:
     event_time only — surgical change to test L4-fix in isolation.

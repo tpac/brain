@@ -15,9 +15,9 @@ Two related drift surfaces, one test file:
 
 2. **Grain-axis ``iso_cutoff()`` / ``iso_now()`` calls without explicit
    ``at=``.** Grain-axis code runs in eval replays where wall-clock is the
-   wrong anchor — see servers/clock.py:conversation_now and bug
-   6d5b789e (temporal scout uses wall-clock now(), ignores conversation
-   date). Forcing ``at=`` at the call site means authors think about
+   wrong anchor — see servers/clock.py:conversation_now (a grain-axis
+   caller defaulting to wall-clock now() mis-anchors every relative date
+   in a replay). Forcing ``at=`` at the call site means authors think about
    anchoring instead of silently defaulting to wall-clock.
 
 Mirrors the pattern of ``tests/test_clock_contract_sync.py``.

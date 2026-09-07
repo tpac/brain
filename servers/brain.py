@@ -260,7 +260,7 @@ class Brain(
         # snapshots; writing on that same connection is a read->write upgrade
         # that fails INSTANTLY with 'database is locked' whenever an external
         # process (hooks, MCP monitor) committed since the snapshot —
-        # busy_timeout never applies to snapshot upgrades (brain id:371895a8).
+        # busy_timeout never applies to snapshot upgrades.
         # This connection is used only inside the DAL write methods under
         # write_lock, so it never holds a read cursor and every write
         # transaction begins at the WAL head.
@@ -697,12 +697,15 @@ class Brain(
                 for dim in SCOPE_PROVENANCE_FIELDS}
 
     def session_env_for(self, session_id: str) -> dict:
-        """Per-session env (cwd, branch, worktree, project) for a stream — fed in
-        at boot from the Claude side, surfaced in peek so streams identify where
-        each other work. Reads the live cached SessionContext if present, else the
-        persisted row. Empty strings when unknown. Mirrors session_context_for's
-        per-session pattern (no global key — parallel sessions don't clobber)."""
-        _empty = {'cwd': '', 'branch': '', 'worktree': '', 'project': ''}
+        """Per-session env (cwd, branch, worktree, project, model, host) for a
+        stream — fed in from the host side (boot hook; per-turn recall/Stop hooks
+        for model/host), surfaced in peek so streams identify where each other
+        work and what they ride on. Reads the live cached SessionContext if
+        present, else the persisted row. Empty strings when unknown. Mirrors
+        session_context_for's per-session pattern (no global key — parallel
+        sessions don't clobber)."""
+        _empty = {'cwd': '', 'branch': '', 'worktree': '', 'project': '',
+                  'model': '', 'host': ''}
         if not session_id:
             return _empty
         ctx = self._session_contexts.get(session_id)
@@ -717,7 +720,7 @@ class Brain(
         if ctx is None:
             return _empty
         return {'cwd': ctx.cwd, 'branch': ctx.branch, 'worktree': ctx.worktree,
-                'project': ctx.project}
+                'project': ctx.project, 'model': ctx.model, 'host': ctx.host}
 
     def get_recent_encoding_journal(self, session_id: str, max_chars: int = 1500) -> str:
         """Read the most recent portion of the encoder's per-session journal.
@@ -1142,7 +1145,12 @@ class Brain(
                 # (interrupt/disconnect) and belongs in the encode as-is.
                 last = self.get_conversation(sid, limit=1,
                                              with_judge_output=False)
-                five_plus = bool(last) and last[0].get('role') == 'assistant'
+                # ref_type, not role: role maps every incoming correspondent
+                # to 'user', so a dial-on delivery row would read as an
+                # unanswered question and stall the trigger (a boot delivery
+                # never gets a reaction).
+                five_plus = bool(last) and (
+                    last[0].get('ref_type') == 'assistant_message')
             tail = turns > SCRIBE_TAIL_MIN_TURNS and idle > SCRIBE_TAIL_IDLE_SECONDS
             if not (five_plus or tail):
                 continue
@@ -1264,15 +1272,21 @@ class Brain(
                 # embeddings/ids are the SessionContext defaults).
                 ctx = SessionContext(session_id=sid)
             ctx.boot_time = self.now()
+            # A delivery continuation cannot survive a boot/resume — the
+            # blocked turn's process is gone (same per-boot reasoning as
+            # fatigue). Disarm so a resumed session's first stop can never
+            # classify as a days-old delivery's reaction.
+            ctx.last_delivery_stop = -1
+            ctx.last_delivery_armed_at = ''
             # cwd/branch/worktree are session IDENTITY (where this stream works),
             # fed in from the boot hook and stamped through the session object's
             # single env mutator. Surfaced via session_env_for / peek.
             if cwd:
                 ctx.set_env(cwd=cwd, branch=branch, worktree=worktree,
                             project=project)
-            # XXX deprecated singleton fallback for un-threaded callers (see
-            # brain.session_id property + _log_error/_log_warning). C-refactor
-            # threads session_id through every call site and drops this write.
+            # Singleton fallback for callers that carry no SessionContext (see
+            # brain.session_id property + _log_error/_log_warning). Drops out
+            # once session_id is threaded through every call site.
             self._meta.set('session_id', sid)
             ctx.save(self._session_state)
             self._session_contexts[sid] = ctx
@@ -1799,28 +1813,33 @@ class Brain(
         throttle and failure-isolated (loud via _log_error)."""
         import time as _time
         now = now if now is not None else _time.time()
-        if now - getattr(self, '_courier_reap_checked', 0) >= 3_600:
-            self._courier_reap_checked = now
+
+        # Imports stay inside each sweep: a broken channel module costs that
+        # sweep alone, never the other one or the S2 cycle that follows.
+        def reap_expired():
+            from .channels.self_channel import signal
+            return signal.reap_expired(self)
+
+        def expire_due():
+            from .channels.thalamus import thalamus
+            return thalamus.expire_due(self)
+
+        # (throttle stamp, sweep, log line, error tag) — one row per channel
+        # store; the hourly throttle and the failure isolation are the policy.
+        for stamp, sweep, line, tag in (
+                ('_courier_reap_checked', reap_expired,
+                 'self-channel: reaped %d expired message(s)', 'self_signal_reap'),
+                ('_thalamus_sweep_checked', expire_due,
+                 'thalamus: expired %d item(s) past their window', 'thalamus_expire')):
+            if now - getattr(self, stamp, 0) < 3_600:
+                continue
+            setattr(self, stamp, now)
             try:
-                from .channels.self_channel import signal as _self_signal
-                reaped = _self_signal.reap_expired(self)
-                if reaped:
-                    print('[brain] self-channel: reaped %d expired message(s)'
-                          % reaped, flush=True)
+                n = sweep()
+                if n:
+                    print('[brain] %s' % (line % n), flush=True)
             except Exception as e:
-                self._log_error('self_signal_reap', e,
-                                'reap_expired in channel sweep')
-        if now - getattr(self, '_thalamus_sweep_checked', 0) >= 3_600:
-            self._thalamus_sweep_checked = now
-            try:
-                from .channels.thalamus import thalamus as _thalamus
-                expired = _thalamus.expire_due(self)
-                if expired:
-                    print('[brain] thalamus: expired %d item(s) past their '
-                          'window' % expired, flush=True)
-            except Exception as e:
-                self._log_error('thalamus_expire', e,
-                                'expire_due in channel sweep')
+                self._log_error(tag, e, '%s in channel sweep' % sweep.__name__)
 
     def run_maintenance_if_due(self, now: Optional[float] = None
                                ) -> Optional[Dict[str, Any]]:

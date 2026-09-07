@@ -287,7 +287,7 @@ class TestPresenceCountsWatchers(BrainTestBase):
                          "a task-notification must not leak into a watcher's focus")
 
     def test_assistant_message_can_be_focus(self):
-        # Tom (2026-06-05): focus is the latest CONVERSATIONAL turn — user OR
+        # Focus is the latest CONVERSATIONAL turn — user OR
         # assistant — so a watcher's own last reply can be the focus. Here the
         # assistant turn is newer than the last user prompt, so it wins.
         self._turn('asstFocus', 'user_message', 'old user prompt',

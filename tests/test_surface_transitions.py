@@ -86,7 +86,7 @@ class TestDecodeTransitions(BrainTestBase):
 
         foreign = self.brain.remember(
             type='fact', title='People Inc deadline passed',
-            content='External legal deadline expired.', project='exco')
+            content='External legal deadline expired.', project='acme-site')
         home = self.brain.remember(
             type='fact', title='Daemon restart shipped',
             content='Deploy verified.', project='brain')
@@ -98,7 +98,7 @@ class TestDecodeTransitions(BrainTestBase):
         text, _ = build_surface_prompt(
             candidates, 'status of the initiative',
             scope={'project': 'brain'})
-        self.assertIn('⚠ From another project: exco', text)
+        self.assertIn('⚠ From another project: acme-site', text)
         self.assertNotIn('Project: brain', text)
 
         # Undeclared (unscoped session) → no marks, legacy render.
@@ -382,7 +382,7 @@ class TestDecodeTransitions(BrainTestBase):
         """Transition: interaction config → build_surface_prompt. The layout
         the resolver hands back (K-store override overlaid on the code
         default) must be the layout the renderer receives — sentinel-checked
-        because a wrong overlay is silent (id:9402f16e)."""
+        because a wrong overlay is silent."""
         from servers.scales.s1 import surface as surface_mod
         import servers.scales.s1.surface_contract as scontract
 

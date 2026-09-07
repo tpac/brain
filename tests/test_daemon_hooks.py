@@ -298,7 +298,14 @@ class TestScribeReactor(unittest.TestCase):
                 return turns_map.get(sid, 0)
 
             def get_conversation(self, sid, limit=20, with_judge_output=True):
-                return [{'role': last_role}] if last_role else []
+                # Mirrors the real DAL row shape: ref_type is the field the
+                # five-plus gate keys on (role maps every incoming
+                # correspondent to 'user', so it can't discriminate).
+                return ([{'role': last_role,
+                          'ref_type': ('assistant_message'
+                                       if last_role == 'assistant'
+                                       else 'user_message')}]
+                        if last_role else [])
 
             def get_or_create_session(self, sid):
                 return types.SimpleNamespace(stop_counter=42)

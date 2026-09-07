@@ -727,9 +727,9 @@ class CommunityDecoder(IntegrationUnit):
     # ── Step 1 ──
 
     def _build_typed_adjacency(self, rel_to_fam, skip_fams):
-        # TODO(v25-dal): graph-wide typed-edge scan has no existing DAL
-        # method and fits community detection's needs specifically. Keep
-        # raw with archived=0; consider GraphDAL.iter_semantic_edges()
+        # Sanctioned raw-SQL exception: a graph-wide typed-edge scan has no
+        # existing DAL method and fits community detection specifically.
+        # Raw with archived=0; give it GraphDAL.iter_semantic_edges() only
         # if a second caller appears.
         edges_by_node = defaultdict(list)
         excl = ','.join('?' * len(ADJACENCY_EXCLUDED_RELATIONS))
@@ -1364,9 +1364,9 @@ class CommunityDecoder(IntegrationUnit):
 
     def _sample_internal_edges(self, members, limit=5):
         ms = set(members)
-        # TODO(v25-dal): internal-edge rendering with descriptions. Shape
-        # is close to has_edge_between but returns metadata, not a bool.
-        # Keep raw with archived=0 until a second caller surfaces.
+        # Sanctioned raw-SQL exception: internal-edge rendering with
+        # descriptions. The shape is close to has_edge_between but returns
+        # metadata, not a bool. Raw with archived=0 until a second caller.
         placeholders = ','.join('?' * len(ms))
         id_list = list(ms)
         rows = self.brain.conn.execute("""

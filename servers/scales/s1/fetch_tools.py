@@ -23,8 +23,6 @@ LOOP CONTROL
   API-call cap; no extra forced call).
 - Parallel tool calls per round encouraged (Anthropic native).
 - Behavioral discipline (in surface prompt) prevents iterating same query.
-
-See docs/archive/AGENTIC-SURFACE-CONTRACT.md for the historical spec (shipped 2026-05-15+; archived 2026-05-31).
 """
 from __future__ import annotations
 
@@ -729,7 +727,7 @@ def recall_by_aspect(brain, aspect: str = '', recent_first: bool = True,
 
     NOTE: removed from TOOL_DEFINITIONS (Haiku's tool set) 2026-06-08 —
     query-blind/session-blind, redundant with the Frame's Active-threads
-    section (finding id:59debf4e). Function + dispatch kept so it stays
+    section. Function + dispatch kept so it stays
     callable and testable if re-surfaced; just not offered to Haiku."""
     try:
         if not aspect:
