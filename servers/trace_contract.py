@@ -890,10 +890,7 @@ def journal_subject_refs(subject):
     key = journal_key(subject)
     return [key] if looks_like_node_id(key) else []
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
-JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
-# The escalation type is boot-visible: render_standing_items (frame.py) injects
-# all live nodes of the types in BRAIN_BOOT_INJECT_TYPES at session boot.
-JOURNAL_ESCALATION_TYPE = 'journals-escalation'
+JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the hand-it-up nudge
 
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
@@ -927,34 +924,30 @@ _REVIEW_TAIL = (
     "to rephrase. Stay sharp."
 ) % ((JOURNAL_NOTE_DELIMITER,) * 2)
 
-# The dark block — what every encoder reads today. Bit-identical to the text
-# before the addressed verbs existed; render_journal_review_block returns
-# exactly this while JOURNAL_ADDRESSED_LIVE is False.
+# The residue-only block — the text without the addressed verbs.
+# render_journal_review_block(addressed=False) returns exactly this.
 JOURNAL_REVIEW_INSTRUCTION = _REVIEW_HEAD + _REVIEW_TAIL
 
-# ── The addressed verbs, as the encoder will read them ──
+# ── The addressed verbs, as the encoder reads them ──
 # One text for every encoder (the operator's ruling: same instructions,
 # delivery differs by audience); the door does the routing. Sits between the
-# `open` line and the output-format close. LIVE flips it in for every
-# journaling encoder at once — an encoder-visible change, so it lands only
-# behind the encode eval and the operator's nod on wording; until then the
-# review block stays bit-identical (the whole point of shipping the
-# machinery dark first).
-JOURNAL_ADDRESSED_LIVE = False
+# `open` line and the output-format close. The flag is the one switch for
+# every journaling encoder at once; it shipped dark and was lit on the
+# operator's nod on the wording. It stays a flag so the verbs can be turned
+# off in one place if the week's measurement says noise.
+JOURNAL_ADDRESSED_LIVE = True
 JOURNAL_ADDRESSED_INSTRUCTION = (
-    "Two notes leave the journal and reach the person working, instead of "
-    "your next run:\n"
-    "`%(tell)s %(d)s subject %(d)s note` — something they should know now.\n"
-    "`%(ask)s %(d)s subject %(d)s note` — something only they can decide.\n"
-    "The test: would the person working act differently in the next hour if "
-    "they knew? Then %(tell)s or %(ask)s. Would only your next run care? Then "
-    "a plain note.\n"
-    "Write them for a reader with none of your context — plain words, what "
-    "it is and why it matters, no internal vocabulary. One line per subject; "
-    "the same subject later updates it rather than repeating it. A line with "
-    "no subject (`%(tell)s %(d)s note`) is about the run itself. "
-    "`resolved %(d)s subject %(d)s why` withdraws it. Next run you read how "
-    "each ended, under YOUR MESSAGES.\n\n"
+    "Two notes go to the live work, not to your next run:\n"
+    "`%(tell)s %(d)s subject %(d)s note` — the \"wait, one thing\" that "
+    "surfaces while you encode and bears on what they're doing now.\n"
+    "`%(ask)s %(d)s subject %(d)s note` — the \"what about…?\" only they can "
+    "settle.\n"
+    "Interrupt only when it touches the present work, would change it, and "
+    "is worth the stop; otherwise it's a plain note.\n"
+    "Plain words, for a reader with none of your context. One line per "
+    "subject — repeating a subject updates it, no subject means the run "
+    "itself, `resolved %(d)s subject %(d)s why` withdraws it. Next run, "
+    "YOUR MESSAGES shows how each ended.\n\n"
 ) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
      'd': JOURNAL_NOTE_DELIMITER}
 
@@ -1067,14 +1060,15 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
             # refused it — the reason is what the encoder reads next run.
             line += ' — not delivered: %s' % n['undelivered']
         if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-            # Tool-neutral phrasing: encoders write nodes through different
-            # doors (brain_batch remember op, remember_batch) — name the
-            # node type, not a tool signature.
+            # A note that has persisted this long is a question for the live
+            # work, not residue — hand it up through the addressed verb; the
+            # door delivers it, budgets it, expires it, and carries the
+            # answer back (YOUR MESSAGES).
             line += (
-                "\n  ⚠ long-lived — resolve it, or promote it out of the "
-                "journal: create a `%s`-type node carrying it, then write "
-                "`resolved · %s · promoted to <id>`"
-                % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
+                "\n  ⚠ long-lived — resolve it, or hand it up: "
+                "`%s %s %s %s <the question>`"
+                % (JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER,
+                   n.get('subject', ''), JOURNAL_NOTE_DELIMITER))
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
 

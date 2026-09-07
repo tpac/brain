@@ -7,9 +7,10 @@ Read-time only — traces stay append-only:
   • `open · subject · note` pins the newest note per subject beyond the
     K-run window until resolved; the READER computes ×N persistence
     (distinct runs mentioning the subject) — never the encoder.
-  • Past JOURNAL_OPEN_NUDGE_RUNS the render nudges: resolve or promote to
-    a `journals-escalation` node — which render_standing_items injects at
-    boot (BRAIN_BOOT_INJECT_TYPES).
+  • Past JOURNAL_OPEN_NUDGE_RUNS the render nudges: resolve it, or hand it
+    up as an `ask` — a Thalamus item the live work answers (the boot
+    standing-items default ships empty; BRAIN_BOOT_INJECT_TYPES is the
+    operator's own extension point).
 
 The hotspot view (journal_notes(subject=...)) stays UNFILTERED — full
 history for investigation.
@@ -167,25 +168,25 @@ class TestOpenPins(JournalLifecycleBase):
 class TestRenderLifecycle(JournalLifecycleBase):
 
     def test_render_shows_count_and_nudge_at_threshold(self):
+        """Past the threshold the nudge hands the item UP through the
+        addressed verb — the Thalamus ask — never to a node type."""
         from servers.trace_contract import (render_journal_notes_prefix,
-                                             JOURNAL_OPEN_NUDGE_RUNS,
-                                             JOURNAL_ESCALATION_TYPE)
+                                             JOURNAL_OPEN_NUDGE_RUNS)
         note = {'tag': 'open', 'subject': 'repo-question', 'note': 'undecided',
                 'open_runs': JOURNAL_OPEN_NUDGE_RUNS,
                 'first_seen': '2026-07-17T00:00:00+00:00'}
         text = render_journal_notes_prefix([note])
         self.assertIn('open ×%d since 07-17' % JOURNAL_OPEN_NUDGE_RUNS, text)
-        self.assertIn(JOURNAL_ESCALATION_TYPE, text)
-        self.assertIn('resolved · repo-question · promoted', text)
+        self.assertIn('hand it up: `ask · repo-question · <the question>`', text)
+        self.assertNotIn('journals-escalation', text)
 
     def test_render_below_threshold_no_nudge(self):
-        from servers.trace_contract import (render_journal_notes_prefix,
-                                             JOURNAL_ESCALATION_TYPE)
+        from servers.trace_contract import render_journal_notes_prefix
         note = {'tag': 'open', 'subject': 'repo-question', 'note': 'undecided',
                 'open_runs': 2, 'first_seen': '2026-07-17T00:00:00+00:00'}
         text = render_journal_notes_prefix([note])
         self.assertIn('open ×2', text)
-        self.assertNotIn(JOURNAL_ESCALATION_TYPE, text)
+        self.assertNotIn('hand it up', text)
 
     def test_instruction_teaches_both_verbs(self):
         from servers.trace_contract import JOURNAL_REVIEW_INSTRUCTION
@@ -193,14 +194,15 @@ class TestRenderLifecycle(JournalLifecycleBase):
                                             JOURNAL_ADDRESSED_LIVE,
                                             JOURNAL_ADDRESSED_INSTRUCTION,
                                             JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
-        # The addressed verbs land DARK: while the contract flag is off the
-        # rendered block is the pre-existing text byte for byte, and the
-        # lit form places the paragraph before the output-format close.
-        self.assertFalse(JOURNAL_ADDRESSED_LIVE)
-        self.assertEqual(render_journal_review_block(), JOURNAL_REVIEW_INSTRUCTION)
-        self.assertNotIn(JOURNAL_TELL_TAG + ' ·', JOURNAL_REVIEW_INSTRUCTION)
-        lit = render_journal_review_block(addressed=True)
+        # The addressed verbs are LIVE (one flag for every encoder): the
+        # default render carries the paragraph between the `open` line and
+        # the output-format close; the residue-only text is one flag away.
+        self.assertTrue(JOURNAL_ADDRESSED_LIVE)
+        lit = render_journal_review_block()
         self.assertIn(JOURNAL_ADDRESSED_INSTRUCTION, lit)
+        self.assertEqual(render_journal_review_block(addressed=False),
+                         JOURNAL_REVIEW_INSTRUCTION)
+        self.assertNotIn(JOURNAL_TELL_TAG + ' ·', JOURNAL_REVIEW_INSTRUCTION)
         self.assertLess(lit.index('`%s · subject' % JOURNAL_ASK_TAG),
                         lit.index('Put the notes under a `## Review`'))
         self.assertTrue(lit.startswith(JOURNAL_REVIEW_INSTRUCTION.split(
@@ -214,18 +216,21 @@ class TestRenderLifecycle(JournalLifecycleBase):
 class TestBootStandingItems(BrainTestBase):
     needs_embedder = False
 
-    def test_escalation_nodes_injected_by_default(self):
-        from servers.scales.s1.frame import render_standing_items
+    def test_default_injects_no_type(self):
+        """The boot default ships EMPTY: a long-lived journal item reaches a
+        human through the Thalamus ask (budgeted, expiring, answerable), not
+        through a node type printed at every boot. The mechanism stays for
+        operators who name their own types."""
+        from servers.scales.s1.frame import (render_standing_items,
+                                             BOOT_INJECT_TYPES_DEFAULT)
+        self.assertEqual(BOOT_INJECT_TYPES_DEFAULT, '')
         self.brain.remember(type='journals-escalation',
                             title='repo-question — open 3 sessions',
                             content='promoted from journal',
                             encoding_source='encoder:sonnet')
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop('BRAIN_BOOT_INJECT_TYPES', None)
-            text = render_standing_items(self.brain)
-        self.assertIn('## Standing items', text)
-        self.assertIn('repo-question', text)
-        self.assertIn('[journals-escalation]', text)
+            self.assertEqual(render_standing_items(self.brain), '')
 
     def test_env_var_extends_types(self):
         from servers.scales.s1.frame import render_standing_items
@@ -245,11 +250,11 @@ class TestBootStandingItems(BrainTestBase):
 
     def test_archived_items_leave_the_boot(self):
         from servers.scales.s1.frame import render_standing_items
-        r = self.brain.remember(type='journals-escalation', title='handled item',
+        r = self.brain.remember(type='my-custom-boot-type', title='handled item',
                                 content='c', encoding_source='anchor')
         self.brain.archive_node(r['id'], archived_by='anchor', reason='handled')
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop('BRAIN_BOOT_INJECT_TYPES', None)
+        with mock.patch.dict(os.environ,
+                             {'BRAIN_BOOT_INJECT_TYPES': 'my-custom-boot-type'}):
             self.assertNotIn('handled item', render_standing_items(self.brain))
 
 

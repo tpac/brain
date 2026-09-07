@@ -499,7 +499,9 @@ class TestSingleShotCallLlm(BrainTestBase):
         # closure, no arc.
         base_prompt = self.brain.get_interaction_prompt('s2_healer')
         self.assertTrue(captured['system'].startswith(base_prompt.rstrip()))
-        self.assertIn(JOURNAL_REVIEW_INSTRUCTION, captured['system'])
+        # The block as rendered (the addressed paragraph sits inside it now).
+        from servers.trace_contract import render_journal_review_block
+        self.assertIn(render_journal_review_block(), captured['system'])
         self.assertNotIn('## Finishing', captured['system'])
         self.assertNotIn('## Arc', captured['system'])
 
