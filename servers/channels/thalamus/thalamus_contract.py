@@ -14,9 +14,10 @@ This file owns: states, audiences, caps and default windows, the `when` /
 drift guard. Mechanics live in thalamus.py; DDL in servers/schema.py
 (thalamus_items / thalamus_deliveries, logs DB).
 
-Time is WALL-CLOCK (iso_now / iso_after) — delivery windows are courier-class
-real-elapsed deadlines, the same documented exemption as the self-channel;
-nothing here is on the eval-replay conversation-time path.
+Time is WALL-CLOCK (iso_now / iso_after / iso_cutoff) — delivery windows and
+the producer's settled-recently window are courier-class real-elapsed spans
+over transaction-time columns, the same documented exemption as the
+self-channel; nothing here is on the eval-replay conversation-time path.
 
 Design: docs/THALAMUS-DESIGN.md
 """
@@ -42,6 +43,10 @@ STATE_EXPIRED = 'expired'      # window ended — LOUD for an unanswered ask
                                # (the dead-letter fix), natural for a notice
 STATE_SENT = 'sent'            # terminal at file(): delegated live-now
                                # broadcast — the courier owns its death
+STATES = (STATE_OPEN, STATE_ANSWERED, STATE_DISMISSED, STATE_WITHDRAWN,
+          STATE_EXPIRED, STATE_SENT)  # the closed lifecycle — every
+                                      # partition of it (fate_of) is checked
+                                      # against this tuple
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -115,6 +120,9 @@ RENDER_REFS_MAX = 3        # refs resolved inline per item, rest named
 ASK_EXPIRES_DAYS = 14      # needs_answer window; expiry past it is LOUD
 NOTICE_EXPIRES_DAYS = 7    # undated-notice window
 REMIND_GRACE_DAYS = 7      # dated items: expiry = deliver_at + grace
+PRODUCER_VIEW_SETTLED_DAYS = 7  # a producer sees its item's settled outcome
+                                # this long after it settled; open items it
+                                # sees regardless (the open-pin rule)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -142,6 +150,31 @@ def kind_of(item):
     if item.get('deliver_at'):
         return KIND_REMINDER
     return KIND_NOTICE
+
+
+# FATE — how an item ENDED, as its producer should hear it: the one
+# derivation mirroring kind_of, so no consumer re-partitions the state space
+# (an expired ASK is the dead-letter case and says so). None = the producer's
+# own act (withdrawn) or the courier's (sent): nothing to report back.
+FATE_OPEN = 'open'
+FATE_ANSWERED = 'answered'
+FATE_DISMISSED = 'dismissed'
+FATE_EXPIRED = 'expired'
+FATE_EXPIRED_UNANSWERED = 'expired, unanswered'
+_FATE_BY_STATE = {STATE_OPEN: FATE_OPEN, STATE_ANSWERED: FATE_ANSWERED,
+                  STATE_DISMISSED: FATE_DISMISSED, STATE_EXPIRED: FATE_EXPIRED}
+FATE_STATES = tuple(_FATE_BY_STATE)  # the states a producer hears about
+NO_FATE_STATES = (STATE_WITHDRAWN, STATE_SENT)  # its own act / the courier's
+assert set(FATE_STATES) | set(NO_FATE_STATES) == set(STATES), \
+    'fate_of must partition STATES — a new state needs a fate or a reason'
+
+
+def fate_of(item):
+    """item dict (state + needs_answer suffice) → FATE_* or None."""
+    fate = _FATE_BY_STATE.get(item.get('state'))
+    if fate == FATE_EXPIRED and kind_of(item) == KIND_ASK:
+        return FATE_EXPIRED_UNANSWERED
+    return fate
 
 
 # ═══════════════════════════════════════════════════════════════

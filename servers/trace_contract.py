@@ -7,7 +7,8 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
-from servers.loud_truncation import cap_text_loud, cap_list_loud
+from servers.loud_truncation import (cap_text_loud, cap_list_loud,
+                                     compose_block_loud, one_line)
 
 
 # ── SCALES ──
@@ -1009,8 +1010,7 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
              'to-do list):' % label]
     for n in notes:
         tag = (n.get('tag') or '').strip()
-        head = ('%s · ' % tag) if tag else ''
-        line = '- %s%s · %s' % (head, n.get('subject', ''), n.get('note', ''))
+        line = _journal_line(tag, n.get('subject', ''), n.get('note', ''))
         # Open items render their persistence: the loader computed ×N (distinct
         # runs mentioning the subject) and pins the newest note beyond the
         # window. Past the threshold, the nudge appears ON the item, in the run
@@ -1037,6 +1037,62 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
                 % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
+
+
+# ── Producer view: what the encoder told or asked, and how it ended ──
+# The READ side of the addressed verbs, after the residue notes. MINIMAL:
+# outcomes only — open / answered: <text> / dismissed / expired — never
+# delivery counts, moments or dates (the encoder's job is its perspective
+# slice, not managing its mail; delivery state is the Thalamus's). The
+# binding does the join and hands plain rows {tag, subject, note, fate,
+# answer}; the fate tokens are thalamus_contract.FATE_*, phrased here.
+PRODUCER_VIEW_MAX = 10           # rows — loud overflow, never a silent cut
+PRODUCER_VIEW_BLOCK_MAX = 2500   # chars — the block's own budget, like every
+                                 # other injected block
+PRODUCER_VIEW_NOTE_LIMIT = 300   # an item body, or an answer, is one line here
+PRODUCER_VIEW_SUBJECT_LIMIT = 80  # a subject is a key, not prose
+PRODUCER_VIEW_LABEL = ('YOUR MESSAGES — what you told or asked, and how it '
+                       'ended (not a to-do list):')
+
+
+def _journal_line(tag, subject, note):
+    """The one line grammar both journal renders share: `- tag · subject ·
+    note` (tag omitted when empty) — the mirror of the write format."""
+    head = ('%s · ' % tag) if tag else ''
+    return '- %s%s · %s' % (head, subject, note)
+
+
+def _producer_view_line(r):
+    """One row: {tag, subject, note, fate, answer} — the binding built every
+    key. Note and answer are flattened and capped so a long or multi-line
+    answer cannot forge rows or blow the budget."""
+    from servers.channels.thalamus.thalamus_contract import FATE_ANSWERED
+    fate = r['fate']
+    if fate == FATE_ANSWERED:
+        fate = 'answered: %s' % cap_text_loud(one_line(r['answer']),
+                                              PRODUCER_VIEW_NOTE_LIMIT)
+    return '%s — %s' % (
+        _journal_line(r['tag'],
+                      cap_text_loud(one_line(r['subject']),
+                                    PRODUCER_VIEW_SUBJECT_LIMIT),
+                      cap_text_loud(one_line(r['note']),
+                                    PRODUCER_VIEW_NOTE_LIMIT)), fate)
+
+
+def render_producer_view(rows):
+    """Render rows (already ordered open-first, newest-settled first) into
+    the prompt block; '' for none — a producer that never spoke sees no new
+    block. Two loud caps: row count and block chars; the tail names what it
+    dropped."""
+    if not rows:
+        return ''
+    body, kept, _ = compose_block_loud(
+        rows[:PRODUCER_VIEW_MAX], _producer_view_line, PRODUCER_VIEW_BLOCK_MAX,
+        reserved=len(PRODUCER_VIEW_LABEL) + 1, sep='\n')
+    out = PRODUCER_VIEW_LABEL + '\n' + body
+    if len(rows) > kept:
+        out += '\n(+%d older, not shown)' % (len(rows) - kept)
+    return out + '\n\n'
 
 
 def parse_journal_notes(text):

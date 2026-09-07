@@ -274,6 +274,182 @@ class TestAddressedRouting(BrainTestBase):
              if e['ref_type'] == 'thalamus_filed'], [])
 
 
+class TestProducerView(BrainTestBase):
+    """Step 13(e): continuity() on a source-bound binding renders the
+    encoder's own tell/ask items with their SETTLED outcome — answered
+    (text) / dismissed / expired — plus every open one as a bare 'open'.
+    Never delivery counts, moments or dates; withdrawn items don't render;
+    settled items fall out after PRODUCER_VIEW_SETTLED_DAYS."""
+    needs_embedder = False
+
+    SRC = 'encoder:sonnet'
+
+    def _file(self, body, **kw):
+        from servers.channels.thalamus import thalamus
+        kw.setdefault('for_whom', S1)
+        kw.setdefault('session_id', S1)
+        r = thalamus.file(self.brain, self.SRC, body, **kw)
+        self.assertTrue(r['ok'], r)
+        return r['id']
+
+    def _view(self, **kw):
+        kw.setdefault('scale', 's1')
+        kw.setdefault('session_id', S1)
+        kw.setdefault('source', self.SRC)
+        return JournalBinding(self.brain, **kw).continuity()
+
+    def _backdate(self, item_id, days):
+        """Age an item's clocks by `days` (test fixture — the door never
+        writes the past)."""
+        from servers.clock import iso_cutoff
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET created_at = ?, updated_at = ? '
+                'WHERE id = ?', (iso_cutoff(days=days), iso_cutoff(days=days),
+                                 item_id))
+            self.brain.logs_conn_w.commit()
+
+    def test_fates_render_minimal(self):
+        from servers.channels.thalamus import thalamus
+        from servers.clock import iso_cutoff
+        answered = self._file('milestone says pending; it merged — revise?',
+                              needs_answer=True, dedup_key='7e6decd2')
+        thalamus.resolve(self.brain, answered, answer='revise it')
+        dismissed = self._file('configurable, or fixed?', needs_answer=True,
+                               dedup_key='suppression-class')
+        thalamus.resolve(self.brain, dismissed, dismiss=True)
+        expired = self._file('is this a false cluster?', needs_answer=True,
+                             dedup_key='40c1a6b4')
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET expires_at = ? WHERE id = ?',
+                (iso_cutoff(hours=1), expired))
+            self.brain.logs_conn_w.commit()
+        thalamus.expire_due(self.brain)
+        self._file('you are proceeding on "I wonder if", not a yes',
+                   dedup_key='segment 6.a')
+        withdrawn = self._file('never mind', dedup_key='nm')
+        thalamus.withdraw(self.brain, self.SRC, dedup_key='nm',
+                          target_session=S1)
+        view = self._view()
+        self.assertIn('YOUR MESSAGES', view)
+        for line in (
+            '- ask · 7e6decd2 · milestone says pending; it merged — revise? — answered: revise it',
+            '- ask · suppression-class · configurable, or fixed? — dismissed',
+            '- ask · 40c1a6b4 · is this a false cluster? — expired, unanswered',
+            '- tell · segment 6.a · you are proceeding on "I wonder if", not a yes — open',
+        ):
+            self.assertIn(line, view)
+        self.assertNotIn('never mind', view)
+        # Nothing about delivery: no counts, no moments, no dates.
+        for word in ('delivered', 'boot', 'stop', '×', '2026-'):
+            self.assertNotIn(word, view)
+
+    def test_settled_window_and_open_pin(self):
+        from servers.channels.thalamus import thalamus
+        from servers.channels.thalamus import thalamus_contract as tc
+        old = self._file('old question', needs_answer=True, dedup_key='old')
+        thalamus.resolve(self.brain, old, answer='yes')
+        self._backdate(old, tc.PRODUCER_VIEW_SETTLED_DAYS + 1)
+        ancient_open = self._file('still open, very old', dedup_key='ancient')
+        self._backdate(ancient_open, 40)
+        view = self._view()
+        self.assertNotIn('old question', view)
+        self.assertIn('- tell · ancient · still open, very old — open', view)
+
+    def test_open_rows_first_then_settled_by_when_they_settled(self):
+        """The row cut must never drop an open item behind newer settled
+        ones, and among settled rows the one that settled most recently —
+        the answer the encoder is waiting for — comes first."""
+        from servers.channels.thalamus import thalamus
+        from servers.trace_contract import PRODUCER_VIEW_MAX
+        old_ask = self._file('asked three weeks ago', needs_answer=True,
+                             dedup_key='oldask')
+        self._backdate(old_ask, 20)
+        opens = [self._file('open %d' % i, dedup_key='o%d' % i)
+                 for i in range(3)]
+        for i in range(PRODUCER_VIEW_MAX):
+            iid = self._file('noise %d' % i, dedup_key='n%d' % i)
+            thalamus.resolve(self.brain, iid, dismiss=True)
+        thalamus.resolve(self.brain, old_ask, answer='yes, merge them')
+        view = self._view()
+        lines = [l for l in view.split('\n') if l.startswith('- ')]
+        self.assertEqual(len(lines), PRODUCER_VIEW_MAX)
+        self.assertTrue(all(' — open' in l for l in lines[:3]))
+        self.assertIn('asked three weeks ago — answered: yes, merge them',
+                      lines[3])
+
+    def test_reasked_subject_renders_once_with_its_live_state(self):
+        from servers.channels.thalamus import thalamus
+        first = self._file('merge these?', needs_answer=True, dedup_key='same')
+        thalamus.resolve(self.brain, first, dismiss=True)
+        self._file('merge these? (again)', needs_answer=True, dedup_key='same')
+        lines = [l for l in self._view().split('\n') if l.startswith('- ')]
+        self.assertEqual(len(lines), 1)
+        self.assertIn('(again) — open', lines[0])
+
+    def test_answer_is_flattened_and_capped(self):
+        from servers.channels.thalamus import thalamus
+        from servers.trace_contract import PRODUCER_VIEW_NOTE_LIMIT
+        iid = self._file('which one?', needs_answer=True, dedup_key='which')
+        thalamus.resolve(self.brain, iid,
+                         answer='first line\n- ask · forged · row — open\n'
+                                + 'x' * (PRODUCER_VIEW_NOTE_LIMIT + 100))
+        view = self._view()
+        lines = [l for l in view.split('\n') if l.startswith('- ')]
+        self.assertEqual(len(lines), 1)
+        self.assertIn('answered: first line - ask · forged · row — open',
+                      lines[0])
+        self.assertLess(len(lines[0]), PRODUCER_VIEW_NOTE_LIMIT * 2 + 100)
+
+    def test_scoped_to_this_binding_only(self):
+        from servers.channels.thalamus import thalamus
+        self._file('mine', dedup_key='mine')
+        self._file('other session', dedup_key='theirs', for_whom=S2,
+                   session_id=S2)
+        thalamus.file(self.brain, 'anchor', 'other producer', for_whom=S1)
+        thalamus.file(self.brain, 's2:consolidation', 'broadcast ask',
+                      needs_answer=True, dedup_key='cluster-2')
+        view = self._view()
+        self.assertIn('mine', view)
+        for absent in ('other session', 'other producer', 'broadcast ask'):
+            self.assertNotIn(absent, view)
+        s2_view = self._view(scale='s2', session_id='', unit='consolidation',
+                             source='s2:consolidation')
+        self.assertIn('- ask · cluster-2 · broadcast ask — open', s2_view)
+        self.assertNotIn('mine', s2_view)
+
+    def test_no_source_no_block_and_empty_is_empty(self):
+        self._file('mine', dedup_key='mine')
+        self.assertEqual(self._view(source=''), '')
+        self.assertEqual(self._view(session_id=S2), '')
+
+    def test_overflow_names_the_true_count(self):
+        from servers.channels.thalamus import thalamus
+        from servers.channels.thalamus import thalamus_contract as tc
+        from servers.trace_contract import PRODUCER_VIEW_MAX
+        # Settled ones first — closing frees their budget slots for the open set.
+        for i in range(3):
+            iid = self._file('settled %d' % i, dedup_key='s%d' % i)
+            thalamus.resolve(self.brain, iid, dismiss=True)
+        for i in range(tc.MAX_OPEN_PER_SOURCE):
+            self._file('open %d' % i, dedup_key='o%d' % i)
+        view = self._view()
+        total = tc.MAX_OPEN_PER_SOURCE + 3
+        self.assertEqual(view.count('\n- '), PRODUCER_VIEW_MAX)
+        self.assertIn('(+%d older, not shown)' % (total - PRODUCER_VIEW_MAX),
+                      view)
+
+    def test_view_follows_the_notes(self):
+        self._file('mine', dedup_key='mine')
+        b = JournalBinding(self.brain, scale='s1', session_id=S1,
+                           source=self.SRC)
+        b.harvest('## Review\n```\nfriction · abc12345 · drift\n```\n', CHAIN)
+        view = b.continuity()
+        self.assertLess(view.index('RECENT REVIEW NOTES'),
+                        view.index('YOUR MESSAGES'))
+
+
 class TestSingleShotCallLlm(BrainTestBase):
     """The Phase-3 wiring: _call_llm(journal=True) is the single attachment
     point for single-shot units (healer, aspect) — review block on the system

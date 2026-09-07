@@ -1005,7 +1005,10 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             continuity += "Session arc: %s\n" % prev_context
         body = ""
         if continuity:
-            body += "<continuity>\n%s</continuity>\n\n" % continuity
+            # Escaped like every other free-form string in the lived prompt:
+            # the producer view carries operator-authored answer text, which
+            # must not be able to close this block or forge a sibling tag.
+            body += "<continuity>\n%s</continuity>\n\n" % _xml_escape(continuity)
         if failed_block:
             body += "<failed_encodes>\n%s</failed_encodes>\n\n" % failed_block
         if node_catalog:
