@@ -116,7 +116,8 @@ class TestJournalNotesWrite(BrainTestBase):
         r = self.brain.write_journal_notes(
             final_text="Encoded 3 nodes. No review here.",
             chain_id='s2-20260101000006-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section',
+                     'addressed': [], 'resolved': []}
 
     def test_marker_present_but_no_fence_warns(self):
         # `## Review` present but no fenced block → format drift, distinct status.
@@ -130,7 +131,8 @@ class TestJournalNotesWrite(BrainTestBase):
         r = self.brain.write_journal_notes(
             final_text="## Review\n```\n```\n",
             chain_id='s2-20260101000067-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'empty_review'}
+        assert r == {'written': 0, 'malformed': 0, 'status': 'empty_review',
+                     'addressed': [], 'resolved': []}
 
     def test_prose_outside_fence_not_parsed(self):
         # Review #4: prose before the fence with a stray '·' must NOT become a
@@ -204,7 +206,8 @@ class TestJournalNotesWrite(BrainTestBase):
                  "```\n")
         r = self.brain.write_journal_notes(
             final_text=final, chain_id='s2-20260101000011-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section'}
+        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section',
+                     'addressed': [], 'resolved': []}
 
     def test_headingless_mixed_fence_not_salvaged(self):
         # One valid note + one malformed line → all-or-nothing gate rejects.
@@ -265,6 +268,82 @@ class TestJournalNotesWrite(BrainTestBase):
         r = self.brain.write_journal_notes(
             final_text=final, chain_id='s2-20260101000016-consolidation', scale='s2')
         assert r['written'] == 1 and r['status'] == 'salvaged'
+
+
+class TestJournalNotesAddressed(BrainTestBase):
+    """The write door PARTITIONS: tell/ask lines come back under 'addressed'
+    (messages to the people working, not residue — the binding routes them)
+    and this run's resolve lines under 'resolved'; the door holds no routing
+    policy and returns one shape on every path."""
+    needs_embedder = False
+
+    TEXT = ('## Review\n```\n'
+            'friction · abc12345 · drift\n'
+            'tell · segment 6.a · confirm first\n'
+            'ask · 7e6decd2 · revise, or leave?\n'
+            'resolved · 9a9a9a9a · done\n'
+            '```\n')
+
+    def test_addressed_lines_returned_not_written(self):
+        r = self.brain.write_journal_notes(
+            final_text=self.TEXT, chain_id='s1e-aaaaaaaa-1', scale='s1',
+            session_id='sess-a')
+        self.assertEqual((r['written'], r['malformed'], r['status']),
+                         (2, 0, 'ok'))
+        self.assertEqual([(n['tag'], n['subject']) for n in r['addressed']],
+                         [('tell', 'segment 6.a'), ('ask', '7e6decd2')])
+        self.assertEqual([(n['tag'], n['subject'], n['note'])
+                          for n in r['resolved']],
+                         [('resolved', '9a9a9a9a', 'done')])
+        tags = sorted(n['tag'] for n in
+                      self.brain.journal_notes(scale='s1', session_id='sess-a'))
+        self.assertEqual(tags, ['friction', 'resolved'])
+
+    def test_two_field_addressed_line_is_about_the_run(self):
+        """`tell · message` (no subject — the shape a model reaches for) is
+        a message about the run itself, never a residue note whose subject
+        is the word 'tell'."""
+        from servers.trace_contract import (parse_journal_notes,
+                                            JOURNAL_RUN_SUBJECT)
+        notes, malformed = parse_journal_notes(
+            'tell · you are proceeding on "I wonder if", not a yes\n'
+            'ask · 7e6decd2\n')
+        self.assertEqual(malformed, [])
+        self.assertEqual(
+            [(n['tag'], n['subject'], n['note']) for n in notes],
+            [('tell', JOURNAL_RUN_SUBJECT,
+              'you are proceeding on "I wonder if", not a yes'),
+             ('ask', JOURNAL_RUN_SUBJECT, '7e6decd2')])
+        r = self.brain.write_journal_notes(
+            final_text='## Review\n```\ntell · confirm first\n```\n',
+            chain_id='s1e-aaaaaaaa-5', scale='s1', session_id='sess-e')
+        self.assertEqual([n['subject'] for n in r['addressed']],
+                         [JOURNAL_RUN_SUBJECT])
+        self.assertEqual(r['written'], 0)
+
+    def test_one_shape_on_every_path(self):
+        r = self.brain.write_journal_notes(
+            final_text='## Review\n```\n```\n', chain_id='s1e-aaaaaaaa-3',
+            scale='s1', session_id='sess-c')
+        self.assertEqual(r, {'written': 0, 'malformed': 0,
+                             'status': 'empty_review',
+                             'addressed': [], 'resolved': []})
+
+    def test_undelivered_rides_the_note_row_and_renders(self):
+        """A rejected addressed line kept as residue carries the door's
+        reason as a FIELD — the note stays the line the encoder wrote and the
+        reason cannot be eaten by the note cap."""
+        from servers.trace_contract import render_journal_notes_prefix
+        n = self.brain.write_journal_note_rows(
+            [{'tag': 'ask', 'subject': '7e6decd2', 'note': 'revise, or leave?',
+              'undelivered': 'thalamus budget: cap 8'}],
+            chain_id='s1e-aaaaaaaa-4', scale='s1', session_id='sess-d')
+        self.assertEqual(n, 1)
+        notes = self.brain.journal_notes(scale='s1', session_id='sess-d')
+        self.assertEqual((notes[0]['note'], notes[0]['undelivered']),
+                         ('revise, or leave?', 'thalamus budget: cap 8'))
+        self.assertIn('— not delivered: thalamus budget: cap 8',
+                      render_journal_notes_prefix(notes))
 
 
 class TestJournalNotesRecallGuard(BrainTestBase):

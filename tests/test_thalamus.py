@@ -108,6 +108,25 @@ class TestFile(ThalamusBase):
         self.assertFalse(r['filed'])
         self.assertIn('before it ever becomes due', r['error'])
 
+    def test_dedup_identity_includes_the_target(self):
+        """(source, dedup_key, target_session): the same key filed for two
+        sessions is two items; withdraw by key closes only the named
+        target's item. One producer string serves every session."""
+        a = self._file('for A', dedup_key='k', for_whom=S1)
+        b = self._file('for B', dedup_key='k', for_whom=S2)
+        c = self._file('broadcast', dedup_key='k')
+        self.assertEqual(len({a['id'], b['id'], c['id']}), 3)
+        self.assertFalse(b.get('updated'))
+        r = thalamus.withdraw(self.brain, 'test', dedup_key='k',
+                              target_session=S2)
+        self.assertTrue(r['ok'])
+        self.assertEqual([self._row(x['id'])[0] for x in (a, b, c)],
+                         [tc.STATE_OPEN, tc.STATE_WITHDRAWN, tc.STATE_OPEN])
+        # Without a target, the key names the broadcast item.
+        self.assertTrue(thalamus.withdraw(self.brain, 'test',
+                                          dedup_key='k')['ok'])
+        self.assertEqual(self._row(c['id'])[0], tc.STATE_WITHDRAWN)
+
     def test_dedup_key_updates_not_duplicates(self):
         r1 = self._file('v1 of the concern', dedup_key='concern-x')
         r2 = self._file('v2 of the concern', dedup_key='concern-x')
@@ -140,17 +159,23 @@ class TestFile(ThalamusBase):
         # notice audience would deliver to exactly one session, ever.
         self.assertEqual(audience, tc.AUDIENCE_EVERY)
 
-    def test_dedup_refile_retargets_and_rearms(self):
-        """for_whom is producer-controlled too: re-filing the same text to a
-        different recipient set must move the row, not silently keep the old
-        one."""
+    def test_dedup_refile_to_another_reader_is_another_item(self):
+        """The reader is part of an item's identity — (source, dedup_key,
+        target_session), the budget's triple. Re-filing a key for a different
+        session is a new item, never a retarget: one producer string serves
+        every session's runs, so a retarget would let one session silently
+        take another's item. Moving an item = withdraw, then file."""
         r1 = self._file('heads up', dedup_key='aim')
         self.assertEqual(self._row(r1['id'])[1], tc.AUDIENCE_FIRST)
         r2 = self._file('heads up', dedup_key='aim', for_whom=S1)
-        self.assertTrue(r2['rearmed'])
-        _, audience, _, _, _, target = self._row(r2['id'])
-        self.assertEqual(target, S1)
-        self.assertEqual(audience, tc.AUDIENCE_FIRST)
+        self.assertNotEqual(r1['id'], r2['id'])
+        self.assertFalse(r2.get('updated'))
+        self.assertEqual(self._row(r1['id'])[5], '')
+        self.assertEqual(self._row(r2['id'])[5], S1)
+        # Within one reader the key still updates, not duplicates.
+        r3 = self._file('heads up, louder', dedup_key='aim', for_whom=S1)
+        self.assertEqual((r3['id'], r3['updated'], r3['rearmed']),
+                         (r2['id'], True, True))
 
     def test_dated_item_keeps_full_window(self):
         """Expiry anchors at deliver_at, not now — an ask due in 3 weeks must
@@ -805,12 +830,22 @@ class TestFiledTrace(ThalamusBase):
         self.assertTrue(rows[2][0]['metadata']['needs_answer'])
         self.assertEqual(rows[2][0]['metadata']['dedup_key'], '7e6decd2')
 
+    def test_s2_run_filing_is_traced_on_its_chain(self):
+        """An S2 unit files broadcast (no session) — its row lands on the
+        s2 run chain with the derived scale."""
+        r = self._file('s2 asks', source='s2:consolidation', needs_answer=True,
+                       run_chain='s2-20260905120000-consolidation')
+        rows = self._filed_rows('s2-20260905120000-consolidation')
+        self.assertEqual([(e['scale'], e['ref_id']) for e in rows],
+                         [('s2', r['id'])])
+        self.assertEqual(rows[0]['metadata']['target_session'], '')
+
     def test_unregistered_scale_is_loud_and_never_masks_the_filing(self):
-        """thalamus_filed is s1-only while S2 stays in boot: an s2 chain
-        fails at the write boundary, is logged, and the item still files."""
-        r = self._file('s2 tried', run_chain='s2-20260905-consolidation')
+        """A filing is a run's act, not a turn's: an s0 chain fails at the
+        write boundary, is logged, and the item still files."""
+        r = self._file('s0 tried', run_chain='s0-aaaaaaaa-3')
         self.assertTrue(r['ok'])
-        self.assertEqual(self._filed_rows('s2-20260905-consolidation'), [])
+        self.assertEqual(self._filed_rows('s0-aaaaaaaa-3'), [])
         n = self.brain.logs_conn.execute(
             "SELECT COUNT(*) FROM debug_log WHERE event_type='error' "
             "AND source = ?", ('thalamus_filed_trace_failed',)).fetchone()[0]

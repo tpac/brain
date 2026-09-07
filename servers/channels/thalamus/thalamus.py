@@ -106,8 +106,12 @@ def file(brain, source, body, *, needs_answer=False, when=None, for_whom=None,
     filing session — the locked stream-speech render must stay honest) and the
     row goes terminal 'sent'. Everything else queues for pull delivery.
 
-    Identity: a repeat (source, dedup_key) UPDATES the open item instead of
-    inserting — identity is producer-owned or absent, never derived from text.
+    Identity: a repeat (source, dedup_key, target_session) UPDATES the open
+    item instead of inserting — identity is producer-owned or absent, never
+    derived from text. The target is part of it for the same reason it is
+    part of the budget key: one producer string (the Scribe's) serves every
+    session, and a key re-used for another session is another item, not a
+    retarget of the first.
     Both forms return updated=True; they differ in `rearmed`. A repeat that
     CHANGES any producer-controlled delivery attribute — body, refs, when,
     needs_answer, for_whom — rewrites the item to what this call describes
@@ -221,8 +225,9 @@ def _file_queued(brain, source, body, refs_json, now, *, audience,
             existing = conn.execute(
                 'SELECT id, body, refs, deliver_at, needs_answer, audience,'
                 ' target_session FROM thalamus_items '
-                'WHERE source = ? AND dedup_key = ? AND state = ? LIMIT 1',
-                (source, dedup_key, tc.STATE_OPEN)).fetchone()
+                'WHERE source = ? AND dedup_key = ? AND target_session = ?'
+                ' AND state = ? LIMIT 1',
+                (source, dedup_key, target_session, tc.STATE_OPEN)).fetchone()
             if existing:
                 # The gate compares EVERY producer-controlled delivery
                 # attribute, and the UPDATE sets each one it compares: a
@@ -536,10 +541,11 @@ def resolve(brain, item_id, answer=None, defer_until=None, dismiss=False):
     return result
 
 
-def withdraw(brain, source, item_id=None, dedup_key=None):
-    """Producer retraction — a producer may close ITS OWN open item (by id or
-    dedup_key). Without this, a condition that resolved itself waits as a
-    stale ask: the wallpaper defect one level up. Source must match."""
+def withdraw(brain, source, item_id=None, dedup_key=None, target_session=''):
+    """Producer retraction — a producer may close ITS OWN open item (by id, or
+    by the (dedup_key, target_session) identity it filed under). Without
+    this, a condition that resolved itself waits as a stale ask: the
+    wallpaper defect one level up. Source must match."""
     if not (item_id or dedup_key):
         return {'ok': False, 'error':
                 'thalamus.withdraw: pass item_id or dedup_key'}
@@ -552,8 +558,10 @@ def withdraw(brain, source, item_id=None, dedup_key=None):
         else:
             row = conn.execute(
                 'SELECT source, state, id FROM thalamus_items WHERE '
-                'source = ? AND dedup_key = ? AND state = ?',
-                (source, dedup_key, tc.STATE_OPEN)).fetchone()
+                'source = ? AND dedup_key = ? AND target_session = ?'
+                ' AND state = ?',
+                (source, dedup_key, target_session or '',
+                 tc.STATE_OPEN)).fetchone()
             item_id = row[2] if row else None
         if not row:
             return {'ok': False, 'error': 'thalamus.withdraw: no such item'}

@@ -250,7 +250,8 @@ class BrainTracesMixin:
         from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
                                       JOURNAL_CONTINUITY_RUNS_DEFAULT,
                                       JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
-                                      JOURNAL_OPEN_PIN_CAP, resolve_target)
+                                      JOURNAL_OPEN_PIN_CAP, resolve_target,
+                                      journal_key)
         events = self.query_traces(
             ref_type='journal_note', scale=scale, ref_id=subject,
             session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
@@ -262,10 +263,10 @@ class BrainTracesMixin:
                 k = JOURNAL_CONTINUITY_RUNS.get(key, JOURNAL_CONTINUITY_RUNS_DEFAULT)
 
             def _tag(e):
-                return ((e.get('metadata') or {}).get('tag') or '').strip().casefold()
+                return journal_key((e.get('metadata') or {}).get('tag'))
 
             def _subj(e):
-                return (e.get('ref_id') or '').strip().casefold()
+                return journal_key(e.get('ref_id'))
 
             def _note(e):
                 return (e.get('metadata') or {}).get('note') or ''
@@ -357,6 +358,7 @@ class BrainTracesMixin:
         return [{
             'tag': (e.get('metadata') or {}).get('tag', ''),
             'note': (e.get('metadata') or {}).get('note', ''),
+            'undelivered': (e.get('metadata') or {}).get('undelivered', ''),
             'subject': e.get('ref_id', ''),
             'chain_id': e.get('chain_id', ''),
             'created_at': e.get('created_at', ''),
@@ -369,9 +371,16 @@ class BrainTracesMixin:
         own journal_note trace row (event_type='delta', ref_id=subject), all
         sharing the run's chain_id.
 
+        The JOURNAL_ADDRESSED_TAGS notes (tell/ask) are NOT written — they are
+        messages to the people working, not residue for the next run — and
+        come back under 'addressed' for the caller to route; this run's
+        resolve-verb lines come back under 'resolved' ({subject, note}) so the
+        caller can close what they name. The traces layer only partitions; it
+        never imports a channel and holds no routing policy.
+
         Returns a structured result so the caller (and the trace) can see what
-        happened: `{'written': int, 'malformed': int, 'status': str}` where
-        status is one of:
+        happened: `{'written': int, 'malformed': int, 'status': str,
+        'addressed': [...], 'resolved': [...]}` where status is one of:
           • 'ok'                 — a non-empty review processed (counts tell the rest)
           • 'salvaged'           — no `## Review` heading, but a heading-less fence
                                    of valid notes was harvested (drift, logged loud)
@@ -390,9 +399,16 @@ class BrainTracesMixin:
         a journal write must never break or roll back the encoder's actual run.
         """
         from .trace_contract import (extract_review_block, parse_journal_notes,
-                                      build_journal_note_metadata,
                                       salvage_review_fence,
-                                      JOURNAL_REVIEW_MARKER)
+                                      JOURNAL_REVIEW_MARKER,
+                                      JOURNAL_ADDRESSED_TAGS,
+                                      JOURNAL_RESOLVE_TAGS, journal_key)
+
+        def _result(written, malformed, status, addressed=(), resolved=()):
+            return {'written': written, 'malformed': malformed,
+                    'status': status, 'addressed': list(addressed),
+                    'resolved': list(resolved)}
+
         try:
             salvaged = False
             block = extract_review_block(final_text)
@@ -414,58 +430,94 @@ class BrainTracesMixin:
                         'journal_note_no_review_extracted',
                         'chain=%s: %r present but no parseable fenced block'
                         % (chain_id, JOURNAL_REVIEW_MARKER))
-                    return {'written': 0, 'malformed': 0,
-                            'status': 'no_review_extracted'}
+                    return _result(0, 0, 'no_review_extracted')
                 else:
                     self._log_warning(
                         'journal_note_no_review_section',
                         'chain=%s: encoder final_text (%d chars) has no %r section'
                         % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
-                    return {'written': 0, 'malformed': 0,
-                            'status': 'no_review_section'}
+                    return _result(0, 0, 'no_review_section')
             if block == '':
                 # Fenced review present but empty — the legit "clean run, nothing
                 # to note" case. Visible (debug), not an alarm.
                 self.log_debug('journal_note_empty_review', 'write_journal_notes',
                                chain_id=chain_id)
-                return {'written': 0, 'malformed': 0, 'status': 'empty_review'}
+                return _result(0, 0, 'empty_review')
 
             notes, malformed = parse_journal_notes(block)
             for raw in malformed:
                 self._log_warning('journal_note_malformed',
                                   'chain=%s: %s' % (chain_id, raw[:200]))
-            events = []
+
+            # One pass partitions the parsed notes (parse_journal_notes
+            # already strips every field and rejects empty subjects):
+            # addressed lines go back to the caller, the rest are residue,
+            # and resolve lines are also named so the caller can close items.
+            residue, addressed, resolved = [], [], []
             for n in notes:
-                subject = (n.get('subject') or '').strip()
-                if not subject:
-                    self._log_warning('journal_note_no_subject',
-                                      'chain=%s: %s' % (chain_id, str(n)[:200]))
+                tag = journal_key(n.get('tag'))
+                if tag in JOURNAL_ADDRESSED_TAGS:
+                    addressed.append(n)
                     continue
-                try:
-                    meta = build_journal_note_metadata(note=n['note'],
-                                                       tag=n.get('tag', ''))
-                except ValueError as e:
-                    self._log_warning('journal_note_build_failed',
-                                      'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
-                    continue
-                events.append({
-                    'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
-                    'ref_type': 'journal_note', 'ref_id': subject,
-                    'summary': meta['note'][:80], 'metadata': meta,
-                    'session_id': session_id,
-                })
-            if events:
-                self._trace_dal.append_batch(events)
-            if notes and not events:
-                self._log_warning(
-                    'journal_note_all_dropped',
-                    'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
-                    % (chain_id, len(notes)))
-            return {'written': len(events), 'malformed': len(malformed),
-                    'status': 'salvaged' if salvaged else 'ok'}
+                residue.append(n)
+                if tag in JOURNAL_RESOLVE_TAGS:
+                    resolved.append(n)
         except Exception as e:
             self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
-            return {'written': 0, 'malformed': 0, 'status': 'error'}
+            return _result(0, 0, 'error')
+        # The row write is isolated on its own: a failed batch must not take
+        # the addressed lines down with it — those are messages to a person,
+        # and the caller still routes them (and can keep them as residue).
+        try:
+            written = self.write_journal_note_rows(
+                residue, chain_id=chain_id, scale=scale, session_id=session_id)
+        except Exception as e:
+            self._log_error('journal_note_write_failed', e,
+                            'chain=%s: %d residue row(s) lost; addressed lines '
+                            'handed back' % (chain_id, len(residue)))
+            return _result(0, len(malformed), 'error', addressed, resolved)
+        if residue and not written:
+            self._log_warning(
+                'journal_note_all_dropped',
+                'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
+                % (chain_id, len(residue)))
+        return _result(written, len(malformed),
+                       'salvaged' if salvaged else 'ok', addressed, resolved)
+
+    def write_journal_note_rows(self, notes, *, chain_id, scale, session_id=''):
+        """Write notes ({tag, subject, note[, undelivered]} dicts) as
+        journal_note rows on `chain_id` — the row-writing half of
+        write_journal_notes, also the door a binding uses to keep an
+        addressed line as residue when the Thalamus rejected it
+        (`undelivered` = the door's reason). Notes here may be hand-built, so
+        the per-note guards stay: a subject-less or unbuildable note is
+        skipped and warned, never sinks the batch. Returns the number of rows
+        written."""
+        from .trace_contract import build_journal_note_metadata
+        events = []
+        for n in notes:
+            subject = (n.get('subject') or '').strip()
+            if not subject:
+                self._log_warning('journal_note_no_subject',
+                                  'chain=%s: %s' % (chain_id, str(n)[:200]))
+                continue
+            try:
+                meta = build_journal_note_metadata(
+                    note=n.get('note') or '', tag=n.get('tag', ''),
+                    undelivered=n.get('undelivered', ''))
+            except (ValueError, KeyError) as e:
+                self._log_warning('journal_note_build_failed',
+                                  'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
+                continue
+            events.append({
+                'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
+                'ref_type': 'journal_note', 'ref_id': subject,
+                'summary': meta['note'][:80], 'metadata': meta,
+                'session_id': session_id,
+            })
+        if events:
+            self._trace_dal.append_batch(events)
+        return len(events)
 
     def write_thalamus_filed(self, *, chain_id, session_id, item_id, source,
                              body, target_session='', needs_answer=False,
@@ -479,8 +531,9 @@ class BrainTracesMixin:
         Failure-isolated: the item is already committed when this runs, and a
         trace failure must never undo or mask a filing — logged loud, the
         caller's result stands. A chain whose scale the contract does not
-        register for this ref_type (an S2 run, while S2 stays in boot) is
-        exactly such a failure: LOUD in the errors log, no row."""
+        register for this ref_type (an s0 chain — a filing is a run's act,
+        not a turn's) is exactly such a failure: LOUD in the errors log, no
+        row."""
         try:
             from .trace_contract import (REF_THALAMUS_FILED, scale_for_chain,
                                           build_thalamus_filed_metadata)

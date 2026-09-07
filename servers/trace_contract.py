@@ -67,9 +67,9 @@ REF_THALAMUS_DELIVERY = "thalamus_delivery"
 # filing (ref_id = item id), the symmetry journal_note rows already have. An
 # item's life is then joinable across scales: filed (s1 Δ, the encoder's
 # chain) → delivered (s0 K thalamus_delivery, the session's chain) → answered
-# (item state). Written by brain_traces.write_thalamus_filed; s1-only while
-# the S1 Scribe is the sole machine producer (an S2 scale fails loudly at the
-# write boundary — S2 stays in boot for now).
+# (item state). Written by brain_traces.write_thalamus_filed for every
+# journaling encoder — the S1 Scribe (directed, Stop) and the S2 units
+# (broadcast, boot); never s0 (a filing is a run's act, not a turn's).
 REF_THALAMUS_FILED = "thalamus_filed"
 
 REF_TYPES = {
@@ -160,7 +160,8 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the retired
                                                     # junk purge wrote these; the trace is the only record
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
-                         "journal_note"],           # S2 unit residue (consolidation, community) — one note per row
+                         "journal_note",            # S2 unit residue (consolidation, community) — one note per row
+                         REF_THALAMUS_FILED],       # S2 unit filed a Thalamus item (ref_id = item id)
 
     # Scale 3: reasoning integration
     # Operates on S2's output (clusters, trajectories, landscapes).
@@ -753,6 +754,11 @@ def build_anchor_touched_metadata(**ids):
 JOURNAL_NOTE_METADATA_SHAPE = {
     'note': str,    # the prose: the why / friction / doubt / surprise (required)
     'tag':  str,    # one open word for the KIND of thing (friction, doubt, ...); '' when absent
+    'undelivered': str,  # an addressed line (tell/ask) the Thalamus door rejected,
+                         # kept as residue: the door's reason. '' for a plain note.
+                         # A field, not prose appended to `note` — the note stays
+                         # the line the encoder wrote, and the reason cannot be
+                         # eaten by the note cap.
 }
 
 JOURNAL_NOTE_LIMIT = 600   # a note is terse residue, not an essay — capped loud like other delta text
@@ -805,7 +811,7 @@ def build_thalamus_filed_metadata(*, source, body, target_session='',
     }
 
 
-def build_journal_note_metadata(*, note, tag=''):
+def build_journal_note_metadata(*, note, tag='', undelivered=''):
     """Build trace metadata for one journal note (ref_type='journal_note').
 
     The SUBJECT is the trace's ref_id, supplied by the writer — not here.
@@ -822,6 +828,8 @@ def build_journal_note_metadata(*, note, tag=''):
     return {
         'note': cap_text_loud(note, JOURNAL_NOTE_LIMIT),
         'tag':  cap_text_loud((tag or '').strip(), JOURNAL_TAG_LIMIT),
+        'undelivered': cap_text_loud((undelivered or '').strip(),
+                                     JOURNAL_NOTE_LIMIT),
     }
 
 
@@ -849,6 +857,37 @@ JOURNAL_OPEN_TAGS = ('open', 'still-open')   # still-open: pre-existing wild ali
 # Verbs whose payload is (tag, subject) — the trailing `why` is optional, so a
 # two-field line is a complete lifecycle note rather than a malformed one.
 JOURNAL_LIFECYCLE_TAGS = JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS
+# ── Addressed verbs ──
+# Notes written to the LIVE SESSION, not to the next run: `tell` (a notice)
+# and `ask` (needs an answer). Same `tag · subject · note` line, same parser;
+# the write door hands them back to a binding that has a source, which files
+# each as a Thalamus item — directed to its session when it has one (the
+# Scribe, delivered at Stop), broadcast when it has none (an S2 unit,
+# delivered at boot). A binding without a source writes them as plain notes
+# and warns — no reader exists for them there.
+JOURNAL_TELL_TAG = 'tell'
+JOURNAL_ASK_TAG = 'ask'
+JOURNAL_ADDRESSED_TAGS = (JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
+JOURNAL_RUN_SUBJECT = 'run'   # the subject a two-field addressed line gets —
+                              # "the run itself", the instruction's third kind
+
+
+def journal_key(value):
+    """The comparison form of a journal tag or subject — stripped and
+    casefolded. Every match against the JOURNAL_*_TAGS vocabulary and every
+    subject-equality test (parser, read door, resolve targets, dedup and
+    withdraw keys) goes through this one normalizer, so no two doors can
+    disagree on what "the same subject" means."""
+    return (value or '').strip().casefold()
+
+
+def journal_subject_refs(subject):
+    """The node refs a journal subject implies — the grammar's own rule: a
+    subject that IS a node id refs that node; a tool, an input or the run
+    itself refs nothing. Returns a list (possibly empty)."""
+    from servers.contract import looks_like_node_id
+    key = journal_key(subject)
+    return [key] if looks_like_node_id(key) else []
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
 JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the promote nudge
 # The escalation type is boot-visible: render_standing_items (frame.py) injects
@@ -983,15 +1022,19 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
                 tag or 'open', runs,
                 (' since %s' % since) if since else '',
                 n.get('subject', ''), n.get('note', ''))
-            if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-                # Tool-neutral phrasing: encoders write nodes through different
-                # doors (brain_batch remember op, remember_batch) — name the
-                # node type, not a tool signature.
-                line += (
-                    "\n  ⚠ long-lived — resolve it, or promote it out of the "
-                    "journal: create a `%s`-type node carrying it, then write "
-                    "`resolved · %s · promoted to <id>`"
-                    % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
+        if n.get('undelivered'):
+            # The line was addressed to the people working and the door
+            # refused it — the reason is what the encoder reads next run.
+            line += ' — not delivered: %s' % n['undelivered']
+        if runs >= JOURNAL_OPEN_NUDGE_RUNS:
+            # Tool-neutral phrasing: encoders write nodes through different
+            # doors (brain_batch remember op, remember_batch) — name the
+            # node type, not a tool signature.
+            line += (
+                "\n  ⚠ long-lived — resolve it, or promote it out of the "
+                "journal: create a `%s`-type node carrying it, then write "
+                "`resolved · %s · promoted to <id>`"
+                % (JOURNAL_ESCALATION_TYPE, n.get('subject', '')))
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
 
@@ -1033,16 +1076,21 @@ def parse_journal_notes(text):
         parts = [p.strip() for p in line.split(JOURNAL_NOTE_DELIMITER, 2)]
         if len(parts) == 3:
             tag, subject, note = parts
-        elif parts[0].casefold() in JOURNAL_LIFECYCLE_TAGS:
+        elif journal_key(parts[0]) in JOURNAL_LIFECYCLE_TAGS:
             # `resolved · subject` — a lifecycle verb carries its payload in
             # (tag, subject) and the trailing `why` is optional. Without this
             # branch the two-field default below reads the VERB as the subject,
             # so the lifecycle action is lost and the line looks well-formed.
             tag, subject, note = parts[0], parts[1], ''
+        elif journal_key(parts[0]) in JOURNAL_ADDRESSED_TAGS:
+            # `tell · message` — an addressed verb with no subject is about
+            # the run itself. Without this branch the message becomes a
+            # residue note whose subject is the word "tell", never delivered.
+            tag, subject, note = parts[0], JOURNAL_RUN_SUBJECT, parts[1]
         else:  # delimiter present + maxsplit=2 → exactly 2 parts here
             tag, subject, note = '', parts[0], parts[1]
         if not subject or (not note
-                           and tag.casefold() not in JOURNAL_LIFECYCLE_TAGS):
+                           and journal_key(tag) not in JOURNAL_LIFECYCLE_TAGS):
             malformed.append(raw)
             continue
         notes.append({'tag': tag, 'subject': subject, 'note': note})
@@ -1063,7 +1111,7 @@ def resolve_target(subject, note, known_subjects):
     otherwise a word like `friction` enters the retire set and silently drops
     an unrelated note that happens to use it as a subject.
     """
-    lead = (note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0].strip().casefold()
+    lead = journal_key((note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0])
     return lead if lead and lead in known_subjects else subject
 
 

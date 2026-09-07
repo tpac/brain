@@ -2,8 +2,10 @@
 
 Every journaling encoder (S1 Scribe + the four S2 units) writes the SAME shape
 through `brain.write_journal_notes`: one trace row per note, `event_type='delta'`,
-`ref_type='journal_note'`, subject in `ref_id`, `{note, tag}` in metadata. This
-module is the single dashboard-side reader of that shape.
+`ref_type='journal_note'`, subject in `ref_id`, `{note, tag, undelivered}` in
+metadata (`undelivered` = the Thalamus door's reason when an addressed tell/ask
+line was refused and kept as residue). This module is the single dashboard-side
+reader of that shape.
 
 Two doors, one row formatter:
 
@@ -119,6 +121,7 @@ def _note_row(row) -> dict:
         'open_runs': open_runs,
         'since': since,
         'note': note,
+        'undelivered': (meta.get('undelivered') or '').strip(),
         'created_at': row[6] or '',
     }
 

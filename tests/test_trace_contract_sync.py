@@ -309,8 +309,8 @@ class TestTraceContractSync:
         # S2 unit) — covered by the (s1|s2, delta, journal_note)
         # registrations. write_thalamus_filed: scale is DERIVED from the
         # chain (scale_for_chain), ref_type is the REF_THALAMUS_FILED name —
-        # covered by the (s1, delta) registration; an unregistered scale is
-        # caught at the write boundary and pinned by
+        # covered by the (s1|s2, delta) registrations; an unregistered scale
+        # is caught at the write boundary and pinned by
         # test_thalamus.TestFiledTrace.
         'servers/brain_traces.py',
     }
@@ -706,19 +706,19 @@ class TestJournalNoteContract:
     s1 + s2 delta only — never s0 (notes are an encoder concern, and keeping
     them off s0 is part of the recall guard: s1/s2 traces aren't embedded)."""
 
-    def test_thalamus_filed_is_s1_delta_residue_only(self):
-        """Step 13(d): the filing-side marker rides the S1 Scribe's run
-        chain, is residue (never counted as a run), and is NOT registered
-        for s0 or s2 — S2 stays in boot; an s2 filing must fail loudly at
-        the write boundary, not slip in as a row."""
+    def test_thalamus_filed_is_encoder_delta_residue(self):
+        """The filing-side marker rides a journaling encoder's run chain —
+        the S1 Scribe's and the S2 units' — is residue (never counted as a
+        run), and is NOT registered for s0: a filing is a run's act, not a
+        turn's; an s0 chain must fail loudly at the write boundary."""
         from servers.trace_contract import (REF_TYPES, RESIDUE_REF_TYPES,
                                             REF_THALAMUS_FILED,
                                             validate_trace_event)
-        assert REF_THALAMUS_FILED in REF_TYPES[('s1', 'delta')]
+        for scale in ('s1', 's2'):
+            assert REF_THALAMUS_FILED in REF_TYPES[(scale, 'delta')]
+            assert validate_trace_event(scale, 'delta', REF_THALAMUS_FILED)[0]
         assert REF_THALAMUS_FILED in RESIDUE_REF_TYPES
-        assert validate_trace_event('s1', 'delta', REF_THALAMUS_FILED)[0]
-        for scale in ('s0', 's2'):
-            assert not validate_trace_event(scale, 'delta', REF_THALAMUS_FILED)[0]
+        assert not validate_trace_event('s0', 'delta', REF_THALAMUS_FILED)[0]
 
     def test_thalamus_filed_metadata_is_a_registered_shape(self):
         """The payload is contract-owned and ENFORCED at the write boundary,
@@ -788,12 +788,13 @@ class TestJournalNoteContract:
 
     def test_metadata_shape_keys(self):
         from servers.trace_contract import JOURNAL_NOTE_METADATA_SHAPE
-        assert set(JOURNAL_NOTE_METADATA_SHAPE.keys()) == {'note', 'tag'}
+        assert set(JOURNAL_NOTE_METADATA_SHAPE.keys()) == {'note', 'tag',
+                                                           'undelivered'}
 
     def test_build_defaults_tag_empty(self):
         from servers.trace_contract import build_journal_note_metadata
         m = build_journal_note_metadata(note='merged a1/b2 but unsure')
-        assert m == {'note': 'merged a1/b2 but unsure', 'tag': ''}
+        assert m == {'note': 'merged a1/b2 but unsure', 'tag': '', 'undelivered': ''}
 
     def test_build_strips_tag(self):
         from servers.trace_contract import build_journal_note_metadata

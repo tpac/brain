@@ -209,8 +209,14 @@ class IntegrationUnit:
         if getattr(self, '_journal_binding', None) is None:
             from ..journal import JournalBinding
             self._journal_binding = JournalBinding(
-                self.brain, scale=self.SCALE, unit=self.NAME)
+                self.brain, scale=self.SCALE, source=self.ENCODING_SOURCE,
+                **self._journal_kwargs())
         return self._journal_binding
+
+    def _journal_kwargs(self):
+        """The binding's identity beyond scale and source — an S2 unit is
+        scoped by its NAME; the Scribe overrides with its session (+ arc)."""
+        return {'unit': self.NAME}
 
     def _inject_edge_aspects(self, system_prompt):
         """Append the edge-relation aspect vocabulary so the encoder picks

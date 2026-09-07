@@ -17,11 +17,42 @@ the run chain; and **anything the Thalamus delivers is relayed to a human in
 plain words** — the question and its stakes, never an id, a moment, or the
 producer (id:3e549ac4).
 
-**Locked:** S1 first; review-block entrance; render-join feedback, never
-write-back; directed asks at Stop; filing traced; S2 boot channel untouched;
-budget key = (source, target_session) — "consumers of thalamus will dictate
-that" (Tom, id:1dda87c2). **Shipped:** 13(h) b573f76, 13(c) (see ledger).
-**Open:** the S1 review paragraph wording (eval-gated, Tom's nod).
+**Locked:** review-block entrance; render-join feedback, never write-back;
+directed asks at Stop; filing traced; budget key = (source, target_session) —
+"consumers of thalamus will dictate that" (Tom, id:1dda87c2).
+**Re-ruled late 2026-09-05 (Tom): S1 and S2 unite NOW** — "it's a drift. The
+instructions should be the same and the delivery should be different through
+thalamus." Phase 2b folds into Step 13: ONE review paragraph for every
+encoder; the binding routes on `source` alone (a session → directed → Stop;
+none → broadcast → boot); the open-×N nudge stops naming a node type and says
+`ask · <subject> · <question>`; `journals-escalation` leaves the boot default.
+S2 still DELIVERS at boot — through the Thalamus.
+**Order change:** (e) feedback precedes the lit paragraph — (b) strips
+tell/ask out of the journal, so a lit encoder without (e) forgets it spoke and
+re-tells every run. Sequence now: (h) ✓ (c) ✓ (d) ✓ (b) → (e) → (a) dark → (f).
+**(e) ruled "let's expose", MINIMAL (Tom, 2026-09-06):** the encoder sees
+what it said and the SETTLED outcome only — answered (the text), dismissed,
+not delivered (the reason); an open item renders as a bare "open". Never
+delivery counts, moments or dates (the Thalamus's bookkeeping — two state
+machines). Why expose at all: dedup collapses OPEN items only, so a settled
+ask re-asserted next run is a NEW item, re-delivered forever; and for S2 the
+answer's only actor is the next S2 run — unexposed, every S2 ask is
+fire-and-forget. Why minimal: the encoder's job is its perspective slice, not
+managing its mail.
+**Ruled 2026-09-06 (Tom, "yes new rule"):** an item's IDENTITY is (source,
+dedup_key, target_session) — the budget's triple. Re-filing a key for another
+reader is another item, never a retarget (one producer string serves every
+session; a retarget would let one session take another's item). Moving an
+item = withdraw, then file. `withdraw(dedup_key=…)` takes the target.
+**Shipped:** 13(h) b573f76, 13(c) 2c7acc2, 13(d) 963e5c6.
+**Open:** the unified paragraph wording (eval-gated, Tom's nod); the fate of
+the ~30 live `journals-escalation` nodes (archive behind a backup, or stop
+injecting only); **boot influence** — "the influence of a single tell today is
+very low" (Tom): delivery produces awareness, not action (the Gate 4 ask was
+delivered at every boot for a week, unacted). Not solved here; 13(g) measures
+delivered vs acted per moment, and that number picks the shape (forcing
+render, response-required item, Prompt-moment re-surface). Uniting gives one
+place to fix it.
 
 Step 12 (Prompt moment) is independent — land in either order, merge main
 between. The fourth-correspondent split (`env_message`) is NOT a Thalamus step;
