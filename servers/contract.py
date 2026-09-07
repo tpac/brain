@@ -740,26 +740,16 @@ NODE_FORMAT_DEFAULTS = {
 }
 
 
-# ── get_nodes BATCH-AWARE FORMATTING ──
-# Prevents tool_result context explosion when encoders call get_nodes
-# on large batches of IDs (the community encoder bug: 30-50 nodes returned
-# as raw JSON dumps = 100-200K tokens, blowing past context window).
-#
-# Callers and their typical batch sizes:
-#   Anchor (MCP):           1-5 nodes   → want full detail
-#   S1E encoder:            5-15 nodes  → need content + edges for context
-#   S2 consolidation:       2-8 nodes   → per-cluster inspection
-#   S2 community encoder:   30-50 nodes → coherence check, gist > depth
-#
-# Strategy: render_rich_node() with scaled config. Small batches stay rich;
-# large batches compress content/edges/metadata but keep structure intact.
-
-# Threshold: below this, return raw JSON (no trimming) — preserves Anchor's
-# single-node drill-downs and targeted lookups.
-GET_NODES_SMALL_MAX = 3
-
-# Threshold: up to this, use balanced config — more room than S2CE but bounded.
-GET_NODES_MEDIUM_MAX = 10
+# ── NODE-FETCH RENDER: two views, one selector ──
+# Every tool that hands nodes back by id or by recall — MCP get_nodes, the
+# recall tool's results, an encoder's own get_nodes results — renders through
+# node_format_for(n, rich). Up to GET_NODES_DETAIL_MAX nodes get the DETAIL
+# view: the reader is going to act on these nodes. More get the SCAN view:
+# the reader is judging fit across many, and edges dominate the cost
+# (measured 2026-06: generous content is nearly free, an extra edge is not).
+# One selector for every door is what keeps a recall of three nodes and a
+# get_nodes of the same three reading identically.
+GET_NODES_DETAIL_MAX = 10
 
 # The agent-facing node-count cap for filter_nodes. The DAL read is unbounded
 # (limit=None → all matches — internal id-set scans need every row); this bound
@@ -771,64 +761,55 @@ NODE_QUERY_MAX_LIMIT = 200
 # Default page an agent gets when it names no limit (mirrors EPISODE_DEFAULT_LIMIT).
 NODE_QUERY_DEFAULT_LIMIT = 50
 
-# Balanced: for 4-10 node batches (S1E, consolidation, Anchor multi-node)
-GET_NODES_BALANCED_FORMAT = {
-    'content_limit': 600,       # full enough for encoding decisions
-    'edge_limit': 6,            # relations matter — keep top 6
-    'metadata_limit': 250,
-    'time_format': 'relative',
-    'show_communities': True,   # Anchor's pull: placement as a line, not edges
-    'show_edge_total': True,    # a cut reads "Edges (6 of 9)"
-}
-
-# Compact: for 11+ node batches (S2 community encoder coherence checks)
-GET_NODES_COMPACT_FORMAT = {
-    'content_limit': 400,       # gist only — enough to judge fit
-    'edge_limit': 4,
-    'metadata_limit': 200,
-    'time_format': 'relative',
-    'show_communities': True,
-}
-
-# Small-batch default (<=3 nodes, rich=false): the de-stuffed drill view.
-# Content is the signal you fetched for, so it stays full; the edge tail
-# (40-76% of a well-connected node's payload, weight-sorted) and the heavy
-# correction K/V are what get bounded. This replaces the old <=3 raw-JSON
-# escape hatch — small pulls stay readable without the firehose.
-GET_NODES_SMALL_FORMAT = {
-    'content_limit': None,      # full content — content is signal, not stuffing
-    'edge_limit': 8,            # top-8 by weight: the meaningful constellation
+# DETAIL — the reader will act on these nodes (revise, link, answer from
+# them). Content whole: it is the signal the pull was for. The edge tail
+# (40-76% of a well-connected node's payload) and the heavy correction K/V
+# are what get bounded; the total says when the cut dropped edges.
+GET_NODES_DETAIL_FORMAT = {
+    'content_limit': None,
+    'edge_limit': 8,
     'metadata_limit': 300,
     'correction_render': 'balanced',
     'time_format': 'relative',
-    'show_communities': True,
+    'communities': 'ref',       # Anchor follows ids: "title" (id:xxxxxxxx)
     'show_edge_total': True,
 }
 
-# Full: the rich=true opt-in for get_node/get_nodes — the deliberate
-# "give me everything" drill. NOT the old raw dict dump: still curated
-# through render_rich_node (drops _sys_ fields and raw relation sub-dicts),
-# but uncapped on the dimensions that carry meaning — full content, all edges
-# (weight-sorted), and heavy correction K/V (reasoning + raw quotes).
-GET_NODES_FULL_FORMAT = {
-    'content_limit': None,      # full content
-    'edge_limit': None,         # all edges (None → no slice; see render_rich_node)
+# SCAN — the reader is judging fit across many nodes. 800 chars of content
+# is enough to judge a claim and costs little; the edges are the budget.
+GET_NODES_SCAN_FORMAT = {
+    'content_limit': 800,
+    'edge_limit': 5,
+    'metadata_limit': 200,
+    'correction_render': 'balanced',
+    'time_format': 'relative',
+    'communities': 'ref',
+    'show_edge_total': True,
+}
+
+# rich=True (the MCP opt-in on get_node/get_nodes): DETAIL lifted to every
+# edge and the heavy correction K/V (reasoning + raw quotes) — the deliberate
+# "give me everything" drill, still curated through render_rich_node.
+GET_NODES_RICH_LIFT = {
+    'edge_limit': None,
     'metadata_limit': 400,
     'correction_render': 'heavy',
-    'time_format': 'relative',
-    'show_communities': True,
 }
 
-# The MCP `recall` result render (BrainVoice.format_node) — what Anchor reads
-# when it recalls: the selected nodes, whole content, a short edge tail with
-# its total, and the node's communities.
-RECALL_NODE_FORMAT = {
-    'content_limit': None,
-    'edge_limit': 3,
-    'metadata_limit': 200,
-    'show_communities': True,
-    'show_edge_total': True,
-}
+
+def node_format_for(n, rich=False, explicit=None):
+    """The render config for a fetch of `n` nodes — the one selector behind
+    MCP get_nodes, the recall tool's results and an encoder's get_nodes
+    results. An `explicit` caller config (run_llm_loop's get_nodes_config —
+    how a consumer declares its own representation) wins outright and is
+    never second-guessed; otherwise `rich` lifts DETAIL to the full view,
+    and the count picks DETAIL (act on these) or SCAN (judge across many)."""
+    if explicit is not None:
+        return explicit
+    if rich:
+        return {**GET_NODES_DETAIL_FORMAT, **GET_NODES_RICH_LIFT}
+    return (GET_NODES_DETAIL_FORMAT if n <= GET_NODES_DETAIL_MAX
+            else GET_NODES_SCAN_FORMAT)
 
 # The skinny node shape returned by NodeDAL.filter_nodes (dal.py:2038-2040)
 # when rich=False — id/title/type/confidence/created_at, plus the filtered
@@ -1399,14 +1380,16 @@ def render_rich_node(node, config=None):
 
     # Community membership — its own line, never an edge line: community
     # edges are noise-excluded from `connections` (they carry no claim and
-    # were taking 27% of top-5 slots), and the readers who still want the
-    # placement — Anchor's pulls, the recall surface — opt in here. Off by
-    # default: the encoder catalog is community-blind by design, and the
-    # consolidation cluster block prints its own Communities line.
-    if cfg.get('show_communities') and node.get('communities'):
+    # were taking 27% of top-5 slots). cfg `communities`: 'title' shows the
+    # placement as context (most readers), 'ref' adds the id for a reader
+    # that follows it with a pull (Anchor's tools), unset/off renders nothing
+    # (the consolidation block prints its own line; the picker is
+    # ablation-measured).
+    comm_mode = cfg.get('communities')
+    if comm_mode and node.get('communities'):
         lines.append('  Communities: %s' % ', '.join(
-            '"%s" (id:%s)' % ((c.get('title') or '?')[:100],
-                              (c.get('id') or '?')[:8])
+            ('"%s" (id:%s)' % ((c.get('title') or '?')[:100], (c.get('id') or '?')[:8])
+             if comm_mode == 'ref' else '"%s"' % (c.get('title') or '?')[:100])
             for c in node['communities']))
 
     # Edges — one grammar for every reader, owned by render_edge_lines.

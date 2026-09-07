@@ -249,13 +249,16 @@ class TestFormatNode(BrainTestBase):
     def test_communities_ride_as_their_own_line_where_a_format_opts_in(self):
         """Community membership is a `communities` attachment on the canonical
         pull and renders as ONE `Communities:` line — never as edge lines
-        (community_member is noise-excluded from connections). Off by default
-        and for the encoder catalog; on for Anchor's get_nodes formats and
-        the recall surface Anchor reads."""
-        from servers.contract import GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT
+        (community_member is noise-excluded from connections). cfg
+        `communities`: unset → nothing; 'title' → titles only (the encoders,
+        the picker's full render); 'ref' → "title" (id) for the reader that
+        follows ids with a pull (Anchor's get_nodes / recall / inject)."""
+        from servers.contract import (
+            GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT, node_format_for)
         from servers.scales.s1.encode_contract import S1_NODE_CONFIG
         from servers.scales.s1.surface_contract import (
-            SURFACE_ARC_FORMAT, HAIKU_FORMAT, resolve_surface_format)
+            SURFACE_ARC_FORMAT, HAIKU_FORMAT, HAIKU_FORMAT_LEAN, resolve_surface_format)
+        from servers.scales.s2.consolidation_contract import CONSOLIDATION_NODE_FORMAT
         nid = self._make_node(title='Member')
         comm = self._make_node(type='community', title='A community')
         self._add_edge(comm, nid, relation='community_member', weight=0.9)
@@ -268,28 +271,34 @@ class TestFormatNode(BrainTestBase):
         batch = self.brain.get_node([nid, comm])
         self.assertEqual(batch[nid]['communities'], [{'id': comm, 'title': 'A community'}])
         self.assertEqual(batch[comm]['communities'], [])
-        line = '  Communities: "A community" (id:%s)' % comm[:8]
-        self.assertNotIn('Communities:', render_rich_node(node))
-        self.assertNotIn('Communities:', render_rich_node(node, S1_NODE_CONFIG))
-        for cfg in (GET_NODES_SMALL_FORMAT, GET_NODES_FULL_FORMAT, HAIKU_FORMAT,
+        ref_line = '  Communities: "A community" (id:%s)' % comm[:8]
+        title_line = '  Communities: "A community"'
+        for cfg in (None, CONSOLIDATION_NODE_FORMAT, HAIKU_FORMAT_LEAN):
+            self.assertNotIn('Communities:', render_rich_node(node, cfg))
+        for cfg in (S1_NODE_CONFIG, HAIKU_FORMAT):
+            out = render_rich_node(node, cfg)
+            self.assertIn(title_line, out)
+            self.assertNotIn(comm[:8], out)             # no id to link to
+            self.assertNotIn('community_member', out)
+        for cfg in (GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT,
+                    node_format_for(1, rich=True),
                     resolve_surface_format(SURFACE_ARC_FORMAT, 1000)):
             out = render_rich_node(node, cfg)
-            self.assertIn(line, out)
+            self.assertIn(ref_line, out)
             self.assertNotIn('community_member', out)
         # a node in no community renders no empty line
         lonely = self._make_node(title='Lonely')
         self.assertEqual(self.brain.get_node(lonely)['communities'], [])
         self.assertNotIn('Communities:', render_rich_node(
-            self.brain.get_node(lonely), GET_NODES_SMALL_FORMAT))
+            self.brain.get_node(lonely), GET_NODES_DETAIL_FORMAT))
 
     def test_flat_weights_break_ties_by_relation_recency_and_the_cut_says_so(self):
         """Weights are flat in production (0.5/0.6 everywhere), so the top-N
         cut used to be a tie broken by SQL row order. get_node orders equal
-        weights by the relation's created_at, newest first, and Anchor's
-        small/balanced formats say when the cut dropped edges: 'Edges (6 of 7)'.
-        (The encoder catalog says it too, through the view policy's cfg —
-        pinned in test_encoder_view.)"""
-        from servers.contract import GET_NODES_SMALL_FORMAT, GET_NODES_BALANCED_FORMAT
+        weights by relation_age, newest first, and the fetch views say when
+        the cut dropped edges: 'Edges (5 of 7)'. (The encoder catalog says it
+        too, through the view policy's cfg — pinned in test_encoder_view.)"""
+        from servers.contract import GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT
         hub = self._make_node(title='Hub')
         spokes = [self._make_node(title='Spoke %d' % i) for i in range(7)]
         for i, s in enumerate(spokes):
@@ -299,12 +308,12 @@ class TestFormatNode(BrainTestBase):
             self._stamp_relation(hub, s, '2026-01-%02dT00:00:00+00:00' % (i + 1))
         node = self.brain.get_node(hub)
         self.assertEqual([c['id'] for c in node['connections']], spokes[::-1])
-        out = render_rich_node(node, GET_NODES_BALANCED_FORMAT)     # limit 6
-        self.assertIn('  Edges (6 of 7):', out)
+        out = render_rich_node(node, GET_NODES_SCAN_FORMAT)         # limit 5
+        self.assertIn('  Edges (5 of 7):', out)
         self.assertIn('claim 6', out)
-        self.assertNotIn('claim 0', out)          # the oldest is the one cut
+        self.assertNotIn('claim 0', out)          # the oldest are the ones cut
         # a limit that does not cut (8) keeps the bare header
-        self.assertIn('  Edges:\n', render_rich_node(node, GET_NODES_SMALL_FORMAT))
+        self.assertIn('  Edges:\n', render_rich_node(node, GET_NODES_DETAIL_FORMAT))
         # the recency that orders is the recency the line prints: a claim
         # REPAIRED today outranks its untouched siblings even though it was
         # born first

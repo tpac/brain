@@ -498,7 +498,7 @@ class BrainRecallMixin:
         # node sits in, but not as edge lines competing for the Edges cut.
         # It rides as its own attachment, [{id, title}], and
         # renders as a `Communities:` line where a format opts in
-        # (cfg show_communities); the encoder catalog stays community-blind.
+        # (cfg `communities`: 'title' for most readers, 'ref' for Anchor's tools).
         communities_by_node = self._graph.get_communities_for(found_ids)
         for nid in found_ids:
             nodes[nid]['communities'] = communities_by_node.get(nid, [])

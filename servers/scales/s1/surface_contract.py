@@ -732,8 +732,9 @@ SURFACE_ARC_FORMAT = {
     'extra_skip_keys':     ('question',),   # recall scaffold
     'correction_render':   'balanced',
     # Anchor seeing a node's communities on recall is useful — as a
-    # Communities line, so they do not compete for the three edge slots.
-    'show_communities':    True,
+    # Communities line with ids Anchor can pull, not as edge lines
+    # competing for the three edge slots.
+    'communities':         'ref',
 }
 
 # Fact mode — verbatim content. Used when Haiku tags a pick as carrying
@@ -750,7 +751,7 @@ SURFACE_FACT_FORMAT = {
     'show_encoding_source': False,
     'extra_skip_keys':     ('question',),
     'correction_render':   'balanced',
-    'show_communities':    True,
+    'communities':         'ref',
 }
 
 # Background mode — title + 1-line situation only. Cheap context.
@@ -810,7 +811,7 @@ HAIKU_FORMAT = {
     # for picks to factor in superseded knowledge without bloating the
     # 25-candidate prompt.
     'correction_render': 'balanced',
-    'show_communities': True,
+    'communities': 'title',
 }
 
 # Selection-grade lean render (Area 2, 2026-06-12). The selector's job is
@@ -845,7 +846,7 @@ HAIKU_FORMAT_LEAN = {
     'edge_style': 'oneline',
     'extra_skip_keys': ('question', 'reasoning', 'their_raw_quote',
                         'my_raw_quote'),
-    # show_communities stays off: this render is ablation-measured
+    # `communities` stays off: this render is ablation-measured
     # (ab_render_ablation.py) and a line per candidate is a cost the
     # selector has not been shown to repay — turn it on with a number.
 }

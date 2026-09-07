@@ -277,10 +277,13 @@ importers.
 `Communities:` line for Anchor's formats, SURFACE_ARC/FACT and HAIKU_FORMAT —
 off for the encoder, the consolidation node block and HAIKU_FORMAT_LEAN, which
 is ablation-measured (e6de5ff); ties break by `contract.relation_age` (the same
-recency the line prints) and a pair weighs its surviving relations, and
-GET_NODES_SMALL/BALANCED show the edge total — the encoder already does via
-the view policy cfg, and the control arm stays byte-identical (test_encoder_view)
-(c07c622); one header per node in the cluster block (bed9510);
+recency the line prints) and a pair weighs its surviving relations; the
+node-fetch render is two views (DETAIL up to 10 nodes, SCAN above) behind one
+selector `contract.node_format_for` that MCP get_nodes, the recall tool and
+an encoder's get_nodes results all take, with the edge total on — the encoder
+catalog already shows it via the view policy cfg, and the control arm stays
+byte-identical (test_encoder_view) (c07c622 + the drift commit); one header
+per node in the cluster block (bed9510);
 the three aspect names are out of the noise seed and a curation test refuses
 them (4659bd7). The ten live rows using aspect names as relations were folded
 into their pairs' `community_member` relation on 2026-09-05. Re-measured on an
@@ -315,10 +318,11 @@ birth date on the line.
 **Target state.** (a) `get_node` passes `brain.aspects.structural_exclusions`
 to `get_connections_bulk`; `_filter_noise_relations` goes; consolidation's
 loader passes the same set. (b) Tom's exception: community membership
-reaches readers as a `Communities: "title" (id)` line (get_node attaches it
-via `GraphDAL.get_communities_for`; cfg `show_communities` on for Anchor and
-the recall surface, off for the encoder and consolidation) — decision
-3144a746 superseded. (c) Ties broken by relation `created_at` desc;
+reaches readers as a `Communities:` line (get_node attaches it via
+`GraphDAL.get_communities_for`; cfg `communities` is `'title'` for most
+readers including the encoder, `'ref'` — with ids — for Anchor's tools and the
+recall inject, off for the consolidation node block and the lean picker) —
+decision 3144a746 superseded. (c) Ties broken by relation `created_at` desc;
 `show_edge_total` on for the encoder and Anchor. (d) One header per node in
 the cluster block. (e) The four aspect names out of the noise seed. (f)
 **Ruling:** `updated_at` on `edge_relations`, or stamp on description change.

@@ -53,7 +53,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             log_fn("S1 encode: %s" % msg)
 
     from servers.scales.s1.encode_contract import (
-        ENCODING_AGENT, SCRIBE_RUN_DEADLINE_SECONDS, S1_NODE_CONFIG)
+        ENCODING_AGENT, SCRIBE_RUN_DEADLINE_SECONDS)
 
     t0 = time.time()
     profile = []
@@ -191,13 +191,6 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             dispatch_fn=dispatch_fn,
             log_fn=_log,
             record_round_fn=brain.round_recorder(enc_chain),
-            # The encoder's own representation for get_nodes results — the
-            # catalog's shape, so an expanded aged entry reads like a full one
-            # and the tool cannot show what the catalog hides (communities:
-            # the encoder is community-blind by design, S2CE owns placement).
-            # Without it the results fall through to Anchor's size-scaled
-            # GET_NODES_* formats.
-            get_nodes_config=S1_NODE_CONFIG,
             deadline_seconds=SCRIBE_RUN_DEADLINE_SECONDS)
     except Exception as e:
         # The LLM loop itself died — no writes happened this run. Loud by

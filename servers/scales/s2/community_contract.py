@@ -276,6 +276,7 @@ S2CE_NODE_FORMAT = {
     'metadata_limit': 150,      # Key metadata only
     'correction_render': 'balanced',  # relation verb + edge desc + 150-char excerpt; NOT heavy (the per-node correction firehose that blew the context to 217K)
     'time_format': 'relative',  # "2d ago" not "2026-04-09"
+    'communities': 'title',     # where a rep already sits — context for placement, no ids
 }
 
 # Compact format for existing communities in the context listing.
