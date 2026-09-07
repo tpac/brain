@@ -76,12 +76,48 @@ class JournalBinding:
         try:
             notes = self.brain.journal_notes(
                 scale=self.scale, unit=self.unit, session_id=self.session_id)
-            return render_journal_notes_prefix(notes)
+            out = render_journal_notes_prefix(notes)
         except Exception as e:
             self.brain._log_error(
                 self._log_key('read'), e,
                 'residue continuity read failed — encoding without it')
-            return ''
+            out = ''
+        if self.addressed:
+            try:
+                out += self._producer_view()
+            except Exception as e:
+                self.brain._log_error(
+                    self._log_key('view'), e,
+                    'producer view read failed — encoding without it')
+        return out
+
+    def _producer_view(self):
+        """The join for the producer view: this binding's own items (the
+        door orders and windows them — producer_items) as rows the contract
+        phrases. The tag/subject mapping is the exact inverse of the forward
+        map in _route_addressed (tag → needs_answer, subject → dedup_key). A
+        refused filing already sits in the residue notes with its reason."""
+        from servers.channels.thalamus import thalamus
+        from servers.channels.thalamus import thalamus_contract as tc
+        from servers.trace_contract import (render_producer_view,
+                                            JOURNAL_TELL_TAG, JOURNAL_ASK_TAG,
+                                            JOURNAL_RUN_SUBJECT)
+        rows, seen = [], set()
+        for i in thalamus.producer_items(
+                self.brain, self.source, self.session_id,
+                settled_days=tc.PRODUCER_VIEW_SETTLED_DAYS):
+            # One row per subject: the door orders open-first, so a key
+            # re-asked after a settlement shows its live state, not both.
+            if i['dedup_key'] in seen:
+                continue
+            seen.add(i['dedup_key'])
+            rows.append({
+                'tag': (JOURNAL_ASK_TAG if tc.kind_of(i) == tc.KIND_ASK
+                        else JOURNAL_TELL_TAG),
+                'subject': i['dedup_key'] or JOURNAL_RUN_SUBJECT,
+                'note': i['body'], 'fate': tc.fate_of(i), 'answer': i['answer'],
+            })
+        return render_producer_view(rows)
 
     def decorate_system(self, system_prompt, multi_round=True):
         """The WRITE-side instructions, appended at the system tail in the
@@ -188,11 +224,9 @@ class JournalBinding:
             # cap, one read) — with the read side's tolerance for an echoed
             # `tag · subject · …` head (resolve_target), so the same resolve
             # line that retires the note also closes the item.
-            open_keys = {i['dedup_key'] for i in thalamus.list_items(
-                             self.brain, source=self.source,
-                             target_session=self.session_id)['items']
-                         if i.get('dedup_key')
-                         and i.get('target_session', '') == self.session_id}
+            open_keys = {i['dedup_key'] for i in thalamus.producer_items(
+                             self.brain, self.source, self.session_id)
+                         if i['dedup_key']}
             for r in resolved:
                 target = resolve_target(journal_key(r['subject']), r['note'],
                                         open_keys)

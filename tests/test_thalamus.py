@@ -763,6 +763,75 @@ class TestRender(ThalamusBase):
         self.assertEqual(ids(source='encoder:sonnet', target_session=S1,
                              include_closed=True), {a['id']})
 
+    def test_producer_items_is_identity_exact_windowed_and_open_first(self):
+        """The producer's own read: (source, target) exact — '' IS the
+        broadcast recipient; every open item regardless of age; settled items
+        only within the window and only in a fate the producer hears about
+        (withdrawn/sent excluded in SQL); open rows first, then by when they
+        last changed."""
+        b = self._file('broadcast', dedup_key='b')
+        d = self._file('directed', dedup_key='d', for_whom=S1)
+        ids = lambda *a, **kw: [i['id'] for i in
+                                thalamus.producer_items(self.brain, 'test',
+                                                        *a, **kw)]
+        self.assertEqual(ids(''), [b['id']])
+        self.assertEqual(ids(S1), [d['id']])
+        old_open = self._file('ancient but open', dedup_key='o', for_whom=S1)
+        thalamus.resolve(self.brain, d['id'], answer='yes')
+        w = self._file('withdrawn', dedup_key='w', for_whom=S1)
+        thalamus.withdraw(self.brain, 'test', dedup_key='w', target_session=S1)
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET created_at = ?, updated_at = ? '
+                'WHERE id = ?', (iso_cutoff(days=40), iso_cutoff(days=40),
+                                 old_open['id']))
+            self.brain.logs_conn_w.commit()
+        # open only (no window)
+        self.assertEqual(ids(S1), [old_open['id']])
+        # windowed: open first, then the answered one; withdrawn never
+        self.assertEqual(ids(S1, settled_days=7), [old_open['id'], d['id']])
+        with self.brain.logs_write_lock:
+            self.brain.logs_conn_w.execute(
+                'UPDATE thalamus_items SET updated_at = ? WHERE id = ?',
+                (iso_cutoff(days=8), d['id']))
+            self.brain.logs_conn_w.commit()
+        self.assertEqual(ids(S1, settled_days=7), [old_open['id']])
+        self.assertNotIn(w['id'], ids(S1, settled_days=365))
+
+    def test_fate_of_mirrors_kind_of(self):
+        self.assertEqual(tc.fate_of({'state': tc.STATE_OPEN}), tc.FATE_OPEN)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_ANSWERED}),
+                         tc.FATE_ANSWERED)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_EXPIRED}),
+                         tc.FATE_EXPIRED)
+        self.assertEqual(tc.fate_of({'state': tc.STATE_EXPIRED,
+                                     'needs_answer': True}),
+                         tc.FATE_EXPIRED_UNANSWERED)
+        for own_act in (tc.STATE_WITHDRAWN, tc.STATE_SENT):
+            self.assertIsNone(tc.fate_of({'state': own_act}))
+        self.assertEqual(set(tc.FATE_STATES),
+                         {tc.STATE_OPEN, tc.STATE_ANSWERED,
+                          tc.STATE_DISMISSED, tc.STATE_EXPIRED})
+
+    def test_touch_rejects_unknown_and_owned_columns_before_sql(self):
+        r = self._file('x')
+        for bad in ({'staet': tc.STATE_DISMISSED}, {'updated_at': iso_now()},
+                    {'armed_epoch': 3}, {'id': 'th_x'}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                with self.brain.logs_write_lock:
+                    thalamus._touch(self.brain.logs_conn_w, r['id'], iso_now(),
+                                    **bad)
+
+    def test_list_items_carries_updated_at(self):
+        """Settled-recently reads key on updated_at: stamped at insert, moved
+        by every state change."""
+        r = self._file('note')
+        item = thalamus.list_items(self.brain)['items'][0]
+        self.assertTrue(item['updated_at'])
+        thalamus.resolve(self.brain, r['id'], dismiss=True)
+        closed = thalamus.list_items(self.brain, include_closed=True)['items'][0]
+        self.assertGreaterEqual(closed['updated_at'], item['updated_at'])
+
     def test_list_items_shows_delivery_counts(self):
         r = self._file('note')
         thalamus.pull(self.brain, S1, via='boot')

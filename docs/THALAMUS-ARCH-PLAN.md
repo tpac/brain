@@ -44,7 +44,8 @@ dedup_key, target_session) — the budget's triple. Re-filing a key for another
 reader is another item, never a retarget (one producer string serves every
 session; a retarget would let one session take another's item). Moving an
 item = withdraw, then file. `withdraw(dedup_key=…)` takes the target.
-**Shipped:** 13(h) b573f76, 13(c) 2c7acc2, 13(d) 963e5c6.
+**Shipped:** 13(h) b573f76, 13(c) 2c7acc2, 13(d) 963e5c6, 13(b) merge 691bac4
+(unified S1+S2; simplify + 8-angle review applied; id:9b83b70b).
 **Open:** the unified paragraph wording (eval-gated, Tom's nod); the fate of
 the ~30 live `journals-escalation` nodes (archive behind a backup, or stop
 injecting only); **boot influence** — "the influence of a single tell today is
@@ -309,12 +310,16 @@ ask      · 7e6decd2 · milestone says merge pending; it merged as 56c7bd6 — r
   chain) → delivered (s0 K `thalamus_delivery`, the session's chain,
   ref_id=stop; join filters route='queue') → answered (item state; the resolve
   call in the session's own tool trail).
-- **(e) Feedback by render-join, never write-back.** `thalamus_contract.
-  render_producer_view(items)` renders the unit's items with live state — filed
-  by run, delivered ×N at moment, answered: <text>, dismissed, expired,
-  rejected. `JournalBinding.continuity()` appends it after the residue notes,
-  from `list_items(source=…, target_session=…, include_closed=True)` bounded to
-  the continuity window. No `delivered` mark ever enters the journal
+- **(e) Feedback by render-join, never write-back — MINIMAL (Tom, "let's
+  expose").** `JournalBinding.continuity()` appends, after the residue notes,
+  the binding's own items with their SETTLED outcome — `open` / `answered:
+  <text>` / `dismissed` / `expired[, unanswered]` — never delivery counts,
+  moments or dates. The join lives in the binding (`_producer_view`), the fate
+  derivation in `thalamus_contract.fate_of` (mirror of `kind_of`), the
+  phrasing + caps in `trace_contract.render_producer_view` (the journal's line
+  grammar), the window in `list_items(settled_days=)` (SQL, wall-clock in the
+  channel). Withdrawn items don't render; a refused filing is already a note
+  with `undelivered`. No `delivered` mark ever enters the journal
   (id:e63c41dd, id:defbdf8b).
 - **(f) Prompt, eval-gated, the only encoder-visible change.** Ship (a)–(e)
   DARK first — with the paragraph absent no encoder writes the verbs, behavior

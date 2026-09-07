@@ -367,8 +367,10 @@ env. Options:
 | c. AgentPlugin format | root `plugin.json` + `./hooks/scripts/mcp-launch.sh` gets proper expansion | **No hooks** in that format today — non-starter |
 | d. Wait for Codex to expand `${PLUGIN_ROOT}` for Legacy `.mcp.json` | — | Not on their roadmap as far as the source shows |
 
-Also in the Codex server object: `"startup_timeout_sec": 40` (our cold-install
-wait is 25 s against a 10 s default), `"env_vars": ["XDG_DATA_HOME",
+Also in the Codex server object: `"startup_timeout_sec": 360`, paired with
+`BRAIN_MCP_BOOTSTRAP_WAIT_S=300` in its environment. This lets a direct cold
+marketplace install finish on its first MCP connection; the shared launcher
+keeps its 25 s default for Claude. The server also declares `"env_vars": ["XDG_DATA_HOME",
 "XDG_CONFIG_HOME", "BRAIN_DB_DIR"]` so a customised brain location survives the
 env allowlist, and the `instructions` text (§2.4) — a lever Claude Code lacks.
 Keep CC's `.mcp.json` untouched; put the Codex server object inline under
@@ -416,6 +418,36 @@ remove + add discards it, so every update pays the 60–90 s cold bootstrap
 until the runtime moves to `PLUGIN_DATA` (S7). Relocating the runtime to `PLUGIN_DATA` (`CLAUDE_PLUGIN_DATA`
 under CC) fixes both hosts and is already noted as deferred in
 `runtime-state.sh`.
+
+Setup ownership: `.codex-plugin/plugin.json` selects `codex_setup.py` through
+`mcp-launch.sh --adapter`. `hooks/adapters/codex_setup.py` owns the local setup
+tool and one active operation per MCP connection; `codex_onboarding.py` owns
+Codex discovery, setup status, consented tool-policy writes, and native review launch. These are MCP adapters,
+not event hooks. The package builder includes them separately from
+`hooks/scripts/`. The shared proxy confines adapter loading to this directory,
+rejects tool-name conflicts, negotiates protocol capabilities, and routes
+messages. Setup stays outside the daemon, core tool contracts, and brain data.
+
+Status inspection, policy writes, and review launch run on workers. Only matching,
+unexpired consent with `enable_entity: true` can save permission or launch; cancellation or reinitialization
+invalidates the operation by object identity, even if the host reuses an ID.
+The adapter resolves the installed Entity ID through root-scoped `hooks/list`,
+rechecks it before a write, and uses Codex's user-layer file/version with
+`config/batchWrite`. It changes only that plugin's brain server
+`default_tools_approval_mode` to `approve`, then reads the setting back. Individual
+tool restrictions, other plugins, and hook trust remain unchanged. Saved policy
+is reported separately from active-connection or automatic-memory readiness.
+Errors use the injected proxy logger; a later hook-launch failure retains the
+successful tool-policy result so partial completion is visible.
+Decision scope: Tom's unified-setup direction (2026-09-06) authorizes an explicit
+in-app choice that saves Entity-wide MCP tool permission. This replaces the
+previous hold on a tool-permission writer because the user chooses the change
+in a form that explains its scope; it does not authorize the separate proposed
+hook-trust writer. Hook definitions are executable code and remain subject to
+Codex's own native review. The two permissions share one guided setup request,
+with each effect and remaining step reported separately.
+
+The user flow and fallback limits are in [Codex setup](CODEX-SETUP.md).
 
 ### 5.8 G8 — Gates
 
