@@ -1,6 +1,8 @@
 # Codex setup
 
-After installation and runtime preparation, ask **“Finish Entity setup.”**
+After installation, ask **“Finish Entity setup.”** On first use, Entity prepares
+its private Python runtime and memory dependencies. Allow a few minutes for
+this download; setup becomes available on the same connection when it finishes.
 The assistant checks two things: permission to use Entity tools and trust for
 automatic-memory hooks. If needed, one in-app confirmation explains both.
 
@@ -52,6 +54,9 @@ two permissions separately.
   launching anything. Unsupported Codex inspection produces an explicit error.
 - macOS launches Terminal with a `.command` document. Other systems get
   a manual-review message. The target configuration directory is preserved.
-- Direct marketplace runtime bootstrap can outlast the first MCP startup window.
-  The checkout installer prebuilds the cache runtime; a direct marketplace cold
-  install may still need a reconnect. This change is not a signed installer.
+- Codex allows up to five minutes for runtime preparation, with a six-minute
+  host startup window that leaves time for the MCP server to initialize. Warm
+  starts skip this wait. Claude keeps its existing 25-second launcher budget.
+  If downloads fail or take longer, the launcher reports the bootstrap log path;
+  check the connection and reconnect after preparation completes. The checkout
+  installer still prepares the runtime before opening Codex.

@@ -93,8 +93,8 @@ echo "✓ $PLUGIN@$MARKETPLACE installed at $INSTALLED ($(find "$INSTALLED" -typ
 
 # 6. Warm the runtime INSIDE the cache copy now. Codex runs hooks and the MCP
 #    server from that copy; left cold, the first session's boot hook dies at
-#    its 15 s timeout while uv downloads Python + deps (minutes), and the MCP
-#    server misses its 40 s startup window — a dead first session.
+#    its 15 s timeout while uv downloads Python + deps. Preparing the runtime
+#    here also avoids delaying MCP availability on the first connection.
 echo "bootstrapping the runtime in the cache copy (first time: a few minutes)..."
 bash "$INSTALLED/hooks/scripts/ensure-runtime.sh" >"$INSTALLED/.bootstrap.log" 2>&1 \
   || { echo "ERROR: runtime bootstrap failed — see $INSTALLED/.bootstrap.log" >&2; exit 1; }

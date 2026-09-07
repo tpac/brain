@@ -367,8 +367,10 @@ env. Options:
 | c. AgentPlugin format | root `plugin.json` + `./hooks/scripts/mcp-launch.sh` gets proper expansion | **No hooks** in that format today — non-starter |
 | d. Wait for Codex to expand `${PLUGIN_ROOT}` for Legacy `.mcp.json` | — | Not on their roadmap as far as the source shows |
 
-Also in the Codex server object: `"startup_timeout_sec": 40` (our cold-install
-wait is 25 s against a 10 s default), `"env_vars": ["XDG_DATA_HOME",
+Also in the Codex server object: `"startup_timeout_sec": 360`, paired with
+`BRAIN_MCP_BOOTSTRAP_WAIT_S=300` in its environment. This lets a direct cold
+marketplace install finish on its first MCP connection; the shared launcher
+keeps its 25 s default for Claude. The server also declares `"env_vars": ["XDG_DATA_HOME",
 "XDG_CONFIG_HOME", "BRAIN_DB_DIR"]` so a customised brain location survives the
 env allowlist, and the `instructions` text (§2.4) — a lever Claude Code lacks.
 Keep CC's `.mcp.json` untouched; put the Codex server object inline under

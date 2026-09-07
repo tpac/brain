@@ -13,6 +13,9 @@
 #
 # First invocation triggers ensure-runtime.sh (blocks ~60-90s on fresh install).
 # Subsequent invocations are instant — just PATH + env var wiring.
+# BRAIN_MCP_BOOTSTRAP_WAIT_S is consumed by mcp-launch.sh before sourcing us:
+# the host manifest may extend its cold-start wait (default 25s; Codex 300s).
+# Keep the host startup timeout larger to leave time for MCP initialization.
 
 # Resolve plugin dir from whichever .sh sourced us.
 # ${BASH_SOURCE:-$0}, NOT ${BASH_SOURCE[0]}: the subscripted form resolves to
