@@ -329,6 +329,26 @@ class TestPresenceCountsWatchers(BrainTestBase):
         self.assertGreater(row['updated_at'], iso_cutoff(minutes=10),
                            "liveness must still reflect reachability")
 
+    def test_peek_recent_msgs_skips_reply_to_wake_envelope(self):
+        # The SAME one-sided filter lived in session_activity's recent_msgs, so a
+        # peek (and self_presence rich=True) showed every machine-woken answer as
+        # though the stream were mid-task. A peek must show WORK; the answer to an
+        # ignition is not work.
+        self._turn('peekWoke0', 'user_message', 'run the gate-4 corpus',
+                   updated_at=iso_cutoff(minutes=20))
+        self._turn('peekWoke0', 'assistant_message', 'Corpus built, 12/12.',
+                   updated_at=iso_cutoff(minutes=19), event_type='delta')
+        self._turn('peekWoke0', 'user_message', '<task-notification>\n<event>tick',
+                   updated_at=iso_cutoff(minutes=5))
+        self._turn('peekWoke0', 'assistant_message', 'Waiting on the control arm.',
+                   event_type='delta')
+        act = self.brain.session_activity('peekWoke0', msg_limit=4)
+        texts = [m['text'] for m in act.get('recent_msgs', [])]
+        self.assertNotIn('Waiting on the control arm.', texts,
+                         "the reply to a wake envelope must not appear as recent work")
+        self.assertIn('Corpus built, 12/12.', texts,
+                      "real work must still surface in a peek")
+
     def test_woken_stream_ranks_below_attended_stream(self):
         # The operator-visible symptom: a Monitor-woken background task sat at
         # the TOP of the roster, above the worktree actually being worked in.

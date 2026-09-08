@@ -651,6 +651,33 @@ class InteractionDAL(_LogsWriteBase):
         return [{'version': r[0], 'created_by': r[1]} for r in rows]
 
 
+def _attended_sql(alias: str) -> str:
+    """SQL predicate: the row at `alias` is an OPERATOR-ATTENDED turn — the
+    latest user_message at-or-before it lacks the wake-envelope marker. Takes
+    one bound param (the marker LIKE pattern).
+
+    Testing the marker on a row's OWN summary catches only half a machine-woken
+    exchange. The envelope is the user_message; the assistant's reply to it is
+    an ordinary assistant_message carrying no marker, so a self-test passes the
+    reply through — and the reply then counts as recency, focus and recent work
+    on every wake. Both presence readers need both halves discounted, so the
+    predicate lives here rather than being spelled twice.
+
+    The envelope self-excludes (it is its own latest predecessor); its reply is
+    excluded by that predecessor. COALESCE keeps a conversational row that has
+    no preceding user_message at all ATTENDED rather than silently dropping it.
+    Prefix-matched (`marker%`) to stay index-friendly, matching every other
+    envelope filter in this module; trace_contract.is_machine_turn tests the
+    marker anywhere in the text, so the two agree only while envelopes lead
+    with it — which is how the harness writes them.
+    """
+    return ("COALESCE((SELECT p.summary FROM trace_events p "
+            "  WHERE p.scale = 's0' AND p.session_id = {a}.session_id "
+            "    AND p.ref_type = 'user_message' "
+            "    AND p.created_at <= {a}.created_at "
+            "  ORDER BY p.created_at DESC LIMIT 1), '') NOT LIKE ?").format(a=alias)
+
+
 class TraceDAL(_LogsWriteBase):
     """Access layer for trace_events — the fractal learning loop.
 
@@ -1384,25 +1411,10 @@ class TraceDAL(_LogsWriteBase):
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
                  else "conv_recency DESC, last_turn DESC")
-        # A row is OPERATOR-ATTENDED iff the latest user_message at-or-before it
-        # lacks the wake-envelope prefix. Testing the marker on the row alone
-        # catches only HALF a machine-woken exchange: the envelope is the
-        # user_message, but the assistant's reply to it carries no marker, so the
-        # reply passed the filter and kept re-floating a Monitor-woken stream to
-        # the top of the roster while the operator's own session read stale. This
-        # predicate discounts both sides — the envelope self-excludes (it is its
-        # own latest predecessor) and its reply is excluded by that predecessor.
-        # COALESCE: a conversational row with no preceding user_message at all is
-        # attended, not filtered out. Membership (the outer WHERE) still counts
-        # heartbeats and envelopes, so watch-mode streams stay VISIBLE — they just
-        # rank below real work.
-        def _attended(alias):
-            return ("COALESCE((SELECT p.summary FROM trace_events p "
-                    "  WHERE p.scale = 's0' AND p.session_id = {a}.session_id "
-                    "    AND p.ref_type = 'user_message' "
-                    "    AND p.created_at <= {a}.created_at "
-                    "  ORDER BY p.created_at DESC LIMIT 1), '') NOT LIKE ?"
-                    ).format(a=alias)
+        # focus/conv_recency count only OPERATOR-ATTENDED turns (_attended_sql
+        # owns the predicate and the why). Membership — the outer WHERE — still
+        # counts heartbeats and envelopes, so watch-mode streams stay VISIBLE;
+        # only their rank and focus change.
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
@@ -1419,8 +1431,8 @@ class TraceDAL(_LogsWriteBase):
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY %s LIMIT ?" % (conv_ph, _attended('u'),
-                                     conv_ph, _attended('c'),
+            "ORDER BY %s LIMIT ?" % (conv_ph, _attended_sql('u'),
+                                     conv_ph, _attended_sql('c'),
                                      live_ph, order),
             (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
@@ -1441,10 +1453,12 @@ class TraceDAL(_LogsWriteBase):
           last_active_at — most recent turn of ANY live kind incl. heartbeats
                            (MAX), for liveness; a watch listener's quiet ticks
                            ARE activity (same rule as active_sessions_by_turn)
-          recent_msgs    — last `msg_limit` conversational turns, newest first,
-                           [{'ts','ref_type','text'}], wake-envelope turns
-                           skipped so a peek shows work not ignition (raw; the
-                           render layer truncates). Read-only.
+          recent_msgs    — last `msg_limit` OPERATOR-ATTENDED conversational
+                           turns, newest first, [{'ts','ref_type','text'}]:
+                           both the wake envelope AND the reply it provokes are
+                           skipped (see _attended_sql), so a peek shows work,
+                           not ignition and not the answer to an ignition (raw;
+                           the render layer truncates). Read-only.
         """
         # PINNED to operator dialogue — see active_sessions_by_turn.
         from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
@@ -1465,13 +1479,18 @@ class TraceDAL(_LogsWriteBase):
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
         turn_count = (agg[2] or 0) if agg else 0
+        # Same attendedness rule as active_sessions_by_turn (_attended_sql owns
+        # it): a peek must show WORK, and the reply to a wake envelope is not
+        # work — filtering only the envelope left every machine-woken answer in
+        # recent_msgs, so a woken stream peeked as though it were mid-task.
         rows = self.conn.execute(
-            "SELECT created_at, ref_type, summary FROM trace_events "
-            "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
-            "  AND summary NOT LIKE ? "
-            "ORDER BY created_at DESC LIMIT ?" % conv_ph,
+            "SELECT x.created_at, x.ref_type, x.summary FROM trace_events x "
+            "WHERE x.scale='s0' AND x.session_id=? AND x.ref_type IN (%s) "
+            "  AND x.summary NOT LIKE ? AND %s "
+            "ORDER BY x.created_at DESC LIMIT ?" % (conv_ph, _attended_sql('x')),
             (session_id, *OPERATOR_DIALOGUE_REF_TYPES,
-             WAKE_ENVELOPE_MARKER + '%', msg_limit)).fetchall()
+             WAKE_ENVELOPE_MARKER + '%', WAKE_ENVELOPE_MARKER + '%',
+             msg_limit)).fetchall()
         recent = [{'ts': r[0], 'ref_type': r[1], 'text': r[2] or ''} for r in rows]
         return {'started_at': started_at, 'last_active_at': last_active_at,
                 'turn_count': turn_count, 'recent_msgs': recent}
