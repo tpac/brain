@@ -51,11 +51,10 @@ _name() {   # _name <path>... — literal entries, each asserted tracked on its 
   local p; for p in "$@"; do _ship "$p" "$p"; done
 }
 
-# The notice travels with the copies. plugin.json DECLARES the dual PolyForm
-# grant; without the text in the package, a zip-channel install gets the claim
+# The notice travels with the copies. plugin.json declares Elastic-2.0;
+# without the text in the package, a zip-channel install gets the claim
 # and not the license. (Repo-clone installs pick up the root LICENSE for free —
-# this closes the upload path.) LICENSE cites LICENSES/ for the full text of
-# both grants; that subtree ships below, or the citation dangles.
+# this closes the upload path.) LICENSE contains the full current grant.
 # marketplace.json makes the unzipped package a self-contained marketplace:
 # `claude plugin marketplace add <unzip-dir>` works with no repo access (source
 # "./" resolves to the unzip dir itself). The Codex host reads
@@ -68,10 +67,6 @@ _name LICENSE \
       .codex-plugin/plugin.json \
       .mcp.json \
       requirements.txt
-
-# LICENSES/ — the full text of both grants the root LICENSE cites by path. A
-# dangling license citation must break the build, not the install.
-_ship "LICENSES/" ':(glob)LICENSES/*.md'
 
 # dashboard/ — the read-only observer UI: Python plus the static web assets.
 # Dev notes (*.md) are not named and do not ship.
