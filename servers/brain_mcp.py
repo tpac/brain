@@ -1374,8 +1374,32 @@ def _log_proxy_error(hook_name, error, context, level="error"):
         sys.stderr.write("[brain-mcp] could not log %s to hook_errors: %s\n" % (hook_name, e))
 
 
+# Health-monitor cadence. One source for the ping loop, the failure arithmetic
+# and the startup log line — a literal in any of them drifts silently when this
+# moves. The interval is a deliberate throttle, not just a liveness knob: every
+# proxy pings for its whole life whether or not a client is still attached, so N
+# live proxies cost N/PING_INTERVAL connections per second against the daemon and
+# hold as many ephemeral ports in TIME_WAIT (2*MSL = 30s). Hosts that keep an MCP
+# server per unit of work rather than per session accumulate proxies, so N is set
+# by the host's lifecycle, not ours.
+PING_INTERVAL = 7.0
+# ~20s grace before declaring the daemon down. Legitimate slow paths can eat
+# 5-15s (surface_haiku under load, brain.save() under contention, cold-cache S2
+# enrichment) — bailing at 6s caused false-positive alerts during normal
+# operation. Below 20s = noise; above 20s = real. The grace is THRESHOLD x
+# INTERVAL, so the two must move together: 3 x 7s = 21s of sleep.
+# Add the ping's own cost to get real detection latency, and it differs by
+# failure mode: a DEAD daemon refuses instantly (~21s), while a HUNG one — the
+# case this monitor exists for — burns the 2s daemon_send timeout per attempt,
+# so 3 x (7 + 2) = up to 27s, plus up to one interval before the first failing
+# ping lands. Both stay in the "real" band. (The old 2s/10 pair was optimistic
+# the same way: up to 40s against a claimed 20s. This is the cadence that
+# tightened the hung-daemon worst case, not just the one that slowed pings.)
+FAILURE_THRESHOLD = 3
+
+
 def _health_monitor():
-    """Background health monitor — pings daemon every 2s.
+    """Background health monitor — pings the daemon every PING_INTERVAL.
 
     If daemon dies:
     1. Attempts restart via ensure_daemon_running()
@@ -1388,12 +1412,6 @@ def _health_monitor():
     from servers.daemon_client import recover_daemon
 
     consecutive_failures = 0
-    PING_INTERVAL = 2.0
-    # 20s grace before declaring the daemon down. Legitimate slow paths can
-    # eat 5-15s (surface_haiku under load, brain.save() under contention,
-    # cold-cache S2 enrichment) — bailing at 6s caused false-positive
-    # alerts during normal operation. Below 20s = noise; above 20s = real.
-    FAILURE_THRESHOLD = 10
 
     while True:
         time.sleep(PING_INTERVAL)
@@ -1428,8 +1446,10 @@ def _health_monitor():
             except Exception as e:
                 sys.stderr.write("[brain-mcp] Restart failed: %s\n" % e)
 
-        elif consecutive_failures > FAILURE_THRESHOLD and consecutive_failures % 10 == 0:
-            # Retry restart every 20 seconds
+        elif (consecutive_failures > FAILURE_THRESHOLD
+                and consecutive_failures % FAILURE_THRESHOLD == 0):
+            # Retry restart once per grace window (THRESHOLD x INTERVAL = ~21s),
+            # so the retry cadence tracks the interval instead of a bare literal.
             sys.stderr.write("[brain-mcp] Still down after %ds — retrying restart\n" % (
                 int(consecutive_failures * PING_INTERVAL)))
             try:
@@ -1460,7 +1480,7 @@ def main(extension=None):
     # Start health monitor (daemon thread — dies with MCP process)
     health_thread = threading.Thread(target=_health_monitor, daemon=True)
     health_thread.start()
-    sys.stderr.write("[brain-mcp] Health monitor started (2s interval).\n")
+    sys.stderr.write("[brain-mcp] Health monitor started (%gs interval).\n" % PING_INTERVAL)
 
     # Main loop — read JSON-RPC from stdin
     # Never crash: daemon going down/up is normal. Surface errors, keep serving.

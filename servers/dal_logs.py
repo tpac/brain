@@ -651,6 +651,37 @@ class InteractionDAL(_LogsWriteBase):
         return [{'version': r[0], 'created_by': r[1]} for r in rows]
 
 
+def _attended_sql(alias: str) -> str:
+    """SQL predicate: the row at `alias` is an OPERATOR-ATTENDED turn — the
+    latest user_message at-or-before it lacks the wake-envelope marker. Takes
+    one bound param (the marker LIKE pattern).
+
+    For RANKING only. Testing the marker on a row's OWN summary catches half a
+    machine-woken exchange: the envelope is the user_message, but the reply to
+    it is an ordinary assistant_message carrying no marker, so a self-test
+    passes the reply through and every wake refreshes the stream's recency.
+
+    Do NOT reach for this wherever an envelope filter appears. It answers "did
+    the operator provoke this turn", which is the right question for ranking and
+    the WRONG one for description: a machine-woken reply is unattended yet is
+    usually the most informative line about that stream, so focus and peek keep
+    it and filter only the envelope itself.
+
+    The envelope self-excludes (it is its own latest predecessor); its reply is
+    excluded by that predecessor. COALESCE keeps a conversational row that has
+    no preceding user_message at all ATTENDED rather than silently dropping it.
+    Prefix-matched (`marker%`) to stay index-friendly, matching every other
+    envelope filter in this module; trace_contract.is_machine_turn tests the
+    marker anywhere in the text, so the two agree only while envelopes lead
+    with it — which is how the harness writes them.
+    """
+    return ("COALESCE((SELECT p.summary FROM trace_events p "
+            "  WHERE p.scale = 's0' AND p.session_id = {a}.session_id "
+            "    AND p.ref_type = 'user_message' "
+            "    AND p.created_at <= {a}.created_at "
+            "  ORDER BY p.created_at DESC LIMIT 1), '') NOT LIKE ?").format(a=alias)
+
+
 class TraceDAL(_LogsWriteBase):
     """Access layer for trace_events — the fractal learning loop.
 
@@ -1350,11 +1381,19 @@ class TraceDAL(_LogsWriteBase):
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
         trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
-        last real work is often its own last reply. Turns whose summary starts
-        with the wake-envelope marker (a `<task-notification>` ignition) are
-        skipped so the focus shows work, not the wake envelope. Both the
-        conversational set and the marker come from the contract — no filters
-        reproduced here. (Raw; the render layer first-lines/truncates.) Caller
+        last real work is often its own last reply. `focus` drops only the
+        wake-envelope turn itself (a `<task-notification>` ignition), so a
+        woken stream still DESCRIBES itself by its own latest report.
+        `conv_recency` — the RANKING key — is stricter: it counts only
+        OPERATOR-ATTENDED turns, meaning the latest user_message at-or-before
+        the row lacks the marker (see _attended_sql). That asymmetry is
+        deliberate. A machine-woken stream answers its own wake, and those
+        replies are unmarked, so counting them as recency let a background task
+        outrank a session the operator was actually working in; but the same
+        reply is the most informative line available ABOUT that stream. So it
+        is discounted for "how much should I care" and kept for "what is this".
+        Both the conversational set and the marker come from the contract — no
+        filters reproduced here. (Raw; the render layer first-lines/truncates.) Caller
         computes the cutoff (wall-clock vs conversation-time is the caller's
         policy, not the DAL's)."""
         # PINNED to operator dialogue (not the dial): presence focus and
@@ -1380,6 +1419,15 @@ class TraceDAL(_LogsWriteBase):
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
                  else "conv_recency DESC, last_turn DESC")
+        # RANKING (conv_recency) counts only OPERATOR-ATTENDED turns — that is
+        # what a machine-woken stream was winning the roster on. FOCUS keeps the
+        # older, weaker rule (drop the envelope, keep everything else): the
+        # envelope is noise, but the reply to it is the stream's own account of
+        # what it just did, and that is usually the single most informative line
+        # about it. Discounting the reply for RANK and keeping it for DESCRIPTION
+        # is the whole point — one of these answers "how much should I care", the
+        # other "what is this". Membership (the outer WHERE) still counts
+        # heartbeats and envelopes, so watch-mode streams stay VISIBLE.
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
@@ -1388,7 +1436,7 @@ class TraceDAL(_LogsWriteBase):
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus, "
             "  (SELECT MAX(c.created_at) FROM trace_events c "
             "   WHERE c.scale = 's0' AND c.session_id = t.session_id AND c.ref_type IN (%s) "
-            "     AND c.summary NOT LIKE ?) AS conv_recency, "
+            "     AND c.summary NOT LIKE ? AND %s) AS conv_recency, "
             "  (SELECT COUNT(*) FROM trace_events c2 "
             "   WHERE c2.scale = 's0' AND c2.session_id = t.session_id "
             "     AND c2.ref_type = 'user_message' AND c2.summary NOT LIKE ?) AS turn_count "
@@ -1396,9 +1444,12 @@ class TraceDAL(_LogsWriteBase):
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY %s LIMIT ?" % (conv_ph, conv_ph, live_ph, order),
+            "ORDER BY %s LIMIT ?" % (conv_ph,
+                                     conv_ph, _attended_sql('c'),
+                                     live_ph, order),
             (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
              *OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',
@@ -1416,8 +1467,13 @@ class TraceDAL(_LogsWriteBase):
                            ARE activity (same rule as active_sessions_by_turn)
           recent_msgs    — last `msg_limit` conversational turns, newest first,
                            [{'ts','ref_type','text'}], wake-envelope turns
-                           skipped so a peek shows work not ignition (raw; the
-                           render layer truncates). Read-only.
+                           skipped so a peek shows work not ignition. The
+                           stream's own REPLY to a wake is kept: it is the
+                           status line a peek exists to surface. (Contrast
+                           active_sessions_by_turn's conv_recency, which
+                           discounts those replies — ranking and description
+                           want opposite things here.) Raw; the render layer
+                           truncates. Read-only.
         """
         # PINNED to operator dialogue — see active_sessions_by_turn.
         from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
@@ -1438,6 +1494,12 @@ class TraceDAL(_LogsWriteBase):
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
         turn_count = (agg[2] or 0) if agg else 0
+        # Envelope-only filter here, deliberately NOT the attendedness rule that
+        # ranks the roster: a peek asks "what is this stream doing", and the
+        # stream's answer to a wake IS that — "Longmem prod arm at item 6 of 10"
+        # is the most useful line a peek can return. Discounting machine-woken
+        # turns is a RANKING concern (active_sessions_by_turn's conv_recency);
+        # applied here it would swap the live status line for a stale one.
         rows = self.conn.execute(
             "SELECT created_at, ref_type, summary FROM trace_events "
             "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
