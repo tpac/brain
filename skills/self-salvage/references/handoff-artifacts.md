@@ -1,130 +1,102 @@
-# Handoff artifact templates
+# Handoff artifacts
 
-Loaded on demand by `/self-salvage`. The procedure lives in `SKILL.md`; these are the four artifact
-specs. Each is split **MUST** (write these or the artifact fails) vs **REFERENCE** (include if cheap).
+Read when writing a salvage. These roles keep the reader's route short without throwing away
+useful material. Adapt the layout and combine roles for small tasks; add a different artifact when
+the successor needs something these shapes do not provide. There is no required artifact count.
 
-## Cross-cutting rules (every artifact: node, doc head, working set, launch prompt)
+| Carrier | Owns | Reader's use |
+|---|---|---|
+| Handoff node | Resumable state, reasoning, decisions, evidence and next action | Understand and continue the work |
+| Durable doc head or handoff file | Current entry point plus the essential fallback | Continue if memory or scratch is unavailable |
+| Working set | Exact commands, measurements, craft and other accelerants | Recover the best of this session's practical leverage |
+| Launch prompt | Task and route to those artifacts | Know what to open first |
 
-- **Type every hex ref** — `id:` / `trace:` / `session`. Node ids, trace ids, and session shorts
-  share the same 8-hex surface; a reader's default resolver (`get_node`) fails plausibly on the
-  wrong kind, and a whole fork has been spent re-deriving one untyped ref. Deferred work items
-  point at the durable NODE, never at the session where the work happened. (Reader-side rescue for
-  an untyped hex you inherit: `recall_episodes(contains=<hex>)` matches all three kinds in one call.)
-- **Check the letter's own claims at write time.** Verify-before-use covers external state; the
-  claims YOU assert — a file's location ("on main" when it's branch-only), a char count, a
-  commit's presence — are checked by running the command as you write them, or they go on the
-  verify list. Asserted-from-memory is how "85.1K" ships when `wc -c` says 85,975.
-- **The branch is the address, not the worktree.** A successor may boot in a fresh worktree (an
-  account or machine move spawns a new one; the old survives untouched). "Work in worktree X"
-  misleads; write *"state lives on branch X — merge it into wherever you boot."*
+## References and survival
 
----
+Type ambiguous references: `id:`, `trace:`, `session:`, `git:`. Copy real IDs; use the current tool
+schemas rather than treating examples here as API signatures. Deferred work should point to its
+durable decision or handoff, not only the session where it happened.
 
-## §0 — The doc head (git; the only carrier that survives compaction, /tmp clearing AND a recall miss)
+For code, the state address is the repository, branch and commit; a worktree path is a convenience.
+Identify dirty changes and how they survive. Verify the destination checkout before any mutation;
+do not tell a successor to merge into an arbitrary checkout. Preserve the tested and deployed
+revision separately when they differ. For non-code work, name the actual durable artifact/version.
 
-A dated `§` at the top of the live design doc. If no design doc exists, a handoff file. If neither,
-the handoff node is the head — say so in the node so nobody hunts for a file.
+Decisions, irreplaceable evidence and runnable artifacts the next session depends on belong in
+durable storage. A scratchpad may be the only copy of an optional derived table or convenience
+command, but its loss must cost speed, not the ability to reason or proceed. Say where its inputs
+or reconstruction method live. An untested skeleton must say **UNTESTED**; if executing it is part
+of the plan, preserve it durably. A file is not durable merely because it has been written under
+`/tmp`; check the actual retention or repository state.
 
-**MUST**
-- `## <n> — <one-line claim> (<date>) ◀ ACTIVE ARC`
-- **Read first:** the handoff node id and the one measurement/decision id it rests on.
-- The central finding in 3–5 lines, with numbers.
-- **What's locked** and **what's open** — separately.
-- **Do not reopen** — the closed paths, one line each.
+## Handoff node
 
-**REFERENCE** — the next 2–4 builds; commit hashes; the first gate.
+Use `type=handoff` and a stable work-line title such as `[thread:<slug>]`. Reconcile the prior
+opener as described in the skill. One independently resumable work-line per node; use a small
+index only if several need a common entry point. Aim for a letter the successor can read quickly
+(usually within 800 words), linking fuller evidence instead of compressing away its meaning.
 
-Why it exists: recall can miss, `/tmp` gets cleared, and context compacts. This is the copy that
-can't disappear. **Spend proportionate care here — it outlives every other artifact.**
+Open with the real blocker and owner, or the first concrete action when unblocked. Then supply:
 
----
+- The mental model and why this next step follows; load-bearing decisions and their evidence.
+- Current state, what is settled, what remains open, and the relevant paths already closed.
+- The tailored orientation check with evidence pointers; answer after reading, before acting.
+- Perishable facts checked as of a stated time, their verification method, and what to recheck.
+- Any actual human gate, including where to check for a later ruling before asking again.
+- Relevant adjacent ownership or in-flight work and its continuation instructions.
+- A pointer if a working set exists, labeled with its actual durability; for scratch, use
+  `working set (ephemeral, may be gone): <path>`. Explain how to recover missing essentials.
 
-## §1 — The handoff node (durable; reader = any future me, via recall)
+Write `situation` in the language the successor will use to seek this work. Record assumptions
+about the reader only when they affect the handoff. Omit empty sections; do not invent blockers,
+measurements, owners or a fork discussion to fill a template.
 
-`type=handoff`, first-person "Dear next me". **Budget: ≤800 words.**
+## Durable doc head / fallback
 
-**MUST**
-- **First line is the BLOCKER**, not the arc narrative: the open gate, who owns it, what unblocks
-  it. If nothing is blocked, the first line is the first concrete action. The central *fact* comes
-  second. (A letter that opens on a fact makes the successor read 400 words before learning the
-  thread is waiting on a human.)
-- **The boot self-test** — three questions the successor must answer without reading further.
-- **`situation` written in the words the successor's first prompt will actually use** — not a
-  description of the session. "When opening the X continuation session" is a label; what retrieves
-  is the actions and phrasings that should bring this to mind. If a handoff won't retrieve, this is
-  usually why.
-- **Verify-before-use list** — the 2–3 state claims the successor must cheaply re-derive, **each
-  with one clause saying how it was checked**. Unchecked claims don't get the label. The dangerous
-  shape is a claim marked *verified* where the verification checked a proxy rather than the thing.
-- **The fork verdict, one line**, and what follows from it (no-fork ⇒ this letter must carry the
-  mental model, not just the state).
-- **Negative space, ≤6 lines** — this session's closures plus the one most-tempting older path.
-  Everything else graduates to durable nodes *before* you write the letter. ("Graduated" = closed
-  more than two sessions ago and not reopened since.)
-- **One self-labeled working-set line**: *"working set (ephemeral, may be gone): `<abs path>` — if
-  missing you lose speed, not knowledge."* This is the exception to the no-scratch-paths-in-durables
-  rule, and it exists because the launch prompt lives in a chat the successor cannot read.
+Update the dated entry point at the top of the existing design or project document. If there is
+none, choose an appropriate durable handoff file. The node alone can suffice when that is the
+only carrier available, but explicitly report that memory loss has no independent fallback.
 
-**REFERENCE**
-- Load-bearing node ids inline, so recognition has handles.
-- **Thread identity**: prefix the title `[thread:<slug>]`; find the prior opener carrying that slug
-  (`filter_nodes(field='type', include=['handoff'])`) and `connect(source=<new>, target=<old>,
-  relation='supersedes')`. No prior opener → you're opening the thread; say so. **Supersedes is
-  hygiene, not delivery** — stale openers are known to stay live, so never rely on newest-wins.
-- **Adjacent threads and their owners**, so the successor doesn't collide or duplicate.
-- **Cost per queued item** ("≈20 min compute, no LLM spend").
-- **Written-at stamp**, plus: *run `git log --since=<written-at>` before trusting the queue order* —
-  siblings commit while you sleep. (Unconditional; don't try to predict an open-by date.)
-- **Open gates are perishable**: *when the operator rules, encode the ruling immediately* — else the
-  next session re-asks.
-- **One thread per node.** A session carrying 2–3 threads gets separate smaller handoff nodes, each
-  with its own `situation`, plus one opener referencing them — so recall serves each thread to the
-  right future session.
+The head should locate the current handoff and the primary evidence. Include enough to identify
+the task, key constraints and first action without memory or scratch access. Keep settled and open
+items distinct. Link detailed evidence; use numbers only when they carry the finding. It is a
+deliberate small overlap with the node for failure recovery, not a second full narrative. Check
+that the claimed revision actually contains it and that the successor can access that revision.
 
----
+## Working set
 
-## §2 — The working set (the scratchpad file)
+This is a first-class deliverable when the session earned useful practical knowledge. Preserve
+what future me would want on the desk, including something unusual that no template anticipated.
+It may be a scratchpad, a small harness, a visual explanation or another suitable form.
 
-Not a junk drawer: what's expensive to re-derive but wrong for the brain or git.
+Lead with how to use it and its durability: which essentials live elsewhere, what is optional,
+and where the inputs or reconstruction method live. Then put the next action or actual human
+decision where it is easy to find. Useful contents include:
 
-**MUST** — lead with these two, in this order:
-1. **The one decision awaiting a human**, with the command to read its evidence and the framing for
-   the ask.
-2. **Copy-paste commands** — exact invocations, env vars, resource caps, paths.
-3. **Every measured number in one table.** A node holds *meaning*; forty values make it
-   unrecallable-by-meaning and unreadable. Nowhere means re-running expensive probes to remind
-   yourself. **This artifact class has no other home** — it generalises past any one project.
+- Copy-paste commands with exact environment, paths, resource limits and prerequisites.
+- Measurement tables worth retaining, with units, method, provenance and interpretation.
+- Harness idioms, small traps, and examples that were expensive to get right.
+- Tested building blocks or clearly labeled untested sketches, with their durable locations.
+- The session's special insight or practical aid that makes the successor meaningfully stronger.
 
-**REFERENCE** — in any order: harness idioms (imports, contracts, helper functions that took real
-time to get right) · gotchas too small for nodes · the next build's skeleton, **marked UNTESTED if
-you didn't run it** · pointers (snapshots, caches, commits, node ids).
+Do not dump every log or intermediate value. Select for future usefulness, not just neatness or
+word count. Choose a host-appropriate writable location and link it from the handoff; do not assume
+a fixed scratch path, retention period, or shared filesystem on the receiving host.
 
-**Open the file with: "pure accelerant — nothing here is the only copy,"** and say where the durable
-copies are. Path shape: `/private/tmp/.../<session-uuid>/scratchpad/` — it survives session end, but
-the OS clears `/tmp`, so the successor must degrade to brain+git losing speed, not knowledge.
+## Launch prompt
 
----
+Write an entry point, normally about 100–150 words; expand when access limits require it to stand
+alone. The handoff owns the detail. The launch should carry:
 
-## §3 — The launch prompt (ephemeral; reader = one specific successor)
+1. **Task / orient:** exact handoff address (`get_node` by ID when available), durable fallback,
+   and the intended next task.
+2. **Next:** first concrete read/action; answer the handoff's orientation check before acting.
+3. **Exceptional constraint:** only a live gate or restriction the reader needs before opening
+   the handoff. Preserve its authorization; do not repeat every decision or all the test questions.
+4. **Feedback:** when this letter causes a stale assumption, missing decision or re-derived fact,
+   encode a `handoff-gap` naming what it should have carried (or leave a durable note if memory
+   is unavailable).
 
-Lean. Lean on the brain; don't paste history. **This is the successor's first read.**
-
-**MUST**
-1. **Orient** — `recall <node id>` *and* `get_node(<id>)`, plus the doc head to read first. The
-   explicit `get_node` is the guarantee; boot does not reliably surface a handoff node on its own.
-2. **Next** — the immediate task and the *first concrete action*. Open on the **first gate**, not on
-   state.
-3. **Gates** — where to STOP and ask; name the first one explicitly. **Before asking the operator
-   anything in the gate list, recall the gate — a prior stream may already have ruled.** *For an
-   autonomous reader, replace gates with stop-conditions plus an explicit list of what it may decide
-   alone.*
-4. **Closed paths** — what it must NOT reopen.
-5. **The boot self-test**, quoted from the node.
-6. **The gap-node line**: *"when this letter fails you — a stale claim, a missing decision, a
-   re-derived fact — encode a `handoff-gap` node naming what it should have carried."*
-
-**REFERENCE** — 2–3 lines of state (where we are / locked / open) · the operator's stance and cadence
-so behavior carries over, not just facts · the working-set path with its degradation note.
-
-**Design the operator's re-entry.** The successor's first message should be a 30-second decision at
-the first gate — never a context dump. The human's re-entry cost is part of what's being salvaged.
+Link the working set when useful. The successor's first response should give a brief orientation
+receipt and proceed with authorized work, or present the real unresolved decision. Do not require
+a human question when the next action is clear.
