@@ -284,15 +284,15 @@ print(cost({t['name'] for t in brain_mcp.TOOLS}), cost(brain_mcp.CRITICAL_TOOLS)
 | tool name seen by the model | `mcp__plugin_<plugin>_<server>__<tool>` as a plugin, `mcp__<server>__<tool>` when added directly | `mcp__<server>__<tool>` (our `hooks.codex.json` matcher) |
 | catalog pruning | automatic ToolSearch deferral above ~10% of context; `_meta["anthropic/alwaysLoad"]` forces eager (vendor extension, ignored elsewhere) | user-side allowlist: `enabled_tools` / `disabled_tools` in `config.toml`, edited by hand |
 | annotations | not required — classifier-based risk assessment in auto mode | load-bearing: absent annotations = max risk = approval prompt every call; `readOnlyHint` enables auto-approval and concurrent execution; `destructive_enabled = false` hard-blocks any tool declaring `destructiveHint` |
-| server `instructions` | injected into the system prompt (verified 2026-09-08) | unverified — do not assume; ChatGPT (non-Codex) reads it capped ~512 chars (id:f5b3fe55) |
+| server `instructions` | injected into the system prompt (verified 2026-09-08) | honoured — keep the first 512 chars self-contained (`CODEX-ADAPTER-RESEARCH.md` §2.3) |
 | per-tool timeouts | none exposed | `startup_timeout_sec`, `tool_timeout_sec` per server |
 | identity | `CLAUDE_CODE_SESSION_ID` reaches the stdio server | no thread id to stdio servers (openai/codex#19937, closed not-planned) — bridged by the HMAC PreToolUse stamp (id:b71a1254) |
 
 **Consequences for this plan:** Step 1 is worth more on Codex than on Claude Code and is what
 makes our tools usable there without per-call approval. `alwaysLoad` buys nothing on Codex, so
 `docs/CODEX-SETUP.md` should recommend an `enabled_tools` allowlist mirroring `CRITICAL_TOOLS`.
-Anything that depends on `SERVER_INSTRUCTIONS` being read (Step 5's escape valve) is
-Claude-Code-only until someone verifies Codex.
+`SERVER_INSTRUCTIONS` (Step 5's escape valve) is read by BOTH hosts — Codex honours it, Claude
+Code injects it — so it is the one description-side lever that reaches every caller for free.
 
 ---
 
@@ -384,17 +384,27 @@ prefix allow (`"mcp__plugin_entity_brain"`), which covers all 39. Claude Code's 
 match on tool NAME patterns and ignore annotations entirely, so Step 1 changes nothing here — a
 fresh install without that rule prompts per tool on first use and can remember the answer.
 
-**Codex, after Step 1:** the always-prompt set is exactly the seven `destructiveHint: true`
-tools — `revise`, `revise_batch`, `revise_edge`, `brain_batch`, `clear_errors`, `restart`,
-`eval`. The 14 reads become auto-approvable under a permissive policy and run concurrently. The
-9 additive writes sit in the middle: neither force-prompted by the destructive rule nor
-auto-approved by the read-only rule, so they follow the session's default approval mode.
+**Codex: the prompt is once per tool, not once per call.** Measured in the rollout
+(`docs/CODEX-ADAPTER-RESEARCH.md` §9): Codex asks on a tool's FIRST use — reads included — and
+persists the answer as `[plugins."<id>".mcp_servers.brain.tools.<tool>] approval_mode = "approve"`.
+A hook returning `permissionDecision: allow` does not suppress it, and the model never sees the
+prompt (it reports "no approval"). So no annotation makes a tool prompt every time.
 
-**The one uncomfortable consequence:** `brain_batch` is a `CRITICAL_TOOL` and the primary mixed
-write, and marking it destructive means an interactive Codex session confirms every call. That is
-the honest annotation — the op union can archive and absorb nodes — and the alternative
-(declaring it additive) would auto-approve archives. Accept the prompt, or split the destructive
-ops out of the union; do not soften the hint.
+What the modes do, and where annotations land in them
+(`default_tools_approval_mode` per server, `tools.<tool>.approval_mode` per tool):
+
+| mode | behaviour |
+|---|---|
+| `auto` | no ask |
+| `writes` | asks for **every tool not annotated `readOnlyHint: true`** — the mode where Step 1 pays off directly: 14 tools drop out of the ask |
+| `prompt` | asks per tool on first use, remembers |
+| `approve` | pre-approved — what our own onboarding writes server-wide (405666a), so the user answers ONE form instead of 39 prompts |
+
+So Step 1's Codex value is narrower than "fewer prompts" and still real: `readOnlyHint` removes
+14 tools from the `writes`-mode ask AND lets them execute concurrently, and a correct
+`destructiveHint` means a user running `destructive_enabled = false` can still call 26 of the 30
+tools instead of none. `brain_batch` being destructive costs one first-use confirmation, not a
+confirmation per encode — there is no reason to soften the hint.
 
 **`eval`'s real consumer, so Step 4 doesn't break it:** `eval/oracle_audit/backfill_absorbed_into.py`
 uses the daemon `eval` COMMAND over TCP. Step 4 gates the MCP TOOL only — leave the
