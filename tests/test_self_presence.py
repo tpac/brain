@@ -299,12 +299,13 @@ class TestPresenceCountsWatchers(BrainTestBase):
         self.assertEqual(focus, 'shipped the TTL fix',
                          "latest conversational turn wins, even when it's the assistant")
 
-    def test_reply_to_wake_envelope_is_not_focus(self):
-        # The half the marker test used to miss. A machine-woken turn is the
-        # ENVELOPE (a user_message); the reply it provokes is an ordinary
-        # assistant_message carrying no marker, so filtering on the row's own
-        # summary let the reply through — and it re-floated the stream on every
-        # wake. Attendedness must be judged by the turn that PROVOKED the row.
+    def test_wake_reply_bumps_focus_but_not_recency(self):
+        # THE ASYMMETRY. A machine-woken turn is the ENVELOPE (a user_message);
+        # the reply it provokes is an ordinary assistant_message carrying no
+        # marker. For RANKING that reply must not count — letting it count is
+        # what floated a background task above the operator's own session. For
+        # DESCRIPTION it must count — it is the stream's own account of what it
+        # is doing, and the most informative line available about it.
         self._turn('wokenXXX0', 'user_message', 'adjudicate the eval arms',
                    updated_at=iso_cutoff(minutes=20))
         self._turn('wokenXXX0', 'user_message', '<task-notification>\n<event>log tick',
@@ -314,9 +315,10 @@ class TestPresenceCountsWatchers(BrainTestBase):
         rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
         row = {r['session_id']: r for r in rows}.get('wokenXXX0')
         self.assertIsNotNone(row, "a woken stream stays PRESENT — only its rank changes")
-        self.assertEqual(row['focus'], 'adjudicate the eval arms',
-                         "the reply to a wake envelope must not become the focus")
-        # conv_recency is the RANKING key and is returned by the DAL, not carried
+        self.assertEqual(row['focus'], 'Still waiting on the control arm.',
+                         "focus DESCRIBES the stream — its own latest report is the "
+                         "most useful line, even when a wake provoked it")
+        # conv_recency is the RANKING key, returned by the DAL and not carried
         # through present_streams' 4-key projection — assert it at its own layer.
         dal_row = {r['session_id']: r for r in self.brain._trace_dal
                    .active_sessions_by_turn(iso_cutoff(minutes=30), limit=10)}['wokenXXX0']
@@ -324,30 +326,28 @@ class TestPresenceCountsWatchers(BrainTestBase):
                         "the reply must not bump conv_recency — that is what "
                         "outranked the operator's own session")
         # `updated_at` (= last_turn) still counts the envelope, so the stream keeps
-        # reading `active`. That is DELIBERATE: a watch-mode stream is the most
-        # reachable thing there is. Only rank and focus are corrected here.
+        # reading `active`. DELIBERATE: a watch-mode stream is the most reachable
+        # thing there is. Only the ranking key is corrected here.
         self.assertGreater(row['updated_at'], iso_cutoff(minutes=10),
                            "liveness must still reflect reachability")
 
-    def test_peek_recent_msgs_skips_reply_to_wake_envelope(self):
-        # The SAME one-sided filter lived in session_activity's recent_msgs, so a
-        # peek (and self_presence rich=True) showed every machine-woken answer as
-        # though the stream were mid-task. A peek must show WORK; the answer to an
-        # ignition is not work.
+    def test_peek_keeps_wake_reply_but_never_the_envelope(self):
+        # A peek answers "what is this stream doing", so the answer to a wake is
+        # exactly what it should return — while the envelope itself stays noise.
+        # Applying the ranking predicate here would swap a live status line for a
+        # stale one, so session_activity deliberately filters only the envelope.
         self._turn('peekWoke0', 'user_message', 'run the gate-4 corpus',
                    updated_at=iso_cutoff(minutes=20))
-        self._turn('peekWoke0', 'assistant_message', 'Corpus built, 12/12.',
-                   updated_at=iso_cutoff(minutes=19), event_type='delta')
         self._turn('peekWoke0', 'user_message', '<task-notification>\n<event>tick',
                    updated_at=iso_cutoff(minutes=5))
-        self._turn('peekWoke0', 'assistant_message', 'Waiting on the control arm.',
+        self._turn('peekWoke0', 'assistant_message', 'Item 6 of 10, waiting.',
                    event_type='delta')
         act = self.brain.session_activity('peekWoke0', msg_limit=4)
         texts = [m['text'] for m in act.get('recent_msgs', [])]
-        self.assertNotIn('Waiting on the control arm.', texts,
-                         "the reply to a wake envelope must not appear as recent work")
-        self.assertIn('Corpus built, 12/12.', texts,
-                      "real work must still surface in a peek")
+        self.assertIn('Item 6 of 10, waiting.', texts,
+                      "the stream's own status line is what a peek exists to show")
+        self.assertFalse([t for t in texts if t.startswith('<task-notification>')],
+                         "the wake envelope itself is never work")
 
     def test_woken_stream_ranks_below_attended_stream(self):
         # The operator-visible symptom: a Monitor-woken background task sat at

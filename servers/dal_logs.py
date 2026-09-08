@@ -656,12 +656,16 @@ def _attended_sql(alias: str) -> str:
     latest user_message at-or-before it lacks the wake-envelope marker. Takes
     one bound param (the marker LIKE pattern).
 
-    Testing the marker on a row's OWN summary catches only half a machine-woken
-    exchange. The envelope is the user_message; the assistant's reply to it is
-    an ordinary assistant_message carrying no marker, so a self-test passes the
-    reply through — and the reply then counts as recency, focus and recent work
-    on every wake. Both presence readers need both halves discounted, so the
-    predicate lives here rather than being spelled twice.
+    For RANKING only. Testing the marker on a row's OWN summary catches half a
+    machine-woken exchange: the envelope is the user_message, but the reply to
+    it is an ordinary assistant_message carrying no marker, so a self-test
+    passes the reply through and every wake refreshes the stream's recency.
+
+    Do NOT reach for this wherever an envelope filter appears. It answers "did
+    the operator provoke this turn", which is the right question for ranking and
+    the WRONG one for description: a machine-woken reply is unattended yet is
+    usually the most informative line about that stream, so focus and peek keep
+    it and filter only the envelope itself.
 
     The envelope self-excludes (it is its own latest predecessor); its reply is
     excluded by that predecessor. COALESCE keeps a conversational row that has
@@ -1377,15 +1381,19 @@ class TraceDAL(_LogsWriteBase):
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
         trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
-        last real work is often its own last reply. `focus` and `conv_recency`
-        count only OPERATOR-ATTENDED turns — a turn is attended iff the latest
-        user_message at-or-before it lacks the wake-envelope marker (a
-        `<task-notification>` ignition). Both sides of a machine-woken exchange
-        are therefore discounted: the envelope itself, AND the reply it provokes
-        (which carries no marker of its own, so a marker test on the row alone
-        let the reply keep re-floating a woken stream to the top). Both the
-        conversational set and the marker come from the contract — no filters
-        reproduced here. (Raw; the render layer first-lines/truncates.) Caller
+        last real work is often its own last reply. `focus` drops only the
+        wake-envelope turn itself (a `<task-notification>` ignition), so a
+        woken stream still DESCRIBES itself by its own latest report.
+        `conv_recency` — the RANKING key — is stricter: it counts only
+        OPERATOR-ATTENDED turns, meaning the latest user_message at-or-before
+        the row lacks the marker (see _attended_sql). That asymmetry is
+        deliberate. A machine-woken stream answers its own wake, and those
+        replies are unmarked, so counting them as recency let a background task
+        outrank a session the operator was actually working in; but the same
+        reply is the most informative line available ABOUT that stream. So it
+        is discounted for "how much should I care" and kept for "what is this".
+        Both the conversational set and the marker come from the contract — no
+        filters reproduced here. (Raw; the render layer first-lines/truncates.) Caller
         computes the cutoff (wall-clock vs conversation-time is the caller's
         policy, not the DAL's)."""
         # PINNED to operator dialogue (not the dial): presence focus and
@@ -1411,15 +1419,20 @@ class TraceDAL(_LogsWriteBase):
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
                  else "conv_recency DESC, last_turn DESC")
-        # focus/conv_recency count only OPERATOR-ATTENDED turns (_attended_sql
-        # owns the predicate and the why). Membership — the outer WHERE — still
-        # counts heartbeats and envelopes, so watch-mode streams stay VISIBLE;
-        # only their rank and focus change.
+        # RANKING (conv_recency) counts only OPERATOR-ATTENDED turns — that is
+        # what a machine-woken stream was winning the roster on. FOCUS keeps the
+        # older, weaker rule (drop the envelope, keep everything else): the
+        # envelope is noise, but the reply to it is the stream's own account of
+        # what it just did, and that is usually the single most informative line
+        # about it. Discounting the reply for RANK and keeping it for DESCRIPTION
+        # is the whole point — one of these answers "how much should I care", the
+        # other "what is this". Membership (the outer WHERE) still counts
+        # heartbeats and envelopes, so watch-mode streams stay VISIBLE.
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
             "   WHERE u.scale = 's0' AND u.session_id = t.session_id AND u.ref_type IN (%s) "
-            "     AND u.summary NOT LIKE ? AND %s "
+            "     AND u.summary NOT LIKE ? "
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus, "
             "  (SELECT MAX(c.created_at) FROM trace_events c "
             "   WHERE c.scale = 's0' AND c.session_id = t.session_id AND c.ref_type IN (%s) "
@@ -1431,11 +1444,10 @@ class TraceDAL(_LogsWriteBase):
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY %s LIMIT ?" % (conv_ph, _attended_sql('u'),
+            "ORDER BY %s LIMIT ?" % (conv_ph,
                                      conv_ph, _attended_sql('c'),
                                      live_ph, order),
             (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
-             WAKE_ENVELOPE_MARKER + '%',
              *OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
@@ -1453,12 +1465,15 @@ class TraceDAL(_LogsWriteBase):
           last_active_at — most recent turn of ANY live kind incl. heartbeats
                            (MAX), for liveness; a watch listener's quiet ticks
                            ARE activity (same rule as active_sessions_by_turn)
-          recent_msgs    — last `msg_limit` OPERATOR-ATTENDED conversational
-                           turns, newest first, [{'ts','ref_type','text'}]:
-                           both the wake envelope AND the reply it provokes are
-                           skipped (see _attended_sql), so a peek shows work,
-                           not ignition and not the answer to an ignition (raw;
-                           the render layer truncates). Read-only.
+          recent_msgs    — last `msg_limit` conversational turns, newest first,
+                           [{'ts','ref_type','text'}], wake-envelope turns
+                           skipped so a peek shows work not ignition. The
+                           stream's own REPLY to a wake is kept: it is the
+                           status line a peek exists to surface. (Contrast
+                           active_sessions_by_turn's conv_recency, which
+                           discounts those replies — ranking and description
+                           want opposite things here.) Raw; the render layer
+                           truncates. Read-only.
         """
         # PINNED to operator dialogue — see active_sessions_by_turn.
         from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
@@ -1479,18 +1494,19 @@ class TraceDAL(_LogsWriteBase):
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
         turn_count = (agg[2] or 0) if agg else 0
-        # Same attendedness rule as active_sessions_by_turn (_attended_sql owns
-        # it): a peek must show WORK, and the reply to a wake envelope is not
-        # work — filtering only the envelope left every machine-woken answer in
-        # recent_msgs, so a woken stream peeked as though it were mid-task.
+        # Envelope-only filter here, deliberately NOT the attendedness rule that
+        # ranks the roster: a peek asks "what is this stream doing", and the
+        # stream's answer to a wake IS that — "Longmem prod arm at item 6 of 10"
+        # is the most useful line a peek can return. Discounting machine-woken
+        # turns is a RANKING concern (active_sessions_by_turn's conv_recency);
+        # applied here it would swap the live status line for a stale one.
         rows = self.conn.execute(
-            "SELECT x.created_at, x.ref_type, x.summary FROM trace_events x "
-            "WHERE x.scale='s0' AND x.session_id=? AND x.ref_type IN (%s) "
-            "  AND x.summary NOT LIKE ? AND %s "
-            "ORDER BY x.created_at DESC LIMIT ?" % (conv_ph, _attended_sql('x')),
+            "SELECT created_at, ref_type, summary FROM trace_events "
+            "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
+            "  AND summary NOT LIKE ? "
+            "ORDER BY created_at DESC LIMIT ?" % conv_ph,
             (session_id, *OPERATOR_DIALOGUE_REF_TYPES,
-             WAKE_ENVELOPE_MARKER + '%', WAKE_ENVELOPE_MARKER + '%',
-             msg_limit)).fetchall()
+             WAKE_ENVELOPE_MARKER + '%', msg_limit)).fetchall()
         recent = [{'ts': r[0], 'ref_type': r[1], 'text': r[2] or ''} for r in rows]
         return {'started_at': started_at, 'last_active_at': last_active_at,
                 'turn_count': turn_count, 'recent_msgs': recent}

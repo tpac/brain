@@ -1387,9 +1387,14 @@ PING_INTERVAL = 7.0
 # 5-15s (surface_haiku under load, brain.save() under contention, cold-cache S2
 # enrichment) — bailing at 6s caused false-positive alerts during normal
 # operation. Below 20s = noise; above 20s = real. The grace is THRESHOLD x
-# INTERVAL, so the two must move together: 3 x 7s = 21s. Worst-case detection
-# adds one interval on top (the first failing ping lands up to PING_INTERVAL
-# late), which stays inside the "real" band.
+# INTERVAL, so the two must move together: 3 x 7s = 21s of sleep.
+# Add the ping's own cost to get real detection latency, and it differs by
+# failure mode: a DEAD daemon refuses instantly (~21s), while a HUNG one — the
+# case this monitor exists for — burns the 2s daemon_send timeout per attempt,
+# so 3 x (7 + 2) = up to 27s, plus up to one interval before the first failing
+# ping lands. Both stay in the "real" band. (The old 2s/10 pair was optimistic
+# the same way: up to 40s against a claimed 20s. This is the cadence that
+# tightened the hung-daemon worst case, not just the one that slowed pings.)
 FAILURE_THRESHOLD = 3
 
 
