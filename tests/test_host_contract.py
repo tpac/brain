@@ -7,7 +7,7 @@ What this holds (design: docs/HOST-CONTRACT-DESIGN.md, drift ledger):
     'unknown' / 'ambiguous' statuses drawn from trace_contract's vocabularies;
   • HOOK MIRRORS — the two places a hook still carries host shape are held
     to the contract: post_tool_trace._build_summary's tool-name branches and
-    hook_common.host_name's env tells must be names the contract declares;
+    hook_common.host_tells' env tells must be names the contract declares;
   • LEAF — importing the contract reaches neither daemon_config nor brain
     (the same subprocess pin as test_caller_stamp's hook-path test);
   • the tool_result metadata shape and builder in trace_contract, which the
@@ -221,9 +221,10 @@ class TestHookMirrors(unittest.TestCase):
     drift apart in silence."""
 
     def test_build_summary_branches_are_declared_tools(self):
-        fn = _function(os.path.join(_HOOKS, 'post_tool_trace.py'), '_build_summary')
+        functions = [_function(os.path.join(_HOOKS, 'post_tool_trace.py'), name)
+                     for name in ('_build_summary', '_raw_metadata')]
         branched = set()
-        for node in ast.walk(fn):
+        for node in (node for fn in functions for node in ast.walk(fn)):
             if isinstance(node, ast.Compare) and isinstance(node.left, ast.Name) \
                     and node.left.id == 'tool_name':
                 for comp in node.comparators:
@@ -257,18 +258,19 @@ class TestHookMirrors(unittest.TestCase):
                          'post_tool_trace._build_summary renders summary heads no host declares: %s '
                          '— the encoder reads the head as the tool name' % sorted(heads - declared))
 
-    def test_host_name_probes_only_declared_tells(self):
-        fn = _function(os.path.join(_HOOKS, 'hook_common.py'), 'host_name')
-        probed = set()
-        for node in ast.walk(fn):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
-                    and node.func.attr == 'get' and node.args \
-                    and isinstance(node.args[0], ast.Constant):
-                probed.add(node.args[0].value)
-        self.assertTrue(probed, 'host_name reads no env tells')
-        self.assertFalse(probed - set(hc.all_tell_env_vars()),
-                         'hook_common.host_name probes tells the contract does not declare: %s'
-                         % sorted(probed - set(hc.all_tell_env_vars())))
+    def test_tell_probe_mirror_is_exact_and_observes_names_only(self):
+        # hook_common has no module-level hook execution; the tool hook does.
+        sys.path.insert(0, _HOOKS)
+        try:
+            import hook_common
+        finally:
+            sys.path.pop(0)
+        from unittest import mock
+        self.assertEqual(hook_common.HOST_TELL_ENV_VARS, hc.all_tell_env_vars())
+        with mock.patch.dict(os.environ, {k: 'private-value' for k in hc.all_tell_env_vars()}, clear=True):
+            self.assertEqual(hook_common.host_tells(), list(hc.all_tell_env_vars()))
+        with mock.patch.dict(os.environ, {'PLUGIN_ROOT': '/irrelevant', 'PLUGIN_DATA': ''}, clear=True):
+            self.assertEqual(hook_common.host_tells(), [])
 
 
 class TestLeaf(unittest.TestCase):
@@ -296,10 +298,14 @@ class TestToolResultShape(unittest.TestCase):
     def test_tool_result_is_registered_with_the_chokepoint(self):
         self.assertIs(METADATA_REQUIRED_BY_REF_TYPE.get('tool_result'), TOOL_RESULT_METADATA_SHAPE)
 
-    def test_todays_hook_payload_passes(self):
-        # What every writer already sends — enforcing the shape cannot fire on
-        # existing traffic.
-        self.assertEqual(validate_trace_metadata('delta', 'tool_result', {'tool': 'Bash'}), (True, ''))
+    def test_unstamped_payload_requires_the_write_door(self):
+        from servers.brain_traces import stamp_tool_result
+        raw = {'tool': 'Bash'}
+        self.assertFalse(validate_trace_metadata('delta', 'tool_result', raw)[0])
+        self.assertEqual(validate_trace_metadata('delta', 'tool_result',
+                         stamp_tool_result(raw, {})), (True, ''))
+        self.assertEqual(set(TOOL_RESULT_METADATA_SHAPE),
+                         {'tool'} | set(TOOL_RESULT_NORMALIZATION_KEYS))
 
     def test_missing_tool_is_refused(self):
         ok, err = validate_trace_metadata('delta', 'tool_result', {'kind': 'shell'})
@@ -319,8 +325,9 @@ class TestToolResultShape(unittest.TestCase):
 
     def test_builder_omits_none_and_refuses_unknown_keys(self):
         self.assertEqual(build_tool_result_metadata(tool='Bash', kind=None), {'tool': 'Bash'})
-        with self.assertRaises(ValueError):
-            build_tool_result_metadata(tool='Bash', kidn='shell')
+        for key in ('kidn', 'model', 'host'):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                build_tool_result_metadata(tool='Bash', **{key: 'value'})
 
     def test_normalization_vocabulary_agrees_with_the_contract(self):
         # A stamped kind is always a word the contract could have produced.

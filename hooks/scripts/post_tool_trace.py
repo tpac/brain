@@ -10,7 +10,25 @@ import socket
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import run_hook, tool_target_file, strip_caller_stamp
+from hook_common import run_hook, tool_target_file, strip_caller_stamp, host_tells
+
+
+PATCH_TEXT_CAP = 16_384
+
+
+def _raw_metadata(data, tool_name, tool_input):
+    """Content-free join/probe facts plus a bounded patch; never classify tools."""
+    metadata = {"tool": tool_name, "tells": host_tells(), "payload_keys": sorted(data)}
+    for key in ('tool_use_id', 'turn_id', 'prompt_id'):
+        if key in data:
+            metadata[key] = data[key]
+    if tool_name == 'apply_patch':
+        patch = tool_input.get('command')
+        if isinstance(patch, str):
+            metadata['patch'] = patch[:PATCH_TEXT_CAP]
+            if len(patch) > PATCH_TEXT_CAP:
+                metadata['patch_truncated_chars'] = len(patch) - PATCH_TEXT_CAP
+    return metadata
 
 
 def _build_summary(tool_name, tool_input):
@@ -89,7 +107,7 @@ def main():
             "event_type": "delta",
             "ref_type": "tool_result",
             "summary": summary[:500],
-            "metadata": json.dumps({"tool": tool_name}),
+            "metadata": json.dumps(_raw_metadata(data, tool_name, tool_input)),
             "session_id": session_id,
         }
     })
