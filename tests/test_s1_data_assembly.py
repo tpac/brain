@@ -108,14 +108,12 @@ class TestGatherMessages:
         assert len(result) <= max_msgs, (
             "Should respect max_messages=%d, got %d" % (max_msgs, len(result)))
 
-    def test_content_truncated_to_limit(self):
-        """Long message content is truncated to message_content_limit."""
+    def test_content_preserves_whole_stored_episode(self):
+        """Gathering must not discard the end of a stored episode."""
         from servers.scales.s1.encode import _gather_messages
-        from servers.scales.s1.encode_contract import ENCODING_AGENT
 
         session_id = 'test-gather-trunc'
-        content_limit = ENCODING_AGENT['message_content_limit']
-        long_content = 'x' * (content_limit + 500)
+        long_content = 'x' * 7990 + 'TAIL_PROOF'
 
         chain = 's0-testtrn-1'
         self.dal.append(
@@ -128,7 +126,7 @@ class TestGatherMessages:
 
         result = _gather_messages(self.brain, session_id)
         assert len(result) >= 1
-        assert len(result[0]['content']) <= content_limit
+        assert result[0]['content'] == long_content
 
 
 class TestBuildNodeCatalog:

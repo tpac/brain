@@ -1,6 +1,10 @@
 // ===========================================================================
-// tabs/health.js — system status grid + aspect taxonomy + health summary.
+// tabs/overview.js — system status grid + aspect taxonomy + health summary.
 // ---------------------------------------------------------------------------
+// The whole-brain view: is everything running, what does the taxonomy look
+// like, how many nodes/edges/orphans. The `.health-*` classes below name the
+// CARD TYPE (a health readout), not the tab — they stay as they are.
+//
 // Three render targets:
 //   #status-grid    — Daemon/DB/Judge/Embedder cards (polled, 5s)
 //   #aspects-grid   — 14 aspects with type + relation chips
@@ -185,9 +189,7 @@ export function init() {
     key: 'system-status',
     interval: 5000,
     activeWhen: () => {
-      // Note: legacy "#tab-status" id existed in an earlier version. Check
-      // both so this doesn't silently stop refreshing if Health is renamed.
-      const t = document.getElementById('tab-health') || document.getElementById('tab-status');
+      const t = document.getElementById('tab-overview');
       return t && t.classList.contains('active');
     },
     fetcher: loadSystemStatus,

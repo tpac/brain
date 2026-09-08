@@ -263,8 +263,10 @@ function _setLogsBadge() {
   const b = document.getElementById('logs-badge');
   if (!b) return;
   const total = _unreadErr + _unreadDash;
-  if (total > 0) { b.textContent = String(total); b.style.display = ''; }
-  else b.style.display = 'none';
+  // `.notif` is display:none until it also carries `.show` — clearing the
+  // inline style just falls back to none, so the badge never appeared.
+  b.textContent = total > 0 ? String(total) : '';
+  b.classList.toggle('show', total > 0);
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────

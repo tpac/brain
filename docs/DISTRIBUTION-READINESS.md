@@ -1,5 +1,204 @@
 # Distribution Readiness — Sharing Anchor
 
+## Licensing decision — Elastic License 2.0 (approved; not published)
+
+**Tom selected unmodified Elastic License 2.0, paid managed services, and
+separate commercial agreements for hosted resale. No revenue threshold.**
+This supersedes the earlier recommendation to retain the PolyForm pair and
+the intervening proposal for a free startup/commercial revenue tier. Public
+examples live in [README](../README.md#license); [LICENSE](../LICENSE) contains
+the full current grant with the author's copyright notice.
+
+Free use includes personal and internal company use, modifications, forks,
+commercial application integration, and redistribution subject to ELv2.
+Separate permission is needed to provide the software to third parties as a
+hosted or managed service giving access to a substantial set of its features
+or functionality. This restriction is not limited to paid services or visible
+Entity interfaces. Retain license/copyright notices, pass on the full license,
+mark modifications, and do not bypass license-key protections. The text governs;
+do not add revenue, employee-count, or general competition restrictions in a FAQ.
+Sources: [ELv2](https://www.elastic.co/licensing/elastic-license),
+[official FAQ](https://www.elastic.co/licensing/elastic-license/faq).
+
+### Accepted commercial tradeoffs
+
+A successful company can use Entity and integrate it into a commercial product
+without owing payment if it complies with ELv2. Hosted resale is the reserved
+boundary; ELv2 does not prohibit every competing business, distributed product,
+fork, or consulting service. The business can sell managed setup, hosting,
+cross-device services, backups, team administration, support, and agreements
+for rights ELv2 withholds. These are business directions, not claims that those
+offerings or a checkout are already live. No automatic revenue metering or
+license-key enforcement is introduced by this change.
+
+The decision accepts less control over commercial embedding in return for a
+single recognized license and fewer eligibility rules. Acquirers would buy the
+rights the author owns subject to existing grants, not exclusivity against
+every current user. No license guarantees acquisition value. Internal-company
+deployment and exposing substantial functionality to external users remain
+different cases; unusual customer-facing architectures need legal review.
+Keep private development with clean public exports as the target workflow.
+
+For historical copies, the prior PolyForm terms still matter. Noncommercial
+expressly permitted redistribution and modified forks for its permitted
+purposes, including its express qualifying-organization provisions. Internal
+Use allowed internal company operations/modifications and prohibited
+distribution. The old umbrella's claim that neither permitted distribution
+was false. The retained LICENSES texts document those earlier grants only;
+they stay in the development tree and are not opted into either release output.
+They do not license new ELv2 changes under PolyForm.
+
+### Focused comparison (primary sources checked 2026-09-07)
+
+Repository grants are distinct from subscriptions, hosted platforms, brand
+rights, and separate enterprise components. These are examples of licensing
+models, not dependencies we propose to import.
+
+| Project / source | Public repository grant | Commercial offering and lesson for Entity |
+|---|---|---|
+| Letta Code, [license at e50507a](https://github.com/letta-ai/letta-code/blob/e50507ab72828888a75d4d1a5d95018903d3a88e/LICENSE) | Apache-2.0 for code, with a separate exclusion for names, logos, images, and ASCII art. The [package manifest](https://github.com/letta-ai/letta-code/blob/e50507ab72828888a75d4d1a5d95018903d3a88e/package.json) says Apache-2.0 and ships LICENSE. | [Letta Cloud](https://github.com/letta-ai/letta-code#letta-cloud) stores agent state and connects computers. Code permissions do not grant a hosted account. Apache permits commercial reuse of covered code; brand exclusions do not prevent an independently branded competitor. |
+| Mem0, [license at dae67f7](https://github.com/mem0ai/mem0/blob/dae67f74f5cc7bf138c7d7d6f9cec5ce4b4373b3/LICENSE) | Apache-2.0; [Python metadata](https://github.com/mem0ai/mem0/blob/dae67f74f5cc7bf138c7d7d6f9cec5ce4b4373b3/pyproject.toml) declares it and includes LICENSE. | The [README](https://github.com/mem0ai/mem0#new-memory-algorithm-april-2026) distinguishes proprietary managed-platform optimizations from the open SDK. This preserves paid differentiation, not exclusive commercial rights to SDK code. |
+| Graphiti, [license at b943c9e](https://github.com/getzep/graphiti/blob/b943c9e8486cdc7fe6cb2f4cfe151ae53f0a884d/LICENSE) | Apache-2.0, also declared in [pyproject.toml](https://github.com/getzep/graphiti/blob/b943c9e8486cdc7fe6cb2f4cfe151ae53f0a884d/pyproject.toml). | [Graphiti vs Zep](https://github.com/getzep/graphiti#zep-vs-graphiti) distinguishes the self-hosted framework from managed infrastructure and Zep's proprietary graph engine. Graphiti can be commercially embedded or hosted subject to Apache conditions. |
+| Zep repository, [license at 54f63ee](https://github.com/getzep/zep/blob/54f63eeb58dbc2f6ac5995cd4d51b56317cf5e42/LICENSE) | Apache-2.0 covers this repository's material. | Its [README](https://github.com/getzep/zep/blob/54f63eeb58dbc2f6ac5995cd4d51b56317cf5e42/README.md) identifies examples, integrations, and tools; this is not a license grant to the Zep hosted product. |
+| n8n, [Sustainable Use License](https://github.com/n8n-io/n8n/blob/master/LICENSE.md) | Source-available: internal business, noncommercial, and personal use; external provision/distribution only free of charge for noncommercial purposes. Enterprise files and non-main branches have separate exclusions. | A closer business-policy example, but a project-specific license and file exclusions add complexity. It also permits noncommercial sharing, so it does not solve an absolute no-distribution requirement. |
+| Sentry, [FSL-1.1 with Apache future grant](https://github.com/getsentry/sentry/blob/master/LICENSE.md) | Allows purposes outside defined competing uses, including internal use and certain professional services; each version gains Apache-2.0 after two years. | An alternative with broader competition restrictions initially, but mandatory future Apache rights. Entity's selected ELv2 has no automatic future license conversion. |
+| Airbyte, [repository LICENSE](https://github.com/airbytehq/airbyte/blob/master/LICENSE) | Elastic License 2.0. | A concrete precedent for the selected source-available license. This establishes use of the license, not the terms of every Airbyte component or hosted offering. |
+
+MIT or [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0) is operationally
+simple and permits paid products/services, but cannot reserve commercial
+hosting or embedding of the released code. Apache adds explicit contributor
+patent grants and redistribution/NOTICE duties. [AGPLv3](https://www.gnu.org/licenses/agpl.en.html)
+also allows commercial use and hosting; modified networked versions must offer
+corresponding source to remote users. It is a sharing obligation, not a payment
+requirement, and adds integration review for adopters.
+[BSL 1.1](https://mariadb.com/bsl11/) needs a tailored Additional Use Grant to
+guarantee unrestricted internal production use and a future change license/date
+(no later than four years). [PolyForm Shield](https://polyformproject.org/licenses/shield/1.0.0)
+protects against defined competition, not every commercial redistribution.
+These are coherent alternatives for different goals, not simpler substitutes
+for the selected policy. Keep calling Entity source-available: ELv2's service
+restriction is incompatible with the [Open Source Definition](https://opensource.org/osd).
+
+### Publication and existing rights: evidence, not version guesses
+
+Unauthenticated GitHub API checks found [tpac/brain](https://api.github.com/repos/tpac/brain)
+**public**, created 2026-03-18, default branch `main`; its observed head was
+`26fab2c9d8a377b4e988a5ba5454051ac8ec9597` (2026-09-04).
+The [tags endpoint](https://api.github.com/repos/tpac/brain/tags?per_page=100)
+and [releases endpoint](https://api.github.com/repos/tpac/brain/releases?per_page=100)
+both returned empty arrays. No local tags were present either. Therefore
+there are public source snapshots, but no verified formal tagged/GitHub releases.
+Do not infer that the software has never been made available to others.
+
+Both these MIT snapshots were retrievable without authentication:
+
+- [a4bb975](https://github.com/tpac/brain/blob/a4bb975a54c6805412261d4da40a48c3f31c5cf5/LICENSE),
+  dated 2026-03-17 locally, manifest `tmemory` 3.2.0.
+- [634e7a7](https://github.com/tpac/brain/blob/634e7a74475313b8dfadfeb7f36f0b07e2ab6b04/LICENSE),
+  dated 2026-08-28, manifest `brain` 9.7.2, immediate parent of the
+  [PolyForm change 528c0e8](https://github.com/tpac/brain/blob/528c0e8d09b40cdd69b32b4bae5ecba6f273834d/LICENSE).
+
+Both sides of that license change use version 9.7.2. A version-number cutoff
+would be wrong: identify commits/artifacts and preserve their actual notices.
+MIT-covered code remains commercially reusable under MIT's notice condition;
+later changes are not automatically MIT. Earlier PolyForm permissions likewise
+survive for copies/code made available under those grants; adopting ELv2 does
+not revoke them. A clean export or making a repository private does not undo
+prior grants. Current local shortlog attributes
+all 2,333 commits to one author, but authorship metadata alone does not establish
+ownership, employment rights, or provenance of copied material.
+
+The proposed [tpac/entity target](https://api.github.com/repos/tpac/entity)
+returned 404 without authentication (absent or inaccessible, not proof it does
+not exist privately). `CHANGELOG.md` still has a placeholder date for 0.9.0.
+Keep private development plus clean exports as the **target workflow**, not a
+claim about the observed development remote. Before the next publication,
+resolve repository visibility and review existing public exposure with Tom.
+This audit changes no remote visibility, history, release, or production data.
+
+### Outbound packaging and inbound rights
+
+The package and public-export lists carry LICENSE (full ELv2 plus copyright).
+LICENSES/ is not opted in: its historical PolyForm files remain in the
+development tree only. Public exports also carry README, CONTRIBUTING, and
+CHANGELOG, with no links to excluded files. The short prior-rights note does
+not claim an earlier deployed release. No export allowance is widened.
+
+Both Claude manifests now declare the standard SPDX identifier
+[`Elastic-2.0`](https://spdx.org/licenses/Elastic-2.0.html). This replaces the
+old dual expression, whose bare Internal Use ID was not SPDX-listed. The Codex
+manifest has no license field; LICENSE ships beside it. No speculative field
+is added. SPDX validity alone does not establish marketplace acceptance.
+
+`requirements.txt` lists six runtime dependencies. Current upstream primary
+license checks: [FastEmbed](https://github.com/qdrant/fastembed/blob/main/LICENSE)
+Apache-2.0; [ONNX Runtime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE),
+[Anthropic SDK](https://github.com/anthropics/anthropic-sdk-python/blob/main/LICENSE),
+and [truststore](https://github.com/sethmlarson/truststore/blob/main/LICENSE) MIT;
+[NumPy](https://github.com/numpy/numpy/blob/main/LICENSE.txt) BSD-3-Clause;
+[sqlite-vec](https://github.com/asg017/sqlite-vec/blob/main/LICENSE-MIT) offers MIT.
+These are permissive upstream grants, not a certification of every resolved
+wheel or bundled native library. Version ranges are not a locked inventory.
+
+`ensure-runtime.sh` downloads uv (an [MIT grant is available](https://github.com/astral-sh/uv/blob/main/LICENSE-MIT)),
+standalone Python, and Python packages on the user's machine. `embedder.py`
+downloads model assets through FastEmbed; the default is
+`nomic-ai/nomic-embed-text-v1.5-Q`. The upstream
+[Nomic v1.5 model card](https://huggingface.co/nomic-ai/nomic-embed-text-v1.5)
+declares Apache-2.0, but the precise quantized artifact/revision resolved by the
+installed FastEmbed version still needs identification before redistributing
+weights. Do not equate the Python library's license with the model's license.
+
+The opt-in archive includes no venv, standalone Python, uv binary, or model
+weights. No vendored third-party code notices were found in the runtime/UI
+header scan; that scan cannot prove originality. README states that third-party
+terms remain separate. Do not add an invented catch-all NOTICE or claim all
+dependencies are relicensed under ELv2. Before distributing a
+preinstalled runtime/container, retain exact package, interpreter, native-library,
+and model licenses, copyright notices, required NOTICE files, and any required
+source/offers. Record versions and hashes alongside the release artifact.
+
+CONTRIBUTING remains issues-only, and now explicitly gates incorporation of
+external code/docs on provenance and written rights suitable for both public
+and commercial licensing. ELv2's grant is not sublicensable: accepting a
+fork under its terms alone does not secure commercial relicensing rights to
+the contributor's additions. A DCO/credit is not an assignment or a broad CLA.
+For comparison, [Mem0 requires a CLA](https://github.com/mem0ai/mem0/blob/dae67f74f5cc7bf138c7d7d6f9cec5ce4b4373b3/CONTRIBUTING.md);
+the reviewed Letta Code and Graphiti CONTRIBUTING files do not themselves set
+out a comparable requirement. Apache section 5 supplies default inbound terms
+for intentional contributions absent a different statement/agreement, but does
+not transfer ownership or erase notices. Do not infer private company rights
+from any project's public contribution guide.
+
+Before accepting contributions, choose an established permissive inbound grant
+or a counsel-reviewed standard CLA with needed copyright/patent and commercial
+relicensing rights; confirm organizational authority for employee contributions.
+There is no need to invent a CLA while contributions remain closed. Before
+signing commercial agreements, counsel should review ownership, the scope of
+hosted/managed service rights in the actual deal, third-party obligations, and
+contract terms (support, warranty, liability). This audit makes no claim that a
+license heading guarantees enforceability or prevents every competing service.
+
+### Validation
+
+LICENSE matches the [official ELv2 text](https://raw.githubusercontent.com/elastic/elasticsearch/main/licenses/ELASTIC-LICENSE-2.0.txt)
+byte-for-byte after the leading author copyright notice. The upstream text's
+SHA-256 is `48255018b41fc0e965b1115af7e6779bc218bb8a6747d561da800d5022622aa2`.
+Both historical PolyForm
+texts were verified byte-identical to the [1.0.0 sources](https://github.com/polyformproject/polyform-licenses/tree/1.0.0)
+and remain unchanged. Manifest agreement, shell syntax, whitespace checks, and
+the three targeted opt-in packaging tests passed. The 422-file export passed gates A (denylist),
+B (scrub), C (version agreement, 0.9.0), and D (built-in secrets patterns).
+The actual plugin archive built with 231 files; its license and metadata match
+the working tree, and neither output contains LICENSES/. The opt-in regression
+test treats historical license files as unselected tracked files. These checks validate license packaging, not a full release
+dry run, dependency clearance, legal enforceability, or marketplace acceptance.
+No runtime code changes are required for the license switch.
+
+README no longer links to `docs/CODEX-SETUP.md`, which is outside the public
+opt-in list. License-section links likewise do not point to the excluded
+historical texts. The setup document remains development-only.
+
 ## §ACTIVE ARC (2026-09-05) — **5.7 BUILT and dry-run green; 5.9 opt-in export DONE; the push waits on Tom (e-mail domain, repo, go).**
 
 **5.7 built 2026-09-03/04 — `scripts/release.sh`, `install-smoke.sh`,
@@ -349,7 +548,7 @@ while execution drifts at the substrate* (community id:3350ea51), proven twice o
 
 | # | Artifacts reflect it? | Evidence |
 |---|---|---|
-| D-1 | **partial — one defect** | `LICENSE` ships and names the dual grant, but points at `LICENSES/PolyForm-*.md` for full text and **`LICENSES/` is not in the package manifest** — dangling on an installed plugin (it *is* in the public tree, an export extra). `marketplace.json` carries **no `license` field** though the marketplace schema accepts an optional SPDX string and `plugin.json` sets one. README makes no "open source" claim ✓ |
+| D-1 | **resolved in current tree** | Full ELv2 in `LICENSE`; both Claude manifests declare `Elastic-2.0`. Historical PolyForm texts in `LICENSES/` are excluded from both release outputs. README makes no "open source" claim. See the licensing decision at the top. |
 | D-2 | yes | no artifact to drift |
 | D-3 | yes | `daemon_launch.py` treats a missing `launchctl` as "no launchd platform" and falls through to `subprocess.Popen` |
 | D-4 | yes | `plugin.json.userConfig` carries `api_key` + `brain_path`; the `~/.config/brain/env` ladder rung is intact |
@@ -370,7 +569,7 @@ closed by 5.2 (2026-09-03). **Still open: D-8's graceful skip and D-12's gate.**
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| D-1 | **Full source-available**, fresh public repo (clean history). *Amended 2026-08-28 (Tom): license is a dual PolyForm grant — Noncommercial (individuals) OR Internal Use (companies in-house); shipping it in a released product/service requires a commercial license via a repo issue. Not OSI open source — never claim "open source" in public copy. Pre-change releases stay MIT.* | The tool's pitch is "trust me with your identity layer" — inspectable code *is* the credibility, and every line remains readable under the dual grant. Current repo history carries personal data and can't be the public one. |
+| D-1 | **Source-available under unmodified Elastic License 2.0**, clean release exports. No revenue threshold. Commercial integration and redistribution permitted subject to ELv2. Hosted/managed provision of substantial Entity functionality to third parties requires a separate agreement. Paid managed services are the business direction. Earlier MIT and PolyForm rights survive for earlier copies/code. See the licensing decision above. | Inspectable code supports trust. Private development is the target workflow; the audit found the current development remote public, requiring a separate visibility/exposure decision before release. |
 | D-2 | **Repo separation, not develop-in-public, not a coupled mirror.** Private dev repo stays the daily driver and never goes public. A distinct public distribution repo carries only the clean shippable artifact, fed by a release step. | Tom: "I want separation." Develop-in-public imposes a permanent discipline tax (no personal commit ever again); a mirror imposes a sync tax. Separation keeps the working mess private at the cost of a deliberate release step. *(Sub-question CLOSED 2026-08-06 → D-7 / D-8: full scrubbed source, runtime + tests, squash-exported.)* |
 | D-3 | **Cross-platform v1 now, v2 deferred.** Ship the cheap ability to run on Linux (graceful degradation + first-class Popen fallback). Defer systemd parity / supervisor abstraction until a real Linux user exists. | v2's true cost isn't the build — it's the permanent obligation to validate the *most dangerous subsystem* (daemon lifecycle) on two OSes forever. Don't pay that tax for users who may not exist yet. |
 | D-4 | **`userConfig` is additive, never a replacement.** Add the CC-native prompt-on-enable + keychain path for the API key, but keep the `~/.config/brain/env` fallback. | `userConfig` only exists inside the plugin runtime; the daemon running standalone / in Cowork still needs the env file. Best UX in-plugin, still works out-of-plugin. |
@@ -892,7 +1091,8 @@ reporting clean. Use `--s1e <path>` (content-hashed, `file:<sha>`) or
 build instead of the install (manifest 235 → 237), and `marketplace.json`
 carries the `license` field, matching `plugin.json`. A false claim in
 `build-plugin.sh`'s own comment (*"plugin.json DECLARES `license`: `MIT`"* —
-it declares the PolyForm dual grant) went with it.
+it then declared the PolyForm dual grant) went with it. The current declaration
+is `Elastic-2.0`, per the licensing decision above.
 
 **Still open after phase 4:**
   0. **The two `encoding_prompt.py` hunks** — with the v-next.7 stream; verify
@@ -1235,8 +1435,9 @@ CONTRIBUTING.md created (D-9 issues-only + never-paste-memories privacy
 note). **`displayName` RULED: `Entity`** (D-12 — manifest names the product,
 config names the instance) and shipped in both manifests; marketplace
 metadata description de-Anchored. Install instructions are written for
-`entity@anchor` and activate at publish. (License substance already clean:
-MIT outbound; `common_words_10k.txt` removed.) The prior README's false
+`entity@anchor` and activate at publish. (The MIT assessment was superseded
+by the dual PolyForm grant in 528c0e8; the current grant is ELv2, per the
+licensing decision above. `common_words_10k.txt` was removed.) The prior README's false
 claims, for the record — it was a **rewrite, not a
 polish** — audited 2026-08-07, re-verified 2026-08-08, and it stated things
 that were no longer true: *"the plugin will refuse to load without this key set"*
@@ -1458,10 +1659,11 @@ worry was the wrong worry, and "the official directory" is not submittable.**
 - **No published policy requires an OSI license.** Neither
   `anthropics/claude-plugins-community` nor the Claude Code plugin-marketplace
   docs state any license requirement. The docs treat `license` as an **optional
-  informational SPDX string** in the plugin entry. So the dual PolyForm grant
-  is not disqualified by any *written* rule — the exposure is discretionary
-  review, not a stated gate. Third-party guides recommending "MIT or Apache"
-  are advice, not policy.
+  informational SPDX string** in the plugin entry. That research concerned
+  the former PolyForm grant; the selected license is now ELv2. Recheck current
+  submission policy before applying rather than treating this dated finding
+  as acceptance of either license. Third-party guides recommending "MIT or
+  Apache" are advice, not policy.
 - **Two directories, only one has a door.** `claude-plugins-official` is curated
   at Anthropic's discretion with **no application process** — 5.8 as originally
   written is not an action anyone can take. The submittable one is the
@@ -1489,7 +1691,7 @@ consumes only its exit code).
 
 | Path | Named by |
 |---|---|
-| root, `LICENSES/` | literal (`LICENSE`, the three manifests, `.mcp.json`, `requirements.txt`); `LICENSES/*.md` |
+| root | literal (`LICENSE`, the three manifests, `.mcp.json`, `requirements.txt`); historical `LICENSES/` is not opted in |
 | `servers/` | shape `**/*.py` minus `/archive/`; `aspects_v1.json` by literal |
 | `hooks/` | the two manifests by literal; `scripts/*.sh`, `*.py`, `*.plist`, `brain-*` launchers by shape |
 | `dashboard/` | shapes `**/*.py`, `*.js`, `*.css`, `*.html` |

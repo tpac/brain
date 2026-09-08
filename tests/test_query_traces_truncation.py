@@ -24,7 +24,7 @@ def _events(n, session_id='trunctest-session'):
         'event_type': 'delta',
         'ref_type': 'tool_result',
         'summary': f'event {i}',
-        'metadata': {'i': i},
+        'metadata': {'tool': 'probe', 'i': i},   # tool_result rows carry `tool` (trace_contract shape)
         'session_id': session_id,
     } for i in range(n)]
 

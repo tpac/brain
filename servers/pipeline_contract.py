@@ -297,8 +297,8 @@ def get_group_weight(vector_type):
 # ═══════════════════════════════════════════════════════════════
 
 PIPELINE = {
-    'user_message_query': 500,
-    'assistant_response_store': 4000,
+    'user_message_query': 4000,
+    'assistant_response_store': 8000,  # S0 episode bodies, both conversation roles
     'recent_message_content': 400,  # upstream cap on the daemon_hooks trace pull;
                                     # must cover SURFACE's per-role display limits —
                                     # enforced by test_pipeline_contract.TestTruncationInvariants.

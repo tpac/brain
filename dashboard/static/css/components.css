@@ -1275,3 +1275,311 @@
   white-space: nowrap;
 }
 .journal-group-count { margin-left: auto; color: var(--text-faint); font-size: var(--fs-xxs); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Streams tab — the chat
+   -------------------------------------------------------------------
+   The conversation is the tab's main pane; the roster of who's talking
+   is the rail beside it (and under it on a narrow window). Reading
+   order is a chat's: oldest at the top, newest above the composer.
+   ═══════════════════════════════════════════════════════════════════ */
+
+#tab-streams.active { display: flex; flex-direction: column; overflow: hidden; }
+/* row-reverse, not a reordered DOM: the conversation list sits on the LEFT
+   where every messaging app puts it, while the markup keeps the conversation
+   first — so when the layout stacks on a narrow window (below), the chat is
+   what lands at the top of the page. */
+.streams-layout { display: flex; flex-direction: row-reverse; flex: 1; min-height: 0; }
+
+.chat-col { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.chat-head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-faint);
+  flex-shrink: 0;
+}
+.chat-title { color: var(--text-heading); font-size: var(--fs-lg); font-weight: 600; }
+.chat-sub   { color: var(--text-subtle); font-size: var(--fs-sm); }
+.chat-count { color: var(--text-muted);  font-size: var(--fs-sm); }
+
+.chat-log {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+/* Day separator — a chat's sense of when, without a timestamp per line. */
+.chat-day { text-align: center; margin: var(--space-4) 0 var(--space-2); }
+.chat-day span {
+  color: var(--text-subtle); font-size: var(--fs-xs);
+  background: var(--bg-panel); border: 1px solid var(--border-faint);
+  border-radius: 10px; padding: 2px 10px;
+}
+
+.chat-row { display: flex; gap: var(--space-2); align-items: flex-start; margin-top: 10px; }
+.chat-row.is-grouped { margin-top: 2px; }
+.chat-row.is-mine { flex-direction: row-reverse; }
+
+.chat-avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700;
+  color: var(--bg-page);
+}
+
+.chat-stack { min-width: 0; max-width: 76%; display: flex; flex-direction: column; }
+.chat-row.is-mine .chat-stack { align-items: flex-end; }
+
+.chat-meta {
+  display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap;
+  margin-bottom: 3px; font-size: var(--fs-xs);
+}
+.chat-from   { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 700; }
+.chat-to     { color: var(--text-subtle); }
+.chat-to--all{ color: var(--accent-purple); }
+.chat-time   { color: var(--text-faint); }
+
+/* The bubble is tinted by its SENDER's hue — the same hue the stream
+   carries in the rail, the Live feed and the graph. */
+.chat-bubble {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-faint);
+  border-left: 2px solid var(--from-color, var(--border-base));
+  border-radius: 10px;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.chat-row.is-mine .chat-bubble {
+  border-left: 1px solid var(--border-faint);
+  border-right: 2px solid var(--from-color, var(--border-base));
+  background: #0f1a14;
+}
+.chat-bubble:hover { border-color: var(--border-base); }
+.chat-bubble .msg-body {
+  color: var(--text-body); font-size: var(--fs-md); line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+.msg-clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.chat-more  { color: var(--accent-blue); font-size: var(--fs-xs); margin-top: 4px; }
+.chat-refs  { color: var(--text-subtle); font-size: var(--fs-xs); font-family: var(--font-mono); margin-top: 4px; }
+
+/* Delivery as a read receipt: ✓ sent, ✓✓ actually consumed by a stream. */
+.chat-receipt        { font-size: var(--fs-xxs); margin-top: 3px; }
+.chat-receipt--read  { color: #5a8a5a; }
+.chat-receipt--sent  { color: #806a3a; }
+
+.chat-empty { text-align: center; padding: 48px 24px; }
+.chat-empty-glyph { font-size: 30px; opacity: .5; }
+.chat-empty-title { color: var(--text-heading); font-size: var(--fs-lg); margin-top: var(--space-2); }
+.chat-empty-sub   { color: var(--text-muted); font-size: var(--fs-md); margin: var(--space-2) auto 0; max-width: 46ch; line-height: 1.6; }
+
+.chat-composer {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--border-faint);
+  background: var(--bg-panel);
+}
+.chat-to-label { color: var(--text-subtle); font-size: var(--fs-sm); }
+.chat-input {
+  flex: 1; min-width: 160px;
+  background: var(--bg-deep); border: 1px solid var(--border-base);
+  color: var(--text-body); border-radius: 16px;
+  padding: 7px 12px; font-size: var(--fs-md);
+}
+.chat-input:focus { outline: none; border-color: var(--accent-blue); }
+.chat-send-status { color: var(--text-muted); font-size: var(--fs-sm); }
+
+/* The thread header — the open conversation's stream pane sits here. */
+.chat-thread { flex-shrink: 0; padding: 0 var(--space-3); }
+.chat-thread:empty { display: none; }
+
+/* ── The conversation list (the rail) ──────────────────────────────── */
+.streams-rail {
+  width: 300px; flex-shrink: 0; overflow-y: auto;
+  border-right: 1px solid var(--border-faint);
+}
+.conv-section {
+  color: var(--text-subtle); font-size: var(--fs-xxs);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  padding: var(--space-3) var(--space-3) var(--space-1);
+}
+.conv-row {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 7px var(--space-3);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.conv-row:hover    { background: var(--bg-panel); }
+.conv-row.is-active{ background: var(--bg-raised); border-left-color: var(--accent-blue); }
+.conv-row.is-muted { opacity: .5; }
+
+.conv-avatar {
+  position: relative;
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 700;
+  color: var(--bg-page);
+}
+/* Liveness rides the avatar, the way a presence dot does in any chat app. */
+.conv-light {
+  position: absolute; right: -1px; bottom: -1px;
+  width: 9px; height: 9px;
+  border: 2px solid var(--bg-page); border-radius: 50%;
+}
+
+.conv-main { min-width: 0; flex: 1; }
+.conv-top  { display: flex; align-items: baseline; gap: 6px; }
+.conv-name {
+  font-family: var(--font-mono); font-size: var(--fs-md); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.conv-time { margin-left: auto; flex-shrink: 0; color: var(--text-faint); font-size: var(--fs-xxs); }
+.conv-preview {
+  color: var(--text-muted); font-size: var(--fs-sm);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Not a message — identity cues (model · turns · hex) for a stream that hasn't
+   said anything yet. Monospace and dim so it can never be misread as speech. */
+.conv-preview--cues {
+  color: var(--text-subtle); font-family: var(--font-mono); font-size: var(--fs-xs);
+}
+.conv-badge { flex-shrink: 0; align-self: center; }
+
+/* Narrow: the rail stops being a rail and stacks UNDER the chat — the
+   conversation keeps the top of the page either way. */
+@media (max-width: 900px) {
+  .streams-layout { flex-direction: column; }
+  .chat-col { min-height: 55vh; }
+  .streams-rail {
+    width: auto; max-height: 40vh;
+    border-left: none; border-top: 1px solid var(--border-faint);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   Thalamus — the brain's standing-intent queue
+   -------------------------------------------------------------------
+   Card colour is the item's KIND (ask / reminder / notice); a settled
+   item dims rather than disappearing, so the queue's history stays
+   readable without competing with what is still open.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.thal-toolbar {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-faint);
+}
+.thal-summary { display: flex; gap: 6px; flex-wrap: wrap; }
+.thal-pill {
+  background: var(--bg-raised); border: 1px solid var(--border-faint);
+  border-radius: 10px; padding: 2px 9px;
+  font-size: var(--fs-sm); color: var(--text-muted);
+}
+.thal-pill b { font-size: var(--fs-md); color: var(--text-heading); }
+.thal-pill--ask b      { color: var(--accent-amber); }
+.thal-pill--reminder b { color: var(--accent-blue); }
+.thal-pill--notice b   { color: var(--accent-cyan); }
+.thal-pill--unseen b   { color: var(--accent-red); }
+.thal-count { color: var(--text-muted); font-size: var(--fs-sm); }
+
+.thal-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-faint);
+  border-left: 3px solid var(--border-base);
+  border-radius: var(--radius-xl);
+  margin: var(--space-2); padding: 9px 12px;
+  cursor: pointer;
+}
+.thal-card:hover { border-color: var(--border-base); }
+.thal-card--ask      { border-left-color: var(--accent-amber); }
+.thal-card--reminder { border-left-color: var(--accent-blue); }
+.thal-card--notice   { border-left-color: var(--accent-cyan); }
+.thal-card:not(.state-open):not(.state-overdue) { opacity: .55; }
+
+.thal-head { display: flex; align-items: baseline; gap: var(--space-2); flex-wrap: wrap; }
+.thal-kind {
+  font-size: var(--fs-xxs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.thal-kind--ask      { color: var(--accent-amber); }
+.thal-kind--reminder { color: var(--accent-blue); }
+.thal-kind--notice   { color: var(--accent-cyan); }
+.thal-source { color: var(--text-muted); font-size: var(--fs-sm); font-family: var(--font-mono); }
+.thal-state {
+  font-size: var(--fs-xxs); color: var(--text-muted);
+  border: 1px solid var(--border-faint); border-radius: var(--radius-sm); padding: 0 6px;
+}
+.thal-state--open    { color: var(--accent-green); border-color: #1e3a2a; }
+.thal-state--overdue { color: var(--accent-red);   border-color: #3a1e1e; }
+.thal-when { margin-left: auto; color: var(--text-faint); font-size: var(--fs-xs); }
+
+.thal-body {
+  color: var(--text-body); font-size: var(--fs-md); line-height: 1.55;
+  margin-top: 6px; white-space: pre-wrap; word-break: break-word;
+}
+.thal-refs { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.thal-ref {
+  background: var(--bg-raised); border: 1px solid var(--border-base);
+  border-radius: var(--radius-sm); padding: 1px 6px;
+  font-size: var(--fs-xs); font-family: var(--font-mono);
+  color: var(--accent-blue); cursor: pointer;
+}
+.thal-ref:hover { border-color: var(--accent-blue); }
+
+.thal-answer {
+  margin-top: 6px; padding: 6px 9px;
+  background: #0e1a0e; border: 1px solid #1e3a1e; border-radius: var(--radius-md);
+  color: var(--text-body); font-size: var(--fs-md); line-height: 1.5;
+}
+.thal-answer-label {
+  color: #5a8a5a; font-size: var(--fs-xxs); margin-right: 6px;
+  text-transform: uppercase; letter-spacing: 0.07em;
+}
+.thal-meta { margin-top: 6px; color: var(--text-subtle); font-size: var(--fs-xs); }
+
+.thal-ledger {
+  margin-top: 6px; padding-top: 5px;
+  border-top: 1px solid var(--border-faint);
+  color: var(--text-muted); font-size: var(--fs-xs);
+}
+.thal-ledger--none { color: #806a3a; }
+.thal-ledger-head {
+  color: var(--text-subtle); font-size: var(--fs-xxs);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px;
+}
+.thal-ledger-row { display: flex; gap: var(--space-2); align-items: baseline; padding: 1px 0; }
+.thal-ledger-who  { color: var(--text-heading); font-family: var(--font-mono); }
+.thal-ledger-via  { color: var(--accent-purple); font-size: var(--fs-xxs); }
+.thal-ledger-when { margin-left: auto; color: var(--text-faint); }
+
+/* ── A stream's OWN chat (identity cue in the thread header) ────────── */
+/* These lines are the operator talking to THAT session — they were never sent
+   to another stream. So they get a transcript language, not the bubble one:
+   no bubble, no sender hue, no receipt. Looking at the two side by side, it
+   must be impossible to mistake one for the other. */
+.own-chat {
+  margin-top: var(--space-2);
+  border: 1px dashed var(--border-base);
+  border-radius: var(--radius-md);
+  background: var(--bg-deep);
+  padding: 6px 9px;
+}
+.own-chat-head {
+  color: var(--text-subtle); font-size: var(--fs-xxs);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 4px;
+}
+.own-chat-head span { text-transform: none; letter-spacing: 0; color: var(--text-faint); }
+.own-chat-row {
+  display: flex; gap: 6px; align-items: baseline;
+  font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5;
+}
+.own-chat-who { flex-shrink: 0; font-weight: 600; }
+.own-chat-who--operator { color: var(--accent-green); }
+.own-chat-who--stream   { color: var(--text-subtle); }
+.own-chat-text {
+  color: var(--text-muted); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Drilled open, the lines stop being one-liners — still a transcript. */
+.own-chat.is-open .own-chat-text { white-space: normal; overflow: visible; }
+.own-chat-empty { color: var(--text-faint); font-size: var(--fs-sm); font-style: italic; }

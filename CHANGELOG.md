@@ -9,6 +9,15 @@ about the size of the code, which is why the first public release is 0.9.
 
 First public release.
 
+### License
+
+- Source-available under [Elastic License 2.0](LICENSE), with no revenue
+  threshold. Personal use, internal business use, modification, and commercial
+  application integration are permitted subject to its terms. Providing a
+  hosted or managed service that exposes a substantial set of Entity's
+  features or functionality requires a separate agreement.
+- This release does not revoke any rights previously granted for earlier copies.
+
 ### Memory
 - Two kinds of memory: semantic (decisions, lessons, corrections, linked in a
   graph) and episodic (a verbatim, queryable record of every conversation). It

@@ -387,6 +387,18 @@ class Brain(
             # which is louder than a silent empty registry.
             print('[brain] WARNING: AspectRegistry init failed: %s' % _e, flush=True)
 
+        # Host contract: validate the per-harness declarations on every Brain
+        # construction (daemon boot, background scale runs) — loud, never
+        # fatal, no auto-heal (the aspects posture). The sync test is the write
+        # door; this is the last line for an install whose code drifted past
+        # it. One errors-table row per violation.
+        try:
+            from .host_contract import validate_host_contract
+            for _violation in validate_host_contract():
+                self._log_error('host_contract_invalid', ValueError(_violation))
+        except Exception as _e:
+            print('[brain] WARNING: host contract validation failed: %s' % _e, flush=True)
+
         # Seed baby brain nodes if missing (runs AFTER embedder — remember() needs it)
         if not skip_embedder:
             try:

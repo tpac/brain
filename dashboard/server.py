@@ -34,6 +34,7 @@ from .queries import (
     sessions,
     stats,
     system,
+    thalamus,
     traces,
 )
 
@@ -184,6 +185,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             session_id = params.get("session", [""])[0]
             self._json(200, traces.query_traces(hours=hours, scale=scale, session_id=session_id))
 
+        # One session's own operator conversation — the Streams tab shows a
+        # few lines of it as an identity cue, never as cross-stream traffic.
+        elif path == "/api/session-messages":
+            session_id = params.get("session", [""])[0]
+            limit = int(params.get("limit", ["8"])[0])
+            self._json(200, {"messages": traces.query_session_messages(
+                session_id=session_id, limit=limit)})
+
         # Self-channel: stream↔stream messages + faithful boot captures
         elif path == "/api/self-messages":
             hours = int(params.get("hours", ["48"])[0])
@@ -193,6 +202,14 @@ class DashboardHandler(BaseHTTPRequestHandler):
             session_id = params.get("session", [""])[0]
             limit = int(params.get("limit", ["30"])[0])
             self._json(200, {"renders": self_channel.query_boot_renders(session_id=session_id, limit=limit)})
+        # Thalamus: the brain's standing-intent queue + its delivery ledger
+        elif path == "/api/thalamus":
+            hours = int(params.get("hours", ["168"])[0])
+            include_closed = params.get("closed", ["1"])[0] != "0"
+            limit = int(params.get("limit", ["100"])[0])
+            self._json(200, {"items": thalamus.query_items(
+                hours=hours, include_closed=include_closed, limit=limit)})
+
         elif path == "/api/self-presence":
             # Live roster — must go through the daemon (window + ranking logic).
             # Omit session_id so the operator sees every live stream. Returns
