@@ -64,7 +64,7 @@ from servers.trace_contract import (ACTION_KINDS, ENVELOPE_EXTRACT_PREFIX,
 # host being added). Every stamped row carries the version that classified it.
 VOCAB_VERSION = 1
 
-# What hook_common.host_name() returns on a miss today; never a contract key.
+# Explicit unresolved identity; never a contract key or a guessed host.
 HOST_UNKNOWN = ''
 
 TELL_STRENGTHS = ('strong', 'family')

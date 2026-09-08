@@ -14,7 +14,7 @@ _t0 = time.time()
 sys.path.insert(0, os.path.dirname(__file__))
 from hook_common import (get_hook_input, daemon_available, daemon_call_raw,
                          daemon_unavailable_error, brain_debug, emit_hook_output, run_hook,
-                         turn_model, host_name)
+                         turn_model, host_tells)
 from datetime import datetime as _dt
 def _ts(): return _dt.now().strftime("%H:%M:%S.%f")[:-3]
 sys.stderr.write("[recall-hook %s] import: %dms\n" % (_ts(), (time.time() - _t0) * 1000))
@@ -113,7 +113,7 @@ def main():
         "register_only": register_only,  # short answers: register turn, skip recall+Haiku
         # The S0 session stamp — what this turn rides on (see hook_common).
         "model": turn_model(hook_input),
-        "host": host_name(),
+        "tells": host_tells(),
     }, timeout=_recall_timeout)
 
     if not resp.get("ok"):
