@@ -1,8 +1,9 @@
 # Host Contract — Design
 
-## Status — step 2 reviewed; deployment and live validation authorized (2026-09-08) ◀ ACTIVE ARC
+## Status — step 2 deployed; both hosts pass live capture/rendering (2026-09-08) ◀ ACTIVE ARC
 
 **Step 2 checkpoint:** `codex/host-contract-step2`, based on main git:`450cff9`.
+Implementation git:`8ade88b` is on main and deployed from `/Users/tpac/brain`.
 D7(a) per-display-tool counters passed before D7(b) kind consumers were built.
 Three read states, raw MCP identity, and all four absent pre-edit defaults are
 covered; the legacy behavior is frozen, with four explicit ratcheted names.
@@ -22,6 +23,10 @@ reviewed change and verify live capture plus rendered action retention. The paid
 `s1_encode_eval` comparison remains unrun: automatic approval review rejected
 sending its private frozen prompt to Anthropic without explicit payload/destination
 authorization. Live capture/rendering evidence does not claim a model-output A/B.
+Both live host checks now pass: Codex's distinct middle edit is omitted by the
+old condenser and retained by the deployed one in a 76-action turn; Claude Code's
+write and edit remain visible in a 41-action turn. The actual timeline renderer
+consumes every tested edit. Deployment evidence is recorded below.
 
 **Read first:** handoff id:`39ffdd98` (step 2), milestone id:`7e80cb51`
 (review/deployment), decision id:`e8183445` (D9). Prior step 1 handoff id:`66ba8b6c`
@@ -416,7 +421,7 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 |---|---|---|---|
 | 0 | **BUILT.** `HOST_CONTRACT` + CC and Codex entries + validator + fingerprint; output vocabularies + `tool_result` shape/builder in `trace_contract` (required key: `tool` only — what every writer already sends); boot validation; the drift fences; `is_machine_turn` reads the constant | no behaviour change | merge; restart optional |
 | 1 | **BUILT.** hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the tool-capture hook change**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` and the prompt/Stop host wire field retired with Tom’s approval (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
-| 2 | **BUILT and reviewed; deployment/live validation authorized.** D7(a) per-tool `subs`; D7(b) kind consumers; four pre-edit defaults now empty; three-state read; ratchet lowered, frozen legacy exception explicit | first behavior change; fixed-input comparison passed; Tom requested deployment/live testing with paid model-output comparison unrun | restart; synchronize the changed pre-edit hook in both installed copies; verify both hosts |
+| 2 | **DEPLOYED; both hosts verified live.** D7(a) per-tool `subs`; D7(b) kind consumers; four pre-edit defaults now empty; three-state read; ratchet lowered, frozen legacy exception explicit | first behavior change; fixed-input and live capture/rendering checks passed; paid model-output comparison unrun | git:`8ade88b`; daemon fingerprint `a5eb8f3f2b48ecee`; both installed copies synchronized |
 | 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); retire the downstream `<task-notification>` readers **after** §6's legacy path exists; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence | redeploy + restart; Tom's gate for phase 2 |
 | 4 | reconciliation against the host's own record | needs step 1's source IDs | restart |
 
@@ -604,3 +609,43 @@ now-authorized deployment, merge verified main, recheck the actual pinned daemon
 owner and fingerprint, update
 the changed pre-edit hook in both installed copies, restart, and verify fresh
 stamped rows. The env-message phase-2 decision still gates step 3 only.
+
+### Step 2 deployment and live verification
+
+Tom requested deployment and offered hands-on production tests after the local
+reviews. Implementation git:`8ade88b` fast-forwarded the clean main checkout at
+`/Users/tpac/.codex/worktrees/1f82/brain`, then the pinned service source at
+`/Users/tpac/brain` on `codex/contract-host`. `redeploy.sh` built 235 files,
+passed both packaged entrypoint imports, refreshed Claude Code and re-exec'd
+the daemon. Ping verified the same pinned owner/database and code fingerprint
+`a5eb8f3f2b48ecee`; contract fingerprint remains `32da0b4f35b1`.
+
+Codex was reinstalled from its existing local `anchor-dev` marketplace with
+version `0.9.0+codex.20260908194926`. The CLI removed the former `0.9.0` cache
+path still referenced by this active task's hooks. Restored the same deployed
+package at that path for session continuity and warmed both runtimes. The
+compatibility copy encountered abandoned bootstrap locks from short-lived hook
+startup attempts; process inspection and `kill(pid, 0)` proved each blocking
+owner dead before an atomic rename. An uninterrupted installer then completed.
+All 235 packaged files match Claude Code, the new Codex installation and the
+active-task compatibility copy; only the new installation's intended manifest
+version suffix differs. Fresh Codex tasks should use the new installation;
+an old resident proxy's setup status is not evidence about the new installation.
+
+Live test evidence (real host tool calls, no synthetic trace insertion):
+
+| host | captured turn | result |
+|---|---|---|
+| Codex | session `01a0820b-ecac-72b2-aec9-1afc244d48b8`, user trace `2eecbf6b`, 76 actions at verification | three test edits have `kind=edit`, `kind_status=ok`, strong Codex identity; distinct middle edit `d5e35310` at position 71 is omitted by the baseline condenser and retained by deployed code; all three reach the actual timeline renderer |
+| Claude Code | session `eec08916-3794-4f01-a097-f0375ae6e819`, user trace `74d67d3a`, 41 actions | 38 shell, one read and two edits; native Write `2a2a35c4` and Edit `c31fdabf` both have valid edit stamps and strong Claude Code identity; the edit at position 35 survives condensation, and both reach the actual timeline renderer |
+
+The first Codex probe reused the creation's caption, so baseline dedup also
+retained it. The distinct-file middle probe above removes that ambiguity.
+Read-only verification used the daemon's existing `recall_episodes` and
+`query_traces` doors, then the deployed condenser and timeline renderer with
+real provenance. No model request or production memory write was made by the
+verification script. No completed S1 encoding run existed yet in the fresh
+Claude test session; this proves capture through input preparation, not model
+output quality. Configuration validation reported only database-size maintenance
+warnings. Artifacts: `/private/tmp/host-contract-step2/live-codex/`, `live-claude/`,
+`deployed-daemon.json`, `installed-verification.json`, and deployment/runtime logs.
