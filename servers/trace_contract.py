@@ -280,6 +280,29 @@ DELIVERY_REACTION_WINDOW_MIN = 60
 S0_SESSION_STAMP_FIELDS = ('model', 'host')
 
 
+# ── HOST NORMALIZATION VOCABULARY (the normalizer's OUTPUT) ──
+# What a row says about a tool call or a host once the host's own names have
+# been translated. Host DIALECTS (which tool name means what on which harness,
+# which env tell identifies it) live in servers/host_contract.py and are
+# validated against THESE tuples; consumers past the boundary (encoder, presence,
+# Frame) read only these and never a host's name. Output vocabulary on the
+# output side, so the encoder never imports a host dialect to read a kind
+# (docs/HOST-CONTRACT-DESIGN.md D1).
+ACTION_KINDS = ('edit', 'shell', 'read', 'search', 'agent', 'mcp')
+# Stamped beside the kind: did the host's tool map know the name?
+KIND_STATUS = ('ok', 'unknown')
+# How the harness was identified for a row: a host-specific tell fired, only a
+# family tell (a CC-compatible plugin host, not necessarily Codex), tells of
+# two hosts fired, none fired, or the row came from a client that sent a
+# pre-resolved host name and no tells (legacy wire).
+HOST_STATUS = ('strong', 'family', 'ambiguous', 'unknown', 'legacy')
+# Per-envelope-tag policy values; `extract:<name>` names a registered pure
+# extractor in host_contract.EXTRACTORS (the registry is closed — a name with
+# no function is a contract violation, not a first-prompt KeyError).
+ENVELOPE_POLICIES = ('drop', 'keep', 'marker')
+ENVELOPE_EXTRACT_PREFIX = 'extract:'
+
+
 # Operator dialogue — the two ref_types that ARE the operator↔Anchor
 # exchange. Presence (focus / recency ranking / recent_msgs), the
 # recall_episodes conversation default, the LAF trace matrix, and the
@@ -298,6 +321,17 @@ OPERATOR_DIALOGUE_REF_TYPES = ("user_message", "assistant_message")
 SAID_AND_DID_REF_TYPES = CONVERSATIONAL_REF_TYPES + ("tool_result",)
 
 
+# A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
+# not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
+# (conversational) even though it's an ENVELOPE, not work. Presence focus skips
+# any conversational turn whose summary starts with this marker. One constant so
+# the skip is defined ONCE, not reproduced as a scattered SQL literal — the
+# predicate below reads it too. Claude Code's envelope tag; it moves into the
+# host contract's envelope table when the boundary classifies envelopes
+# (docs/HOST-CONTRACT-DESIGN.md step 3).
+WAKE_ENVELOPE_MARKER = "<task-notification>"
+
+
 def is_machine_turn(op_text) -> bool:
     """Harness-injected machine turn — a background-task completion packaged
     as a prompt through UserPromptSubmit. NOT an operator turn: the operator
@@ -306,14 +340,7 @@ def is_machine_turn(op_text) -> bool:
     it is real and kept as history. ONE definition shared by production and
     eval (eval/laf/walker/extract.py imports this) so the filter can't drift;
     production's recall hook routes these register_only (node b2953766)."""
-    return '<task-notification>' in (op_text or '')
-
-# A wakeup ignite (e.g. a background-task notification) arrives as turn CONTENT,
-# not a distinct ref_type: it runs recall, so it's recorded as a `user_message`
-# (conversational) even though it's an ENVELOPE, not work. Presence focus skips
-# any conversational turn whose summary starts with this marker. One constant so
-# the skip is defined ONCE, not reproduced as a scattered SQL literal.
-WAKE_ENVELOPE_MARKER = "<task-notification>"
+    return WAKE_ENVELOPE_MARKER in (op_text or '')
 
 
 # ── CHAIN ID CONVENTIONS ──
@@ -734,6 +761,54 @@ def build_anchor_touched_metadata(**ids):
     Unknown kwargs are ignored (the flush passes `**ctx.touched`, which is itself
     keyed by ANCHOR_TOUCHED_KEYS — so they always agree)."""
     return {k: list(dict.fromkeys(ids.get(k) or [])) for k in ANCHOR_TOUCHED_KEYS}
+
+
+# ── TOOL RESULT METADATA SHAPE ──
+# The S0 row the PostToolUse hook writes on every tool call (~2500/day). The
+# hook is a bare socket send and records the host's RAW tool name under `tool`
+# (post_tool_trace); everything host-neutral about the call — its kind, how
+# the host was identified, which vocabulary did the translating — is stamped
+# by the daemon at the S0 write door (docs/HOST-CONTRACT-DESIGN.md D9: the
+# first consumer of a kind is the encoder, hours later, so classification runs
+# daemon-side, restart-deployable, never in the hook). Required keys are the
+# ones EVERY writer already carries; the normalization keys become required
+# once the write door stamps them (step 1), and never before — a required key
+# an un-redeployed client cannot send would warn on every row it writes.
+TOOL_RESULT_METADATA_SHAPE = {
+    'tool': str,   # the host's raw tool name, verbatim (redacted input, never the caller stamp)
+}
+# Optional today, stamped by the write door from step 1 on. Listed here so the
+# builder and the reader (encoder_actions.parse_action) share one keyset.
+TOOL_RESULT_NORMALIZATION_KEYS = (
+    'kind',            # one of ACTION_KINDS, '' when unknown
+    'kind_status',     # one of KIND_STATUS
+    'host_status',     # one of HOST_STATUS
+    'tells',           # env tells that fired in the hook process (names only)
+    'vocab_version',   # host_contract.VOCAB_VERSION that produced `kind`
+    'impl_identity',   # host_contract.contract_fingerprint() at stamp time
+    'tool_use_id',     # host's per-call id (join key for reconciliation)
+    'turn_id',         # host's per-turn id (Codex turn_id / Claude Code prompt_id)
+    'payload_keys',    # top-level stdin keys the hook saw — names only, no values
+)
+
+
+def build_tool_result_metadata(*, tool, **normalization):
+    """Build a tool_result row's metadata: the raw `tool` name plus any subset
+    of TOOL_RESULT_NORMALIZATION_KEYS. Unknown kwargs raise — the keyset is the
+    contract, and a misspelled stamp key must fail at the writer, not land as
+    an invisible extra. Keys passed as None are omitted, so a row from before a
+    value was learned carries no key at all (the stamp_s0_session posture)."""
+    unknown = set(normalization) - set(TOOL_RESULT_NORMALIZATION_KEYS)
+    if unknown:
+        raise ValueError('tool_result metadata: unknown keys %s (allowed: %s)'
+                         % (sorted(unknown), list(TOOL_RESULT_NORMALIZATION_KEYS)))
+    md = {'tool': str(tool or '')}
+    for k in TOOL_RESULT_NORMALIZATION_KEYS:
+        v = normalization.get(k)
+        if v is None:
+            continue
+        md[k] = list(v) if isinstance(v, (tuple, set, frozenset)) else v
+    return md
 
 
 # ── JOURNAL NOTE METADATA SHAPE ──
@@ -1805,6 +1880,10 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
     REF_THALAMUS_FILED:   THALAMUS_FILED_METADATA_SHAPE,  # a producer's filing, on its run chain
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
+    # The highest-volume S0 row. Its one required key (`tool`) is what every
+    # writer already sends, so enforcing it cannot fire on existing traffic;
+    # the normalization keys join as required when the write door stamps them.
+    'tool_result':        TOOL_RESULT_METADATA_SHAPE,
     # Node lifecycle, written only by servers/mutation_emitter.py. Enforced from
     # the start — these have exactly one producer and one builder each, so there
     # is no legacy shape to grandfather in.

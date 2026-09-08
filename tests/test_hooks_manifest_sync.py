@@ -11,21 +11,30 @@ the tool names that only exist on Claude Code). Plus the two Codex-specific
 constraints — SessionEnd within Codex's 3 s cap, and the injecting hooks
 lifting Codex's ~2,500-token spill limit — and timeout parity everywhere else.
 Pure file inspection.
+
+The host contract (servers/host_contract.py) DECLARES each host's registered
+events, tool names and matcher aliases; the manifests stay the source of truth
+(nothing parses them at runtime). TestContractManifestParity holds the two in
+step both ways (design D4) — the engine event lists are read from the contract.
 """
 import json
 import os
+import re
+import sys
 import unittest
 
 _HOOKS_DIR = os.path.join(os.path.dirname(__file__), "..", "hooks")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
 
-# Events the Codex hook engine dispatches (learn.chatgpt.com/docs/hooks).
-CODEX_EVENTS = {
-    "SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-    "PermissionRequest", "PreCompact", "PostCompact", "SubagentStart", "SubagentStop",
-    "Stop", "Interrupt",
-}
+from servers.host_contract import HOST_CONTRACT  # noqa: E402
+
+# Events the Codex hook engine dispatches (learn.chatgpt.com/docs/hooks) — the
+# contract owns the list, dated by the host version it was read against.
+CODEX_EVENTS = set(HOST_CONTRACT["codex"]["engine_events"])
 # Claude Code events with no Codex counterpart — must not appear in the projection.
-CC_ONLY_EVENTS = {"WorktreeCreate", "WorktreeRemove", "ConfigChange", "StopFailure"}
+CC_ONLY_EVENTS = set(HOST_CONTRACT["claude-code"]["events"]) - CODEX_EVENTS
 # Claude Code local-tool names that never fire under Codex: its file tool is
 # apply_patch (matched via the Edit|Write aliases), sub-agents are spawn_agent
 # (matched via the Agent alias), and search/fetch are hosted tools that skip the
@@ -199,6 +208,68 @@ class TestHooksManifestSync(unittest.TestCase):
                         "additionalContextLimit", handler,
                         "%s handler must set additionalContextLimit — boot and recall "
                         "injections sit at Codex's default spill threshold" % event)
+
+
+_PATTERN_MATCHER_RE = re.compile(r"[.*+?\[\]()^$\\]")
+
+
+def _tool_matchers(events, event):
+    """The literal tool names each PreToolUse/PostToolUse matcher selects;
+    regex matchers (mcp__.*) are returned as ('pattern', matcher)."""
+    out = []
+    for group in events.get(event, []):
+        matcher = group.get("matcher", "") or ""
+        if matcher in ("", "*"):
+            continue
+        if _PATTERN_MATCHER_RE.search(matcher):
+            out.append(("pattern", matcher))
+        else:
+            out.extend(("name", n) for n in matcher.split("|"))
+    return out
+
+
+class TestContractManifestParity(unittest.TestCase):
+    """D4: the contract's `events` is DECLARED and held equal to the host's
+    manifest both ways; the manifest's tool matchers are held to the contract's
+    tool map (directly or through a declared alias), and every declared tool is
+    captured by some PostToolUse matcher — a tool the contract classifies but
+    no hook ever fires for would be a silent coverage hole."""
+
+    def _manifest(self, host):
+        return _load(os.path.basename(HOST_CONTRACT[host]["manifest"]))
+
+    def test_declared_events_equal_registered_events(self):
+        for host, entry in HOST_CONTRACT.items():
+            self.assertEqual(set(entry["events"]), set(self._manifest(host)),
+                             "%s: contract events != %s events" % (host, entry["manifest"]))
+
+    def test_registered_events_within_engine_events(self):
+        for host, entry in HOST_CONTRACT.items():
+            unknown = set(self._manifest(host)) - set(entry["engine_events"])
+            self.assertFalse(unknown, "%s registers events its engine does not dispatch: %s"
+                             % (host, sorted(unknown)))
+
+    def test_matcher_tool_names_are_declared(self):
+        for host, entry in HOST_CONTRACT.items():
+            declared = set(entry["tools"]) | set(entry["matcher_aliases"])
+            for event in ("PreToolUse", "PostToolUse"):
+                for kind, value in _tool_matchers(self._manifest(host), event):
+                    if kind == "name":
+                        self.assertIn(value, declared,
+                                      "%s %s matcher names %r, which the contract neither "
+                                      "declares as a tool nor as a matcher alias" % (host, event, value))
+
+    def test_every_declared_tool_is_captured_by_a_post_tool_matcher(self):
+        for host, entry in HOST_CONTRACT.items():
+            matched = {v for k, v in _tool_matchers(self._manifest(host), "PostToolUse") if k == "name"}
+            patterns = {v for k, v in _tool_matchers(self._manifest(host), "PostToolUse") if k == "pattern"}
+            via_alias = {target for alias, target in entry["matcher_aliases"].items() if alias in matched}
+            uncaptured = set(entry["tools"]) - matched - via_alias
+            self.assertFalse(uncaptured, "%s declares tools no PostToolUse matcher captures: %s"
+                             % (host, sorted(uncaptured)))
+            if any(pat.startswith("^mcp__") for pat, _k in entry["tool_patterns"]):
+                self.assertTrue(any("mcp__" in p for p in patterns),
+                                "%s classifies mcp__ tools but no PostToolUse matcher captures them" % host)
 
 
 if __name__ == "__main__":
