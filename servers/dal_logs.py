@@ -1350,9 +1350,13 @@ class TraceDAL(_LogsWriteBase):
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
         trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
-        last real work is often its own last reply. Turns whose summary starts
-        with the wake-envelope marker (a `<task-notification>` ignition) are
-        skipped so the focus shows work, not the wake envelope. Both the
+        last real work is often its own last reply. `focus` and `conv_recency`
+        count only OPERATOR-ATTENDED turns — a turn is attended iff the latest
+        user_message at-or-before it lacks the wake-envelope marker (a
+        `<task-notification>` ignition). Both sides of a machine-woken exchange
+        are therefore discounted: the envelope itself, AND the reply it provokes
+        (which carries no marker of its own, so a marker test on the row alone
+        let the reply keep re-floating a woken stream to the top). Both the
         conversational set and the marker come from the contract — no filters
         reproduced here. (Raw; the render layer first-lines/truncates.) Caller
         computes the cutoff (wall-clock vs conversation-time is the caller's
@@ -1380,15 +1384,34 @@ class TraceDAL(_LogsWriteBase):
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
                  else "conv_recency DESC, last_turn DESC")
+        # A row is OPERATOR-ATTENDED iff the latest user_message at-or-before it
+        # lacks the wake-envelope prefix. Testing the marker on the row alone
+        # catches only HALF a machine-woken exchange: the envelope is the
+        # user_message, but the assistant's reply to it carries no marker, so the
+        # reply passed the filter and kept re-floating a Monitor-woken stream to
+        # the top of the roster while the operator's own session read stale. This
+        # predicate discounts both sides — the envelope self-excludes (it is its
+        # own latest predecessor) and its reply is excluded by that predecessor.
+        # COALESCE: a conversational row with no preceding user_message at all is
+        # attended, not filtered out. Membership (the outer WHERE) still counts
+        # heartbeats and envelopes, so watch-mode streams stay VISIBLE — they just
+        # rank below real work.
+        def _attended(alias):
+            return ("COALESCE((SELECT p.summary FROM trace_events p "
+                    "  WHERE p.scale = 's0' AND p.session_id = {a}.session_id "
+                    "    AND p.ref_type = 'user_message' "
+                    "    AND p.created_at <= {a}.created_at "
+                    "  ORDER BY p.created_at DESC LIMIT 1), '') NOT LIKE ?"
+                    ).format(a=alias)
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
             "   WHERE u.scale = 's0' AND u.session_id = t.session_id AND u.ref_type IN (%s) "
-            "     AND u.summary NOT LIKE ? "
+            "     AND u.summary NOT LIKE ? AND %s "
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus, "
             "  (SELECT MAX(c.created_at) FROM trace_events c "
             "   WHERE c.scale = 's0' AND c.session_id = t.session_id AND c.ref_type IN (%s) "
-            "     AND c.summary NOT LIKE ?) AS conv_recency, "
+            "     AND c.summary NOT LIKE ? AND %s) AS conv_recency, "
             "  (SELECT COUNT(*) FROM trace_events c2 "
             "   WHERE c2.scale = 's0' AND c2.session_id = t.session_id "
             "     AND c2.ref_type = 'user_message' AND c2.summary NOT LIKE ?) AS turn_count "
@@ -1396,9 +1419,13 @@ class TraceDAL(_LogsWriteBase):
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY %s LIMIT ?" % (conv_ph, conv_ph, live_ph, order),
+            "ORDER BY %s LIMIT ?" % (conv_ph, _attended('u'),
+                                     conv_ph, _attended('c'),
+                                     live_ph, order),
             (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             WAKE_ENVELOPE_MARKER + '%',
              *OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',

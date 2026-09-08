@@ -299,6 +299,55 @@ class TestPresenceCountsWatchers(BrainTestBase):
         self.assertEqual(focus, 'shipped the TTL fix',
                          "latest conversational turn wins, even when it's the assistant")
 
+    def test_reply_to_wake_envelope_is_not_focus(self):
+        # The half the marker test used to miss. A machine-woken turn is the
+        # ENVELOPE (a user_message); the reply it provokes is an ordinary
+        # assistant_message carrying no marker, so filtering on the row's own
+        # summary let the reply through — and it re-floated the stream on every
+        # wake. Attendedness must be judged by the turn that PROVOKED the row.
+        self._turn('wokenXXX0', 'user_message', 'adjudicate the eval arms',
+                   updated_at=iso_cutoff(minutes=20))
+        self._turn('wokenXXX0', 'user_message', '<task-notification>\n<event>log tick',
+                   updated_at=iso_cutoff(minutes=5))
+        self._turn('wokenXXX0', 'assistant_message', 'Still waiting on the control arm.',
+                   event_type='delta')   # assistant_message is an (s0, delta) trace
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        row = {r['session_id']: r for r in rows}.get('wokenXXX0')
+        self.assertIsNotNone(row, "a woken stream stays PRESENT — only its rank changes")
+        self.assertEqual(row['focus'], 'adjudicate the eval arms',
+                         "the reply to a wake envelope must not become the focus")
+        # conv_recency is the RANKING key and is returned by the DAL, not carried
+        # through present_streams' 4-key projection — assert it at its own layer.
+        dal_row = {r['session_id']: r for r in self.brain._trace_dal
+                   .active_sessions_by_turn(iso_cutoff(minutes=30), limit=10)}['wokenXXX0']
+        self.assertLess(dal_row['conv_recency'], iso_cutoff(minutes=10),
+                        "the reply must not bump conv_recency — that is what "
+                        "outranked the operator's own session")
+        # `updated_at` (= last_turn) still counts the envelope, so the stream keeps
+        # reading `active`. That is DELIBERATE: a watch-mode stream is the most
+        # reachable thing there is. Only rank and focus are corrected here.
+        self.assertGreater(row['updated_at'], iso_cutoff(minutes=10),
+                           "liveness must still reflect reachability")
+
+    def test_woken_stream_ranks_below_attended_stream(self):
+        # The operator-visible symptom: a Monitor-woken background task sat at
+        # the TOP of the roster, above the worktree actually being worked in.
+        # Ranking is by conv_recency, so the woken stream's own replies must not
+        # count as recency or it wins the roster on machine traffic alone.
+        self._turn('attended0', 'user_message', 'real operator work',
+                   updated_at=iso_cutoff(minutes=10))
+        self._turn('wokenNOW0', 'user_message', 'launch prompt',
+                   updated_at=iso_cutoff(minutes=25))
+        self._turn('wokenNOW0', 'user_message', '<task-notification>\n<event>tick',
+                   updated_at=iso_cutoff(minutes=2))
+        self._turn('wokenNOW0', 'assistant_message', 'Waiting.', event_type='delta')
+        rows = self.brain.present_streams(exclude_session='other', window_min=30, limit=10)
+        order = [r['session_id'] for r in rows]
+        self.assertIn('attended0', order)
+        self.assertIn('wokenNOW0', order)
+        self.assertLess(order.index('attended0'), order.index('wokenNOW0'),
+                        "an attended stream must outrank one kept alive by wakes")
+
 
 if __name__ == '__main__':
     unittest.main()
