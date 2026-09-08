@@ -161,18 +161,68 @@ through the daemon after removal; contract tier.
 
 `restart`, `eval`, `clear_errors`, `query_logs` contradict id:4ccb43eb. Ranked by actual risk:
 
-- **`eval`** — arbitrary Python against the live `Brain` instance, 62 net tokens, exposed to any
-  agent that fetches it. In a shipped plugin this is the line a security reviewer stops on.
-  Gate it behind an explicit env flag read at `_build_tools()` time (`brain-env.sh` owns runtime
-  flags), so dev installs keep it and shipped installs never list it.
+- **`eval`** — **ships everywhere; annotate it honestly and make it ask to be replaced.**
+  Tom's ruling 2026-09-08, reversing the env-flag gate this plan carried: a non-maintainer
+  install is exactly where `eval` is needed, because it is the only way to diagnose a brain we
+  cannot open ourselves. Hiding it would remove the remote-debug door and buy nothing — a shipped
+  install is loopback-bound and single-user, the same risk profile that makes it acceptable here
+  (id:d1dd9f2c). The protection is the annotation plus the host's approval, not absence. Keep
+  the `COMMAND_TABLE` entry (`eval/oracle_audit/backfill_absorbed_into.py` uses the daemon
+  command). See §"`eval` as a self-retiring escape hatch" for the description rewrite.
 - **`restart`** — keep. It is how a dev session deploys, and it is the one tool name absent from
   `COMMAND_TABLE`. Annotate `destructiveHint: true`.
 - **`query_logs`** — keep, read-only, genuinely used for diagnosis.
 - **`clear_errors`** — weakest case. Decide: keep annotated destructive, or drop and leave it a
   daemon-only command.
 
-**Verify:** with the flag unset, `tools/list` omits `eval`; `tests/test_deploy_contract.py`
-asserts the shipped catalog does not contain it.
+**Verify:** `eval`'s annotations are the max-risk set (`destructiveHint` + `openWorldHint`
+true); a contract test pins the improvement-loop sentence so a future description trim cannot
+silently drop it.
+
+### `eval` as a self-retiring escape hatch
+
+`eval` exists because a capability has no door. Today that finding dies with the session: I
+answer the question and nobody learns which door was missing. The fix is one paragraph in the
+tool's own description — read at the moment the call is formed, which is the only moment the
+question is live (the generation-time-enforcement property, id:55f960e5).
+
+Write it verbatim; don't paraphrase:
+
+```
+DANGEROUS — full capability. Evaluates an arbitrary Python expression inside the
+daemon process with the live `brain` object in scope: it can read anything in
+either database, and can write, archive or delete through any method it reaches.
+The `safe_builtins` sandbox is weak and bypassable. Safe only because the daemon
+is loopback-bound and single-user — treat every call as an operator-level action.
+
+WHY IT EXISTS: to reach a brain capability that has no tool yet — including on an
+install that isn't the maintainer's, where it is the only way to diagnose a brain
+nobody can open directly.
+
+AFTER EVERY CALL, name the door you were missing: which existing tool should have
+covered this — a new parameter, a new `filter_nodes` field, a new `brain_batch`
+op — or which new tool is warranted. Tell the operator in one line, and
+`remember` it as a `gap` node so it accumulates instead of being re-discovered
+next session. `eval` standing in for a missing door is a finding about the tool
+surface, not a solution.
+
+`brain` and `json` are in the expression's LOCALS, so a lambda inside it
+NameErrors on `brain` AFTER its arguments have already run — side effects
+included. Use flat expressions.
+```
+
+Cost: `eval` goes from 62 to roughly 330 net tokens, paid only when a caller fetches it.
+
+**Two notes for whoever writes this.** First, it is deliberately the one place this plan ADDS
+prose to a description while Step 5 removes it — the rule being applied is "mechanics in MCP,
+audience-specific craft in the audience's prompt" (id:04ff3d58), and this text is neither
+audience-specific nor available anywhere else: no prompt owns "what to do after calling `eval`",
+and no encoder can reach the tool, so there is no cross-caller priming risk (id:807394de).
+Second, consider echoing one line of it on the RESULT as well (`_format_result` already
+special-cases per tool). Before the call the agent only knows it wants data; *after* the call it
+knows which method it reached for — which is when "what door was missing?" is actually
+answerable. The description shapes whether to reach for `eval` at all; the result-side echo is
+what makes the gap get written down.
 
 ---
 
@@ -355,7 +405,7 @@ mangled `mcp__plugin_entity_brain__…` name in its approval dialog.
 |---|---|---|---|---|
 | `clear_errors` | Clear error log | true | false | deletes rows; clearing twice adds nothing |
 | `restart` | Restart the daemon | false | false | tears down a live process — a host should always confirm |
-| `eval` | Evaluate Python (dev) | false | **true** | `dispatch_ops.py:249` runs Python `eval()` with `brain` in locals and an explicitly weak `safe_builtins` sandbox; the handler's own docstring calls it "effectively arbitrary code execution", safe only because the daemon is loopback + single-user. Expression-only, but `brain.archive_node(...)` is an expression. Genuinely open-world |
+| `eval` | Run arbitrary Python (full access) | false | **true** | `dispatch_ops.py:249` runs Python `eval()` with `brain` in locals and an explicitly weak `safe_builtins` sandbox; the handler's own docstring calls it "effectively arbitrary code execution", safe only because the daemon is loopback + single-user. Expression-only, but `brain.archive_node(...)` is an expression. Genuinely open-world — and the only tool whose `title` should read as a warning in an approval dialog |
 
 ### What each field actually buys us
 
