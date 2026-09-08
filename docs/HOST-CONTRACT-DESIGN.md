@@ -1,14 +1,28 @@
 # Host Contract — Design
 
-**Status — 2026-09-08:** reviewed from above (`/architecture-review` in design-doc mode,
-two adversarial passes, every code claim re-verified), **placement changed to D9 by Tom's
-ruling ("b. make sure things can't drift")**, **step 0 built** on branch
-`claude/host-contract-arch-review-505687`: `servers/host_contract.py`, the output
-vocabularies and `tool_result` shape in `servers/trace_contract.py`, boot validation in
-`Brain.__init__`, and the drift fences (`tests/test_host_contract.py`,
-`tests/test_host_shape_guardrail.py`, `TestContractManifestParity` in
-`tests/test_hooks_manifest_sync.py`). No hook changed. Steps 1–4 unbuilt. The one gate still
-Tom's is at the end of §9. Handoff nodes: `a2594ee0` (letter), `49f093e7` (its gaps).
+## Status — step 0 shipped and reviewed, step 1 next (2026-09-08) ◀ ACTIVE ARC
+
+**Read first:** handoff node `66ba8b6c` (build step 1), decision `e8183445` (D9 + the review's
+findings). Main `25e8165` = step 0 (`253375a`) + its lean-review fixes (`9ac4f58`); docs-only
+head commit after.
+
+**Central finding.** Reviewed from above (`/architecture-review` in design-doc mode, two
+adversarial passes, every code claim re-verified); **placement changed to D9 by Tom** ("b. make
+sure things can't drift"): classify at the first consumer's boundary — tool kinds daemon-side at
+the S0 write door, envelopes hook-side. Step 0 built: `servers/host_contract.py`, the output
+vocabularies and `tool_result` shape in `trace_contract`, boot validation, and the drift fences
+(36 quoted host-shape sites in 12 files ratcheted both ways; manifests ↔ contract; hook mirrors;
+leaf pin). One lean post-merge review pass: no blockers, five should-fix, all applied. No hook
+changed; no behaviour changed.
+
+**Locked:** D1–D11 (§9). **Open — Tom's:** env_message phase 2 placement (gates step 3 only).
+**Do not reopen:** hook-side tool classification (D9); read-time backfill of legacy rows (D10);
+canonical argument normalisation (D8, Tom); the `_bash_verb`/`GIT_WRITE_VERBS` defect
+(`b09efd2a`, its own fix).
+
+**Next builds:** step 1 (hooks send raw facts — tells, ids, `payload_keys`, capped patch;
+write door builds via the builder THEN stamps; unknown kind → errors table; keys join the
+required shape), then step 2 (D7 split, consumers flip to kind, before/after `s1_encode_eval`).
 
 This doc cites **symbols, not line numbers** — the first draft's line refs drifted within a
 day. The tests are the living truth; the doc says why.
