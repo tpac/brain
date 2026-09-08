@@ -8,9 +8,11 @@ its tool names mean, what its prompt envelopes are, which hook events it
 registers, what it is known to be blind to, and which build the entry was
 verified against. Consumers past the boundary read the OUTPUT vocabulary
 (trace_contract.ACTION_KINDS, KIND_STATUS, HOST_STATUS, ENVELOPE_POLICIES)
-and never a host's name; this module is the only file under servers/ where a
-host's tool or envelope literal may appear — tests/test_host_shape_guardrail.py
-ratchets every other file, both ways.
+and never a host's name; this is the only file where a NEW host literal may
+appear — tests/test_host_shape_guardrail.py ratchets every other file's
+remaining sites down, both ways, as the design's steps retire them. The ratchet
+knows only names this contract declares; a genuinely new host name is caught by
+the write door stamping kind_status 'unknown' into the errors table (step 1).
 
 Three precedents, one shape: contract.PROMOTED_FIELDS (entries carry
 behaviour, consumers derive), interaction_defaults (validators plus a content
@@ -53,7 +55,6 @@ the errors table at boot (loud, non-fatal, no auto-heal). classify_tool /
 resolve_host / envelope_policy are the read doors: an unknown name yields an
 explicit 'unknown' status, never a guess and never a KeyError.
 """
-import hashlib
 import re
 
 from servers.trace_contract import (ACTION_KINDS, ENVELOPE_EXTRACT_PREFIX,
@@ -207,9 +208,9 @@ def classify_tool(host, tool_name):
     kind = entry['tools'].get(name)
     if kind:
         return kind, 'ok'
-    for pattern, kind in _PATTERNS[host]:
-        if pattern.search(name):
-            return kind, 'ok'
+    for pattern, pattern_kind in _PATTERNS.get(host, ()):
+        if pattern.match(name):        # patterns anchor at the start of the name
+            return pattern_kind, 'ok'
     return '', 'unknown'
 
 
@@ -219,12 +220,22 @@ def envelope_policy(host, tag):
     return entry['envelopes'].get(tag) if entry else None
 
 
+_FINGERPRINT = None
+
+
 def contract_fingerprint():
     """12-hex content identity of THIS module — entries, resolver and
     extractors alike, so a changed rule is a changed identity even when no
-    registry name moved (design D6). Stamped on every normalized row."""
-    with open(__file__, 'rb') as f:
-        return hashlib.sha256(f.read()).hexdigest()[:12]
+    registry name moved (design D6). Stamped on every normalized row, so it is
+    computed once per process. The output vocabularies live in trace_contract
+    and are not hashed here: a change to what a kind MEANS is VOCAB_VERSION's
+    lever, a change to how a name is classified is this one's."""
+    global _FINGERPRINT
+    if _FINGERPRINT is None:
+        import hashlib
+        with open(__file__, 'rb') as f:
+            _FINGERPRINT = hashlib.sha256(f.read()).hexdigest()[:12]
+    return _FINGERPRINT
 
 
 def validate_host_contract(contract=None, extractors=None):
@@ -236,7 +247,7 @@ def validate_host_contract(contract=None, extractors=None):
     seen_tells = {}
     for host, entry in contract.items():
         say = lambda msg, host=host: out.append('%s: %s' % (host, msg))
-        if not isinstance(host, str) or not host or host == HOST_UNKNOWN:
+        if not isinstance(host, str) or not host:
             say('host key must be a non-empty string')
         if not isinstance(entry, dict):
             say('entry must be a dict')
@@ -257,31 +268,48 @@ def validate_host_contract(contract=None, extractors=None):
                 env, strength = t.get('env'), t.get('strength')
                 if not env or not isinstance(env, str):
                     say('identity tell without an env name: %r' % (t,))
-                elif env in seen_tells and seen_tells[env] != host:
-                    say('tell %s is also %s\'s — a shared tell is always ambiguous' % (env, seen_tells[env]))
+                elif env in seen_tells:
+                    # Across hosts it is always ambiguous; within one host the
+                    # resolver's last-wins strength map would silently re-weight it.
+                    who = 'this host' if seen_tells[env] == host else seen_tells[env]
+                    say('tell %s is declared twice (%s)' % (env, who))
                 else:
                     seen_tells[env] = host
                 if strength not in TELL_STRENGTHS:
                     say('tell %s strength %r not in %s' % (env, strength, TELL_STRENGTHS))
-        if not entry['tools'] or not isinstance(entry['tools'], dict):
+        tools = entry['tools']
+        if not tools or not isinstance(tools, dict):
             say('tools must be a non-empty dict')
-        else:
-            for name, kind in entry['tools'].items():
-                if kind not in ACTION_KINDS:
-                    say('tool %r has kind %r not in ACTION_KINDS %s' % (name, kind, ACTION_KINDS))
-        for pat, kind in entry['tool_patterns']:
+            tools = {}
+        for name, kind in tools.items():
+            if kind not in ACTION_KINDS:
+                say('tool %r has kind %r not in ACTION_KINDS %s' % (name, kind, ACTION_KINDS))
+        patterns = entry['tool_patterns']
+        if not isinstance(patterns, (tuple, list)) or not all(
+                isinstance(p, (tuple, list)) and len(p) == 2 for p in patterns):
+            say('tool_patterns must be a tuple of (pattern, kind) pairs')
+            patterns = ()
+        for pat, kind in patterns:
             try:
                 re.compile(pat)
-            except re.error as e:
+            except (re.error, TypeError) as e:
                 say('tool_pattern %r does not compile: %s' % (pat, e))
             if kind not in ACTION_KINDS:
                 say('tool_pattern %r has kind %r not in ACTION_KINDS' % (pat, kind))
-        for alias, target in entry['matcher_aliases'].items():
-            if target not in entry['tools']:
+        aliases = entry['matcher_aliases']
+        if not isinstance(aliases, dict):
+            say('matcher_aliases must be a dict of alias → declared tool')
+            aliases = {}
+        for alias, target in aliases.items():
+            if target not in tools:
                 say('matcher alias %r → %r, which is not one of its tools' % (alias, target))
-            if alias in entry['tools']:
+            if alias in tools:
                 say('matcher alias %r is also a declared tool' % alias)
-        for tag, policy in entry['envelopes'].items():
+        envelopes = entry['envelopes']
+        if not isinstance(envelopes, dict):
+            say('envelopes must be a dict of tag → policy')
+            envelopes = {}
+        for tag, policy in envelopes.items():
             if policy in ENVELOPE_POLICIES:
                 continue
             if isinstance(policy, str) and policy.startswith(ENVELOPE_EXTRACT_PREFIX):
@@ -294,13 +322,17 @@ def validate_host_contract(contract=None, extractors=None):
         if not isinstance(tr, dict) or not tr.get('grammar') or not isinstance(tr.get('readable'), bool):
             say('transcript must carry a grammar name and a readable bool')
         events, engine = entry['events'], entry['engine_events']
-        if not events:
-            say('events must name the manifest\'s registered events')
-        unsupported = sorted(set(events) - set(engine))
+        if not isinstance(events, (tuple, list)) or not events \
+                or not all(isinstance(e, str) for e in events):
+            say('events must be a non-empty tuple of the manifest\'s registered event names')
+            events = ()
+        if not isinstance(engine, (set, frozenset)) or not engine \
+                or not all(isinstance(e, str) for e in engine):
+            say('engine_events must be a non-empty set of the host\'s documented events')
+            engine = frozenset()
+        unsupported = sorted(set(events) - set(engine)) if events and engine else []
         if unsupported:
             say('events %s are not in engine_events' % unsupported)
-        if not engine:
-            say('engine_events must list the host\'s documented events')
         if not isinstance(entry['blind'], tuple) or not all(isinstance(b, str) for b in entry['blind']):
             say('blind must be a tuple of family names')
         if not isinstance(entry['record'], dict) or not entry['record'].get('kind'):

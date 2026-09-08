@@ -48,10 +48,11 @@ hours later. That asymmetry is the whole `apply_patch` defect (`63fde9b2`).
 
 **But "past the unite point everything is host-neutral" is false.** Claude Code's
 `<task-notification>` envelope is recognised downstream. Counted by the guardrail scan
-(quoted literals only, `tests/test_host_shape_guardrail.py`): **four separate hardcodings**
+(quoted literals only, `tests/test_host_shape_guardrail.py`): **three separate hardcodings**
 of the literal — `trace_contract.WAKE_ENVELOPE_MARKER` (the owner), `pre_response_recall`
-(the hook's wake→register_only routing), and `dashboard/queries/stats.py` twice (the dashboard
-may not import `servers/`) — plus readers of the constant in `daemon_hooks` (the surface
+(the hook's wake→register_only routing), and `dashboard/queries/stats.py` (the dashboard may
+not import `servers/`; the ratchet also counts its quoted mention in a comment — retirement
+bookkeeping, not a decision) — plus readers of the constant in `daemon_hooks` (the surface
 window), `recall_laf` (via `is_machine_turn`) and **three** `dal_logs` methods
 (`active_sessions_by_turn`, the rich-presence read, `conversational_turns_since`). Moving
 recognition to the boundary is part of the work, not a bonus. (`is_machine_turn` hardcoded the
@@ -301,7 +302,7 @@ have come from `tool_target_file`'s regex.
 | # | question | ruling |
 |---|---|---|
 | D1 | where does it live? | **split, vocabulary on the output side:** `trace_contract.py` owns `ACTION_KINDS`, `KIND_STATUS`, `HOST_STATUS`, `ENVELOPE_POLICIES`, `TOOL_RESULT_METADATA_SHAPE` + `build_tool_result_metadata`; `host_contract.py` owns per-host dialects and imports the vocabularies to validate against. The encoder imports `trace_contract`, never `host_contract` |
-| D2 | how do hooks read it? | `host_contract` is a **leaf beside `brain_constants`** (imports only `trace_contract`, measured 1–7 ms, no path to `daemon_config` whose import-time fingerprint costs ~22 ms), pinned by `TestLeaf`. The prompt hook may import it (that path already pays `daemon_client`). **The PostToolUse hook never does** — under D9 it needs nothing from the contract |
+| D2 | how do hooks read it? | `host_contract` is a **leaf beside `brain_constants`** (imports only `trace_contract`; cold import ~13 ms including `re`, `trace_contract` alone 1–7 ms; no path to `daemon_config`, ~28 ms with its import-time fingerprint), pinned by `TestLeaf`. The prompt hook may import it (that path already pays `daemon_client`). **The PostToolUse hook never does** — under D9 it needs nothing from the contract |
 | D3 | where do `extract:<name>` extractors live? | `host_contract.EXTRACTORS`, one pure function per name, **closed**: the validator refuses an envelope naming an unregistered extractor. Code, not JSON — no runtime process proposes a host entry (the `aspects_v1.json` case), and entries bind behaviour |
 | D4 | `events` derived or declared? | **declared, test-verified both ways** (`TestContractManifestParity`): `contract.events == manifest events`, `manifest events ⊆ engine_events`, every matcher tool name declared (as tool or alias), every declared tool captured by a PostToolUse matcher. The engine lists live in the contract, dated by `verified.host_version` — Claude Code's reference lists 33 events at 2.1.263, not the 13 the first draft assumed |
 | D5 | is `blind` enforced? | detect **changed** blind status in either direction; report only, no backfill |
@@ -310,7 +311,7 @@ have come from `tool_target_file`'s regex.
 | D8 | canonical argument normalisation | **deferred** (Tom, 2026-09-07). Not in this work |
 | **D9** | **where does classification run?** | **Classify at the first consumer's boundary** (Tom, 2026-09-08, option B). Tool kinds: the DAEMON, at the S0 write door — the first consumer is the encoder hours later; restart-deployable; every client's rows get the same vocabulary the same day; unknown-tool warnings land in the errors table, not a hook's swallowed stderr. Envelopes: the PROMPT HOOK, which consumes the class itself (wake → register_only, 4s timeout, decided before the daemon is called) — Tom's hook-declares ruling (`27945678`) unchanged. Identity: hook observes, daemon resolves. The honest cost: `_build_summary`'s branch table stays hook-side until canonical arguments, mirrored by test |
 | **D10** | read-time classification of legacy rows? | **No.** See §6 |
-| **D11** | how do we know it can't drift? | **Every surface pair that must agree has a named test; every host literal outside the contract is ratcheted** — the ledger below is part of the definition of done for each step |
+| **D11** | how do we know it can't drift? | **Every surface pair that must agree has a named test; every KNOWN host literal (tool names, host keys, envelope tags) outside the contract is ratcheted.** A genuinely NEW host name is invisible to the ratchet by construction; its detector is the write door stamping `kind_status 'unknown'` into the errors table (step 1). The ledger below is part of the definition of done for each step |
 
 **Open — Tom's:** env_message phase 2 on the flip-day checklist, or its own
 `s1_encode_eval`-gated step? Recommendation: its own step, since phase 2 reclassifies rows the
@@ -330,12 +331,13 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | contract `events` | `hooks/hooks*.json` events | manifests are JSON the host reads | `TestContractManifestParity.test_declared_events_equal_registered_events` |
 | contract `events` | `engine_events` (host docs, dated) | host's release cadence | `test_registered_events_within_engine_events` |
 | manifest PostToolUse/PreToolUse matcher names | contract `tools` ∪ `matcher_aliases` | manifests are JSON | `test_matcher_tool_names_are_declared`, `test_every_declared_tool_is_captured_by_a_post_tool_matcher` |
-| `post_tool_trace._build_summary` branch names | contract `tools` ∪ aliases | the summary needs `tool_input` fields (hook-side until canonical args) | `TestHookMirrors.test_build_summary_branches_are_declared_tools` |
-| `hook_common.host_name` env reads | `all_tell_env_vars()` | env is visible only in the hook process | `TestHookMirrors.test_host_name_probes_only_declared_tells` |
-| `tool_result` stamped keys | `TOOL_RESULT_METADATA_SHAPE` + `TOOL_RESULT_NORMALIZATION_KEYS` | none — builder is the only constructor, chokepoint validates | `TestToolResultShape`; `validate_trace_metadata` at `TraceDAL.append` |
+| `post_tool_trace._build_summary` branch names **and rendered heads** (`'Bash: …'`) | contract `tools` ∪ aliases | the summary needs `tool_input` fields (hook-side until canonical args); the encoder reads the HEAD as the tool name, so the heads are the coupling that carries behaviour | `TestHookMirrors.test_build_summary_branches_are_declared_tools`, `test_build_summary_rendered_heads_are_declared_tools` |
+| `hook_common.host_name` env reads and its returned host keys | `all_tell_env_vars()`; contract keys | env is visible only in the hook process | `TestHookMirrors.test_host_name_probes_only_declared_tells`; the ratchet fences the quoted keys until step 1 retires them (hook reports tells, daemon resolves) |
+| `tool_result` stamped keys | `TOOL_RESULT_METADATA_SHAPE` + `TOOL_RESULT_NORMALIZATION_KEYS` | today the hook hand-builds `{'tool'}` and `stamp_s0_session` merges model/host after it; from step 1 the write door builds via the builder **then** stamps the session fields — the builder refuses non-contract keys, so stamp-then-build raises. The chokepoint checks required keys and their types only; extra keys pass | `TestToolResultShape`; `validate_trace_metadata` at `TraceDAL.append` |
+| a NEW host tool name anywhere | nothing — undeclared names are invisible to a contract-derived scan | by construction | not the ratchet: the write door's `kind_status == 'unknown'` errors-table warning (step 1) |
 | `contract_fingerprint()` | the code that classified a row | stamped per row | D6; `TestFingerprint` |
 | `host_contract` import graph | `daemon_config` | hot-path cost | `TestLeaf` (subprocess pin, the `test_caller_stamp` pattern) |
-| **every other file** | host tool names / envelope tags | must not exist | `test_host_shape_guardrail` — per-file ratchet, both ways, tool set **derived** from the contract; baseline = today's 28 sites in 10 files, each row naming the step that retires it |
+| **every other file** | host tool names / host keys / envelope tags | must not exist | `test_host_shape_guardrail` — per-file ratchet, both ways, tool and key sets **derived** from the contract; baseline = today's 36 quoted sites in 12 files (quoted mentions in comments count, as retirement bookkeeping), each row naming the step that retires it. `hooks/adapters/` is not scanned: a host's own setup code is host-specific by design (`368b15af`) |
 | `WAKE_ENVELOPE_MARKER` | `pre_response_recall`, `dashboard/queries/stats.py` ×2 | hook routing; dashboard may not import `servers/` | ratchet baseline until step 3; step 3 adds a dashboard mirror test (the `S0_SESSION_STAMP_FIELDS` pattern in `dashboard/queries/_meta.py`) |
 | this doc | the code | prose | symbols only, no line numbers; the tests are the truth |
 
@@ -344,7 +346,7 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | # | step | risk | deploy |
 |---|---|---|---|
 | 0 | **BUILT.** `HOST_CONTRACT` + CC and Codex entries + validator + fingerprint; output vocabularies + `tool_result` shape/builder in `trace_contract` (required key: `tool` only — what every writer already sends); boot validation; the drift fences; `is_machine_turn` reads the constant | no behaviour change | merge; restart optional |
-| 1 | hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the only hook change in the plan**, additive; write door stamps via `build_tool_result_metadata`; normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env | additive, see below | redeploy (hook) + restart |
+| 1 | hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the only hook change in the plan**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` retires its host-key returns (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
 | 2 | D7(a) per-tool `subs`; D7(b) `kind` on `_Action`; flip `WRITE_ACTION_TOOLS`, the five `'Bash'` sites, the four `'Edit'` defaults; three-state legacy read; ratchet baseline lowered for each retired site | first behaviour change; `s1_encode_eval` before/after on the shadow-stamped window | restart |
 | 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); retire the downstream `<task-notification>` readers **after** §6's legacy path exists; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence | redeploy + restart; Tom's gate for phase 2 |
 | 4 | reconciliation against the host's own record | needs step 1's source IDs | restart |
@@ -372,8 +374,15 @@ which is what makes a real before/after comparison possible.
   `daemon_config`; `servers.daemon_config` ~28–30 ms.
 - Host-stamp gap: 28 of the 1000 most recent `tool_result` rows (2.8%) carry no host, all one
   Codex session on chain `s0-01a07ce3-0`, `apply_patch` ×3, no prompt rows `[review]`.
-- Quoted host literals outside the contract: 28 sites in 10 files (guardrail baseline, after
-  `is_machine_turn` stopped duplicating the marker).
+- Quoted host literals outside the contract: 36 sites in 12 files (guardrail baseline — tool
+  names, host keys and envelope tags, after `is_machine_turn` stopped duplicating the marker;
+  8 of the 36 are the two host keys, 4 of those in `hook_common.host_name`).
+- Lean post-merge review of step 0 (one Opus pass, 2026-09-08): no blockers; five should-fix
+  items, all applied — the validator now reports malformed shapes instead of raising (a raise
+  would be swallowed by the boot guard and log nothing), the summary heads the hook renders
+  are held to the contract, an intra-host duplicate tell is refused, the ledger's `tool_result`
+  row now states build-then-stamp, and the ratchet's blind spot for undeclared names is
+  written down with its real detector.
 - Hook-process env inventory (`pre-bash-safety.sh`, PID 59112) `[codex-stream]`. Node `2f1ee97e`.
 - Codex envelope literals from `ChatGPT.app/Contents/Resources/app.asar` — nine headers plus
   the `## My request(?: for Codex)?:` marker; absent from the `codex` Rust binary. Node `4c42b9da`.

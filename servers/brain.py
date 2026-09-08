@@ -387,10 +387,11 @@ class Brain(
             # which is louder than a silent empty registry.
             print('[brain] WARNING: AspectRegistry init failed: %s' % _e, flush=True)
 
-        # Host contract: validate the per-harness declarations once at boot —
-        # loud, never fatal, no auto-heal (the aspects posture). The sync test
-        # is the write door; this is the last line for an install whose code
-        # drifted past it. One errors-table row per violation.
+        # Host contract: validate the per-harness declarations on every Brain
+        # construction (daemon boot, background scale runs) — loud, never
+        # fatal, no auto-heal (the aspects posture). The sync test is the write
+        # door; this is the last line for an install whose code drifted past
+        # it. One errors-table row per violation.
         try:
             from .host_contract import validate_host_contract
             for _violation in validate_host_contract():

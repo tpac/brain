@@ -101,7 +101,7 @@ class TestValidatorHasTeeth(unittest.TestCase):
 
     def test_shared_tell_is_refused(self):
         self._refuses(lambda c: c['codex']['identity'].__setitem__(
-            'tells', ({'env': 'CLAUDE_CODE_SESSION_ID', 'strength': 'strong'},)), 'always ambiguous')
+            'tells', ({'env': 'CLAUDE_CODE_SESSION_ID', 'strength': 'strong'},)), 'declared twice (claude-code)')
 
     def test_bogus_tell_strength(self):
         self._refuses(lambda c: c['codex']['identity'].__setitem__(
@@ -109,6 +109,30 @@ class TestValidatorHasTeeth(unittest.TestCase):
 
     def test_unverified_entry(self):
         self._refuses(lambda c: c['codex'].__setitem__('verified', {}), 'host_version')
+
+    def test_duplicate_tell_within_one_host(self):
+        # resolve_host's strength map is last-wins: a family tell redeclared as
+        # strong would silently promote every row. Must be refused.
+        self._refuses(lambda c: c['codex']['identity'].__setitem__(
+            'tells', ({'env': 'PLUGIN_DATA', 'strength': 'family'},
+                      {'env': 'PLUGIN_DATA', 'strength': 'strong'})), 'declared twice')
+
+    def test_malformed_shapes_are_reported_not_raised(self):
+        # The write door must REPORT: a raise here would be swallowed by the
+        # boot path's guard and write nothing to the errors table.
+        self._refuses(lambda c: c['codex'].__setitem__('matcher_aliases', ['Edit']), 'matcher_aliases must be a dict')
+        self._refuses(lambda c: c['codex'].__setitem__('envelopes', ['<x>']), 'envelopes must be a dict')
+        self._refuses(lambda c: c['codex'].__setitem__('tool_patterns', ('^mcp__',)), 'tool_patterns must be')
+        self._refuses(lambda c: c['codex'].__setitem__('tool_patterns', None), 'tool_patterns must be')
+        self._refuses(lambda c: c['codex'].__setitem__('tools', []), 'tools must be')
+        self._refuses(lambda c: c['codex'].__setitem__('events', ('Stop', 3)), 'events must be')
+        self._refuses(lambda c: c['codex'].__setitem__('engine_events', ['Stop']), 'engine_events must be')
+
+    def test_tell_strengths_are_host_statuses(self):
+        # resolve_host reports a fired tell's strength AS the host status, so a
+        # strength the output vocabulary does not know would be reported wrong.
+        self.assertTrue(set(hc.TELL_STRENGTHS) <= set(HOST_STATUS),
+                        '%s not all in HOST_STATUS %s' % (hc.TELL_STRENGTHS, HOST_STATUS))
 
 
 class TestResolveHost(unittest.TestCase):
@@ -175,11 +199,18 @@ class TestClassifyTool(unittest.TestCase):
 
 
 def _function(path, name):
-    tree = ast.parse(open(path).read())
+    with open(path) as f:
+        tree = ast.parse(f.read())
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == name:
             return node
     raise AssertionError('%s has no function %s' % (path, name))
+
+
+def _declared_names():
+    """Every tool name a host's payload carries plus every manifest alias."""
+    return {n for e in hc.HOST_CONTRACT.values() for n in e['tools']} \
+        | {a for e in hc.HOST_CONTRACT.values() for a in e['matcher_aliases']}
 
 
 class TestHookMirrors(unittest.TestCase):
@@ -200,11 +231,31 @@ class TestHookMirrors(unittest.TestCase):
                     branched |= {c.value for c in consts
                                  if isinstance(c, ast.Constant) and isinstance(c.value, str)}
         self.assertTrue(branched, '_build_summary branches on no tool names — extractor blind')
-        declared = {n for e in hc.HOST_CONTRACT.values() for n in e['tools']} \
-            | {a for e in hc.HOST_CONTRACT.values() for a in e['matcher_aliases']}
+        declared = _declared_names()
         self.assertFalse(branched - declared,
                          'post_tool_trace._build_summary branches on tool names no host declares: %s'
                          % sorted(branched - declared))
+
+    def test_build_summary_rendered_heads_are_declared_tools(self):
+        # The encoder derives the tool from the SUMMARY HEAD ('Bash: …' →
+        # 'Bash'), not from metadata.tool — so the prefixes the hook renders
+        # are the coupling that carries behaviour. Every literal head the
+        # builder returns must be a declared name; the generic '%s: %s'
+        # fallback is the one non-literal head.
+        fn = _function(os.path.join(_HOOKS, 'post_tool_trace.py'), '_build_summary')
+        heads = set()
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Return) and node.value is not None:
+                for c in ast.walk(node.value):
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str) and ': ' in c.value:
+                        head = c.value.split(':', 1)[0]
+                        if head and '%' not in head and '{' not in head:
+                            heads.add(head)
+        self.assertTrue(heads, '_build_summary renders no "<tool>: …" heads — extractor blind')
+        declared = _declared_names()
+        self.assertFalse(heads - declared,
+                         'post_tool_trace._build_summary renders summary heads no host declares: %s '
+                         '— the encoder reads the head as the tool name' % sorted(heads - declared))
 
     def test_host_name_probes_only_declared_tells(self):
         fn = _function(os.path.join(_HOOKS, 'hook_common.py'), 'host_name')
