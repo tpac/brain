@@ -777,8 +777,8 @@ def build_anchor_touched_metadata(**ids):
 TOOL_RESULT_METADATA_SHAPE = {
     'tool': str,   # the host's raw tool name, verbatim (redacted input, never the caller stamp)
 }
-# Optional today, stamped by the write door from step 1 on. Listed here so the
-# builder and the reader (encoder_actions.parse_action) share one keyset.
+# Optional today, stamped by the write door from step 1 on and read by
+# encoder_actions.parse_action from step 2 on — one keyset for both, listed here.
 TOOL_RESULT_NORMALIZATION_KEYS = (
     'kind',            # one of ACTION_KINDS, '' when unknown
     'kind_status',     # one of KIND_STATUS
