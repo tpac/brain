@@ -752,7 +752,7 @@ def hook_pre_edit(brain, args, graph_changes):
     Returns JSON {"decision":"approve","reason":"..."}.
     """
     filename = args.get("filename", "")
-    tool_name = args.get("tool_name", "Edit")
+    tool_name = args.get("tool_name") or ""
 
     if not filename:
         return {"json": {"decision": "approve"}}

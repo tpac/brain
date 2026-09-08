@@ -12,7 +12,7 @@ from hook_common import (get_hook_input, daemon_available, daemon_call_raw, daem
 hook_input = get_hook_input()
 tool_input = hook_input.get("tool_input", {})
 file_path = tool_target_file(tool_input)
-tool_name = hook_input.get("tool_name", "Edit")
+tool_name = hook_input.get("tool_name") or ""
 
 if not file_path:
     sys.exit(0)

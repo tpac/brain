@@ -15,7 +15,7 @@ already collapses the floods it would target).
            bound what may be condensed away:
              - the last ACTIONS_KEEP_LAST actions render verbatim in place
                (the turn's outcome) and are never folded INTO earlier lines
-             - write actions (Edit/Write/git write-verbs/intent scripts)
+             - write actions (edit kind/git write-verbs/intent scripts)
                never roll up — they are rare and they are the story
              - dedup identity is the RAW summary, never the rendered label,
                so two different actions can never fold into a false '×N'
@@ -44,7 +44,14 @@ from servers.scales.s1.encoder_view import (
     ACTIONS_BUDGET, ACTIONS_BUDGET_TAIL, ACTIONS_KEEP_LAST, ACTION_LABEL_CAP,
     ACTIONS_BUDGET_SOFT_EDGE, COMMENT_SCAN_DEPTH, PATH_KEEP_SEGMENTS,
     ROLLUP_SUBS_CAP, ROLLUP_TOOLS_CAP, ROLLUP_TARGET_CAP,
-    WRITE_ACTION_TOOLS, GIT_WRITE_VERBS, action_mode, action_stub)
+    SUPPORTED_ACTION_VOCAB_VERSIONS, GIT_WRITE_VERBS, action_mode, action_stub)
+from servers.trace_contract import ACTION_KINDS
+
+# Frozen pre-cutover SUMMARY behavior, only for rows with no classification
+# stamp. Never derive this from host_contract: that would reclassify history.
+LEGACY_SUMMARY_KINDS = {'Bash': 'shell', 'Edit': 'edit', 'Write': 'edit',
+                        'NotebookEdit': 'edit'}
+_KIND_STAMP_KEYS = ('kind', 'kind_status', 'vocab_version', 'impl_identity')
 
 # File-ish tokens (optional leading '/', a directory part, basename with a
 # short extension) — the rollup's target vocabulary. Extension-gated: bare
@@ -75,12 +82,15 @@ _SCRIPT_OPENER_RE = re.compile(r'''(?:<<-?\s*['"]?\w+['"]?\s*$|-c\s+["']\s*$)'''
 
 
 class _Action:
-    __slots__ = ('raw', 'tool', 'sub', 'label', 'targets', 'protected', 'count')
+    __slots__ = ('raw', 'tool', 'sub', 'label', 'targets', 'protected', 'count',
+                 'kind', 'kind_status', 'raw_tool')
 
-    def __init__(self, raw, tool, sub, label, targets, protected):
+    def __init__(self, raw, tool, sub, label, targets, protected,
+                 kind='', kind_status='legacy', raw_tool=''):
         self.raw, self.tool, self.sub = raw, tool, sub
         self.label, self.targets = label, targets
         self.protected, self.count = protected, 1
+        self.kind, self.kind_status, self.raw_tool = kind, kind_status, raw_tool
 
 
 def _squeeze_paths(s):
@@ -169,7 +179,7 @@ def _script_intent(lines):
     return ''
 
 
-def _label(tool, first, lines):
+def _label(kind, first, lines):
     """One line per action. Every multi-line trim is marked with ' …'.
     Intent harvest (the '·' segment) fires only when it can be attributed
     honestly: a commit subject for `git commit` actions; a script body's
@@ -178,7 +188,7 @@ def _label(tool, first, lines):
     the leading command)."""
     intent = ''
     if len(lines) > 1:
-        if tool == 'Bash' and 'git commit' in first:
+        if kind == 'shell' and 'git commit' in first:
             intent = _commit_subject(lines)
         elif _SCRIPT_OPENER_RE.search(first):
             intent = _script_intent(lines)
@@ -188,6 +198,30 @@ def _label(tool, first, lines):
     return label
 
 
+def _read_kind(md, summary_tool):
+    """Absent / valid / unknown-or-malformed: never backfill a stamped row.
+
+    Only classification fields mark the cutover. Historical source IDs or
+    session host metadata alone do not constitute a kind stamp. Join and host
+    diagnostics are the write door's concern; this reader validates the fields
+    it consumes plus the classification version and implementation identity.
+    """
+    if not isinstance(md, dict) or not any(k in md for k in _KIND_STAMP_KEYS):
+        return LEGACY_SUMMARY_KINDS.get(summary_tool, ''), 'legacy'
+    kind, status = md.get('kind'), md.get('kind_status')
+    if (not isinstance(md.get('tool'), str) or not md['tool']
+            or not isinstance(kind, str) or not isinstance(status, str)
+            or type(md.get('vocab_version')) is not int
+            or md['vocab_version'] not in SUPPORTED_ACTION_VOCAB_VERSIONS
+            or not isinstance(md.get('impl_identity'), str) or not md['impl_identity']):
+        return '', 'malformed'
+    if status == 'ok' and kind in ACTION_KINDS:
+        return kind, 'ok'
+    if status == 'unknown' and kind == '':
+        return '', 'unknown'
+    return '', 'malformed'
+
+
 def parse_action(episode):
     """One tool_result episode → an _Action, or None when existing policy
     drops the line (node-ops provenance already shows). Total: an unseen
@@ -195,29 +229,44 @@ def parse_action(episode):
     summary = str(episode.get('summary') or '')
     md = episode.get('metadata')
     raw_tool = md.get('tool') if isinstance(md, dict) else None
-
-    mode = action_mode(raw_tool)
-    if mode == 'drop':
-        return None
-    if mode == 'stub':
-        stub = action_stub(summary)
-        return _Action(summary, stub.split(':', 1)[0], '', stub, (), False)
+    raw_tool = raw_tool if isinstance(raw_tool, str) else ''
 
     lines = summary.split('\n')
     first = _one_line(lines[0])
     head, sep, args = first.partition(': ')
-    tool = _short_tool(head) if sep else 'tool'
-    sub = _bash_verb(args) if tool == 'Bash' else ''
-    label = _cap(_squeeze_paths(_label(tool, first, lines)))
+    summary_tool = _short_tool(head) if sep else 'tool'
+    kind, status = _read_kind(md, summary_tool)
+    tool = (_short_tool(raw_tool) if raw_tool and status != 'legacy' else summary_tool)
+
+    # A mapping failure must remain visible even in a flood or on a brain
+    # node-op that the ordinary provenance policy would drop. No shell intent
+    # or write inference from summary text in this state.
+    if status in ('unknown', 'malformed'):
+        diagnostic = 'tool kind %s; action unclassified: ' % status
+        label = _cap(diagnostic + (_squeeze_paths(first) or '(no cue)')
+                     + (' …' if len(lines) > 1 else ''))
+        return _Action(summary, tool, '', label, _extract_targets(summary), True,
+                       kind=kind, kind_status=status, raw_tool=raw_tool)
+
+    mode = action_mode(raw_tool) if status == 'legacy' or kind == 'mcp' else 'full'
+    if mode == 'drop':
+        return None
+    if mode == 'stub':
+        stub = action_stub(summary)
+        return _Action(summary, stub.split(':', 1)[0], '', stub, (), False,
+                       kind=kind, kind_status=status, raw_tool=raw_tool)
+
+    sub = _bash_verb(args) if kind == 'shell' else ''
+    label = _cap(_squeeze_paths(_label(kind, first, lines)))
     if not label.strip():
         label = '%s (no cue)' % (tool or 'tool')
     # Writes never roll up: explicit write tools, git write-verbs, and
     # scripts whose intent was harvested (they are this repo's file editors).
-    protected = (tool in WRITE_ACTION_TOOLS
-                 or (tool == 'Bash' and sub in GIT_WRITE_VERBS)
+    protected = (kind == 'edit'
+                 or (kind == 'shell' and sub in GIT_WRITE_VERBS)
                  or ' · ' in label)
     return _Action(summary, tool, sub, label, _extract_targets(summary),
-                   protected)
+                   protected, kind=kind, kind_status=status, raw_tool=raw_tool)
 
 
 def _dedup(actions):
@@ -227,11 +276,16 @@ def _dedup(actions):
     same). '×N' therefore always means the identical recorded action."""
     kept, by_raw = [], {}
     for a in actions:
-        prior = by_raw.get(a.raw)
+        # Same summary across read states is not the same action: folding a
+        # stamped edit into a legacy row would lose its protection. Preserve
+        # raw MCP namespace/operation too (display names may be identical).
+        key = (a.raw, a.kind, a.kind_status,
+               a.raw_tool if a.kind_status != 'legacy' else None)
+        prior = by_raw.get(key)
         if prior is not None:
             prior.count += a.count
         else:
-            by_raw[a.raw] = a
+            by_raw[key] = a
             kept.append(a)
     return kept
 
@@ -240,12 +294,12 @@ def _rollup_line(mid):
     """The accounting line for the unrendered middle. Every internal cap
     marks itself ('+k more') — this line's entire job is auditability."""
     total = sum(a.count for a in mid)
-    tools, subs = Counter(), Counter()
+    tools, subs = Counter(), {}
     targets, seen = [], set()
     for a in mid:
         tools[a.tool] += a.count
-        if a.tool == 'Bash' and a.sub:
-            subs[a.sub] += a.count
+        if a.sub:
+            subs.setdefault(a.tool, Counter())[a.sub] += a.count
         for t in a.targets:
             if t not in seen:
                 seen.add(t)
@@ -254,11 +308,12 @@ def _rollup_line(mid):
     top_tools = tools.most_common(ROLLUP_TOOLS_CAP)
     for tool, cnt in top_tools:
         part = '%s ×%d' % (tool, cnt)
-        if tool == 'Bash' and subs:
-            top_subs = subs.most_common(ROLLUP_SUBS_CAP)
+        tool_subs = subs.get(tool)
+        if tool_subs:
+            top_subs = tool_subs.most_common(ROLLUP_SUBS_CAP)
             sub_txt = ', '.join('%s ×%d' % (s, c) for s, c in top_subs)
-            if len(subs) > len(top_subs):
-                sub_txt += ', +%d more' % (len(subs) - len(top_subs))
+            if len(tool_subs) > len(top_subs):
+                sub_txt += ', +%d more' % (len(tool_subs) - len(top_subs))
             part += ' (%s)' % sub_txt
         parts.append(part)
     if len(tools) > len(top_tools):

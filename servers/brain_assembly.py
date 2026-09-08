@@ -549,7 +549,7 @@ class BrainAssemblyMixin:
     # list_staged, confirm_staged, dismiss_staged, auto_promote_staged
     # REMOVED 2026-04-06 — staged_learnings table dropped
 
-    def pre_edit(self, file: str, tool_name: str = 'Edit',
+    def pre_edit(self, file: str, tool_name: str = '',
                  ctx=None) -> dict:
         """
         Batch pre-edit call combining all lookups into one.
@@ -557,7 +557,7 @@ class BrainAssemblyMixin:
 
         Args:
             file: Filename being edited
-            tool_name: 'Edit' or 'Write'
+            tool_name: Raw tool name when supplied; empty when absent.
 
         Returns:
             Dict with suggestions, procedures, context_files, encoding health, timings

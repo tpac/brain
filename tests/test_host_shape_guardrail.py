@@ -69,14 +69,9 @@ TAG_RE = re.compile(r"""(['"])[^'"\n]*(%s)[^'"\n]*\1""" % '|'.join(map(re.escape
 # path, each with the design step that retires it. Lower a number when a step
 # lands; bump (with a why) only for a genuine new exception.
 ALLOWED = {
-    'servers/brain_assembly.py': 3,             # step 2: pre_edit's 'Edit' default (1) + its docstring's 'Edit' or 'Write' (2) → kind
-    'servers/daemon_hooks.py': 1,               # step 2: hook_pre_edit's 'Edit' default → kind
-    'servers/dispatch_ops.py': 1,               # step 2: _handle_pre_edit's 'Edit' default → kind
-    'servers/scales/s1/encoder_actions.py': 5,  # step 2: the five tool == 'Bash' sites → kind == 'shell'
-    'servers/scales/s1/encoder_view.py': 3,     # step 2: WRITE_ACTION_TOOLS → kind == 'edit'
+    'servers/scales/s1/encoder_actions.py': 4,  # frozen legacy summary-name map (D10); normalized predicates have no host names
     'servers/trace_contract.py': 1,             # step 3: WAKE_ENVELOPE_MARKER moves into the contract's envelopes
     'hooks/scripts/post_tool_trace.py': 11,     # summary's 10 + step 1's raw patch capture (1); both need tool_input's per-tool fields until canonical arguments (deferred), mirrored by TestHookMirrors
-    'hooks/scripts/pre_edit_suggest.py': 1,     # step 2: 'Edit' default
     'hooks/scripts/pre_response_recall.py': 1,  # step 3: wake routing reads the contract's envelope table
     'dashboard/queries/stats.py': 2,            # step 3: the dashboard mirrors the marker (it may not import servers/) — one SQL literal + one quoted mention in a comment; a mirror test holds it
 }

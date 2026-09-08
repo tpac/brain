@@ -16,6 +16,7 @@ Opus review's reproduced findings (dea6cdd review, 2026-08-18).
 import os
 import re
 import sys
+import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -290,3 +291,145 @@ def test_keep_last_constant_is_honored():
     lines = condense_actions(eps)
     tail_labels = ['Bash: a%d' % i for i in range(50 - ACTIONS_KEEP_LAST, 50)]
     assert lines[-ACTIONS_KEEP_LAST:] == tail_labels
+
+
+def test_rollup_subcounts_belong_to_each_display_tool():
+    from servers.scales.s1.encoder_actions import _Action, _rollup_line
+    # Records exercise D7(a) before a kind-aware parser exists. Counts from
+    # one shell display name must never contaminate another shell's entry.
+    one = _Action('one', 'terminal_one', 'pytest', 'one', (), False)
+    one.count = 3
+    two = _Action('two', 'terminal_two', 'git', 'two', (), False)
+    two.count = 2
+    line = _rollup_line([one, two])
+    assert line == ('(5 more actions, not shown: '
+                    'terminal_one ×3 (pytest ×3), terminal_two ×2 (git ×2))')
+
+
+def _stamped(summary, tool='apply_patch', kind='edit', **overrides):
+    # Literal write vocabulary, deliberately independent of the input map.
+    md = {'tool': tool, 'kind': kind, 'kind_status': 'ok',
+          'vocab_version': 1, 'impl_identity': 'fixture-implementation'}
+    md.update(overrides)
+    return {'summary': summary, 'metadata': md}
+
+
+def test_legacy_summary_behavior_is_frozen():
+    for head in ('Edit', 'Write', 'NotebookEdit'):
+        a = parse_action(_ep(head + ': src/code.py', tool='unrelated_metadata'))
+        assert (a.kind, a.kind_status, a.protected) == ('edit', 'legacy', True)
+    old_patch = _ep('apply_patch: src/code.py', tool='apply_patch')
+    old_patch['metadata'].update(host='codex', tool_use_id='old-id')
+    a = parse_action(old_patch)
+    assert (a.kind, a.kind_status, a.protected) == ('', 'legacy', False)
+    a = parse_action(_ep('Bash: ./dev python3 -m pytest', tool='unrelated_metadata'))
+    assert (a.kind, a.kind_status, a.sub) == ('shell', 'legacy', 'pytest')
+
+
+def test_reader_supports_current_write_vocabulary():
+    from servers.host_contract import VOCAB_VERSION
+    from servers.scales.s1.encoder_view import SUPPORTED_ACTION_VOCAB_VERSIONS
+    assert VOCAB_VERSION in SUPPORTED_ACTION_VOCAB_VERSIONS
+
+
+def test_normalized_kinds_override_summary_names_and_keep_raw_names():
+    a = parse_action(_stamped('Read: src/code.py', tool='future_editor'))
+    assert (a.kind, a.tool, a.raw_tool, a.protected) == (
+        'edit', 'future_editor', 'future_editor', True)
+    a = parse_action(_stamped('Edit: src/code.py', tool='future_reader', kind='read'))
+    assert a.kind == 'read' and not a.protected
+    assert a.label == 'Edit: src/code.py'  # summary capture is unchanged
+    a = parse_action(_stamped('Bash: git status', tool='future_reader', kind='read'))
+    assert a.sub == ''
+
+
+def test_normalized_shell_intent_and_rollup_use_kind():
+    a = parse_action(_stamped('terminal: git commit -m "$(cat <<\'EOF\'\n'
+                             'Ship parser change\nEOF', tool='terminal', kind='shell'))
+    assert a.sub == 'git' and a.protected
+    assert '· Ship parser change' in a.label
+    from servers.scales.s1.encoder_actions import _rollup_line
+    one = parse_action(_stamped('terminal: pytest tests', tool='terminal', kind='shell'))
+    two = parse_action(_stamped('runner: rg code', tool='runner', kind='shell'))
+    assert _rollup_line([one, two]) == (
+        '(2 more actions, not shown: terminal ×1 (pytest ×1), runner ×1 (rg ×1))')
+
+
+@pytest.mark.parametrize('overrides', [
+    {'kind': '', 'kind_status': 'unknown'},
+    {'kind': 'edit', 'kind_status': 'unknown'},
+    {'kind': 'unrecognized'}, {'kind': []}, {'kind_status': []},
+    {'kind_status': 'oops'}, {'vocab_version': 999}, {'vocab_version': True},
+    {'vocab_version': '1'}, {'impl_identity': None}, {'impl_identity': ''},
+    {'tool': []}, {'tool': ''},
+])
+def test_invalid_stamps_never_use_legacy_behavior(overrides):
+    ep = _stamped('Bash: python3 - <<EOF\n# should not harvest\nEOF',
+                  tool='Bash', kind='shell')
+    ep['metadata'].update(overrides)
+    a = parse_action(ep)
+    assert a.kind == '' and a.sub == '' and a.protected
+    assert 'tool kind ' in a.label and 'action unclassified' in a.label
+    assert 'should not harvest' not in a.label
+    assert a.label.endswith(' …')
+    assert a.kind_status in ('unknown', 'malformed')
+    # Invalid raw names must also survive the condenser's hash key.
+    assert condense_actions([ep] * 4)
+
+
+@pytest.mark.parametrize('key,value', [
+    ('kind', 'edit'), ('kind_status', 'ok'), ('vocab_version', 1),
+    ('impl_identity', 'fixture-implementation')])
+def test_partial_stamp_is_diagnostic_not_legacy(key, value):
+    ep = _ep('Edit: src/code.py', tool='Edit')
+    ep['metadata'][key] = value
+    a = parse_action(ep)
+    assert a.kind == '' and a.kind_status == 'malformed'
+    assert 'action unclassified' in a.label
+
+
+def test_mixed_states_do_not_dedup_or_lose_diagnostics():
+    summary = 'apply_patch: src/middle.py'
+    old = _ep(summary, tool='apply_patch')
+    valid = _stamped(summary)
+    unknown = _stamped(summary, kind='', kind_status='unknown')
+    partial = _ep(summary, tool='apply_patch')
+    partial['metadata']['kind'] = 'edit'
+    eps = ([_ep('Bash: step %d' % i) for i in range(40)]
+           + [old, valid, valid, unknown, partial]
+           + [_ep('Bash: done'), _ep('Bash: finished')])
+    lines = condense_actions(eps)
+    assert summary + ' ×2' in lines
+    assert sum('action unclassified' in ln for ln in lines) == 2
+    assert _accounted_total(lines) == len(eps)
+    assert lines[-2:] == ['Bash: done', 'Bash: finished']
+
+
+def test_normalized_mcp_namespace_policy():
+    for base in ('remember', 'recall'):
+        brain_tool = 'mcp__plugin_x_brain__' + base
+        other_tool = 'mcp__other__' + base
+        summary = base + ': {"query": "kept intent"}'
+        brain = parse_action(_stamped(summary, tool=brain_tool, kind='mcp'))
+        other = parse_action(_stamped(summary, tool=other_tool, kind='mcp'))
+        assert other.label == summary
+        if base == 'remember':
+            assert brain is None
+        else:
+            assert brain.label.endswith('→ results in provenance')
+        unknown = parse_action(_stamped(summary, tool=brain_tool, kind='', kind_status='unknown'))
+        assert unknown.protected and 'action unclassified' in unknown.label
+    eps = [_stamped('query: same', tool='mcp__one__query', kind='mcp'),
+           _stamped('query: same', tool='mcp__two__query', kind='mcp'),
+           _ep('tail: one'), _ep('tail: two')]
+    assert len(condense_actions(eps)) == 4
+
+
+def test_normalized_patch_survives_busy_turn_without_reclassifying_history():
+    flood = [_ep('Bash: step %d' % i) for i in range(40)]
+    tail = [_ep('Bash: outcome'), _ep('Bash: final')]
+    summary = 'apply_patch: src/retained.py'
+    assert summary not in condense_actions(flood + [_ep(summary)] + tail)
+    lines = condense_actions(flood + [_stamped(summary)] + tail)
+    assert summary in lines
+    assert _accounted_total(lines) == 43

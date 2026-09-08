@@ -213,11 +213,11 @@ ACTIONS_KEEP_LAST = 2
 # One rendered line per action; longer labels mark their cut with '…'.
 ACTION_LABEL_CAP = 180
 
-# Write actions never roll up — they are rare and they are the turn's story
-# (the encoder-eye review: a rolled-up seed-file edit was the most
-# encodeable fact of its turn). Explicit write tools here; git write-verbs
-# and harvested-intent scripts join them in the condenser's protection rule.
-WRITE_ACTION_TOOLS = frozenset({'Edit', 'Write', 'NotebookEdit'})
+# Only explicitly supported vocabulary versions drive normalized behavior.
+# A future change in meaning needs a reader change; no read-time backfill.
+SUPPORTED_ACTION_VOCAB_VERSIONS = frozenset({1})
+
+# Edit kinds, git write-verbs and harvested-intent scripts never roll up.
 GIT_WRITE_VERBS = frozenset({'commit', 'rm', 'mv', 'merge', 'revert',
                              'push', 'tag', 'am', 'cherry-pick'})
 
@@ -225,7 +225,7 @@ GIT_WRITE_VERBS = frozenset({'commit', 'rm', 'mv', 'merge', 'revert',
 # '+k more' when it truncates (the line's job is auditability).
 ROLLUP_TARGET_CAP = 8    # distinct file targets named
 ROLLUP_TOOLS_CAP = 6     # tools in the mix breakdown
-ROLLUP_SUBS_CAP = 4      # Bash command words inside the Bash entry
+ROLLUP_SUBS_CAP = 4      # command words inside each display tool's entry
 
 # Lines scanned at the head of a script body for its intent ('#' comment or
 # first code line) and for a git-commit subject.

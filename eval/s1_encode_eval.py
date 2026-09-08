@@ -21,6 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tests.isolated_brain import IsolatedBrain
 
+EVAL_MODEL = 'claude-sonnet-4-6'
+EVAL_MAX_TOKENS = 4096
+EVAL_TOOL_ROUNDS = 8
+
 
 def get_tool_schemas(tool_set='new'):
     """S1 encoding tool subset."""
@@ -98,7 +102,7 @@ def run_encoding(client, system_prompt, user_content, tools, brain):
     t0 = time.time()
     api_messages = [{"role": "user", "content": user_content}]
     response = client.messages.create(
-        model="claude-sonnet-4-6", max_tokens=4096,
+        model=EVAL_MODEL, max_tokens=EVAL_MAX_TOKENS,
         system=system_prompt, messages=api_messages, tools=tools)
 
     all_actions = []
@@ -107,7 +111,7 @@ def run_encoding(client, system_prompt, user_content, tools, brain):
     output_tokens = response.usage.output_tokens
     final_text = ''
 
-    for rounds in range(8):
+    for rounds in range(EVAL_TOOL_ROUNDS):
         tool_uses = [b for b in response.content if b.type == "tool_use"]
         text_blocks = [b for b in response.content if b.type == "text"]
         if text_blocks:
@@ -142,7 +146,7 @@ def run_encoding(client, system_prompt, user_content, tools, brain):
             for b in response.content]})
         api_messages.append({"role": "user", "content": tool_results})
         response = client.messages.create(
-            model="claude-sonnet-4-6", max_tokens=4096,
+            model=EVAL_MODEL, max_tokens=EVAL_MAX_TOKENS,
             system=system_prompt, messages=api_messages, tools=tools)
         input_tokens += response.usage.input_tokens
         output_tokens += response.usage.output_tokens

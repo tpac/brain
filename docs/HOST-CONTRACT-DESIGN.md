@@ -1,6 +1,27 @@
 # Host Contract — Design
 
-## Status — step 1 reviewed and live, step 2 next (2026-09-08) ◀ ACTIVE ARC
+## Status — step 2 reviewed; deployment and live validation authorized (2026-09-08) ◀ ACTIVE ARC
+
+**Step 2 checkpoint:** `codex/host-contract-step2`, based on main git:`450cff9`.
+D7(a) per-display-tool counters passed before D7(b) kind consumers were built.
+Three read states, raw MCP identity, and all four absent pre-edit defaults are
+covered; the legacy behavior is frozen, with four explicit ratcheted names.
+Current ratchet: **19 sites in 5 files**. Independent functional review cleared
+the consumer changes, including 1,044 legacy episodes across 15 busy windows.
+
+The fixed snapshot/time comparison reaches 131 production action episodes and
+five stamped edits. Patch retention rises from 2/5 to 5/5; two display lines and
+95 characters are added. System/tools and all prompt text outside `<actions>`
+are identical. Verification covers 656 distinct passing tests plus one existing
+xfail (640 broad-tier passes; four permission-limited tests passed on rerun;
+twelve eval-gate tests). The public-tree export/collection check passes.
+**Deployment authorization:** after reviewing the before/after and clarifying
+that step 2 changes encoder input preparation, Tom asked to deploy now and offered
+to exercise Claude Code and Codex for production validation. Proceed with the
+reviewed change and verify live capture plus rendered action retention. The paid
+`s1_encode_eval` comparison remains unrun: automatic approval review rejected
+sending its private frozen prompt to Anthropic without explicit payload/destination
+authorization. Live capture/rendering evidence does not claim a model-output A/B.
 
 **Read first:** handoff id:`39ffdd98` (step 2), milestone id:`7e80cb51`
 (review/deployment), decision id:`e8183445` (D9). Prior step 1 handoff id:`66ba8b6c`
@@ -10,15 +31,15 @@ is superseded; corrected gaps id:`f48d0402`, id:`661abc55`, id:`05fd53c3`.
 gets its kind at the daemon write door; hooks send raw facts. Both hosts have live
 stamped rows: Codex trace:`caad7588`, Claude Code trace:`6bc6775e`, contract fingerprint
 `32da0b4f35b1`. Final follow-up tier: 315 passed, one existing xfail; independent
-review cleared the attribution fix with 130 tests. Ratchet: 29 sites in 10 files.
+review cleared the attribution fix with 130 tests. Step 1 ratchet: 29 sites in 10 files.
 
 **Locked:** D1–D11 (§9); raw tool names, summaries and encoder behavior preserved
 through step 1. Tom approved retiring the new, unreleased prompt/Stop `host` wire
 field and `hook_common.host_name` (id:`b3675380`).
 
-**Open — Tom's:** env_message phase 2 placement, gating step 3 only. Steps 2–4
-remain unbuilt. Step 2 starts by freezing an isolated stamped window for the
-consumer comparison; `s1_encode_eval --compare` alone is not a code A/B (id:`05fd53c3`).
+**Open — Tom's:** env_message phase 2 placement, gating step 3 only. Steps 3–4
+remain unbuilt. Step 2's code A/B uses a frozen database AND rendering clock;
+`s1_encode_eval --compare` alone is insufficient (id:`05fd53c3`, id:`0c958683`).
 
 **Do not reopen:** hook-side tool classification (D9); read-time backfill (D10);
 canonical arguments (D8); `_bash_verb`/`GIT_WRITE_VERBS` (id:`b09efd2a`, separate fix);
@@ -253,9 +274,10 @@ messages entirely (`4b8ed058`) — declared as its `blind` family.
 
 ## 6. Legacy rows — three states, no backfill
 
-`parse_action` reads `metadata.tool` only for drop/stub; behaviour comes from the **summary
-head**, and `_Action` carries no kind. So stamping `kind` changes nothing until `parse_action`
-reads it — and every row written before the write door stamps has no kind.
+Before step 2, `parse_action` read `metadata.tool` only for drop/stub; behavior
+came from the **summary head**. Step 2 carries `kind`, its internal read status
+and raw tool identity on `_Action`; every row before the write-door cutover
+still has no kind stamp.
 
 Read with **three** states, not two:
 
@@ -264,6 +286,23 @@ Read with **three** states, not two:
 | i | no normalisation stamp | legacy: today's summary-head path |
 | ii | stamp + `kind_status == 'ok'` | normalised |
 | iii | stamp present, `kind_status == 'unknown'` / malformed | **visible error policy — never a silent fall back to the summary head** |
+
+The reader detects a stamp by the presence of any of `kind`, `kind_status`,
+`vocab_version`, `impl_identity`. Historical join IDs/host fields alone do not
+constitute classification. Valid means a recognized kind with `ok`, a supported
+integer vocabulary version (currently 1), a nonempty implementation identity and
+raw tool string. Incomplete/invalid stamps and unsupported versions render a
+plain-language `tool kind …; action unclassified: …` diagnostic that survives
+drop/stub and rollup. It adds no new markup notation or prompt glossary syntax.
+Dedup requires matching kind/read state and, for stamped rows, raw tool identity;
+an unstamped row cannot absorb a protected edit or a diagnostic. MCP drop/stub
+still checks the raw server/operation identity, and only for normalized MCP kinds
+or the unchanged legacy path.
+
+`LEGACY_SUMMARY_KINDS` holds the four pre-cutover shell/edit names, deliberately
+not derived from the input contract (handoff gap id:`a9386c49`). The five normalized
+predicates and write-tool set are retired, while these four legacy exceptions
+remain visible in the ratchet. No historical patch gains protection.
 
 Two states would disguise a new mapping failure as an ordinary legacy row.
 
@@ -363,9 +402,13 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | a NEW host tool name anywhere | nothing — undeclared names are invisible to a contract-derived scan | by construction | not the ratchet: the write door's `kind_status == 'unknown'` errors-table warning (step 1) |
 | `contract_fingerprint()` | the code that classified a row | stamped per row | D6; `TestFingerprint` |
 | `host_contract` import graph | `daemon_config` | hot-path cost | `TestLeaf` (subprocess pin, the `test_caller_stamp` pattern) |
-| **every other file** | host tool names / host keys / envelope tags | must not exist | `test_host_shape_guardrail` — per-file ratchet, both ways, tool and key sets **derived** from the contract; baseline = 29 quoted sites in 10 files after step 1 (eight host-key sites retired, one raw patch-capture site added) (quoted mentions in comments count, as retirement bookkeeping), each row naming the step that retires it. `hooks/adapters/` is not scanned: a host's own setup code is host-specific by design (`368b15af`) |
+| **every other file** | host tool names / host keys / envelope tags | must not exist except the frozen D10 reader | `test_host_shape_guardrail` — per-file ratchet, both ways, tool and key sets **derived** from the contract; baseline = 19 quoted sites in 5 files after step 2 (14 old sites retired, 4 frozen legacy names added). Quoted comments count; `hooks/adapters/` remains host-specific by design (`368b15af`) |
 | `WAKE_ENVELOPE_MARKER` | `pre_response_recall`, `dashboard/queries/stats.py` ×2 | hook routing; dashboard may not import `servers/` | ratchet baseline until step 3; step 3 adds a dashboard mirror test (the `S0_SESSION_STAMP_FIELDS` pattern in `dashboard/queries/_meta.py`) |
 | this doc | the code | prose | symbols only, no line numbers; the tests are the truth |
+| rollup display tool | its own subcommand counts | counts derive from the action records, never a global pool | `test_rollup_subcounts_belong_to_each_display_tool` |
+| historical summary behavior | frozen `LEGACY_SUMMARY_KINDS` in the reader | D10 forbids deriving history from today's input contract; four intentional ratcheted names remain | `test_legacy_summary_behavior_is_frozen`, existing legacy action tests |
+| stamped action vocabulary | reader's `SUPPORTED_ACTION_VOCAB_VERSIONS` | a changed meaning requires explicit reader support; unknown versions are diagnostic | `test_reader_supports_current_write_vocabulary`, `test_invalid_stamps_never_use_legacy_behavior` |
+| kind/read state and raw MCP identity | action protection, drop/stub, dedup and diagnostics | derive from parsed records; same summary across states or namespaces is not the same action | `test_mixed_states_do_not_dedup_or_lose_diagnostics`, `test_normalized_mcp_namespace_policy` |
 
 ## 10. Step order
 
@@ -373,7 +416,7 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 |---|---|---|---|
 | 0 | **BUILT.** `HOST_CONTRACT` + CC and Codex entries + validator + fingerprint; output vocabularies + `tool_result` shape/builder in `trace_contract` (required key: `tool` only — what every writer already sends); boot validation; the drift fences; `is_machine_turn` reads the constant | no behaviour change | merge; restart optional |
 | 1 | **BUILT.** hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the tool-capture hook change**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` and the prompt/Stop host wire field retired with Tom’s approval (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
-| 2 | D7(a) per-tool `subs`; D7(b) `kind` on `_Action`; flip `WRITE_ACTION_TOOLS`, the five `'Bash'` sites, the four `'Edit'` defaults; three-state legacy read; ratchet baseline lowered for each retired site | first behaviour change; `s1_encode_eval` before/after on the shadow-stamped window | restart |
+| 2 | **BUILT and reviewed; deployment/live validation authorized.** D7(a) per-tool `subs`; D7(b) kind consumers; four pre-edit defaults now empty; three-state read; ratchet lowered, frozen legacy exception explicit | first behavior change; fixed-input comparison passed; Tom requested deployment/live testing with paid model-output comparison unrun | restart; synchronize the changed pre-edit hook in both installed copies; verify both hosts |
 | 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); retire the downstream `<task-notification>` readers **after** §6's legacy path exists; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence | redeploy + restart; Tom's gate for phase 2 |
 | 4 | reconciliation against the host's own record | needs step 1's source IDs | restart |
 
@@ -473,3 +516,91 @@ file and tool set, not two code revisions. Freeze an isolated database/window an
 select one session before the consumer change, then run both code versions on that
 same input. Validate that the harness reaches the changed production action path;
 two fresh snapshots of moving live data are not a paired baseline (brain id:`05fd53c3`).
+
+### Step 2 implementation and evaluation record
+
+The recording call stack stays `post_tool_trace` → `_handle_trace_append` →
+`stamp_tool_result` (host resolution/classification, metadata builder, session
+stamp) → `TraceDAL.append`. The consumption stack is `encode.run_encoding` →
+`_build_user_content` → `_render_lived_sequence_timeline`; the renderer calls
+`_lived_turns` to read episodes, then `condense_actions` → `parse_action`, `_dedup`
+and `_rollup_line`. Step 2 replaces the parser's name-based behavior with a
+three-state stamp read. The hook retains argument-shaped caption extraction;
+the daemon owns input dialects; the encoder consumes output kinds and the
+frozen legacy table. No new service or classification layer was introduced.
+
+The pre-edit path stays `pre_edit_suggest` → `hook_pre_edit` → `brain.pre_edit`
+→ `suggest` / `procedure_trigger`, with `_handle_pre_edit` as the direct API
+ingress. Absent tool names now remain empty at all four doors.
+
+The per-tool counter change was built and checked first (30 focused tests).
+Kind consumers then passed 82 action/view tests. The author traced hook capture,
+daemon stamping, episode reads, production prompt assembly, condensation and
+pre-edit callers; no read-time classification or capture-caption changes were
+introduced. The independent functional pass cleared the implementation with
+1,044 legacy episodes across 15 windows, 73 adversarial parser/writer cases,
+unknown floods, per-tool caps, and 13 pre-edit probes. Its harness follow-up
+cleared the frozen-clock, offline-source and comparison-gate fixes.
+
+The 27-file broad tier finished with 640 passes, one existing xfail and four
+sandbox-only failures (process inspection and synthetic loopback binds). With
+those permissions, the four passed. Staging the new eval test exposed D-8's
+public-export requirement: tests reaching the omitted `eval/` tree must call
+`tests.eval_optional.require_eval()` before importing it. Fixed; final export
+and nine eval tests passed together (10 passes). Public export/collection is
+verified; this does not claim a deployment.
+
+`eval/host_contract_eval.py` prepares both code arms using production message,
+catalog, system prompt, tools and condensation paths against one frozen
+`IsolatedBrain` snapshot. A timezone-aware `--now` pins both catalog and timeline
+rendering; `--check-pair BEFORE AFTER` rejects input drift outside actions,
+including different execution settings, episode windows or tail budgets.
+The optional `--encode` uses the existing dry-write `s1_encode_eval` helper:
+Sonnet 4.6, 4,096 output tokens per call, default API effort, at most nine calls
+per arm. Its applied settings are recorded separately from the frozen production
+config (medium effort). Both arms use the same helper; this is a controlled
+input comparison, not a claim of production-loop equivalence.
+
+Tom requested fresh architecture, functional and simplification reviewers after
+the initial pass. Architecture cleared placement before simplification began.
+The fresh functional pass found two defects, both fixed and independently
+rechecked: unknown/malformed multiline diagnostics now mark their omission;
+the eval gate checks actual rendered edit counts and verifies measured lines
+reach prompt action blocks, rather than trusting independently parsed protection
+flags. It also preserves the unmeasured encoded-turn stubs between arms. The
+reviewer's `ALL ACTIONS LOST` artifact now fails the gate. Simplification moved
+model/token/tool-round settings into the dry-write runner and made its calls
+and reporting share those constants; a fake-client test verifies both initial
+and follow-up calls. One redundant type check was removed. All three reviewers
+cleared the follow-up changes; three new tests bring the eval suite to twelve.
+The final affected tier passed all 152 tests, and a fresh public-tree
+export/collection check passed after those fixes.
+
+Local artifacts for this run live under `/private/tmp/host-contract-step2/`:
+`before-reviewed/`, `after-reviewed/`, `comparison-reviewed.json`, `prompt-final.diff`, test logs,
+and `EVALUATION.md`. The baseline production code is an archive of git:`450cff9`
+under `baseline-code/`; both arms use the same reviewed eval scripts and carry
+source hashes. Regenerated payloads match the earlier prepared inputs byte for
+byte; helper hashes now reflect the shared-constant simplification. Snapshot location is recorded
+in `frozen-path.txt`. All payloads remain local; the external API call was
+rejected before execution. Tom subsequently requested deployment and offered
+hands-on Claude Code/Codex production testing. That authorizes proceeding with
+live capture/rendering acceptance; the paid model-output comparison remains unrun.
+
+To prepare each arm (from its own source checkout, using the same frozen path,
+session and instant), then compare:
+
+```bash
+./dev python3 eval/host_contract_eval.py \
+  --source-dir "$STEP2_FROZEN_DIR" --session "$STEP2_SESSION_ID" \
+  --now 2026-09-08T17:25:48+00:00 --out "$STEP2_ARM_OUTPUT"
+./dev python3 eval/host_contract_eval.py \
+  --check-pair "$STEP2_BEFORE_OUTPUT" "$STEP2_AFTER_OUTPUT"
+```
+
+Any future `--encode` run still needs explicit external-payload approval and
+fresh output directories; recheck its inputs against the prepared arms. For the
+now-authorized deployment, merge verified main, recheck the actual pinned daemon
+owner and fingerprint, update
+the changed pre-edit hook in both installed copies, restart, and verify fresh
+stamped rows. The env-message phase-2 decision still gates step 3 only.
