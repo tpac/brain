@@ -16,7 +16,7 @@ Held in step here:
   • presence peek / _empty_peek / session_env_for expose the fields
   • the dashboard's literal mirror of the field list matches the contract and
     query_traces / query_recent_sessions promote every field top-level
-  • hook_common.turn_model / host_name read the value off each host's source
+  • hook_common.turn_model / host_tells read the value off each host's source
 """
 
 import json
@@ -135,12 +135,12 @@ class S0WriteDoorTest(BrainTestBase):
         sid = 'stamp-recall'
         hook_recall(self.brain, {"prompt": "yes", "session_id": sid,
                                  "register_only": True,
-                                 "model": "claude-fable-5-1", "host": "claude-code"}, [])
+                                 "model": "claude-fable-5-1", "tells": ["CLAUDE_CODE_SESSION_ID"]}, [])
         ctx = self.brain.get_or_create_session(sid)
         ctx.increment_stop()
         hook_recall(self.brain, {"prompt": "ok", "session_id": sid,
                                  "register_only": True,
-                                 "model": "claude-opus-5", "host": "claude-code"}, [])
+                                 "model": "claude-opus-5", "tells": ["CLAUDE_CODE_SESSION_ID"]}, [])
         rows = _s0_meta(self.brain, sid, 'user_message')
         self.assertEqual([r['model'] for r in rows],
                          ['claude-fable-5-1', 'claude-opus-5'])   # per-turn truth
@@ -153,7 +153,7 @@ class S0WriteDoorTest(BrainTestBase):
         ctx = self.brain.get_or_create_session(sid)
         ctx.last_recall_stop = ctx.stop_counter
         post_response_common(self.brain, sid, "prompt text here", "a response",
-                             model='gpt-6-astra', host='codex')
+                             model='gpt-6-astra', tells=['PLUGIN_DATA'])
         meta = _s0_meta(self.brain, sid, 'assistant_message')[-1]
         self.assertEqual((meta['model'], meta['host']), ('gpt-6-astra', 'codex'))
 
@@ -327,25 +327,21 @@ class DashboardMirrorTest(unittest.TestCase):
 
 
 class HookSourceTest(unittest.TestCase):
-    """hook_common.turn_model / host_name — where each host exposes the value."""
+    """hook_common.turn_model / host_tells — where each host exposes the value."""
 
     def setUp(self):
         import hook_common
         self.hc = hook_common
 
-    def test_host_name_from_env(self):
-        with mock.patch.dict(os.environ, {'CLAUDE_CODE_SESSION_ID': 'x'}, clear=False):
-            os.environ.pop('PLUGIN_DATA', None)
-            self.assertEqual(self.hc.host_name(), 'claude-code')
-        env = {k: v for k, v in os.environ.items()
-               if k not in ('CLAUDE_CODE_SESSION_ID', 'PLUGIN_DATA')}
-        with mock.patch.dict(os.environ, env, clear=True):
-            self.assertEqual(self.hc.host_name(), '')
-            # bare PLUGIN_ROOT is OUR shim's export (both hosts) — never a tell
-            os.environ['PLUGIN_ROOT'] = '/p'
-            self.assertEqual(self.hc.host_name(), '')
+    def test_host_tells_from_env(self):
+        with mock.patch.dict(os.environ, {'CLAUDE_CODE_SESSION_ID': 'x'}, clear=True):
+            self.assertEqual(self.hc.host_tells(), ['CLAUDE_CODE_SESSION_ID'])
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(self.hc.host_tells(), [])
+            os.environ['PLUGIN_ROOT'] = '/p'  # our own shim is never a tell
+            self.assertEqual(self.hc.host_tells(), [])
             os.environ['PLUGIN_DATA'] = '/d'
-            self.assertEqual(self.hc.host_name(), 'codex')
+            self.assertEqual(self.hc.host_tells(), ['PLUGIN_DATA'])
 
     def test_codex_payload_model_wins(self):
         self.assertEqual(self.hc.turn_model({'model': ' gpt-6-astra '}), 'gpt-6-astra')

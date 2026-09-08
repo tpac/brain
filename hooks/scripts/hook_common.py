@@ -266,17 +266,16 @@ def get_hook_input():
 # Two hosts, two sources: Codex puts `model` on every hook payload; Claude Code
 # does not, but every assistant entry in the transcript carries message.model.
 
-def host_name():
-    """Which runtime this hook runs under: 'claude-code', 'codex', or '' when
-    neither tell is present. Claude Code exports CLAUDE_CODE_SESSION_ID into
-    every hook process; Codex injects bare PLUGIN_DATA (Claude Code sets only
-    the CLAUDE_-prefixed alias). The tell must be one the HOST supplies: bare
-    PLUGIN_ROOT is not one — our own resolve-brain-db.sh exports it on both."""
-    if os.environ.get("CLAUDE_CODE_SESSION_ID"):
-        return "claude-code"
-    if os.environ.get("PLUGIN_DATA"):
-        return "codex"
-    return ""
+# Zero-import mirror of host_contract.all_tell_env_vars(). TestHookMirrors
+# requires exact equality: the hot tool hook must not import servers to probe.
+HOST_TELL_ENV_VARS = (
+    'CLAUDE_CODE_SESSION_ID', 'CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'PLUGIN_DATA',
+)
+
+
+def host_tells():
+    """Declared environment tells present in this process — names, no values."""
+    return [name for name in HOST_TELL_ENV_VARS if os.environ.get(name)]
 
 
 # Tail window for the transcript read: assistant entries land on every tool

@@ -83,6 +83,44 @@ def stamp_s0_session(metadata, env):
     return metadata
 
 
+def stamp_tool_result(metadata, env):
+    """Build the tool stamp at the S0 write door, then merge session fields.
+
+    Missing tells means an old client: use session identity, marked legacy.
+    Present-but-empty/ambiguous tells are event-local uncertainty, never a
+    reason to inherit the session's host. No session state is mutated here.
+    Unknown wire extras survive; malformed payloads remain visible as raw.
+    """
+    from .host_contract import (
+        resolve_host, classify_tool, VOCAB_VERSION, contract_fingerprint)
+    from .trace_contract import build_tool_result_metadata
+
+    raw = dict(metadata) if isinstance(metadata, dict) else {'raw': metadata}
+    if 'tells' in raw:
+        tells = raw['tells']
+        present = {t: True for t in tells if isinstance(t, str)} \
+            if isinstance(tells, (list, tuple)) else {}
+        host, host_status, _ = resolve_host(present)
+    else:
+        host, host_status, tells = env.get('host', ''), 'legacy', []
+    tool = raw.get('tool', '')
+    kind, kind_status = classify_tool(host, tool)
+    stamp = build_tool_result_metadata(
+        tool=tool, kind=kind, kind_status=kind_status, host_status=host_status,
+        tells=tells, vocab_version=VOCAB_VERSION,
+        impl_identity=contract_fingerprint(),
+        tool_use_id=raw.get('tool_use_id') or '',
+        turn_id=raw.get('turn_id') or '',
+        payload_keys=raw.get('payload_keys') or [])
+    # The raw name and opaque extras belong to the client. Only the daemon's
+    # normalization fields are authoritative (including against spoofed stamps).
+    raw.update(stamp)
+    if isinstance(metadata, dict) and 'tool' in metadata:
+        raw['tool'] = metadata['tool']
+    raw['host'] = host
+    return stamp_s0_session(raw, env)
+
+
 def _s0_trace(brain, ctx, event_type, ref_type, summary, metadata=None,
               content=None, ref_id=''):
     """Append one S0 turn-trace, binding the per-turn invariants in ONE place:

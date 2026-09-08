@@ -266,14 +266,14 @@ DELIVERY_REACTION_WINDOW_MIN = 60
 
 # ── S0 SESSION STAMP ──
 # Per-session facts every S0 row carries, next to the identity stamp: which
-# model produced the turn and which host runtime the stream rides on
-# ('claude-code' / 'codex'). Unlike human_identity / agent_identity — a
+# model produced the turn and which resolved host runtime it rides on.
+# Unlike human_identity / agent_identity — a
 # process-wide property stamped by TraceDAL from env — these vary PER SESSION
 # and per turn (one daemon serves streams on different models; a stream can
 # switch model mid-session), so they live on the SessionContext and are
 # stamped by the S0 write door (brain_traces.stamp_s0_session) from the ctx
-# the hook resolved. Fed in by the UserPromptSubmit / Stop hooks
-# (hook_common.turn_model / host_name): Codex puts `model` on every hook
+# the daemon resolved. Fed in by the UserPromptSubmit / Stop hooks
+# (hook_common.turn_model / host_tells): Codex puts `model` on every hook
 # payload; Claude Code exposes it only in the transcript's assistant entries.
 # The session row mirrors the LATEST value so presence can say which model a
 # stream is on right now; the per-turn truth is the S0 row.
@@ -770,15 +770,23 @@ def build_anchor_touched_metadata(**ids):
 # the host was identified, which vocabulary did the translating — is stamped
 # by the daemon at the S0 write door (docs/HOST-CONTRACT-DESIGN.md D9: the
 # first consumer of a kind is the encoder, hours later, so classification runs
-# daemon-side, restart-deployable, never in the hook). Required keys are the
-# ones EVERY writer already carries; the normalization keys become required
-# once the write door stamps them (step 1), and never before — a required key
-# an un-redeployed client cannot send would warn on every row it writes.
+# daemon-side, restart-deployable, never in the hook). Every new tool row is
+# stamped there, even from old clients or without a session id, so the full
+# normalization shape is required at the DAL write chokepoint.
 TOOL_RESULT_METADATA_SHAPE = {
     'tool': str,   # the host's raw tool name, verbatim (redacted input, never the caller stamp)
+    'kind': str,
+    'kind_status': str,
+    'host_status': str,
+    'tells': list,
+    'vocab_version': int,
+    'impl_identity': str,
+    'tool_use_id': str,
+    'turn_id': str,
+    'payload_keys': list,
 }
-# Optional today, stamped by the write door from step 1 on and read by
-# encoder_actions.parse_action from step 2 on — one keyset for both, listed here.
+# Required on new writes: even old clients and sessionless tool rows pass the
+# daemon's stamper. Historical rows are never normalized on read (D10).
 TOOL_RESULT_NORMALIZATION_KEYS = (
     'kind',            # one of ACTION_KINDS, '' when unknown
     'kind_status',     # one of KIND_STATUS
@@ -787,7 +795,7 @@ TOOL_RESULT_NORMALIZATION_KEYS = (
     'vocab_version',   # host_contract.VOCAB_VERSION that produced `kind`
     'impl_identity',   # host_contract.contract_fingerprint() at stamp time
     'tool_use_id',     # host's per-call id (join key for reconciliation)
-    'turn_id',         # host's per-turn id (Codex turn_id / Claude Code prompt_id)
+    'turn_id',         # host's turn_id when present; prompt_id stays a separate raw extra
     'payload_keys',    # top-level stdin keys the hook saw — names only, no values
 )
 
@@ -1880,9 +1888,8 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
     REF_THALAMUS_FILED:   THALAMUS_FILED_METADATA_SHAPE,  # a producer's filing, on its run chain
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate
-    # The highest-volume S0 row. Its one required key (`tool`) is what every
-    # writer already sends, so enforcing it cannot fire on existing traffic;
-    # the normalization keys join as required when the write door stamps them.
+    # The highest-volume S0 row. The daemon stamps every new tool row before
+    # this chokepoint, including old clients and rows without a session id.
     'tool_result':        TOOL_RESULT_METADATA_SHAPE,
     # Node lifecycle, written only by servers/mutation_emitter.py. Enforced from
     # the start — these have exactly one producer and one builder each, so there

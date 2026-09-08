@@ -1,14 +1,13 @@
 # Host Contract — Design
 
-**Status — 2026-09-08:** reviewed from above (`/architecture-review` in design-doc mode,
-two adversarial passes, every code claim re-verified), **placement changed to D9 by Tom's
-ruling ("b. make sure things can't drift")**, **step 0 built** on branch
-`claude/host-contract-arch-review-505687`: `servers/host_contract.py`, the output
-vocabularies and `tool_result` shape in `servers/trace_contract.py`, boot validation in
-`Brain.__init__`, and the drift fences (`tests/test_host_contract.py`,
-`tests/test_host_shape_guardrail.py`, `TestContractManifestParity` in
-`tests/test_hooks_manifest_sync.py`). No hook changed. Steps 1–4 unbuilt. The one gate still
-Tom's is at the end of §9. Handoff nodes: `a2594ee0` (letter), `49f093e7` (its gaps).
+**Status — 2026-09-08:** D9 ruled by Tom; **steps 0 and 1 built**. Step 1
+stamps every new dispatched S0 tool row in the daemon, including sessionless rows;
+hooks send raw tells, source IDs, payload key names and capped patch text. Tom approved
+removing the new, unreleased prompt/Stop `host` wire field and `hook_common.host_name`
+(brain `b3675380`): identity resolves only in the daemon. Summary text, raw tool names,
+and encoder classification behavior remain unchanged. Steps 2–4 remain unbuilt; the
+one gate still Tom's is at the end of §9. Prior handoff `66ba8b6c`; its corrected gaps
+`f48d0402`. Step 1's pre-commit validation and review record is below.
 
 This doc cites **symbols, not line numbers** — the first draft's line refs drifted within a
 day. The tests are the living truth; the doc says why.
@@ -41,7 +40,7 @@ Related: D-11 (`3c9c9012`) separated host-neutral service naming from adapter na
 host=…)`. Both hosts run the same `pre_response_recall.py`; only the manifests differ. The hook
 observes the host's tells; the daemon stamps.
 
-**The tool path never unites.** `post_tool_trace._build_summary` branches per host tool name
+**Before step 1, the tool path never united.** `post_tool_trace._build_summary` branches per host tool name
 at capture, writes the **raw** name into `metadata.tool`, and
 `encoder_actions.parse_action` re-interprets that string at encode time — another process,
 hours later. That asymmetry is the whole `apply_patch` defect (`63fde9b2`).
@@ -148,18 +147,20 @@ processes** `[codex-stream]`.
 
 **The hook OBSERVES, the daemon RESOLVES.** The env is visible only in the hook process, so the
 hook reports which declared tells are present (names only — `host_contract.all_tell_env_vars`
-is the probe list; `hook_common.host_name` is held to it by `TestHookMirrors`). The rule lives
+is the probe list; `hook_common.host_tells` is held to it by `TestHookMirrors`). The rule lives
 in `resolve_host`: one host's tells → `strong` or `family`; tells of two hosts →
 **`ambiguous`, host `''`, never a pick** (5c1a0846's both-present case, now a state, not a
-silent first-branch win); none → `unknown`. A client that sends a pre-resolved `host` string
-and no tells stamps `legacy`.
+silent first-branch win); none → `unknown`. A tool client with no `tells` key uses the session host and stamps `legacy`; an
+explicitly empty tell list stamps `unknown`. Prompt/Stop hooks no longer send a resolved
+`host`, and the daemon updates session host only from strong/family tells.
 
 **Hazard the first draft missed:** `SessionContext.set_env` ignores empty values, so a later
 `''` retains the prior host — an unknown event would silently **inherit stale certainty**
 `[codex-stream]`. `[review]` measured the gap: 2.8% of recent `tool_result` rows carry no host,
 all in one Codex session that ran `apply_patch` before any prompt row — exactly the population
-this contract classifies. Fix: per-event tells on every tool event (two env reads, zero
-imports), `stamp_s0_session`'s `setdefault` already lets the per-event value win; and the
+this contract classifies. Fix: per-event tells on every tool event (three declared env probes, zero
+new imports), the stamper explicitly writes the resolved event host, including empty on uncertainty,
+before `stamp_s0_session`'s `setdefault` merge; and the
 write door **never** calls `set_env(host=…)` from a tool event — the session's displayed host
 stays the prompt path's.
 
@@ -204,11 +205,11 @@ Measured instance of the second: 4 hosted-web Extension operations in a 25s roll
 **Invariant:** all **captured** entries pass the one normalizer for their path, with
 explicitly measured coverage gaps.
 
-**Reconciliation needs a join key that does not exist yet.** `post_tool_trace` writes
-session_id, stop chain, capped summary and `metadata.tool` — it **drops the IDs the payload
-carries**: Codex documents `tool_use_id` + `turn_id` on Pre/PostToolUse
-([CODEX-ADAPTER-RESEARCH.md](CODEX-ADAPTER-RESEARCH.md) §stdin); Claude Code's hooks reference
-documents `tool_use_id` plus a `prompt_id` on every event. Step 1 adds them, **and adds
+**Before step 1, reconciliation lacked source IDs.** `post_tool_trace` wrote
+session_id, stop chain, capped summary and `metadata.tool`, dropping payload IDs: Codex documents `tool_use_id` + `turn_id` on Pre/PostToolUse
+([CODEX-ADAPTER-RESEARCH.md](CODEX-ADAPTER-RESEARCH.md) §stdin); the Claude Code doc lookup
+names `tool_use_id` and `prompt_id`, but those names remain candidates until observed.
+Step 1 copies whichever IDs are present (both `turn_id` and `prompt_id` if supplied), **and adds
 `payload_keys`** — the top-level stdin key names the hook saw, no values — so the contract's
 claims about a host's payload are checked against every row instead of assumed (this retires
 the "temporary diagnostic" ruling `1f2b3f89` carried). Old rows reconcile heuristically; a
@@ -257,10 +258,10 @@ before that restart.
 
 | from | today | to |
 |---|---|---|
-| `hook_common.host_name()` | two env tells, `''` on miss | reports which of `all_tell_env_vars()` are present; `resolve_host` in the daemon decides |
+| `hook_common.host_name()` | retired in step 1 | `host_tells()` reports which of `all_tell_env_vars()` are present; `resolve_host` in the daemon decides |
 | `hook_common.turn_model()` | payload else CC-only transcript scan | stays; `transcript.grammar`/`readable` declares what it supports |
 | `post_response_track` transcript scan | CC-only top-level `type: human/user` | same treatment; a second transcript accessor |
-| `post_tool_trace` | 9 per-tool-name summary branches; drops IDs | **sends raw facts only**: + tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped `tool_input['command']` for the patch body. Summary unchanged (deferred); no imports added |
+| `post_tool_trace` | 9 per-tool-name summary branches; drops IDs | **sends raw facts only**: + tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped `tool_input['command']` for the patch body. Summary unchanged (deferred); no server imports added |
 | `dispatch_observability._handle_trace_append` | JSON-decode + `stamp_s0_session` | + `brain_traces` stamps `kind`/`kind_status`/`host_status`/`tells`/`vocab_version`/`impl_identity` via `build_tool_result_metadata` — the write door already stamps model/host here "because the hook itself stays a bare socket send" |
 | `hook_common.tool_target_file()` | regexes ONE filename out of the patch, discards it | patch text preserved at capture (hook sends it) |
 | `encoder_view.WRITE_ACTION_TOOLS` | name set | `kind == 'edit'` |
@@ -331,13 +332,13 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | contract `events` | `hooks/hooks*.json` events | manifests are JSON the host reads | `TestContractManifestParity.test_declared_events_equal_registered_events` |
 | contract `events` | `engine_events` (host docs, dated) | host's release cadence | `test_registered_events_within_engine_events` |
 | manifest PostToolUse/PreToolUse matcher names | contract `tools` ∪ `matcher_aliases` | manifests are JSON | `test_matcher_tool_names_are_declared`, `test_every_declared_tool_is_captured_by_a_post_tool_matcher` |
-| `post_tool_trace._build_summary` branch names **and rendered heads** (`'Bash: …'`) | contract `tools` ∪ aliases | the summary needs `tool_input` fields (hook-side until canonical args); the encoder reads the HEAD as the tool name, so the heads are the coupling that carries behaviour | `TestHookMirrors.test_build_summary_branches_are_declared_tools`, `test_build_summary_rendered_heads_are_declared_tools` |
-| `hook_common.host_name` env reads and its returned host keys | `all_tell_env_vars()`; contract keys | env is visible only in the hook process | `TestHookMirrors.test_host_name_probes_only_declared_tells`; the ratchet fences the quoted keys until step 1 retires them (hook reports tells, daemon resolves) |
-| `tool_result` stamped keys | `TOOL_RESULT_METADATA_SHAPE` + `TOOL_RESULT_NORMALIZATION_KEYS` | today the hook hand-builds `{'tool'}` and `stamp_s0_session` merges model/host after it; from step 1 the write door builds via the builder **then** stamps the session fields — the builder refuses non-contract keys, so stamp-then-build raises. The chokepoint checks required keys and their types only; extra keys pass | `TestToolResultShape`; `validate_trace_metadata` at `TraceDAL.append` |
+| `post_tool_trace._build_summary` / `_raw_metadata` branch names **and rendered summary heads** (`'Bash: …'`) | contract `tools` ∪ aliases | the summary needs `tool_input` fields (hook-side until canonical args); the encoder reads the HEAD as the tool name, so the heads are the coupling that carries behaviour | `TestHookMirrors.test_build_summary_branches_are_declared_tools`, `test_build_summary_rendered_heads_are_declared_tools` |
+| `hook_common.HOST_TELL_ENV_VARS` + `host_tells()` | `all_tell_env_vars()` | env is visible only in the hook process; zero-import mirror | `TestHookMirrors.test_tell_probe_mirror_is_exact_and_observes_names_only`; step 1 retired all four host-key sites |
+| `tool_result` stamped keys | `TOOL_RESULT_METADATA_SHAPE` + `TOOL_RESULT_NORMALIZATION_KEYS` | the hook sends raw metadata; the write door builds via the builder, writes resolved event host, **then** stamps the session fields — the builder refuses non-contract keys, so stamp-then-build raises. The chokepoint checks required keys and their types only; extra keys pass | `TestToolResultShape`; `validate_trace_metadata` at `TraceDAL.append` |
 | a NEW host tool name anywhere | nothing — undeclared names are invisible to a contract-derived scan | by construction | not the ratchet: the write door's `kind_status == 'unknown'` errors-table warning (step 1) |
 | `contract_fingerprint()` | the code that classified a row | stamped per row | D6; `TestFingerprint` |
 | `host_contract` import graph | `daemon_config` | hot-path cost | `TestLeaf` (subprocess pin, the `test_caller_stamp` pattern) |
-| **every other file** | host tool names / host keys / envelope tags | must not exist | `test_host_shape_guardrail` — per-file ratchet, both ways, tool and key sets **derived** from the contract; baseline = today's 36 quoted sites in 12 files (quoted mentions in comments count, as retirement bookkeeping), each row naming the step that retires it. `hooks/adapters/` is not scanned: a host's own setup code is host-specific by design (`368b15af`) |
+| **every other file** | host tool names / host keys / envelope tags | must not exist | `test_host_shape_guardrail` — per-file ratchet, both ways, tool and key sets **derived** from the contract; baseline = 29 quoted sites in 10 files after step 1 (eight host-key sites retired, one raw patch-capture site added) (quoted mentions in comments count, as retirement bookkeeping), each row naming the step that retires it. `hooks/adapters/` is not scanned: a host's own setup code is host-specific by design (`368b15af`) |
 | `WAKE_ENVELOPE_MARKER` | `pre_response_recall`, `dashboard/queries/stats.py` ×2 | hook routing; dashboard may not import `servers/` | ratchet baseline until step 3; step 3 adds a dashboard mirror test (the `S0_SESSION_STAMP_FIELDS` pattern in `dashboard/queries/_meta.py`) |
 | this doc | the code | prose | symbols only, no line numbers; the tests are the truth |
 
@@ -346,18 +347,20 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | # | step | risk | deploy |
 |---|---|---|---|
 | 0 | **BUILT.** `HOST_CONTRACT` + CC and Codex entries + validator + fingerprint; output vocabularies + `tool_result` shape/builder in `trace_contract` (required key: `tool` only — what every writer already sends); boot validation; the drift fences; `is_machine_turn` reads the constant | no behaviour change | merge; restart optional |
-| 1 | hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the only hook change in the plan**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` retires its host-key returns (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
+| 1 | **BUILT.** hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the tool-capture hook change**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` and the prompt/Stop host wire field retired with Tom’s approval (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
 | 2 | D7(a) per-tool `subs`; D7(b) `kind` on `_Action`; flip `WRITE_ACTION_TOOLS`, the five `'Bash'` sites, the four `'Edit'` defaults; three-state legacy read; ratchet baseline lowered for each retired site | first behaviour change; `s1_encode_eval` before/after on the shadow-stamped window | restart |
 | 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); retire the downstream `<task-notification>` readers **after** §6's legacy path exists; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence | redeploy + restart; Tom's gate for phase 2 |
 | 4 | reconciliation against the host's own record | needs step 1's source IDs | restart |
 
 **"Additive" has a hard boundary.** Consumers parse rendered summary text; edit summaries
 truncate to a path and Bash commands to 200 chars, so a caption change is already an encoder
-input change. Step 1 leaves existing summary, content, `metadata.tool` **and** classification
-behaviour untouched. **One knowing exception:** `recall_episodes`' `contains` filter greps the
+input change. Step 1 leaves existing summary, content, `metadata.tool` **and** encoder classification
+behaviour untouched. **One knowing tool-capture exception:** `recall_episodes`' `contains` filter greps the
 whole metadata blob (`dal_logs`), so a capped patch body in metadata widens lexical matching on
-every tool row — accepted, not accidental. Envelope extraction, changed host decisions and any
-fail-closed behaviour wait for an explicit cutover. Cost: two representations coexist briefly —
+every tool row — accepted, not accidental. Envelope extraction, encoder classification changes and fail-closed behaviour wait
+for an explicit cutover. Tom explicitly approved the prompt/Stop identity cutover in
+step 1: only strong/family tells update session host; unknown/ambiguous tells preserve
+its last known value. Cost: two representations coexist briefly —
 which is what makes a real before/after comparison possible.
 
 ---
@@ -398,3 +401,36 @@ which is what makes a real before/after comparison possible.
 0.153.4 schema documents capabilities that are **absent or unverified** on the installed
 desktop build `[codex-stream]`. A contract entry may only claim what has been observed on the
 build in use.
+
+### Step 1 implementation record
+
+| choice | implementation / evidence |
+|---|---|
+| sessionless rows | Stamped at `_handle_trace_append`, including malformed/missing metadata retained under `raw`; no read-time backfill. |
+| legacy vs uncertain | Only an absent `tells` key selects session host with `legacy`; present empty/ambiguous tells stamp empty event host. |
+| source IDs | Preserve `tool_use_id`, `turn_id`, `prompt_id` independently when present. Required normalization join fields default to empty string/list for old clients; no IDs are derived. |
+| patch cap | 16,384 characters; `patch_truncated_chars` records omitted characters. Patch capture adds one mirrored tool-name literal until canonical arguments. |
+| unknown-kind logging | `_log_error('tool_kind_unknown', …)`; host/tool hash before message text prevents prefix-based dedup collisions in the logger's 100-character fingerprint. Uses existing 60-second dedup window and source/global rate limits. |
+| production behavior | Tool summaries and encoder behavior preserved; prompt/Stop host resolution cutover approved by Tom (`b3675380`). Old tool clients use the legacy path until cache reinstall. |
+| review pass 1 — structure | Same-agent pre-commit call-boundary review: hook → dispatch → stamper/builder → session merge → DAL; prompt/Stop share one resolver/update helper. No read-time backfill, no encoder dependency on host_contract, no server import in the live tool-hook path. |
+| review pass 2 — function | Same-agent pre-commit boundary review: old clients, pre-prompt/sessionless rows, ambiguous/empty/unknown tells, spoofed kind fields, source IDs, patch cap and caller-stamp redaction exercised. Summary/stop functions match main by AST; host contract matches main by AST (one retired-helper comment updated); encoder files match byte-for-byte. All seven action fields match across six tool families; a 48-action condensation matches before/after stamping. |
+| review fixes | Explicit event host before session merge; preserve unknown tell names; remove retired host diagnostic; mock the prompt hook’s fast process exit in the harness. |
+| tests | Expanded tier: 465 passed, one pre-existing xfail (576.96s). Final boundary suite after review fixes: 85 passed. After fast-forwarding the dashboard-only main head, the overlap/contract/deploy tier passed 185 tests with one pre-existing xfail (22.58s). The sandbox-only process-name failure passed with process inspection allowed. Installed the missing pinned pytest-timeout dependency; the later boundary run has no timeout warning. |
+
+
+Reproduce the expanded step 1 tier (stage new files before the public-tree export gate):
+
+```bash
+./dev python3 -m pytest \
+  tests/test_host_contract.py tests/test_host_shape_guardrail.py \
+  tests/test_hooks_manifest_sync.py tests/test_trace_contract_sync.py \
+  tests/test_caller_stamp.py tests/test_s0_session_stamp.py \
+  tests/test_encoder_actions.py tests/test_raw_sql_guardrail.py \
+  tests/test_traces_layer_guardrail.py tests/test_deploy_contract.py \
+  tests/test_query_traces_truncation.py tests/test_trace_system.py \
+  tests/test_tool_result_stamp.py tests/test_daemon_hooks.py \
+  tests/test_hook_output_contract.py tests/test_run_hook_contract.py \
+  tests/test_hook_daemon_call_logging.py tests/test_trace_integration.py \
+  tests/test_self_delivery.py tests/test_contract_sync.py tests/test_session_context.py \
+  -q --no-header -p no:cacheprovider
+```

@@ -107,7 +107,7 @@ class SessionContext:
         # S0/S1 write by the dispatch chokepoints. Read by the LAF proj lane.
         self.project: str = ''
         # What the stream rides on — the model that produced the latest turn
-        # and the host runtime ('claude-code' / 'codex'). Fed in per turn by the
+        # and the host runtime resolved by host_contract. Fed in per turn by the
         # UserPromptSubmit / Stop hooks; stamped onto every S0 row by the S0
         # write door (trace_contract.S0_SESSION_STAMP_FIELDS). The value here is
         # the LATEST one — presence reads it; the per-turn record is the trace.

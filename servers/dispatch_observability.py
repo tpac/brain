@@ -32,15 +32,26 @@ def _handle_trace_append(brain, args, graph_changes):
     # sinks (errors table here, stderr in the DAL). One point now; the DAL warns
     # to stderr (it can't write the errors table mid-append without risking the
     # brain_batch commit). The json-decode below still normalizes wire metadata.
-    # An S0 row from a session-bearing client (the PostToolUse hook's
-    # tool_result) carries the session's model/host stamp like the hook-written
-    # turn rows do — the hook itself stays a bare socket send (hot path), so the
-    # stamp comes from the session env the recall/Stop hooks already fed in.
+    # Every captured tool row is normalized here, including before the first
+    # prompt or without a session id. Hooks send facts; the daemon owns kinds.
     scale = args.get("scale", "s0")
     session_id = args.get("session_id", "")
-    if scale == 's0' and session_id:
-        from .brain_traces import stamp_s0_session
-        raw_meta = stamp_s0_session(raw_meta, brain.session_env_for(session_id))
+    if scale == 's0':
+        from .brain_traces import stamp_s0_session, stamp_tool_result
+        env = brain.session_env_for(session_id) if session_id else {}
+        if args.get('ref_type') == 'tool_result':
+            raw_meta = stamp_tool_result(raw_meta, env)
+            if raw_meta['kind_status'] == 'unknown':
+                # _log_error dedups by the first 100 message chars. Put a hash
+                # first so long raw names with a shared prefix stay distinct.
+                import hashlib
+                pair = json.dumps([raw_meta['host'], raw_meta['tool']])
+                key = hashlib.sha256(pair.encode()).hexdigest()[:16]
+                brain._log_error('tool_kind_unknown',
+                                 ValueError('%s: %s' % (key, pair)),
+                                 'unclassified tool at the S0 write door')
+        elif session_id:
+            raw_meta = stamp_s0_session(raw_meta, env)
     try:
         event_id = brain._trace_dal.append(
             chain_id=args.get("chain_id", ""),
