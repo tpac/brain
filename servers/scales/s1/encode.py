@@ -743,7 +743,16 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # <continuity>/<node_catalog>/<timeline>), so the preamble here drops the legend
     # and keeps only the operational anchor — two voices describing the layout would
     # confound the A/B. The control arm keeps the legacy legend verbatim.
-    if lived:
+    if lived and os.environ.get('BRAIN_S1E_LISTS_PREAMBLE', '0') in ('1', 'true', 'True'):
+        # The operating-guide arm (flag-gated input change, like the view policy
+        # and associated stubs): the encoder's first reply carries its four lists
+        # as text, then the tool call they call for, in the same reply.
+        preamble = (
+            "I'm encoding what I've just observed. I read everything below; my "
+            "first reply opens with my four lists — changes, targets, fetch, new — "
+            "and ends in the tool call they call for.\n"
+        )
+    elif lived:
         # First person — matches the v-next system prompt's register (the encoder
         # speaks as itself: "This is me encoding my own memory").
         preamble = (

@@ -363,6 +363,7 @@ def run_arm_behavior(brain, prompt_text, aged_ids, index):
         tools=_get_tool_schemas(),
         dispatch_fn=dispatch) or {}
     log['final_text'] = res.get('final_text') or ''
+    log['round_texts'] = res.get('round_texts') or []
     log['rounds'] = res.get('rounds', 0)
     return score_arm(log, aged_ids, index, brain), log
 
@@ -1164,6 +1165,7 @@ def main():
                                            'gold': g,
                                            'score': s,
                                            'journal': log['final_text'],
+                                           'round_texts': log.get('round_texts') or [],
                                            'reads': log['reads'],
                                            'writes': log['writes']}, f,
                                           indent=2, default=str)

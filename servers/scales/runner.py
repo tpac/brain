@@ -597,6 +597,10 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     actions = []
     rounds = 0
+    # Every reply's prose, in order — the encoder's plan (its lists) rides as
+    # text beside the tool_use blocks, and the eval scores it against the ops.
+    round_texts = []
+    last_seen = None
 
     def _dispatch_tool_uses(response_obj):
         """Dispatch every tool_use block in response. Append to actions.
@@ -720,6 +724,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
 
     try:
         for rounds in range(max_rounds):
+            round_texts.append("".join(b.text for b in response.content if b.type == "text"))
+            last_seen = response
             tool_uses = [b for b in response.content if b.type == "tool_use"]
             if not tool_uses:
                 break
@@ -751,6 +757,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                            msgs=api_messages) from e
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
+    if response is not last_seen:   # max_rounds exhausted: the last reply never reached the loop head
+        round_texts.append(final_text)
     write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]
     read_calls = [a for a in actions if a['tool'] not in WRITE_TOOLS]
 
@@ -797,6 +805,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         # _save_journal / _save_session_context self-cap. Pre-truncating here
         # made the trace's loud-truncation marker dead (silent drop upstream).
         "final_text": final_text or '',
+        "round_texts": round_texts,
         "profile": profile,
         "elapsed_ms": int((time.time() - t0) * 1000),
         # USAGE_FIELDS keys match the four token return keys exactly.

@@ -33,6 +33,10 @@ PAYLOAD = {  # chain → capture
     's1e-5076cdc2-17': P + '/2026-08-31/s1e-5076cdc2-17/000-prompt.md',
     's1e-67015b88-17': P + '/2026-08-31/s1e-67015b88-17/000-prompt.md',
     's1e-17d9ae94-44': P + '/2026-08-17/s1e-17d9ae94-44/000-prompt.md',
+    # the d034485c replay (residue-named node): captured 2026-09-07, preamble patched per arm — the
+    # nouns/numbers the retention metric reads are the same in every patched copy
+    's1e-01a0791a-23': '/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/'
+                       'payloads_patched/2026-09-07/s1e-01a0791a-23/000-prompt.md',
 }
 ARMS = [  # (label, glob) — order = table order
     ('v41',          'ops/*-v41/*.json'),   ('v41 rep',      'ops/*-v41-rep/*.json'),
@@ -50,6 +54,8 @@ ARMS = [  # (label, glob) — order = table order
     ('prod9',        'ops9/*-prod/*.json'),      # cell 9: 09-03 production snapshot, capture untouched (no gist) — what the daemon runs
     ('control9',     'ops9/*-control/*.json'),   # cell 9: 09-03 production snapshot + the branch gist — isolates the template change
     ('candidate9',   'ops9/*-candidate/*.json'), # cell 9: the branch code default + gist — what the merge deploys
+    ('folded',       'ops9/*-folded/*.json'),    # folded template (read loosening + fact atom) + gist v2.2
+    ('guide',        'ops9/*-guide/*.json'),     # the operating guide: four lists as text before the tool call (gist + template + preamble)
 ]
 MERGE = {'v41 rep': 'v41', 'v42 rep': 'v42'}
 GENERIC = {'related', 'related_to'}
