@@ -1,13 +1,38 @@
 # Host Contract — Design
 
-**Status — 2026-09-08:** D9 ruled by Tom; **steps 0 and 1 built**. Step 1
-stamps every new dispatched S0 tool row in the daemon, including sessionless rows;
-hooks send raw tells, source IDs, payload key names and capped patch text. Tom approved
-removing the new, unreleased prompt/Stop `host` wire field and `hook_common.host_name`
-(brain `b3675380`): identity resolves only in the daemon. Summary text, raw tool names,
-and encoder classification behavior remain unchanged. Steps 2–4 remain unbuilt; the
-one gate still Tom's is at the end of §9. Prior handoff `66ba8b6c`; its corrected gaps
-`f48d0402`. Step 1's pre-commit validation and review record is below.
+## Status — step 1 reviewed and live, step 2 next (2026-09-08) ◀ ACTIVE ARC
+
+**Read first:** handoff id:`39ffdd98` (step 2), milestone id:`7e80cb51`
+(review/deployment), decision id:`e8183445` (D9). Prior step 1 handoff id:`66ba8b6c`
+is superseded; corrected gaps id:`f48d0402`, id:`661abc55`, id:`05fd53c3`.
+
+**Central finding.** Every new dispatched S0 tool row, including sessionless rows,
+gets its kind at the daemon write door; hooks send raw facts. Both hosts have live
+stamped rows: Codex trace:`caad7588`, Claude Code trace:`6bc6775e`, contract fingerprint
+`32da0b4f35b1`. Final follow-up tier: 315 passed, one existing xfail; independent
+review cleared the attribution fix with 130 tests. Ratchet: 29 sites in 10 files.
+
+**Locked:** D1–D11 (§9); raw tool names, summaries and encoder behavior preserved
+through step 1. Tom approved retiring the new, unreleased prompt/Stop `host` wire
+field and `hook_common.host_name` (id:`b3675380`).
+
+**Open — Tom's:** env_message phase 2 placement, gating step 3 only. Steps 2–4
+remain unbuilt. Step 2 starts by freezing an isolated stamped window for the
+consumer comparison; `s1_encode_eval --compare` alone is not a code A/B (id:`05fd53c3`).
+
+**Do not reopen:** hook-side tool classification (D9); read-time backfill (D10);
+canonical arguments (D8); `_bash_verb`/`GIT_WRITE_VERBS` (id:`b09efd2a`, separate fix);
+retiring task-notification readers before step 3; doc field candidates as universal schemas.
+
+**State checked 2026-09-08 16:20Z:** step 1 and its review fix reached main at
+git:`d9fa401`; earlier docs git:`8a1d19c`/git:`f1d3bd4` are preserved ancestors.
+Claude Code redeploy and Codex reinstall completed from the durable pinned checkout
+`/Users/tpac/brain`, then on `codex/contract-host` at git:`d9fa401`; all 11 runtime
+files matched both installed copies. Daemon code fingerprint `b2e83b6fa34ad0ba`
+matched that revision; source ownership unchanged. A sibling subsequently merged
+presence/MCP changes at git:`46f773d`. Those are outside this step's deployed revision.
+Recheck main, the actual checkout branch and daemon `source_dir`/fingerprint before
+any next merge or deploy; `/Users/tpac/brain` is not necessarily the main checkout.
 
 This doc cites **symbols, not line numbers** — the first draft's line refs drifted within a
 day. The tests are the living truth; the doc says why.
@@ -377,7 +402,7 @@ which is what makes a real before/after comparison possible.
   `daemon_config`; `servers.daemon_config` ~28–30 ms.
 - Host-stamp gap: 28 of the 1000 most recent `tool_result` rows (2.8%) carry no host, all one
   Codex session on chain `s0-01a07ce3-0`, `apply_patch` ×3, no prompt rows `[review]`.
-- Quoted host literals outside the contract: 36 sites in 12 files (guardrail baseline — tool
+- Step 0 measured baseline of quoted host literals outside the contract: 36 sites in 12 files (tool
   names, host keys and envelope tags, after `is_machine_turn` stopped duplicating the marker;
   8 of the 36 are the two host keys, 4 of those in `hook_common.host_name`).
 - Lean post-merge review of step 0 (one Opus pass, 2026-09-08): no blockers; five should-fix
@@ -391,9 +416,10 @@ which is what makes a real before/after comparison possible.
   the `## My request(?: for Codex)?:` marker; absent from the `codex` Rust binary. Node `4c42b9da`.
 - Question-reply envelope `[codex-stream]`. Node `44ac17e0`.
 - Hosted-web blind spot: 4 Extension ops in 25s, zero in S0 `[codex-stream]`.
-- Payload keys: Codex — [CODEX-ADAPTER-RESEARCH.md](CODEX-ADAPTER-RESEARCH.md) stdin section;
-  Claude Code — hooks reference at 2.1.263 (`tool_use_id`, `prompt_id`). Not yet observed on a
-  captured row: step 1's `payload_keys` closes that.
+- Payload keys now observed on captured rows (id:`34e7be01`): Codex `turn_id`, Claude
+  Code `prompt_id`, both `tool_use_id`; Codex subagents also send `agent_id`/`agent_type`.
+  `payload_keys` records the actual top-level names. These observations do not make
+  either host's current field set a universal schema.
 - Approved architecture `1f2b3f89`; contract framing `ccc17d81`; placement rule (D9) ruled by
   Tom 2026-09-08.
 
