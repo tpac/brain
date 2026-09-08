@@ -9,7 +9,7 @@
   },
   "homepage": "https://github.com/tpac/entity",
   "repository": "https://github.com/tpac/entity",
-  "license": "PolyForm-Noncommercial-1.0.0 OR PolyForm-Internal-Use-1.0.0",
+  "license": "Elastic-2.0",
   "keywords": [
     "identity",
     "memory",
