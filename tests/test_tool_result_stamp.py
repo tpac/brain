@@ -178,6 +178,22 @@ class ToolWriteDoorTest(BrainTestBase):
         errors = [e for e in self.brain.get_recent_errors() if e['source'] == 'tool_kind_unknown']
         self.assertEqual(len(errors), 3)
 
+    def test_unknown_error_uses_event_session_even_when_sessionless(self):
+        self.brain._cached_session_id = 'other-session'
+        for sid, tool in (('actual-event-session', 'unknown_one'), ('', 'unknown_two')):
+            with self.subTest(session_id=sid):
+                row = self._append({'tool': tool, 'tells': ['PLUGIN_DATA']}, sid)
+                errors = [(error_sid, json.loads(metadata)) for error_sid, metadata
+                          in self.brain.logs_conn.execute(
+                              "SELECT session_id, metadata FROM debug_log "
+                              "WHERE source = 'tool_kind_unknown'")
+                          if tool in json.loads(metadata)['error']]
+                self.assertEqual(len(errors), 1)
+                self.assertEqual(errors[0][0], row['session_id'])
+                self.assertEqual(errors[0][0], sid)
+                self.assertIn('session_id=%r' % sid, errors[0][1]['context'])
+        self.assertEqual(self.brain.session_id, 'other-session')
+
 
 class PromptStopHostTest(BrainTestBase):
     needs_embedder = False

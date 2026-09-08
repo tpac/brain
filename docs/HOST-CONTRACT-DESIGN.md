@@ -410,12 +410,15 @@ build in use.
 | legacy vs uncertain | Only an absent `tells` key selects session host with `legacy`; present empty/ambiguous tells stamp empty event host. |
 | source IDs | Preserve `tool_use_id`, `turn_id`, `prompt_id` independently when present. Required normalization join fields default to empty string/list for old clients; no IDs are derived. |
 | patch cap | 16,384 characters; `patch_truncated_chars` records omitted characters. Patch capture adds one mirrored tool-name literal until canonical arguments. |
-| unknown-kind logging | `_log_error('tool_kind_unknown', …)`; host/tool hash before message text prevents prefix-based dedup collisions in the logger's 100-character fingerprint. Uses existing 60-second dedup window and source/global rate limits. |
+| unknown-kind logging | `_log_error('tool_kind_unknown', …)`; host/tool hash before message text prevents prefix-based dedup collisions in the logger's 100-character fingerprint. Uses existing 60-second dedup window and source/global rate limits. The event's raw session ID is passed explicitly, including empty for sessionless rows, and included in diagnostic context. |
 | production behavior | Tool summaries and encoder behavior preserved; prompt/Stop host resolution cutover approved by Tom (`b3675380`). Old tool clients use the legacy path until cache reinstall. |
 | review pass 1 — structure | Same-agent pre-commit call-boundary review: hook → dispatch → stamper/builder → session merge → DAL; prompt/Stop share one resolver/update helper. No read-time backfill, no encoder dependency on host_contract, no server import in the live tool-hook path. |
 | review pass 2 — function | Same-agent pre-commit boundary review: old clients, pre-prompt/sessionless rows, ambiguous/empty/unknown tells, spoofed kind fields, source IDs, patch cap and caller-stamp redaction exercised. Summary/stop functions match main by AST; host contract matches main by AST (one retired-helper comment updated); encoder files match byte-for-byte. All seven action fields match across six tool families; a 48-action condensation matches before/after stamping. |
 | review fixes | Explicit event host before session merge; preserve unknown tell names; remove retired host diagnostic; mock the prompt hook’s fast process exit in the harness. |
 | tests | Expanded tier: 465 passed, one pre-existing xfail (576.96s). Final boundary suite after review fixes: 85 passed. After fast-forwarding the dashboard-only main head, the overlap/contract/deploy tier passed 185 tests with one pre-existing xfail (22.58s). The sandbox-only process-name failure passed with process inspection allowed. Installed the missing pinned pytest-timeout dependency; the later boundary run has no timeout warning. |
+| independent review, requested after initial merge | A separate reviewer checked commit `8612ff7` against `bc29b60`, including real hook execution, writers/readers and a targeted simplify pass: 219 tests passed, no blocking finding. One diagnostic defect: unknown-kind errors inherited another session's global ID. No further simplification warranted. |
+| review follow-up before fix commit | Added an explicit optional session ID to the existing logger door, avoiding a fabricated SessionContext. The reviewer cleared the fix with 130 passing tests, 16 subtests and six attribution-precedence probes. The new regression checks named and sessionless event attribution while another global session is active. Its initial read-only-property fixture mistake was corrected before this passing run. |
+| final fix gate | Contract/guardrail/deploy/dispatch and trace tier: 315 passed, one existing xfail, 16 subtests (256.92s); 41 existing upstream embedder warnings. Core/session/LLM-latch run separately covered 136 other tests; the corrected attribution regression is included in the passing final tier. |
 
 
 Reproduce the expanded step 1 tier (stage new files before the public-tree export gate):
@@ -434,3 +437,13 @@ Reproduce the expanded step 1 tier (stage new files before the public-tree expor
   tests/test_self_delivery.py tests/test_contract_sync.py tests/test_session_context.py \
   -q --no-header -p no:cacheprovider
 ```
+
+The logger follow-up also covers `tests/test_core.py`,
+`tests/test_llm_rejection_latch.py` and `tests/test_dispatch_contract_sync.py`;
+compose these with the tier above when changing the logging boundary.
+
+**Step 2 eval preparation:** `eval/s1_encode_eval.py --compare` compares a prompt
+file and tool set, not two code revisions. Freeze an isolated database/window and
+select one session before the consumer change, then run both code versions on that
+same input. Validate that the harness reaches the changed production action path;
+two fresh snapshots of moving live data are not a paired baseline (brain id:`05fd53c3`).
