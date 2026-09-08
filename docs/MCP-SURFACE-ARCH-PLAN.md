@@ -1,0 +1,281 @@
+# MCP Surface — Architecture Plan
+
+## Scope
+
+`servers/brain_mcp.py`'s tool surface: the 39 tool definitions, their names, descriptions and
+schemas, the annotations they don't carry, the `initialize` capability block, and the four
+consumer slices that read `TOOLS`. Everything below is a change to what an AGENT SEES, not to
+what the daemon does — no dispatch handler, DAL, or scale logic is in scope.
+
+**Baseline measured 2026-09-08** (`messages.count_tokens`, sonnet-4-6, minus a 530-token
+empty-tools-block baseline; re-derive before acting, the recipe is in §Measurement):
+
+| slice | source | tools | net tokens |
+|---|---|---|---|
+| every caller | `brain_mcp.TOOLS` | 39 | 19,314 |
+| Anchor · eager | `_meta["anthropic/alwaysLoad"]` (`CRITICAL_TOOLS`) | 13 | 9,212 |
+| Anchor · deferred | behind the host's ToolSearch | 26 | 10,069 |
+| S1 Scribe | `ENCODING_TOOLS` (`scales/s1/encode.py:1404`) | 6 | 6,860 |
+| S2 consolidation + community | `{brain_batch, get_nodes}` | 2 | 2,425 |
+
+Four tools are half the catalog: `remember_batch` 2,299 · `brain_batch` 2,719 (gross) ·
+`revise` 1,591 · `revise_batch` 1,528. Reads are cheap (`recall` 333, `get_nodes` 203).
+
+**Prior art recalled and respected:**
+- id:4ccb43eb — "memory operations only, no operational tools" (ping/health_check/save/config
+  removed). `restart`, `eval`, `clear_errors`, `query_logs` are drift against this. Step 4.
+- id:04ff3d58 / id:79b25bac — mechanics in MCP, strategy in the prompt. Step 5 is this rule
+  applied to text that drifted the other way.
+- id:807394de — an MCP description primes EVERY caller, not the one you were tuning.
+- id:1b7984f8 — **hard fence.** The S1E prompt has three lines that delegate mechanics TO the
+  MCP descriptions ("the parameter shapes live in the connect_to tool description", and two
+  more). Strip MCP text before inlining those six items into the prompt and the encoder
+  silently loses sibling resolution, ordering-agnosticism and NEW-wins. Step 5 owns this
+  ordering; nothing else may touch encoder-facing description text first.
+- id:55f960e5 — one source, three surfaces: a `TOOLS` edit reaches Anchor, S1 and S2 atomically
+  after restart. Every step here has all-caller blast radius by construction.
+- id:5a71e621 — `CRITICAL_TOOLS` was already curated to 13 (get_node and find_node_by_title
+  dropped, get_nodes added). Step 2 finishes what that decision started.
+- id:f358bba7 — tool names in prompt prose are load-bearing; an English synonym costs recall of
+  the op. Any rename (Step 6) is a prose migration, not a one-line change.
+- id:2caf3389 / id:3bab3268 — `SERVER_INSTRUCTIONS` is a LIVE lever on Claude Code (verified
+  2026-09-08: it reaches the session system prompt verbatim). The old "dead channel" finding was
+  Claude Desktop chat. Step 5 may move cross-tool guidance there instead of paying it per tool.
+
+**Deploy contract for every step in this plan:** `servers/brain_mcp.py` is the one `servers/*`
+file a daemon restart does NOT deploy — it needs `./redeploy.sh` (commit first) **and a new
+session**. Schema or description changes must re-run `eval/mcp_batch_probe.py` and
+`eval/mcp_schema_gate.py` before restart (CLAUDE.md). Diagnostic lens for description edits:
+`eval/mcp_tool_interview.py --tool <name>`.
+
+**Non-goals:** `revise_edge`'s batch-op placement (owned by the live worktree implementing
+id:73d30b14 — edges as a field of the node's own `revise`). Prompt content itself, except where
+Step 5 must inline what it removes.
+
+---
+
+## Step 1 — Tool annotations + the capability block
+
+**Why first:** mechanical, no behaviour change on Claude Code, and it is the whole fix for a
+known Codex symptom. Independent of every other step.
+
+Nothing in the catalog carries `annotations` — 0 of 39. Under the spec the defaults are
+deliberately pessimistic (`destructiveHint` defaults **true**, `openWorldHint` **true**), and
+Codex CLI acts on them: unannotated tools are treated as maximum risk and prompt for approval on
+every call, `readOnlyHint: true` tools are eligible for auto-approval AND are executed
+concurrently (`agents.max_threads`, default 6), and a user with `destructive_enabled = false`
+for our server is hard-blocked from calling anything at all — `recall` included. Claude Code
+does not depend on the hints (it runs its own classifier in auto mode), so this step is
+Codex-facing upside with no Claude-side risk.
+
+**Do:**
+1. Add an annotation map to `servers/contract.py` (contract-first; hooks and dispatch never
+   hardcode). Fields per tool: `readOnlyHint`, `destructiveHint`, `idempotentHint`,
+   `openWorldHint` (false for all 39 — the brain is a closed domain), and `title` (human display
+   name, e.g. `recall` → "Recall memories").
+2. Stamp them onto `TOOLS` at build time next to `_stamp_always_load`, with the same
+   fail-loud-on-unknown-name check.
+3. Fix the capability block: `handle_initialize` returns `capabilities: {"tools": {}}` while
+   [brain_mcp.py:1340](../servers/brain_mcp.py) sends `notifications/tools/list_changed` on a
+   daemon-fingerprint change. Declare `{"tools": {"listChanged": true}}` or the client is
+   entitled to drop the notification.
+
+**Do NOT derive `readOnlyHint` from `COMMAND_TABLE[...].is_write`.** Verified 2026-09-08: 38 of
+39 tool names are keys in `daemon_dispatch.COMMAND_TABLE` (only `restart` is absent), but
+`is_write` means "dirties brain.db", not "modifies its environment". Three tools are
+`is_write=False` and still change state — `remind` (files a Thalamus item), `self_send` (writes
+another stream's inbox), `thalamus_resolve` (resolves an item). A blind map mislabels all three
+as read-only, which on Codex means auto-approved-and-parallelised writes. Classify by hand,
+assert the count in a test. Also distinct from `brain_traces.stamp_tool_result`'s tool *kinds* —
+that classifies the HOST's tools for trace analytics, different concern, different vocabulary.
+
+**Verify:** a contract-sync test asserting every tool in `TOOLS` has annotations and every
+annotated name exists (the `_stamp_always_load` pattern); `tests/test_deploy_contract.py`;
+manual check that a Codex session no longer prompts per call on a read tool.
+
+---
+
+## Step 2 — Delete the two redundant singulars
+
+`get_node` and `get_trace` are strict subsets of `get_nodes` / `get_traces`, and both are the
+more expensive half of their pair (`get_trace` 430 net tokens vs `get_traces` 229 — 1,135 chars
+of description). `CRITICAL_TOOLS` already dropped `get_node`; what remains is a deferred decoy
+that costs a ToolSearch round-trip when the model reaches for the wrong one.
+
+**Keep** `recall`/`recall_batch` and the three `_batch` pairs (`remember`, `revise`, `connect`).
+Those are not singular/plural — they are different shapes for different consumers, and the field
+prose is not actually paid twice: Anchor's eager set has `remember`, the Scribe's set has
+`remember_batch`, neither sees the other. A `string | string[]` union would generate worse than
+two tools.
+
+**Callers to update before removal** (re-derive, perishable): `servers/scales/s1/encoder_view.py:183`
+lists `get_node` in an allowlist; `COMMAND_TABLE` keeps the daemon command (leave it — the
+daemon door is not the agent surface); grep both `get_node` and `"get_node"` dict-key form
+(id:feedback param-removal rule) plus `get_trace` similarly, and check `dashboard/` and
+`eval/` for tool-name references.
+
+**Verify:** guardrail + contract tier, `eval/mcp_batch_probe.py`, and one live `get_nodes` call
+with a single id after redeploy.
+
+---
+
+## Step 3 — Cut the interactions block out of the MCP
+
+Six tools (`list_interactions`, `get_interaction`, `get_interaction_effective`,
+`register_interaction`, `set_interaction_active`, `clear_interaction_override`), 907 net tokens,
+all deferred. **The descriptions are accurate** — read them, they correctly state the
+code-default-plus-override model, `register_interaction` even says "NEVER activates". The problem
+is not stale text: six tools named `register_/set_/clear_interaction*` in a memory server imply
+prompts are DB-managed, when the documented way to change a production default is *edit the .py
+and merge*. They advertise the exception as the interface.
+
+**Do:** remove all six from `TOOLS`. Keep every daemon command and `tests/interaction_override.py`
+untouched — the maintainer path is `./dev check-overrides` plus the three-call recipe in
+CLAUDE.md, which needs no MCP tool.
+
+**Judgement call for the executing session:** keeping `get_interaction_effective` alone is
+defensible — "what is `<name>` actually running?" is a real mid-session debugging question and
+it is the only one of the six that can see both halves (default + override). Decide once, don't
+keep two.
+
+**Verify:** CLAUDE.md's "Deploy an override on THIS install" recipe still executes end-to-end
+through the daemon after removal; contract tier.
+
+---
+
+## Step 4 — Operational-tool drift, and `eval`
+
+`restart`, `eval`, `clear_errors`, `query_logs` contradict id:4ccb43eb. Ranked by actual risk:
+
+- **`eval`** — arbitrary Python against the live `Brain` instance, 62 net tokens, exposed to any
+  agent that fetches it. In a shipped plugin this is the line a security reviewer stops on.
+  Gate it behind an explicit env flag read at `_build_tools()` time (`brain-env.sh` owns runtime
+  flags), so dev installs keep it and shipped installs never list it.
+- **`restart`** — keep. It is how a dev session deploys, and it is the one tool name absent from
+  `COMMAND_TABLE`. Annotate `destructiveHint: true`.
+- **`query_logs`** — keep, read-only, genuinely used for diagnosis.
+- **`clear_errors`** — weakest case. Decide: keep annotated destructive, or drop and leave it a
+  daemon-only command.
+
+**Verify:** with the flag unset, `tools/list` omits `eval`; `tests/test_deploy_contract.py`
+asserts the shipped catalog does not contain it.
+
+---
+
+## Step 5 — De-mix consumer-specific text (the heavy one)
+
+**Blocked on the id:1b7984f8 fence — read it before starting.** Order is: audit every prompt
+line that delegates mechanics to a tool description → inline those six items into the owning
+prompt → only then remove text from MCP. Reversing this silently degrades the encoder.
+
+Confirmed leaks (grep-verified 2026-09-08; several apparent hits were false positives —
+"au**tom**atic", "**anchor**ing", "**Operator**s:"):
+
+| where | text | whose |
+|---|---|---|
+| `remember` description | the whole `ENCODING CRAFT` / `LESSONS — climb the abstraction ladder` / `RICHNESS: Training rewards brevity` block | S1 Scribe coaching, read by Anchor too |
+| `recall` description | "when the auto-surfaced context (~25 candidates per turn) didn't catch what you need" | Anchor-only — S1/S2 have no auto-surfaced context |
+| `source_refs` (4 tools) | "the trace markers in your input", `[trace:<hex>]` | Scribe-only — only its input carries markers |
+| `their_raw_quote` | "Their exact words — **my** counterpart's" | first person, Anchor's frame |
+| `enrich` description | "after filling in the enrichment_prompt from remember()" | a workflow, not a contract |
+
+Target shape: mechanics + shapes + failure modes stay; craft, stance and audience-specific
+workflow move to the owning prompt. Front-load each description to a 1–2 sentence contract
+(current outliers: `brain_batch` 2,399 chars, `remember` 1,413) and let the schema field
+descriptions carry the detail. Cross-tool "when to reach for me" discipline that genuinely
+applies to every caller can go in `SERVER_INSTRUCTIONS` — one place, no per-tool tax, and on
+Claude Code it is delivered (id:2caf3389).
+
+**Verify:** benchmark-first — `eval/s1_encode_eval.py` before and after, plus
+`eval/mcp_tool_interview.py` on each edited tool to see how the consumer model reads the new
+text. This step changes generation behaviour; do not ship it on inspection alone.
+
+---
+
+## Step 6 — Naming
+
+We are compliant with [SEP-986](https://github.com/modelcontextprotocol/modelcontextprotocol/issues/986)
+(accepted, 1–64 chars, `[A-Za-z0-9_.\-/]`): longest mangled name is
+`mcp__plugin_entity_brain__clear_interaction_override` = **52 of 64**. The prefix is the host's,
+not ours — `mcp__plugin_entity_brain__x` as a plugin, `mcp__brain__x` via `claude mcp add brain`
+and under Codex (our own `hooks/hooks.codex.json:54` matches `mcp__brain__.*`). Never hardcode a
+full path anywhere.
+
+One real problem: **`remember` and `remind` are one letter apart with unrelated semantics**
+(writes a node / files a Thalamus item) — a textbook misroute pair. Bare verbs otherwise read
+well here because the server name supplies the noun, so `recall`/`remember`/`enrich` are fine as
+they are despite violating `verb_noun`.
+
+**Cost, stated up front:** `remind` is in `CRITICAL_TOOLS`, the boot stance, `SKILL.md`, the
+Thalamus docs and the delivery footer prose. Per id:f358bba7 the prose must move with the name in
+the same commit. Do this AFTER Step 5 so prompt prose is edited once, not twice.
+
+---
+
+## Step 7 — `outputSchema` / `structuredContent` (own project, not this plan)
+
+Every tool returns a text blob the caller re-parses. The 2025-06-18 revision added
+`outputSchema` + `structuredContent`; for a server whose whole job is returning nodes and edges
+this is the largest remaining modernization. It touches `_format_result`, `scales/runner.py:612`
+(which reuses `_format_result` for encoder tool results) and every consumer's parsing. Scope it
+separately; note that `PROTOCOL_VERSION` still defaults to `2024-11-05` while
+`SUPPORTED_PROTOCOL_VERSIONS` already accepts `2025-06-18` and `2025-11-25`.
+
+---
+
+## Step 8 — Ordering experiment (independent, eval-gated)
+
+Tool-selection position bias is measured, not folklore (ICLR 2026; shuffling a candidate toolset
+dropped one open model 41% → 27%; "lost in the middle" shows mid-list tools at 22–52% vs 31–32%
+at the ends — though that was at 741 tools). For Anchor at 39 tools the eager/deferred split
+dominates and array order is second-order. Where it plausibly bites is the **6-tool Scribe
+view**, which inherits `TOOLS` order and lands as `remember_batch, connect_batch, brain_batch,
+revise_batch, get_nodes, recall_batch` — `brain_batch`, the op it should reach for most, sits
+third, mid-list.
+
+**Do:** move `brain_batch` first in `_build_tools()`'s literal (or sort the slice in
+`_get_tool_schemas`), then A/B with `eval/s1_encode_eval.py`. Treat it as a hypothesis to
+measure, not a fix to assert.
+
+---
+
+## Measurement
+
+Re-derive the baseline before and after any step. Exact per-slice token cost:
+
+```python
+# ./dev python3 -
+import anthropic, sys; sys.path.insert(0, '.')
+from servers import brain_mcp
+c = anthropic.Anthropic()
+def cost(names):
+    tools = [{'name': t['name'], 'description': t['description'],
+              'input_schema': t['inputSchema']}
+             for t in brain_mcp.TOOLS if t['name'] in names]
+    n = c.messages.count_tokens(model='claude-sonnet-4-6',
+                                messages=[{'role': 'user', 'content': 'x'}],
+                                tools=tools).input_tokens
+    base = c.messages.count_tokens(model='claude-sonnet-4-6',
+                                   messages=[{'role': 'user', 'content': 'x'}]).input_tokens
+    return n - base            # subtract another 530 for the fixed tools-block scaffolding
+print(cost({t['name'] for t in brain_mcp.TOOLS}), cost(brain_mcp.CRITICAL_TOOLS))
+```
+
+---
+
+## Host differences that constrain the design
+
+| | Claude Code | Codex |
+|---|---|---|
+| tool name seen by the model | `mcp__plugin_<plugin>_<server>__<tool>` as a plugin, `mcp__<server>__<tool>` when added directly | `mcp__<server>__<tool>` (our `hooks.codex.json` matcher) |
+| catalog pruning | automatic ToolSearch deferral above ~10% of context; `_meta["anthropic/alwaysLoad"]` forces eager (vendor extension, ignored elsewhere) | user-side allowlist: `enabled_tools` / `disabled_tools` in `config.toml`, edited by hand |
+| annotations | not required — classifier-based risk assessment in auto mode | load-bearing: absent annotations = max risk = approval prompt every call; `readOnlyHint` enables auto-approval and concurrent execution; `destructive_enabled = false` hard-blocks any tool declaring `destructiveHint` |
+| server `instructions` | injected into the system prompt (verified 2026-09-08) | unverified — do not assume; ChatGPT (non-Codex) reads it capped ~512 chars (id:f5b3fe55) |
+| per-tool timeouts | none exposed | `startup_timeout_sec`, `tool_timeout_sec` per server |
+| identity | `CLAUDE_CODE_SESSION_ID` reaches the stdio server | no thread id to stdio servers (openai/codex#19937, closed not-planned) — bridged by the HMAC PreToolUse stamp (id:b71a1254) |
+
+**Consequences for this plan:** Step 1 is worth more on Codex than on Claude Code and is what
+makes our tools usable there without per-call approval. `alwaysLoad` buys nothing on Codex, so
+`docs/CODEX-SETUP.md` should recommend an `enabled_tools` allowlist mirroring `CRITICAL_TOOLS`.
+Anything that depends on `SERVER_INSTRUCTIONS` being read (Step 5's escape valve) is
+Claude-Code-only until someone verifies Codex.
