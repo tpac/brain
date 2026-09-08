@@ -53,3 +53,39 @@ def query_traces(conn, hours: int = 24, scale: str = '', limit: int = 500, sessi
         row.update(zip(_PROMOTED, extract_meta_fields(r[7], *_PROMOTED)))
         out.append(row)
     return out
+
+
+# The two s0 ref_types that hold what was actually SAID in a session's own
+# conversation — the operator's prompt and the stream's reply.
+_SAID = ('user_message', 'assistant_message')
+
+
+@safe_query('queries.traces', logs_db_path)
+def query_session_messages(conn, session_id: str, limit: int = 8):
+    """The last few turns of ONE session's own operator conversation.
+
+    Identity, not content: the Streams tab shows these so the operator can
+    recognise WHICH session a stream is ("oh, that's the one where I asked
+    about X"). A stream's handle, model and turn count say what it is; a
+    couple of its own lines say what it's for.
+
+    Deliberately narrow — `query_traces` above would haul the session's whole
+    event stream (hundreds of rows in a busy session) to find five messages.
+    Newest first; the caller reverses for reading order."""
+    if not session_id:
+        return []
+    rows = conn.execute(
+        "SELECT ref_type, summary, metadata, created_at FROM trace_events "
+        "WHERE session_id = ? AND ref_type IN (?, ?) "
+        "ORDER BY created_at DESC LIMIT ?",
+        (session_id,) + _SAID + (int(limit),)).fetchall()
+    out = []
+    for ref_type, summary, metadata, created_at in rows:
+        content, model = extract_meta_fields(metadata, 'content', 'model')
+        out.append({
+            "role": 'operator' if ref_type == 'user_message' else 'stream',
+            "text": content or summary or '',
+            "model": model or '',
+            "created_at": created_at,
+        })
+    return out

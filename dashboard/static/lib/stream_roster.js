@@ -1,5 +1,5 @@
 // ===========================================================================
-// lib/stream_roster.js — the live roster of streams of thought, as PANES.
+// lib/stream_roster.js — ONE stream of thought, as a PANE.
 // ---------------------------------------------------------------------------
 // A stream of thought is a live process running in a worktree, so it reads as
 // a terminal/window pane — a title bar (pulsing liveness light + ⎇ branch
@@ -7,15 +7,17 @@
 // Identity = the branch/worktree handle (brain principle: "one stream, one
 // worktree — your handle is your branch name"); hex is the subtitle.
 //
-// Click a pane's title bar → it drills open inline: full arc + the stream's
-// OWN boot context (folded in — there is no separate Boot tab) + the messages
-// it sent/received. Collapsed panes clamp the arc.
+// This is the WHO of an open conversation: the Streams tab renders it as the
+// thread header above the messages, the way a chat app shows contact info.
+// Click the title bar → it drills open inline: full arc + the stream's OWN
+// boot context (folded in — there is no separate Boot tab). Collapsed, it
+// clamps the arc.
 //
 // Pure presentation. Structural styling lives in style.css (.stream-pane /
 // .stream-titlebar / .live-light + the streamPulse keyframe); this returns an
-// HTML string (matches streams.js's idiom). State (which panes are open, the
-// per-stream boot cache, the global message list) is owned by streams.js and
-// passed in — so the roster re-renders correctly under the 5s presence poll.
+// HTML string (matches streams.js's idiom). State (whether the pane is open,
+// the boot capture to show) is owned by streams.js and passed in — so it
+// re-renders correctly under the 5s presence poll.
 // ===========================================================================
 
 import { escapeHtml, relativeTime, modelChipHTML } from '/static/lib/dom.js';
@@ -36,15 +38,6 @@ function _dur(iso) { const r = relativeTime(iso); return r ? r.replace(/\s*ago$/
 // reads as one identity wherever it appears. This module used to derive the
 // handle itself; two derivations meant two chances to drift.
 function _handle(s) { return sessionLabel(s.session_id || '') || s.short || ''; }
-// Transient = a freshly-spawned agent/shell with nothing to show. An active
-// stream, or one with a focus/arc, is real even before its turn_count is
-// stamped — don't demote it to the dim row.
-function _isTransient(s) {
-  if (s.state === 'active') return false;
-  if (s.focus && s.focus.trim()) return false;
-  if (s.arc && s.arc.trim()) return false;
-  return !s.turn_count || s.turn_count === 0;
-}
 
 // ── drill-down sub-blocks ───────────────────────────────────────────────────
 function _bootBlock(boots) {
@@ -61,36 +54,30 @@ function _bootBlock(boots) {
     + escapeHtml(b.text || '') + '</pre></details>';
 }
 
-// This stream's sent + received messages, pulled from the global courier list.
-function _msgBlock(sid, messages) {
-  if (!messages) return '';
-  const rows = [];
-  for (const m of messages) {
-    const out = m.from_full === sid;
-    const directedTo = m.address === 'self:' + sid;
-    const gotIt = (m.delivered || []).some(d => d.to_full === sid);
-    const incoming = directedTo || (m.address === 'self:broadcast' && gotIt);
-    if (!out && !incoming) continue;
-    const clean = (m.body || '').replace(/\s+/g, ' ');
-    const body = clean.length > 90 ? clean.slice(0, 90) + '…' : clean;
-    if (out) {
-      const tgt = m.address === 'self:broadcast' ? 'broadcast' : (m.address || '').replace(/^self:/, '').slice(0, 8);
-      const ok = (m.delivered || []).length;
-      rows.push('<div style="font-size:11px;margin:3px 0;color:#9ab"><span style="color:#7eb8ff">→ ' + escapeHtml(tgt) + '</span> '
-        + '<span style="color:#cdd">' + escapeHtml(body) + '</span> '
-        + (ok ? '<span style="color:#5a8a5a">✓</span>' : '<span style="color:#806a3a">○</span>') + '</div>');
-    } else {
-      rows.push('<div style="font-size:11px;margin:3px 0;color:#9ab"><span style="color:#c4a8f0">← ' + escapeHtml((m.from || '?').slice(0, 8)) + '</span> '
-        + '<span style="color:#cdd">' + escapeHtml(body) + '</span></div>');
-    }
-    if (rows.length >= 8) break;
+// The stream's OWN conversation with the operator — an identity cue, so the
+// operator can tell which of their sessions this is. Rendered as a transcript
+// strip, deliberately NOT in the chat-bubble language: these lines were never
+// sent to another stream, and must never read as if they were.
+function _ownChatBlock(rows, open, handle) {
+  if (rows === undefined) return '';
+  if (!rows || !rows.length) {
+    return '<div class="own-chat"><div class="own-chat-head">its own chat</div>'
+      + '<div class="own-chat-empty">nothing recorded for this stream</div></div>';
   }
-  if (!rows.length) return '<div style="color:#566;font-size:11px;margin-top:8px">No messages to or from this stream.</div>';
-  return '<div style="margin-top:8px"><div style="color:#667;font-size:9px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:2px">messages</div>' + rows.join('') + '</div>';
+  const shown = rows.slice(open ? -8 : -3);
+  return '<div class="own-chat' + (open ? ' is-open' : '') + '">'
+    + '<div class="own-chat-head">its own chat <span>· with you, not another stream</span></div>'
+    + shown.map(r => '<div class="own-chat-row">'
+        + '<span class="own-chat-who own-chat-who--' + r.role + '">'
+        +   (r.role === 'operator' ? 'you' : escapeHtml(handle || 'stream')) + ' ›</span>'
+        + '<span class="own-chat-text" title="' + escapeHtml(r.created_at || '') + '">'
+        +   escapeHtml((r.text || '').replace(/\s+/g, ' ').trim()) + '</span>'
+      + '</div>').join('')
+  + '</div>';
 }
 
 // ── pane ─────────────────────────────────────────────────────────────────
-function _pane(s, open, boots, messages) {
+function _pane(s, open, boots, ownChat) {
   const live = _LIVE[s.state] || _LIVE.dormant;
   const sid = escapeHtml(s.session_id || '');
   const handle = escapeHtml(_handle(s));
@@ -142,59 +129,20 @@ function _pane(s, open, boots, messages) {
       + escapeHtml(shown) + '</div>';
   }
 
-  // drill-down: boot + messages
-  if (open) {
-    h += _bootBlock(boots);
-    h += _msgBlock(s.session_id, messages);
-  }
+  // its own chat — the recognition cue, shown collapsed AND open
+  h += _ownChatBlock(ownChat, open, _handle(s));
+
+  // drill-down: this stream's own boot context
+  if (open) h += _bootBlock(boots);
 
   h += '</div></div>';
   return h;
 }
 
-function _transientRow(s) {
-  const live = _LIVE[s.state] || _LIVE.dormant;
-  return '<div class="stream-transient" style="display:flex;gap:8px;align-items:center;padding:3px 12px;opacity:.5;font-size:11px">'
-    + '<span class="live-light ' + live.dot + '" style="width:6px;height:6px"></span>'
-    + '<span style="color:#8a8a9a;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,monospace">'
-    + escapeHtml(s.short || '') + ' · ' + escapeHtml(_shortCwd(s.cwd)) + ' · just spawned, no activity yet</span>'
-    + '<span style="color:#556;font-size:10px;white-space:nowrap" title="' + escapeHtml(s.updated_at || '') + '">' + escapeHtml(relativeTime(s.updated_at)) + '</span>'
-    + '</div>';
-}
-
-function _lostRow(s) {
-  return '<div class="stream-lost" style="display:flex;gap:8px;align-items:center;padding:3px 12px;opacity:.4;font-size:11px">'
-    + '<span class="live-light lost" style="width:6px;height:6px"></span>'
-    + '<span style="color:#888;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
-    + escapeHtml(_handle(s)) + (s.focus ? ' · ' + escapeHtml(s.focus.slice(0, 60)) : '') + '</span>'
-    + '<span style="color:#556;font-size:10px;white-space:nowrap">lost · ' + escapeHtml(relativeTime(s.updated_at)) + '</span>'
-    + '</div>';
-}
-
-/** Render the presence roster. `presence` = /api/self-presence payload
- *  ({streams, lost}); `opts` = { open:Set(sid), boots:{sid:[...]},
- *  messages:[...] } owned by streams.js. */
-export function renderRoster(presence, opts = {}) {
-  const streams = (presence && presence.streams) || [];
-  const lost = (presence && presence.lost) || [];
-  const open = opts.open || new Set();
-  const boots = opts.boots || {};
-  const messages = opts.messages || null;
-
-  if (!streams.length && !lost.length) {
-    return '<div style="color:#667;font-size:12px;padding:8px 4px">🧵 No other streams of thought live right now.</div>';
-  }
-
-  const real = streams.filter(s => !_isTransient(s));
-  const transient = streams.filter(_isTransient);
-
-  let h = '<div style="color:#778;font-size:11px;padding:4px 4px 2px;font-weight:600">🧵 '
-    + real.length + ' stream' + (real.length === 1 ? '' : 's') + ' of thought live</div>';
-  h += real.map(s => _pane(s, open.has(s.session_id), boots[s.session_id], messages)).join('');
-  if (transient.length) h += transient.map(_transientRow).join('');
-  if (lost.length) {
-    h += '<div style="color:#556;font-size:10px;padding:6px 4px 2px">recently lost</div>';
-    h += lost.map(_lostRow).join('');
-  }
-  return h;
+/** Render ONE stream as a pane — the thread header of an open conversation.
+ *  `s` is a presence record ({session_id, state, arc, focus, cwd, …}); `opts`
+ *  = { open:bool, boots:[...], ownChat:[...] } owned by streams.js. */
+export function renderPane(s, opts = {}) {
+  if (!s || !s.session_id) return '';
+  return _pane(s, !!opts.open, opts.boots, opts.ownChat);
 }
