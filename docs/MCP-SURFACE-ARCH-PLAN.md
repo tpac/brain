@@ -98,12 +98,23 @@ manual check that a Codex session no longer prompts per call on a read tool.
 
 ---
 
-## Step 2 — Delete the two redundant singulars
+## Step 2 — Delete three orphaned tools
 
 `get_node` and `get_trace` are strict subsets of `get_nodes` / `get_traces`, and both are the
 more expensive half of their pair (`get_trace` 430 net tokens vs `get_traces` 229 — 1,135 chars
 of description). `CRITICAL_TOOLS` already dropped `get_node`; what remains is a deferred decoy
 that costs a ToolSearch round-trip when the model reaches for the wrong one.
+
+**`enrich` — the vestigial half of a superseded design (traced 2026-09-08).** It is the second
+step of the V5 manual loop: `remember()` returns an `enrichment_prompt`, the agent fills in
+question/anchor/bridge/keywords, then calls `enrich()`. Nothing automated does this. Its only
+door is the MCP tool (`dispatch_write.py:1370` → `brain.store_enrichments`, whose only caller in
+`servers/` is that handler); `ENCODING_TOOLS` and both S2 sets exclude it, so no encoder can emit
+it, and `encoder_view.DROPPED_ACTION_TOOLS` drops it from the timeline the Scribe reads. The job
+it did is now done by fields: the `question` field on `remember`/`revise` gets its own recall
+embedding, and `_situation` enrichment rows are derived at write time (CLAUDE.md). Delete the
+tool. `store_enrichments` / `_build_enrichment_prompt` / `ENRICHMENT_PROMPT_TEMPLATE` and
+`tests/test_retired_fields.py`'s guard are a deeper retirement — name it, don't widen into it.
 
 **Keep** `recall`/`recall_batch` and the three `_batch` pairs (`remember`, `revise`, `connect`).
 Those are not singular/plural — they are different shapes for different consumers, and the field
@@ -287,15 +298,16 @@ Claude-Code-only until someone verifies Codex.
 
 ## Appendix A — per-tool annotations (Step 1's payload)
 
-`openWorldHint: false` for all 39 except `eval`. Per spec, `destructiveHint` and
-`idempotentHint` are only meaningful when `readOnlyHint` is false — **omit them on read tools**
-rather than writing defaults nobody reads. `title` is the host's display label; without it a
-client shows the mangled `mcp__plugin_entity_brain__…` name in its approval dialog.
+**30 tools, not 39** — Step 2 deletes `get_node`, `get_trace`, `enrich`; Step 3 deletes the six
+interactions tools. Neither set gets annotated. If Step 1 ships first, annotate the survivors and
+let the deletions land unannotated.
 
-Legend: RO = readOnlyHint · D = destructiveHint · I = idempotentHint. † = removed by Step 2/3,
-annotate only if Step 1 ships first.
+`openWorldHint: false` for all 30 except `eval`. Per spec `destructiveHint` and `idempotentHint`
+are only meaningful when `readOnlyHint` is false — **omit them on read tools** rather than
+writing defaults nobody reads. `title` is the host's display label; without it a client shows the
+mangled `mcp__plugin_entity_brain__…` name in its approval dialog.
 
-### Reads — `readOnlyHint: true` (19)
+### Reads — `readOnlyHint: true` (14)
 
 | tool | title | note |
 |---|---|---|
@@ -303,9 +315,7 @@ annotate only if Step 1 ships first.
 | `recall_batch` | Recall (multi-query) | |
 | `recall_episodes` | Recall episodes | |
 | `get_nodes` | Get memories by id | |
-| `get_node` † | Get memory by id | |
 | `get_traces` | Get traces by id | |
-| `get_trace` † | Get trace | |
 | `find_node_by_title` | Find memory by title | |
 | `filter_nodes` | Filter memories | |
 | `query_traces` | Query traces | |
@@ -315,11 +325,8 @@ annotate only if Step 1 ships first.
 | `self_peek` | Peek at a stream | |
 | `self_outbox` | Sent-message receipts | |
 | `thalamus_list` | Queued brain items | |
-| `list_interactions` † | List interactions | |
-| `get_interaction` † | Get interaction | |
-| `get_interaction_effective` † | Resolved interaction | |
 
-### Additive writes — RO false, **D false** (11)
+### Additive writes — RO false, **D false** (9)
 
 | tool | title | I | why |
 |---|---|---|---|
@@ -327,15 +334,13 @@ annotate only if Step 1 ships first.
 | `remember_batch` | Save memories | false | same |
 | `connect` | Link two memories | **true** | documented field-preserving upsert, no auto-strengthen on repeat |
 | `connect_batch` | Link memories | **true** | same |
-| `enrich` | Add recall vectors | **true** | re-storing overwrites the same enrichment rows |
 | `set_node_lock` | Lock a memory | **true** | flag set to a value |
 | `self_send` | Message a stream | false | repeat = a second message in the inbox |
-| `self_inbox` | Drain inbox | false | **consume-once** (`dispatch_self.py:89`) — the second call returns nothing. This is the tool `is_write` gets most wrong |
+| `self_inbox` | Drain inbox | false | **consume-once** (`dispatch_self.py:89`) — the second call returns nothing. The tool `is_write` gets most wrong |
 | `remind` | File a reminder | false | idempotent only when `dedup_key` is passed; hints are static, so take the conservative value |
 | `thalamus_resolve` | Answer a queued item | **true** | resolving an already-resolved item adds nothing |
-| `register_interaction` † | Register interaction version | false | each call mints version N+1 |
 
-### Overwriting writes — RO false, **D true** (6)
+### Overwriting writes — RO false, **D true** (4)
 
 | tool | title | I | why |
 |---|---|---|---|
@@ -343,8 +348,6 @@ annotate only if Step 1 ships first.
 | `revise_batch` | Revise memories | false | same |
 | `revise_edge` | Revise an edge | false | overwrites relation / description / weight in place |
 | `brain_batch` | Mixed memory ops | false | the union contains `archive`, `absorb` and `disconnect` — a union takes the max risk of its members |
-| `set_interaction_active` † | Deploy an override | true | overwrites the active pointer and changes runtime behaviour globally |
-| `clear_interaction_override` † | Revert to code default | true | deletes the pointer |
 
 ### Operational — RO false, **D true** (3)
 
@@ -352,17 +355,48 @@ annotate only if Step 1 ships first.
 |---|---|---|---|---|
 | `clear_errors` | Clear error log | true | false | deletes rows; clearing twice adds nothing |
 | `restart` | Restart the daemon | false | false | tears down a live process — a host should always confirm |
-| `eval` | Evaluate Python (dev) | false | **true** | arbitrary Python can reach anything, including the network. The only tool in the catalog that is genuinely open-world — and the reason Step 4 gates it behind a flag |
+| `eval` | Evaluate Python (dev) | false | **true** | `dispatch_ops.py:249` runs Python `eval()` with `brain` in locals and an explicitly weak `safe_builtins` sandbox; the handler's own docstring calls it "effectively arbitrary code execution", safe only because the daemon is loopback + single-user. Expression-only, but `brain.archive_node(...)` is an expression. Genuinely open-world |
 
 ### What each field actually buys us
 
 - **`readOnlyHint`** — the whole Codex approval story, and it also makes those calls run
-  concurrently (`agents.max_threads`, default 6). 19 tools become promptless there.
+  concurrently (`agents.max_threads`, default 6). 14 tools become promptless there.
 - **`destructiveHint`** — currently defaults **true** for all 39 because we declare nothing, so a
   Codex user with `destructive_enabled = false` cannot call `recall`. Declaring it correctly
-  turns a blanket block into a 9-tool block.
-- **`idempotentHint`** — retry safety. A host that auto-retries a timed-out call will duplicate
-  a `remember` and silently no-op a repeated `connect`; the hint is how it knows which.
+  turns a blanket block into a 7-tool block.
+- **`idempotentHint`** — retry safety. A host that auto-retries a timed-out call will duplicate a
+  `remember` and silently no-op a repeated `connect`; the hint is how it knows which.
 - **`openWorldHint`** — one honest `true` (`eval`) is worth more than 39 defaults.
-- **`title`** — what a human sees in the approval dialog instead of
+- **`title`** — what a human reads in the approval dialog instead of
   `mcp__plugin_entity_brain__thalamus_resolve`.
+
+---
+
+## Appendix B — who actually hits a permission prompt
+
+**The encoders never do.** S1 Scribe and both S2 encoders run inside the daemon and dispatch
+through `scales/dispatch.py`, not through a host — no approval layer exists on that path.
+Annotations therefore only change the experience of an INTERACTIVE session (Anchor in Claude
+Code, or the operator in Codex). This is the reason Step 1 is cheap: it cannot regress encoding.
+
+**Claude Code, this repo:** nothing prompts. `.claude/settings.json` carries a server-wide
+prefix allow (`"mcp__plugin_entity_brain"`), which covers all 39. Claude Code's permission rules
+match on tool NAME patterns and ignore annotations entirely, so Step 1 changes nothing here — a
+fresh install without that rule prompts per tool on first use and can remember the answer.
+
+**Codex, after Step 1:** the always-prompt set is exactly the seven `destructiveHint: true`
+tools — `revise`, `revise_batch`, `revise_edge`, `brain_batch`, `clear_errors`, `restart`,
+`eval`. The 14 reads become auto-approvable under a permissive policy and run concurrently. The
+9 additive writes sit in the middle: neither force-prompted by the destructive rule nor
+auto-approved by the read-only rule, so they follow the session's default approval mode.
+
+**The one uncomfortable consequence:** `brain_batch` is a `CRITICAL_TOOL` and the primary mixed
+write, and marking it destructive means an interactive Codex session confirms every call. That is
+the honest annotation — the op union can archive and absorb nodes — and the alternative
+(declaring it additive) would auto-approve archives. Accept the prompt, or split the destructive
+ops out of the union; do not soften the hint.
+
+**`eval`'s real consumer, so Step 4 doesn't break it:** `eval/oracle_audit/backfill_absorbed_into.py`
+uses the daemon `eval` COMMAND over TCP. Step 4 gates the MCP TOOL only — leave the
+`COMMAND_TABLE` entry alone. (The `eval/` directory and the `eval` tool share a name and nothing
+else; the eval platform does not call the tool.)
