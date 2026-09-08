@@ -82,12 +82,15 @@ Codex-facing upside with no Claude-side risk.
 
 **Do NOT derive `readOnlyHint` from `COMMAND_TABLE[...].is_write`.** Verified 2026-09-08: 38 of
 39 tool names are keys in `daemon_dispatch.COMMAND_TABLE` (only `restart` is absent), but
-`is_write` means "dirties brain.db", not "modifies its environment". Three tools are
+`is_write` means "dirties brain.db", not "modifies its environment". Four tools are
 `is_write=False` and still change state — `remind` (files a Thalamus item), `self_send` (writes
-another stream's inbox), `thalamus_resolve` (resolves an item). A blind map mislabels all three
-as read-only, which on Codex means auto-approved-and-parallelised writes. Classify by hand,
+another stream's inbox), `self_inbox` (**drains** consume-once, `dispatch_self.py:89`), and
+`thalamus_resolve` (resolves an item). A blind map mislabels all four as read-only, which on
+Codex means auto-approved-and-parallelised writes. Classify by hand,
 assert the count in a test. Also distinct from `brain_traces.stamp_tool_result`'s tool *kinds* —
 that classifies the HOST's tools for trace analytics, different concern, different vocabulary.
+
+The per-tool classification is Appendix A.
 
 **Verify:** a contract-sync test asserting every tool in `TOOLS` has annotations and every
 annotated name exists (the `_stamp_always_load` pattern); `tests/test_deploy_contract.py`;
@@ -279,3 +282,87 @@ makes our tools usable there without per-call approval. `alwaysLoad` buys nothin
 `docs/CODEX-SETUP.md` should recommend an `enabled_tools` allowlist mirroring `CRITICAL_TOOLS`.
 Anything that depends on `SERVER_INSTRUCTIONS` being read (Step 5's escape valve) is
 Claude-Code-only until someone verifies Codex.
+
+---
+
+## Appendix A — per-tool annotations (Step 1's payload)
+
+`openWorldHint: false` for all 39 except `eval`. Per spec, `destructiveHint` and
+`idempotentHint` are only meaningful when `readOnlyHint` is false — **omit them on read tools**
+rather than writing defaults nobody reads. `title` is the host's display label; without it a
+client shows the mangled `mcp__plugin_entity_brain__…` name in its approval dialog.
+
+Legend: RO = readOnlyHint · D = destructiveHint · I = idempotentHint. † = removed by Step 2/3,
+annotate only if Step 1 ships first.
+
+### Reads — `readOnlyHint: true` (19)
+
+| tool | title | note |
+|---|---|---|
+| `recall` | Recall memories | touches session-scoped access bookkeeping, not node data — still a read |
+| `recall_batch` | Recall (multi-query) | |
+| `recall_episodes` | Recall episodes | |
+| `get_nodes` | Get memories by id | |
+| `get_node` † | Get memory by id | |
+| `get_traces` | Get traces by id | |
+| `get_trace` † | Get trace | |
+| `find_node_by_title` | Find memory by title | |
+| `filter_nodes` | Filter memories | |
+| `query_traces` | Query traces | |
+| `count_traces` | Count traces | |
+| `query_logs` | Query brain logs | |
+| `self_presence` | Live streams | |
+| `self_peek` | Peek at a stream | |
+| `self_outbox` | Sent-message receipts | |
+| `thalamus_list` | Queued brain items | |
+| `list_interactions` † | List interactions | |
+| `get_interaction` † | Get interaction | |
+| `get_interaction_effective` † | Resolved interaction | |
+
+### Additive writes — RO false, **D false** (11)
+
+| tool | title | I | why |
+|---|---|---|---|
+| `remember` | Save a memory | false | two calls = two nodes; a host retry on timeout must not duplicate |
+| `remember_batch` | Save memories | false | same |
+| `connect` | Link two memories | **true** | documented field-preserving upsert, no auto-strengthen on repeat |
+| `connect_batch` | Link memories | **true** | same |
+| `enrich` | Add recall vectors | **true** | re-storing overwrites the same enrichment rows |
+| `set_node_lock` | Lock a memory | **true** | flag set to a value |
+| `self_send` | Message a stream | false | repeat = a second message in the inbox |
+| `self_inbox` | Drain inbox | false | **consume-once** (`dispatch_self.py:89`) — the second call returns nothing. This is the tool `is_write` gets most wrong |
+| `remind` | File a reminder | false | idempotent only when `dedup_key` is passed; hints are static, so take the conservative value |
+| `thalamus_resolve` | Answer a queued item | **true** | resolving an already-resolved item adds nothing |
+| `register_interaction` † | Register interaction version | false | each call mints version N+1 |
+
+### Overwriting writes — RO false, **D true** (6)
+
+| tool | title | I | why |
+|---|---|---|---|
+| `revise` | Revise a memory | false | specified fields are REPLACED; a `content` rewrite loses the old body, and a repeated `content_edits` fails its exact-match anchor |
+| `revise_batch` | Revise memories | false | same |
+| `revise_edge` | Revise an edge | false | overwrites relation / description / weight in place |
+| `brain_batch` | Mixed memory ops | false | the union contains `archive`, `absorb` and `disconnect` — a union takes the max risk of its members |
+| `set_interaction_active` † | Deploy an override | true | overwrites the active pointer and changes runtime behaviour globally |
+| `clear_interaction_override` † | Revert to code default | true | deletes the pointer |
+
+### Operational — RO false, **D true** (3)
+
+| tool | title | I | openWorld | why |
+|---|---|---|---|---|
+| `clear_errors` | Clear error log | true | false | deletes rows; clearing twice adds nothing |
+| `restart` | Restart the daemon | false | false | tears down a live process — a host should always confirm |
+| `eval` | Evaluate Python (dev) | false | **true** | arbitrary Python can reach anything, including the network. The only tool in the catalog that is genuinely open-world — and the reason Step 4 gates it behind a flag |
+
+### What each field actually buys us
+
+- **`readOnlyHint`** — the whole Codex approval story, and it also makes those calls run
+  concurrently (`agents.max_threads`, default 6). 19 tools become promptless there.
+- **`destructiveHint`** — currently defaults **true** for all 39 because we declare nothing, so a
+  Codex user with `destructive_enabled = false` cannot call `recall`. Declaring it correctly
+  turns a blanket block into a 9-tool block.
+- **`idempotentHint`** — retry safety. A host that auto-retries a timed-out call will duplicate
+  a `remember` and silently no-op a repeated `connect`; the hint is how it knows which.
+- **`openWorldHint`** — one honest `true` (`eval`) is worth more than 39 defaults.
+- **`title`** — what a human sees in the approval dialog instead of
+  `mcp__plugin_entity_brain__thalamus_resolve`.
