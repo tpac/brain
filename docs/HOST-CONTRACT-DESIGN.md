@@ -1,6 +1,11 @@
 # Host Contract — Design
 
-**Status:** design, shape approved (Tom, 2026-09-07), **not built**. No code changed.
+**Status — 2026-09-07:** design, shape approved by Tom, **0 of 5 steps built**. Merged to main
+(`b56e63e`); docs-only, so no `servers/*.py` fingerprint change and no daemon restart. Nothing
+under `servers/` or `hooks/` was touched. **Next move:** a from-above review before execution
+— `/architecture-review` for code-claim verification and placement, noting it cannot simulate
+post-step state (`96400de4`), so the step ordering in §10 is reasoned, not traced. Handoff and
+verify-before-use list: brain node `a2594ee0`. One gate is still Tom's — see the end of §9.
 
 **What this owns:** the boundary between a harness (Claude Code, Codex, later Grok or a local
 model) and the host-neutral brain — how a harness is recognised, what vocabulary it speaks,
