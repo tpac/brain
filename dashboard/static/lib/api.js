@@ -133,8 +133,12 @@ export const api = {
   // Self-channel (Streams tab)
   selfMessages:        (p = {}) => get('/api/self-messages' + _qs(p)),
   bootRenders:         (p = {}) => get('/api/boot-renders' + _qs(p)),
+  // One session's OWN operator conversation (identity cue, not stream traffic)
+  sessionMessages:     (p = {}) => get('/api/session-messages' + _qs(p)),
   selfPresence:        (p = {}) => get('/api/self-presence' + _qs(p)),
   selfSend:            (body)   => post('/api/self-send', body),
+  // Thalamus (the brain's standing-intent queue) — items + delivery ledger
+  thalamus:            (p = {}) => get('/api/thalamus' + _qs(p)),
   // The recall probe — POST because it carries a query body, not because it
   // writes. The server pins mark_accessed=False, so it stays a pure read.
   recall:              (body)   => post('/api/recall', body),

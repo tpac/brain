@@ -25,12 +25,16 @@
      narrowest-scope to widest: this turn, the streams having turns, the graph
      they all write into, then the raw record and the errors. -->
 <div class="tabs">
-  <div class="tab active" data-tab="live"    onclick="switchTab('live')">Live <span class="tab-sub">S1</span></div>
-  <div class="tab"        data-tab="streams" onclick="switchTab('streams')">Streams <span class="tab-sub">sessions</span></div>
-  <div class="tab"        data-tab="s2"      onclick="switchTab('s2')">Graph <span class="tab-sub">S2</span></div>
-  <div class="tab"        data-tab="traces"  onclick="switchTab('traces')">Traces</div>
-  <div class="tab"        data-tab="logs"    onclick="switchTab('logs')">Logs <span id="logs-badge" class="notif"></span></div>
-  <!-- ⋯ overflow — Explorer + Health live here. The button is a tab visually
+  <div class="tab active" data-tab="live"     onclick="switchTab('live')">Live <span class="tab-sub">S1</span></div>
+  <div class="tab"        data-tab="streams"  onclick="switchTab('streams')">Streams <span class="tab-sub">sessions</span></div>
+  <!-- Thalamus sits next to Streams because it is the other half of the same
+       conversation: Streams is the streams speaking to each other, Thalamus is
+       the brain speaking to them. The badge counts items still open. -->
+  <div class="tab"        data-tab="thalamus" onclick="switchTab('thalamus')">Thalamus <span id="thalamus-badge" class="notif"></span></div>
+  <div class="tab"        data-tab="s2"       onclick="switchTab('s2')">Graph <span class="tab-sub">S2</span></div>
+  <div class="tab"        data-tab="traces"   onclick="switchTab('traces')">Traces</div>
+  <div class="tab"        data-tab="logs"     onclick="switchTab('logs')">Logs <span id="logs-badge" class="notif"></span></div>
+  <!-- ⋯ overflow — Explorer + Overview live here. The button is a tab visually
        but never gets an associated tab-content; switching to one of the
        overflow items leaves the ⋯ button in its “active” state via the
        data-overflow-active attribute set by switchTab. -->
@@ -39,7 +43,7 @@
     <div class="tab-overflow-menu" id="tab-overflow-menu">
       <div class="tab-overflow-item" data-tab="journals" onclick="switchTab('journals')">Journals</div>
       <div class="tab-overflow-item" data-tab="explorer" onclick="switchTab('explorer')">Explorer</div>
-      <div class="tab-overflow-item" data-tab="health"   onclick="switchTab('health')">Health</div>
+      <div class="tab-overflow-item" data-tab="overview" onclick="switchTab('overview')">Overview</div>
     </div>
   </div>
 </div>
@@ -200,7 +204,7 @@
   <div class="feed" id="feed-s2"></div>
 </div>
 
-<div id="tab-health" class="tab-content">
+<div id="tab-overview" class="tab-content">
   <h3 style="color:#888;margin:12px 8px 8px;font-size:13px">System Status</h3>
   <div id="status-grid" style="padding:0 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px"></div>
   <h3 style="color:#888;margin:20px 8px 8px;font-size:13px">Aspect taxonomy (14 aspects classify node types + edge relations)</h3>
@@ -237,42 +241,83 @@
 </div>
 
 <!-- ── Streams tab ───────────────────────────────────────────────────
-     Self↔self channel observability. Two sub-views:
-       Messages — the courier log (self_inflight + delivery fan-out) AND
-                  the S0 `self_message` deliveries (what reached Observation).
-       Boot     — the faithful per-session boot captures (boot_renders).
-     Plus a send composer: the dashboard's one write path, daemon-mediated
-     (POST /api/self-send → daemon self_send). The presence line up top is
-     the live roster (read through the daemon). -->
+     Self↔self channel observability, read as a CHAT: the conversation is the
+     headline (left/top), the roster of who's talking is the rail beside it
+     (which stacks under the chat on a narrow window). The log is the courier
+     (self_inflight + its delivery fan-out); the composer is the dashboard's
+     one write path, daemon-mediated (POST /api/self-send → daemon self_send),
+     and the operator sends attributed — never masquerading as a stream. -->
 <div id="tab-streams" class="tab-content">
-  <!-- Roster of live streams of thought (panes). Each drills open to its arc,
-       its own boot context, and its messages — no separate Boot tab. -->
-  <div class="streams-presence" id="streams-presence" style="padding:4px 8px"></div>
+  <div class="streams-layout">
 
-  <!-- Cross-stream message log header -->
-  <div style="display:flex;align-items:center;gap:8px;padding:8px 10px 4px;border-top:1px solid #1a1a2a;margin-top:4px">
-    <span style="color:#9a9aab;font-size:12px;font-weight:600">Messages between streams</span>
-    <select id="streams-hours" class="toolbar-select" onchange="loadStreams()" style="margin-left:auto">
+    <!-- The open conversation — oldest at top, newest at the bottom above the
+         composer, the way every chat the operator already knows reads. -->
+    <section class="chat-col">
+      <header class="chat-head">
+        <span class="chat-title" id="chat-title">💬 All messages</span>
+        <span class="chat-sub" id="chat-sub">what the streams of thought are saying to each other</span>
+        <select id="streams-hours" class="toolbar-select" onchange="loadStreams()" style="margin-left:auto">
+          <option value="24">24h</option>
+          <option value="48" selected>48h</option>
+          <option value="168">7d</option>
+        </select>
+        <span id="streams-count" class="chat-count"></span>
+      </header>
+
+      <!-- Thread header — WHO this conversation is with: the stream's own pane
+           (arc, cwd, turns, and its boot context on click). Empty for the
+           All / Everyone threads, which have no single counterpart. -->
+      <div class="chat-thread" id="chat-thread"></div>
+
+      <div class="chat-log" id="feed-streams-messages"></div>
+
+      <!-- Composer pinned at the foot of the conversation, chat-style. The
+           recipient follows the open thread; the dropdown stays reachable for
+           sending somewhere else without leaving the thread you're reading. -->
+      <div class="chat-composer" id="streams-compose">
+        <label class="chat-to-label" for="streams-send-to">To</label>
+        <select id="streams-send-to" class="toolbar-select" title="Recipient stream (or broadcast)">
+          <option value="broadcast">everyone (broadcast)</option>
+        </select>
+        <input id="streams-send-body" type="text" class="chat-input"
+               placeholder="Say something to a stream of thought…"
+               onkeydown="onStreamsSendKey(event)">
+        <button class="btn--glass chat-send" onclick="onStreamsSend()">Send</button>
+        <span id="streams-send-status" class="chat-send-status"></span>
+      </div>
+    </section>
+
+    <!-- Conversation list — one row per stream of thought (plus Everyone, for
+         the broadcasts, and All, the merged firehose). Liveness lives on the
+         row, so this single column answers both "who is live" and "who is
+         talking to whom". -->
+    <aside class="streams-rail">
+      <div class="conv-list" id="conv-list"></div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ── Thalamus tab ──────────────────────────────────────────────────
+     The brain's standing-intent queue — the other direction of the Streams
+     conversation. An item is an ask, a reminder or a notice; it lives until
+     it is answered, dismissed or expires, and the ledger under each card says
+     which sessions actually saw it, and at which moment (boot / stop). -->
+<div id="tab-thalamus" class="tab-content">
+  <div class="thal-toolbar">
+    <div class="thal-summary" id="thal-summary"></div>
+    <select id="thalamus-scope" class="toolbar-select" onchange="loadThalamus()" style="margin-left:auto">
+      <option value="all" selected>Open + recently closed</option>
+      <option value="open">Open only</option>
+    </select>
+    <select id="thalamus-hours" class="toolbar-select" onchange="loadThalamus()">
       <option value="24">24h</option>
-      <option value="48" selected>48h</option>
-      <option value="168">7d</option>
+      <option value="168" selected>7d</option>
+      <option value="720">30d</option>
     </select>
-    <span id="streams-count" style="color:#888;font-size:11px;margin-left:4px"></span>
+    <span id="thalamus-count" class="thal-count"></span>
   </div>
-
-  <!-- Send composer (the one write path) -->
-  <div class="streams-compose" id="streams-compose" style="display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid #1a1a2a;flex-wrap:wrap">
-    <select id="streams-send-to" class="toolbar-select" title="Recipient stream (or broadcast)">
-      <option value="broadcast">broadcast (all live streams)</option>
-    </select>
-    <input id="streams-send-body" type="text" placeholder="Message to a stream of thought…"
-           style="flex:1;min-width:200px;background:#0a0a12;border:1px solid #2a2a3a;color:#ddd;border-radius:4px;padding:6px 8px;font-size:12px"
-           onkeydown="onStreamsSendKey(event)">
-    <button class="btn--glass" onclick="onStreamsSend()" style="white-space:nowrap">Send</button>
-    <span id="streams-send-status" style="color:#888;font-size:11px"></span>
-  </div>
-
-  <div class="feed" id="feed-streams-messages"></div>
+  <div class="feed" id="feed-thalamus"></div>
 </div>
 
 <!-- Main app — type=module enables ES imports, no build step needed. -->
