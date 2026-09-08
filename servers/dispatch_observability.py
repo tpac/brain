@@ -49,7 +49,8 @@ def _handle_trace_append(brain, args, graph_changes):
                 key = hashlib.sha256(pair.encode()).hexdigest()[:16]
                 brain._log_error('tool_kind_unknown',
                                  ValueError('%s: %s' % (key, pair)),
-                                 'unclassified tool at the S0 write door')
+                                 'unclassified tool at the S0 write door; session_id=%r' % session_id,
+                                 session_id=session_id)
         elif session_id:
             raw_meta = stamp_s0_session(raw_meta, env)
     try:

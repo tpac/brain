@@ -1978,7 +1978,7 @@ class Brain(
     def _log_event(self, event_type: str, source: str, *,
                    metadata: Dict[str, Any], file_level: str, file_text: str,
                    file_detail: str = '', fingerprint: Optional[str] = None,
-                   ctx=None):
+                   ctx=None, session_id: Optional[str] = None):
         """Shared policy + write path for a debug_log row.
 
         Owns the cross-cutting policy that `_log_error` / `_log_warning`
@@ -1993,11 +1993,14 @@ class Brain(
         encode, MCP dispatch) pass `ctx` for correct session attribution;
         callers without it fall back to the deprecated `self.session_id`
         singleton (last-writer-wins, but log attribution is informational).
+        A raw event may supply `session_id` directly, including an empty string
+        for a sessionless event; this overrides either context source.
         """
         try:
             if fingerprint is not None and self._check_rate_limit(source, fingerprint):
                 return  # suppressed
-            _sid = (ctx.session_id if ctx is not None else self.session_id) or 'unknown'
+            _sid = session_id if session_id is not None else (
+                (ctx.session_id if ctx is not None else self.session_id) or 'unknown')
             self._check_logs_db_size()
             self._logs_dal.write_event(event_type, source, metadata, session_id=_sid)
             self._write_to_file_log(file_level, source, file_text, file_detail)
@@ -2029,7 +2032,7 @@ class Brain(
         return _stage()
 
     def _log_error(self, source: str, error: Exception, context: str = '',
-                   ctx=None):
+                   ctx=None, *, session_id: Optional[str] = None):
         """Log an error to brain_logs.db + brain.log with rate limiting.
         NEVER raises — _log_event guards the whole write with a stderr
         last-resort, so callers need no try/except around this.
@@ -2060,6 +2063,7 @@ class Brain(
             file_detail=tb_short,
             fingerprint='%s:%s:%s' % (source, error_type, error_str[:100]),
             ctx=ctx,
+            session_id=session_id,
         )
         # After the row is written, never before: a provider refusal must be
         # recorded even if the latch itself misbehaves.
