@@ -37,21 +37,28 @@ both total limits, including already-encoded turn stubs.
   with tool and target cues. Import-first Python/shell snippets become opaque
   script counts; an import does not establish the script's effect or make it
   read-only. Other non-Git traces remain available for inspection.
-- **Consecutive edits with the same target cue and raw tool can group**, stating
-  how many edit actions occurred and that intermediate details were omitted.
-  This is distinct from `×N`, which means identical recorded summaries and
-  classification identity. Thin only folds consecutive repeats, preserving
-  intervening operations.
+- **Actions group within each conversation turn**, without preserving their
+  internal order. Edit calls sharing a full target cue and raw tool become one
+  counted row, even across intervening reads or tests. `(N edit calls)` counts
+  calls sharing a caption, not identical patches or complete per-file touches;
+  a multi-file patch's caption can name only its first file. `×N` on other cues
+  means identical recorded summaries and classification identity. Omitted
+  routine activity shares one rollup per turn.
+- **The closing actions are reserved before deduplication**. Meaningful cues
+  render separately as `Closing: …`, even if they repeat an earlier action.
+  Closing boilerplate joins the routine rollup. Conversation turns stay ordered;
+  action list order inside a turn cannot establish which test followed which edit.
 - **Edits, diagnostic warnings and meaningful closing cues get priority** at
   allocation. Useful tests, deploy commands and stated script intent remain
   eligible as individual cues. A priority flood still stops at the total limit.
 - **Overflow gets one counted `<action_limit>` notice** across the window,
   including the number of priority actions omitted. Selected records render
-  chronologically; within a priority class, newer records get space first.
+  in conversation-turn order; within a priority class, later turns and later
+  prepared rows get space first.
   Missing detail does not mean no activity occurred.
 
 `balanced` keeps the established 15/30 per-turn head budgets and exact-summary
-deduplication. `thin` uses 5/10 head budgets plus routine grouping. These are
+deduplication. `thin` uses 5/10 head budgets plus grouping across each turn. These are
 presentation targets, not total ceilings. `full` skips grouping/condensation;
 existing provenance-based tool filtering still applies. The final whole-window
 limit is always enforced. This bounds action input, not total encoder tokens,

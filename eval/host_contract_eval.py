@@ -95,19 +95,29 @@ def compare_inputs(before, after):
     if not b['stamped_edits'] or protected_edits != b['stamped_edits']:
         raise ValueError('normalized edits are not all protected')
     for call in b['calls']:
-        expected = Counter(action['label'] for ep, action in zip(call['episodes'], call['parsed'])
-                           if isinstance(ep.get('metadata'), dict)
-                           and ep['metadata'].get('kind') == 'edit'
-                           and ep['metadata'].get('kind_status') == 'ok')
-        for label, count in expected.items():
-            repeat = re.compile(re.escape(label) + r' ×(\d+)$')
+        # Group by recorded identity, accepting every actual label variant.
+        # A multiline trim (or its collision with the label cap) can change
+        # the visible caption without changing the edit's grouping identity.
+        groups = {}
+        for ep, action in zip(call['episodes'], call['parsed']):
+            md = ep.get('metadata')
+            if not isinstance(md, dict) or md.get('kind') != 'edit' or md.get('kind_status') != 'ok':
+                continue
+            key = (str(ep.get('summary', action['label'])).split('\n', 1)[0], md.get('tool'))
+            groups.setdefault(key, Counter())[action['label']] += 1
+        seen_labels = set()
+        for labels in groups.values():
+            if seen_labels.intersection(labels):
+                raise ValueError('ambiguous rendered edit captions across recorded identities; '
+                                 'cannot prove per-target/tool retention from text')
+            seen_labels.update(labels)
+            cue = re.compile(r'(?:Closing: )?(?:' + '|'.join(re.escape(label) for label in labels)
+                             + r')(?: ×(\d+)| \((\d+) edit calls\))?$')
             shown = 0
             for line in call['lines']:
-                if line == label:
-                    shown += 1
-                elif match := repeat.fullmatch(line):
-                    shown += int(match[1])
-            if shown < count:
+                if match := cue.fullmatch(line):
+                    shown += int(match[1] or match[2] or 1)
+            if shown < sum(labels.values()):
                 raise ValueError('normalized edits are not all retained in rendered actions')
     if _check_rendered_calls(a['calls'], prompts[0]) != _check_rendered_calls(b['calls'], prompts[1]):
         raise ValueError('unmeasured action blocks changed')

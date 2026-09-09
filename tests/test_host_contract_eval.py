@@ -128,3 +128,81 @@ def test_eval_settings_apply_to_initial_and_followup_requests(monkeypatch):
         assert call.kwargs['model'] == 'fixture-model'
         assert call.kwargs['max_tokens'] == 128
         assert 'output_config' not in call.kwargs
+
+
+@pytest.mark.parametrize('caption', ['edit: src/code.py (2 edit calls)',
+                                     'Closing: edit: src/code.py ×2'])
+def test_retention_gate_counts_grouped_and_closing_edit_cues(tmp_path, caption):
+    before, after, _ = _pair(tmp_path)
+    for path in (before, after):
+        report = json.loads((path / 'input.json').read_text())
+        call = report['calls'][0]
+        call['episodes'] *= 2
+        call['parsed'] *= 2
+        report['stamped_edits'] = 2
+        if path == after:
+            call['lines'] = [caption]
+            (path / 'prompt.txt').write_text('catalog age 5m\n<actions>' + caption + '</actions>')
+        (path / 'input.json').write_text(json.dumps(report))
+    assert compare_inputs(before, after)['retained_edits'] == 2
+
+
+def test_retention_gate_rejects_undercounted_edit_group(tmp_path):
+    before, after, _ = _pair(tmp_path)
+    for path in (before, after):
+        report = json.loads((path / 'input.json').read_text())
+        call = report['calls'][0]
+        call['episodes'] *= 3
+        call['parsed'] *= 3
+        report['stamped_edits'] = 3
+        if path == after:
+            call['lines'] = ['edit: src/code.py (2 edit calls)']
+        (path / 'input.json').write_text(json.dumps(report))
+    with pytest.raises(ValueError, match='not all retained'):
+        compare_inputs(before, after)
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+@pytest.mark.parametrize('caption_length', [40, 179, 180, 181])
+def test_retention_gate_accepts_actual_group_with_mixed_multiline_markers(tmp_path, reverse, caption_length):
+    from servers.action_policy import ActionPolicy
+    from servers.scales.s1.encoder_actions import parse_action, prepare_action_block
+    before, after, report = _pair(tmp_path)
+    def ep(summary, kind='edit'):
+        return {'summary': summary, 'metadata': {'tool': 'Edit' if kind == 'edit' else 'Bash',
+                'kind': kind, 'kind_status': 'ok', 'vocab_version': 1, 'impl_identity': 'test'}}
+    caption = 'Edit: src/' + 'a' * (caption_length - len('Edit: src/.py')) + '.py'
+    edits = [ep(caption), ep(caption + '\nold: a\nnew: b')]
+    if reverse:
+        edits.reverse()
+    episodes = [edits[0], ep('Bash: pytest middle', 'shell'), edits[1],
+                ep('Bash: pytest end', 'shell'), ep('Bash: deploy', 'shell')]
+    block = prepare_action_block(episodes, is_tail=True, encoded=False,
+                                 view_policy=True, policy=ActionPolicy())
+    report['stamped_edits'] = 2
+    report['calls'] = [{'is_tail': True, 'episodes': episodes,
+                       'parsed': [{'protected': (a := parse_action(e)).protected, 'label': a.label}
+                                  for e in episodes],
+                       'lines': [line.text for line in block.lines]}]
+    prompt = 'catalog age 5m\n<actions>' + '\n'.join(report['calls'][0]['lines']) + '</actions>'
+    for path in (before, after):
+        (path / 'input.json').write_text(json.dumps(report))
+        (path / 'prompt.txt').write_text(prompt)
+    assert compare_inputs(before, after)['retained_edits'] == 2
+
+
+@pytest.mark.parametrize('tool_collision', [False, True])
+def test_retention_gate_refuses_ambiguous_shortened_captions(tmp_path, tool_collision):
+    before, after, _ = _pair(tmp_path)
+    for path in (before, after):
+        report = json.loads((path / 'input.json').read_text())
+        call = report['calls'][0]
+        call['episodes'] = [{'summary': 'Edit: /root/%s/servers/code.py' % prefix,
+                             'metadata': {'kind': 'edit', 'kind_status': 'ok', 'tool': tool}}
+                            for prefix, tool in [('one', 'editor_one'),
+                                                 ('one' if tool_collision else 'two', 'editor_two')]]
+        call['parsed'] *= 2
+        report['stamped_edits'] = 2
+        (path / 'input.json').write_text(json.dumps(report))
+    with pytest.raises(ValueError, match='ambiguous rendered edit captions'):
+        compare_inputs(before, after)

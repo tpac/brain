@@ -29,24 +29,28 @@ def test_thin_rolls_import_scaffolding_without_claiming_read_only():
     assert not any('read-only' in line.text for line in block.lines)
 
 
-def test_edit_groups_are_distinct_and_do_not_cross_other_operations():
+def test_edit_calls_group_across_tests_without_claiming_identical_patches():
     a = _ep('Edit: /repo/a.py\nold: x\nnew: y', 'edit', 'Edit')
     b = _ep('Edit: /repo/a.py\nold: y\nnew: z', 'edit', 'Edit')
     block = _prepare([a, b, _ep('Bash: pytest test_a.py'), a,
                       _ep('Bash: pytest test_b.py'), _ep('Bash: deploy app')])
     assert sum(line.count for line in block.lines) == 6
-    assert '2 edit actions' in block.lines[0].text
+    assert '3 edit calls' in block.lines[0].text
     assert '×' not in block.lines[0].text
     assert block.lines[1].text == 'Bash: pytest test_a.py'
-    assert 'Edit: /repo/a.py' in block.lines[2].text
+    assert sum('Edit: /repo/a.py' in line.text for line in block.lines) == 1
+    assert [line.text for line in block.lines[-2:]] == [
+        'Closing: Bash: pytest test_b.py', 'Closing: Bash: deploy app']
 
 
-def test_repeated_inspection_keeps_edit_groups_separate():
+def test_repeated_inspection_joins_one_rollup_across_edit_groups():
     read = _ep('Bash: cat a.py')
     block = _prepare([read, _ep('Edit: a.py\nold: x', 'edit', 'Edit'),
                       read, _ep('Edit: a.py\nold: y', 'edit', 'Edit'),
                       _ep('Bash: pytest'), _ep('Bash: deploy')])
-    assert not any('edit actions' in line.text for line in block.lines)
+    assert '2 edit calls' in block.lines[0].text
+    rollups = [line for line in block.lines if 'other actions grouped' in line.text]
+    assert len(rollups) == 1 and rollups[0].count == 2
     assert sum(line.count for line in block.lines) == 6
 
 
@@ -166,4 +170,92 @@ def test_production_timeline_enforces_one_budget_and_preserves_messages(monkeypa
         'message-u%d' % i for i in range(20)]
     assert [turn.find('actions').text.strip() for turn in root.findall('turn')
             if turn.find('actions') is not None] == [
-        'Edit: /repo/important-%d.py' % i for i in (17, 18, 19)]
+        ('Closing: ' if view_policy else '') + 'Edit: /repo/important-%d.py' % i
+        for i in (17, 18, 19)]
+
+
+def test_thin_final_verification_survives_matching_body_call_and_read_flood():
+    verify = _ep('Bash: ./dev pytest tests/ -q')
+    episodes = ([_ep('Bash: echo step-%d' % i) for i in range(13)] + [verify]
+                + [_ep('Read: src/f%d.py' % i, 'read', 'Read') for i in range(6)]
+                + [verify])
+    block = _prepare(episodes)
+    assert block.lines[-1].text == 'Closing: Bash: ./dev pytest tests/ -q'
+    assert block.lines[-1].count == 1
+    assert sum(line.count for line in block.lines) == len(episodes)
+    assert sum('other actions grouped' in line.text for line in block.lines) == 1
+
+
+def test_thin_body_repeats_fold_across_intervening_commands_only():
+    repeat = _ep('Bash: pytest middle')
+    block = _prepare([repeat, _ep('Bash: echo marker'), repeat,
+                      _ep('Bash: pytest end'), _ep('Bash: deploy')])
+    assert block.lines[0].text == 'Bash: pytest middle ×2'
+    assert sum(line.count for line in block.lines) == 5
+
+
+def test_group_identity_precedes_path_shortening_and_keeps_tools_and_states():
+    cues = ['/Users/one/brain/servers/shared.py', '/Users/two/brain/servers/shared.py']
+    episodes = [_ep('edit: ' + cue, 'edit', 'apply_patch') for cue in cues]
+    episodes += [_ep('edit: ' + cues[0], 'edit', 'another_editor'),
+                 {'summary': 'Edit: ' + cues[0], 'metadata': {'tool': 'Edit'}},
+                 _ep('Edit: ' + cues[0], 'edit', 'Edit'),
+                 _ep('edit: ' + cues[0], 'edit', 'apply_patch', capture_filter_incomplete=True)]
+    episodes += [_ep('Bash: pytest'), _ep('Bash: deploy')]
+    block = _prepare(episodes)
+    assert len(block.lines) == len(episodes)
+    assert all(line.count == 1 for line in block.lines)
+    assert sum(line.priority == 3 for line in block.lines) == 1
+    assert 'capture filter incomplete' in block.lines[-3].text
+
+
+def test_same_caption_with_different_patch_payloads_counts_calls():
+    first = _ep('apply_patch: src/a.py', 'edit', 'apply_patch',
+                patch='*** Update File: src/a.py\n-old\n+new')
+    second = _ep('apply_patch: src/a.py', 'edit', 'apply_patch',
+                 patch='*** Update File: src/a.py\n-new\n+fixed\n*** Add File: src/b.py')
+    block = _prepare([first, _ep('Bash: cat src/a.py'), second,
+                      _ep('Bash: pytest'), _ep('Bash: deploy')])
+    assert block.lines[0].text == 'apply_patch: src/a.py (2 edit calls)'
+    assert sum(line.count for line in block.lines) == 5
+
+
+def test_grouped_edit_flood_remains_bounded_and_counts_every_call():
+    episodes = []
+    for i in range(300):
+        episodes += [_ep('Edit: src/f%d.py\nchange-%d' % (i % 20, i), 'edit', 'Edit'),
+                     _ep('Read: src/f%d.py' % i, 'read', 'Read')]
+    policy = ActionPolicy(max_lines=4, max_bytes=512)
+    block = _prepare(episodes, policy)
+    assert sum(line.count for line in block.lines) == len(episodes)
+    rendered, notice = render_action_blocks([block], policy)
+    payload = ''.join(rendered) + notice
+    assert len(payload.encode()) <= policy.max_bytes
+    root = ET.fromstring('<timeline>' + payload + '</timeline>')
+    lines = [line.strip() for a in root.findall('actions')
+             for line in (a.text or '').splitlines() if line.strip()]
+    assert len(lines) + 1 <= policy.max_lines
+    retained = sum(line.count for line in block.lines if line.text in lines)
+    omitted = int(re.match(r'(\d+) actions omitted', root.findtext('action_limit'))[1])
+    assert retained + omitted == len(episodes)
+
+
+def test_groups_never_cross_turn_boundaries():
+    edit = _ep('apply_patch: src/a.py', 'edit', 'apply_patch')
+    blocks = [_prepare([edit, _ep('Bash: cat src/a.py'), edit,
+                        _ep('Bash: pytest'), _ep('Bash: deploy')]) for _ in range(2)]
+    rendered, notice = render_action_blocks(blocks, ActionPolicy())
+    assert not notice
+    assert len(rendered) == 2
+    assert all(xml.count('apply_patch: src/a.py (2 edit calls)') == 1 for xml in rendered)
+
+
+@pytest.mark.parametrize('profile,expected_count', [('thin', 2), ('balanced', 1)])
+def test_legacy_raw_tools_stay_separate_in_thin_with_balanced_compatibility(profile, expected_count):
+    def legacy(tool):
+        return {'summary': 'Edit: src/a.py', 'metadata': {'tool': tool}}
+    block = _prepare([legacy('editor_one'), _ep('Bash: pytest middle'),
+                      legacy('editor_two'), _ep('Bash: pytest end'), _ep('Bash: deploy')],
+                     ActionPolicy(profile=profile))
+    assert sum('Edit: src/a.py' in line.text for line in block.lines) == expected_count
+    assert sum(line.count for line in block.lines) == 5

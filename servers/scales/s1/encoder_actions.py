@@ -2,8 +2,8 @@
 
 ActionLine retains event count, priority and text until the entire timeline is
 allocated. Exact-summary dedup stays separate from grouping distinct edits.
-Closing cues keep their position. Every omission is counted; priority never
-bypasses the final line/escaped-byte ceiling. Git capture/render exclusion and
+Thin groups within a turn; closing cues stay separate. Every omission is counted;
+priority never bypasses the final line/escaped-byte ceiling. Git capture/render exclusion and
 settings live in action_policy; vocabulary and provenance live in their existing
 contracts. The prompt's action glossary describes this output.
 """
@@ -56,7 +56,7 @@ _SCRIPT_OPENER_RE = re.compile(r'''(?:<<-?\s*['"]?\w+['"]?\s*$|-c\s+["']\s*$)'''
 
 class _Action:
     __slots__ = ('raw', 'tool', 'sub', 'label', 'targets', 'protected', 'count',
-                 'kind', 'kind_status', 'raw_tool', 'routine', 'position')
+                 'kind', 'kind_status', 'raw_tool', 'routine')
 
     def __init__(self, raw, tool, sub, label, targets, protected,
                  kind='', kind_status='legacy', raw_tool=''):
@@ -65,7 +65,6 @@ class _Action:
         self.protected, self.count = protected, 1
         self.kind, self.kind_status, self.raw_tool = kind, kind_status, raw_tool
         self.routine = False
-        self.position = 0
 
 
 def _squeeze_paths(s):
@@ -261,7 +260,7 @@ def parse_action(episode):
     return action
 
 
-def _dedup(actions, consecutive=False):
+def _dedup(actions, *, legacy_summary_identity=False):
     """Exact-repeat dedup keyed on the RAW summary — never the rendered
     label (a rendered label is lossy: squeezed paths, trimmed bodies, the
     180-char cap; folding on it would claim two different actions were the
@@ -272,22 +271,17 @@ def _dedup(actions, consecutive=False):
         # stamped edit into a legacy row would lose its protection. Preserve
         # raw MCP namespace/operation too (display names may be identical).
         key = (a.raw, a.kind, a.kind_status,
-               a.raw_tool if a.kind_status != 'legacy' else None)
+               None if legacy_summary_identity and a.kind_status == 'legacy' else a.raw_tool)
         prior = by_raw.get(key)
-        if consecutive and (not kept or prior is not kept[-1]
-                            or prior.position + 1 != a.position):
-            prior = None
         if prior is not None:
             prior.count += a.count
-            if consecutive:
-                prior.position = a.position
         else:
             by_raw[key] = a
             kept.append(a)
     return kept
 
 
-def _rollup_line(mid):
+def _rollup_line(mid, *, grouped=False):
     """The accounting line for the unrendered middle. Every internal cap
     marks itself ('+k more') — this line's entire job is auditability."""
     total = sum(a.count for a in mid)
@@ -315,7 +309,9 @@ def _rollup_line(mid):
         parts.append(part)
     if len(tools) > len(top_tools):
         parts.append('+%d more tools' % (len(tools) - len(top_tools)))
-    line = '(%d more actions, not shown: %s' % (total, ', '.join(parts))
+    description = ('other actions grouped; details omitted' if grouped
+                   else 'more actions, not shown')
+    line = '(%d %s: %s' % (total, description, ', '.join(parts))
     if targets:
         shown = targets[:ROLLUP_TARGET_CAP]
         line += ' — touched: %s' % ', '.join(shown)
@@ -367,29 +363,27 @@ def _action_line(action, closing=False):
 
 
 def _group_edits(actions):
-    """Group only consecutive, identical *full target cues*, before rendering.
+    """Group edit calls by full recorded target cue, keeping other cues separate.
 
-    Different bodies stay distinct operations; no grouping across an intervening
-    inspection/test or across raw tool identities. This is not exact-repeat dedup.
+    A caption may name only the first file of a multi-file patch. Counts describe
+    calls sharing that caption, not identical edits or complete per-file touches.
+    Group before shortening paths, and never merge classification diagnostics.
     """
-    groups = []
+    edits, other = {}, []
     for action in actions:
-        key = (action.raw.split('\n', 1)[0], action.kind_status, action.raw_tool)
-        if (action.kind == 'edit' and groups and groups[-1][0] == key
-                and groups[-1][1][-1].kind == 'edit'
-                and groups[-1][1][-1].position + action.count == action.position):
-            groups[-1][1].append(action)
+        if action.kind == 'edit' and action.kind_status not in ('unknown', 'malformed'):
+            key = (action.raw.split('\n', 1)[0], action.kind_status, action.raw_tool)
+            edits.setdefault(key, []).append(action)
         else:
-            groups.append((key, [action]))
+            other.append(_action_line(action))
     out = []
-    for _, members in groups:
-        if len(members) == 1:
-            out.append(_action_line(members[0]))
-        else:
-            count = sum(a.count for a in members)
-            out.append(ActionLine('%s (%d edit actions; intermediate details omitted)' %
-                                  (members[0].label, count), count, 2))
-    return out
+    for members in edits.values():
+        count = sum(a.count for a in members)
+        label = members[0].label
+        if count > 1:
+            label += ' (%d edit calls)' % count
+        out.append(ActionLine(label, count, 2))
+    return out + other
 
 
 def _condense_lines(episodes, is_tail, policy):
@@ -397,10 +391,9 @@ def _condense_lines(episodes, is_tail, policy):
     `is_tail`: the newest turn — the encoder's actual working material —
     gets the larger budget; older unencoded turns the smaller."""
     actions = []
-    for position, episode in enumerate(episodes):
+    for episode in episodes:
         action = parse_action(episode)
         if action:
-            action.position = position
             actions.append(action)
     if policy.profile == 'full':
         return [_action_line(a, closing=i >= len(actions) - ACTIONS_KEEP_LAST)
@@ -412,7 +405,9 @@ def _condense_lines(episodes, is_tail, policy):
     closing = actions[-ACTIONS_KEEP_LAST:] if len(actions) > ACTIONS_KEEP_LAST \
         else actions
     body = actions[:-len(closing)] if closing is not actions else []
-    body = _dedup(body, consecutive=policy.profile == 'thin')
+    # Balanced retains its historical summary-only identity for unstamped rows.
+    # Thin must keep raw tools separate before grouping edit captions.
+    body = _dedup(body, legacy_summary_identity=policy.profile == 'balanced')
 
     budget = ACTION_BUDGETS[policy.profile][bool(is_tail)]
     # Soft edge: an accounting line for one or two actions costs more than
@@ -423,7 +418,7 @@ def _condense_lines(episodes, is_tail, policy):
 
     # Writes render regardless of budget; the budget's head slots go to the
     # leading regular actions; everything else rolls into the accounting
-    # line. Rendered body lines keep their original relative order.
+    # line. Thin groups the whole body; balanced keeps its relative order.
     head_slots = max(0, budget - len(closing))
     out, kept, mid, regular_kept = [], [], [], 0
 
@@ -433,30 +428,32 @@ def _condense_lines(episodes, is_tail, policy):
 
     def flush_mid():
         if mid:
-            out.append(ActionLine(_rollup_line(mid), sum(a.count for a in mid)))
+            out.append(ActionLine(_rollup_line(mid, grouped=thin), sum(a.count for a in mid)))
             mid.clear()
 
     for a in body:
         keep = a.protected or (not (thin and a.routine) and regular_kept < head_slots)
         if keep:
-            flush_mid()
+            if not thin:
+                flush_mid()
             kept.append(a)
             if not a.protected:
                 regular_kept += 1
         else:
-            flush_kept()
+            if not thin:
+                flush_kept()
             mid.append(a)
     flush_kept()
+    # Closing boilerplate joins the turn's one rollup. Meaningful closing cues
+    # stay separate even when a body action has exactly the same summary.
+    if thin:
+        mid.extend(a for a in closing if a.routine)
+        closing = [a for a in closing if not a.routine]
     flush_mid()
-    # Thin mode also rolls up boilerplate at the close; recency doesn't make
-    # an import or inbox poll informative. Useful closing cues stay in place.
     for a in closing:
-        if thin and a.routine:
-            mid.append(a)
-        else:
-            flush_mid()
-            out.append(_action_line(a, True))
-    flush_mid()
+        line = _action_line(a, True)
+        out.append(ActionLine('Closing: ' + line.text, line.count, line.priority)
+                   if thin else line)
     return out
 
 
@@ -504,7 +501,7 @@ def _block_xml(block, selected):
 def render_action_blocks(blocks, policy):
     """Hard whole-timeline limits, including escaped UTF-8 and omission markup.
 
-    Allocate structured records by priority/recency, render chronologically.
+    Allocate structured records by priority and turn recency, preserving block order.
     Even a flood of protected edits or diagnostics must fit; one global notice
     accounts for omitted records across turns without spending a marker per turn.
     """
