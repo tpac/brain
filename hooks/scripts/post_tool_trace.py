@@ -99,7 +99,7 @@ def main():
     # Attach to current stop's S0 chain
     chain_id = "s0-%s-%s" % (session_id[:8], stop)
 
-    msg = json.dumps({
+    packet = {
         "cmd": "trace_append",
         "args": {
             "chain_id": chain_id,
@@ -110,7 +110,20 @@ def main():
             "metadata": json.dumps(_raw_metadata(data, tool_name, tool_input)),
             "session_id": session_id,
         }
-    })
+    }
+    # A wire-only argument fact: the daemon classifies the tool and decides
+    # capture policy. The 200-character display cue is insufficient to see a
+    # Git invocation late in a mixed call. Never retain this as trace metadata.
+    command = tool_input.get('command')
+    if isinstance(command, str):
+        packet['args']['tool_command'] = command
+    msg = json.dumps(packet)
+    if len(msg.encode('utf-8')) > 900_000:
+        # Stay below the daemon's 1 MiB transport ceiling. Don't pretend the
+        # cropped display summary is the full command: retain a loud diagnostic.
+        packet['args'].pop('tool_command', None)
+        packet['args']['tool_command_omitted'] = True
+        msg = json.dumps(packet)
 
     # DELIBERATELY hand-rolled, NOT routed through daemon_client.send_command
     # like every other client. The reason is COST, on the hottest path in the

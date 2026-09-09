@@ -785,6 +785,9 @@ TOOL_RESULT_METADATA_SHAPE = {
     'turn_id': str,
     'payload_keys': list,
 }
+# Optional capture facts remain extras, not required normalization stamps:
+# git_invocation=True records a positively identified literal call;
+# capture_filter_incomplete=True announces an oversized unavailable command.
 # Required on new writes: even old clients and sessionless tool rows pass the
 # daemon's stamper. Historical rows are never normalized on read (D10).
 TOOL_RESULT_NORMALIZATION_KEYS = (

@@ -44,6 +44,14 @@ PLUGIN_TOOL = ('mcp__plugin_%s_%s__' % (_PLUGIN, _SERVER)) + '%s'
 ROLLUP_RE = re.compile(r'^\((\d+) more actions, not shown: ')
 
 
+@pytest.fixture(autouse=True)
+def balanced_action_policy(monkeypatch):
+    monkeypatch.setenv('BRAIN_ACTIONS_PROFILE', 'balanced')
+    monkeypatch.setenv('BRAIN_ACTIONS_EXCLUDE_GIT', '0')
+    monkeypatch.setenv('BRAIN_ACTIONS_MAX_LINES', '200')
+    monkeypatch.setenv('BRAIN_ACTIONS_MAX_BYTES', '24000')
+
+
 def _ep(summary, tool='Bash'):
     return {'summary': summary, 'metadata': {'tool': tool}}
 

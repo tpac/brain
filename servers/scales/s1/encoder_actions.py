@@ -1,50 +1,23 @@
-"""Actions condenser — the <actions> half of the encoder view policy.
+"""Shared S1 action view: parse → group/condense → allocate → serialize.
 
-Turns a turn's raw tool_result episodes into the lines the encoder reads.
-Three steps — parse, condense, render — over records, never over rendered
-strings, so a new tool or a new condensing heuristic can't conflate with an
-existing one. Adding a heuristic = adding one pure function to the condense
-chain in condense_actions (similarity-coalescing of near-identical sweeps is
-deliberately deferred until more production fixtures exist; the budget
-already collapses the floods it would target).
-
-  parse    one place that knows tool shapes; any unknown tool degrades to a
-           generic one-line record (total by construction, never an error)
-  condense drop/stub per encoder_view.action_mode (existing policy), then
-           exact-repeat dedup, then the per-turn budget. Three protections
-           bound what may be condensed away:
-             - the last ACTIONS_KEEP_LAST actions render verbatim in place
-               (the turn's outcome) and are never folded INTO earlier lines
-             - write actions (edit kind/git write-verbs/intent scripts)
-               never roll up — they are rare and they are the story
-             - dedup identity is the RAW summary, never the rendered label,
-               so two different actions can never fold into a false '×N'
-  render   records → plain text lines; the caller XML-escapes and indents
-
-Invariants (tests/test_encoder_actions.py pins them):
-- SELF-MARKING: every omission names itself in place — '×N' (a true repeat
-  of the same recorded action), the '(N more actions, not shown: …)'
-  accounting line, ' …' on every trimmed multi-line body, '+k more' on every
-  capped breakdown, '/…/' on every shortened path.
-- COUNT-CONSERVING: rendered ×N counts + the accounting line's count sum to
-  the true total of policy-visible actions.
-- TOTAL PARSE: any input degrades to a generic record, never raises.
-- FILTER AT RENDER, NEVER AT CAPTURE: traces keep recording everything.
-
-Policy constants (budgets, caps, protected-tool sets) live in
-encoder_view.py with the rest of the view policy's vocabulary; this module
-is the machinery. The s1e prompt's <actions> gloss documents this render's
-notation — a render change here that adds notation must ride a prompt
-version (the stale-gloss rule).
+ActionLine retains event count, priority and text until the entire timeline is
+allocated. Exact-summary dedup stays separate from grouping distinct edits.
+Closing cues keep their position. Every omission is counted; priority never
+bypasses the final line/escaped-byte ceiling. Git capture/render exclusion and
+settings live in action_policy; vocabulary and provenance live in their existing
+contracts. The prompt's action glossary describes this output.
 """
 import re
 from collections import Counter
+from dataclasses import dataclass
+from html import escape
 
+from servers.action_policy import load_action_policy, has_git_command
 from servers.scales.s1.encoder_view import (
-    ACTIONS_BUDGET, ACTIONS_BUDGET_TAIL, ACTIONS_KEEP_LAST, ACTION_LABEL_CAP,
+    ACTION_BUDGETS, ACTIONS_KEEP_LAST, ACTION_LABEL_CAP,
     ACTIONS_BUDGET_SOFT_EDGE, COMMENT_SCAN_DEPTH, PATH_KEEP_SEGMENTS,
     ROLLUP_SUBS_CAP, ROLLUP_TOOLS_CAP, ROLLUP_TARGET_CAP,
-    SUPPORTED_ACTION_VOCAB_VERSIONS, GIT_WRITE_VERBS, action_mode, action_stub)
+    SUPPORTED_ACTION_VOCAB_VERSIONS, action_mode, action_stub, actions_stub_line)
 from servers.trace_contract import ACTION_KINDS
 
 # Frozen pre-cutover SUMMARY behavior, only for rows with no classification
@@ -83,7 +56,7 @@ _SCRIPT_OPENER_RE = re.compile(r'''(?:<<-?\s*['"]?\w+['"]?\s*$|-c\s+["']\s*$)'''
 
 class _Action:
     __slots__ = ('raw', 'tool', 'sub', 'label', 'targets', 'protected', 'count',
-                 'kind', 'kind_status', 'raw_tool')
+                 'kind', 'kind_status', 'raw_tool', 'routine', 'position')
 
     def __init__(self, raw, tool, sub, label, targets, protected,
                  kind='', kind_status='legacy', raw_tool=''):
@@ -91,6 +64,8 @@ class _Action:
         self.label, self.targets = label, targets
         self.protected, self.count = protected, 1
         self.kind, self.kind_status, self.raw_tool = kind, kind_status, raw_tool
+        self.routine = False
+        self.position = 0
 
 
 def _squeeze_paths(s):
@@ -248,6 +223,11 @@ def parse_action(episode):
         return _Action(summary, tool, '', label, _extract_targets(summary), True,
                        kind=kind, kind_status=status, raw_tool=raw_tool)
 
+    if isinstance(md, dict) and md.get('capture_filter_incomplete') is True:
+        return _Action(summary, tool, '', _cap('capture filter incomplete; action retained: '
+                       + _squeeze_paths(first)), (), True,
+                       kind=kind, kind_status='malformed', raw_tool=raw_tool)
+
     mode = action_mode(raw_tool) if status == 'legacy' or kind == 'mcp' else 'full'
     if mode == 'drop':
         return None
@@ -257,19 +237,31 @@ def parse_action(episode):
                        kind=kind, kind_status=status, raw_tool=raw_tool)
 
     sub = _bash_verb(args) if kind == 'shell' else ''
-    label = _cap(_squeeze_paths(_label(kind, first, lines)))
+    # Transport names remain in identity/dedup, not in every visible label.
+    display_first = '%s: %s' % (_short_tool(head), args) if sep else first
+    label = _cap(_squeeze_paths(_label(kind, display_first, lines)))
     if not label.strip():
         label = '%s (no cue)' % (tool or 'tool')
-    # Writes never roll up: explicit write tools, git write-verbs, and
-    # scripts whose intent was harvested (they are this repo's file editors).
+    intent = _script_intent(lines) if _SCRIPT_OPENER_RE.search(first) else ''
+    scaffold = bool(re.match(r'^(?:import\s|from\s+[\w.]+\s+import\s)', intent))
+    # An import is a poor cue, not evidence that the script only reads.
     protected = (kind == 'edit'
-                 or (kind == 'shell' and sub in GIT_WRITE_VERBS)
-                 or ' · ' in label)
-    return _Action(summary, tool, sub, label, _extract_targets(summary),
-                   protected, kind=kind, kind_status=status, raw_tool=raw_tool)
+                 or (kind == 'shell' and sub in {'rm', 'mv', 'cp', 'touch', 'mkdir'})
+                 or (' · ' in label and not scaffold))
+    action = _Action(summary, tool, sub, label, _extract_targets(summary),
+                     protected, kind=kind, kind_status=status, raw_tool=raw_tool)
+    from servers.dispatch_common import is_brain_tool
+    action.routine = (scaffold or kind == 'read'
+                      or (kind == 'shell' and sub in {
+                          'cat', 'sed', 'rg', 'grep', 'head', 'tail', 'wc', 'ls', 'pwd', 'find'})
+                      or (is_brain_tool(raw_tool) and tool in {
+                          'self_inbox', 'self_outbox', 'self_presence', 'self_peek'}))
+    if scaffold:
+        action.sub = 'script'  # count an opaque script, never invent its effect
+    return action
 
 
-def _dedup(actions):
+def _dedup(actions, consecutive=False):
     """Exact-repeat dedup keyed on the RAW summary — never the rendered
     label (a rendered label is lossy: squeezed paths, trimmed bodies, the
     180-char cap; folding on it would claim two different actions were the
@@ -282,8 +274,13 @@ def _dedup(actions):
         key = (a.raw, a.kind, a.kind_status,
                a.raw_tool if a.kind_status != 'legacy' else None)
         prior = by_raw.get(key)
+        if consecutive and (not kept or prior is not kept[-1]
+                            or prior.position + 1 != a.position):
+            prior = None
         if prior is not None:
             prior.count += a.count
+            if consecutive:
+                prior.position = a.position
         else:
             by_raw[key] = a
             kept.append(a)
@@ -331,11 +328,83 @@ def _render(a):
     return a.label + (' ×%d' % a.count if a.count > 1 else '')
 
 
-def condense_actions(episodes, is_tail=False):
+@dataclass(frozen=True)
+class ActionLine:
+    text: str
+    count: int = 1
+    priority: int = 0
+
+
+@dataclass
+class ActionBlock:
+    lines: list
+    inline: bool = False
+
+
+def filter_action_episodes(episodes, policy):
+    """Apply the capture exclusion to history without changing stored rows."""
+    if not policy.exclude_git:
+        return list(episodes)
+    kept = []
+    for episode in episodes:
+        summary = str(episode.get('summary') or '')
+        head, _, command = summary.partition(': ')
+        kind, status = _read_kind(episode.get('metadata'), _short_tool(head))
+        md = episode.get('metadata')
+        known_git = isinstance(md, dict) and md.get('git_invocation') is True
+        incomplete = isinstance(md, dict) and md.get('capture_filter_incomplete') is True
+        if (kind == 'shell' and status in ('legacy', 'ok') and not incomplete
+                and (known_git or has_git_command(command))):
+            continue
+        kept.append(episode)
+    return kept
+
+
+def _action_line(action, closing=False):
+    priority = (3 if action.kind_status in ('unknown', 'malformed') else
+                2 if action.protected else 1 if closing and not action.routine else 0)
+    return ActionLine(_render(action), action.count, priority)
+
+
+def _group_edits(actions):
+    """Group only consecutive, identical *full target cues*, before rendering.
+
+    Different bodies stay distinct operations; no grouping across an intervening
+    inspection/test or across raw tool identities. This is not exact-repeat dedup.
+    """
+    groups = []
+    for action in actions:
+        key = (action.raw.split('\n', 1)[0], action.kind_status, action.raw_tool)
+        if (action.kind == 'edit' and groups and groups[-1][0] == key
+                and groups[-1][1][-1].kind == 'edit'
+                and groups[-1][1][-1].position + action.count == action.position):
+            groups[-1][1].append(action)
+        else:
+            groups.append((key, [action]))
+    out = []
+    for _, members in groups:
+        if len(members) == 1:
+            out.append(_action_line(members[0]))
+        else:
+            count = sum(a.count for a in members)
+            out.append(ActionLine('%s (%d edit actions; intermediate details omitted)' %
+                                  (members[0].label, count), count, 2))
+    return out
+
+
+def _condense_lines(episodes, is_tail, policy):
     """Episodes of one turn → the lines its <actions> element renders.
     `is_tail`: the newest turn — the encoder's actual working material —
     gets the larger budget; older unencoded turns the smaller."""
-    actions = [a for a in (parse_action(e) for e in episodes) if a]
+    actions = []
+    for position, episode in enumerate(episodes):
+        action = parse_action(episode)
+        if action:
+            action.position = position
+            actions.append(action)
+    if policy.profile == 'full':
+        return [_action_line(a, closing=i >= len(actions) - ACTIONS_KEEP_LAST)
+                for i, a in enumerate(actions)]
 
     # The closing actions are the turn's outcome: split them off BEFORE
     # dedup so a final action that repeats an earlier one can never be
@@ -343,28 +412,134 @@ def condense_actions(episodes, is_tail=False):
     closing = actions[-ACTIONS_KEEP_LAST:] if len(actions) > ACTIONS_KEEP_LAST \
         else actions
     body = actions[:-len(closing)] if closing is not actions else []
-    body = _dedup(body)
+    body = _dedup(body, consecutive=policy.profile == 'thin')
 
-    budget = ACTIONS_BUDGET_TAIL if is_tail else ACTIONS_BUDGET
+    budget = ACTION_BUDGETS[policy.profile][bool(is_tail)]
     # Soft edge: an accounting line for one or two actions costs more than
     # it saves — only condense when the middle is worth a line.
-    if len(body) + len(closing) <= budget + ACTIONS_BUDGET_SOFT_EDGE:
-        return [_render(a) for a in body] + [_render(a) for a in closing]
+    thin = policy.profile == 'thin'
+    if not thin and len(body) + len(closing) <= budget + ACTIONS_BUDGET_SOFT_EDGE:
+        return [_action_line(a) for a in body] + [_action_line(a, True) for a in closing]
 
     # Writes render regardless of budget; the budget's head slots go to the
     # leading regular actions; everything else rolls into the accounting
     # line. Rendered body lines keep their original relative order.
     head_slots = max(0, budget - len(closing))
-    kept, mid, regular_kept = [], [], 0
+    out, kept, mid, regular_kept = [], [], [], 0
+
+    def flush_kept():
+        out.extend(_group_edits(kept) if thin else map(_action_line, kept))
+        kept.clear()
+
+    def flush_mid():
+        if mid:
+            out.append(ActionLine(_rollup_line(mid), sum(a.count for a in mid)))
+            mid.clear()
+
     for a in body:
-        if a.protected:
+        keep = a.protected or (not (thin and a.routine) and regular_kept < head_slots)
+        if keep:
+            flush_mid()
             kept.append(a)
-        elif regular_kept < head_slots:
-            kept.append(a)
-            regular_kept += 1
+            if not a.protected:
+                regular_kept += 1
         else:
+            flush_kept()
             mid.append(a)
-    out = [_render(a) for a in kept]
-    if mid:
-        out.append(_rollup_line(mid))
-    return out + [_render(a) for a in closing]
+    flush_kept()
+    flush_mid()
+    # Thin mode also rolls up boilerplate at the close; recency doesn't make
+    # an import or inbox poll informative. Useful closing cues stay in place.
+    for a in closing:
+        if thin and a.routine:
+            mid.append(a)
+        else:
+            flush_mid()
+            out.append(_action_line(a, True))
+    flush_mid()
+    return out
+
+
+def condense_actions(episodes, is_tail=False, policy=None):
+    """Per-turn text view; the whole-window limit is applied by render_action_blocks."""
+    policy = policy or load_action_policy()
+    return [line.text for line in _condense_lines(
+        filter_action_episodes(episodes, policy), is_tail, policy)]
+
+
+def prepare_action_block(episodes, *, is_tail, encoded, view_policy, policy):
+    episodes = filter_action_episodes(episodes, policy)
+    if not episodes:
+        return ActionBlock([])
+    if encoded and view_policy:
+        return ActionBlock([ActionLine(actions_stub_line(len(episodes)), len(episodes))], True)
+    if view_policy:
+        return ActionBlock(_condense_lines(episodes, is_tail, policy))
+    # The old view may show raw multiline cues, but cannot bypass exclusion or
+    # the final cap. Classification diagnostics still get allocation priority.
+    lines = []
+    for i, episode in enumerate(episodes):
+        action = parse_action(episode)
+        prepared = _action_line(action, i >= len(episodes) - ACTIONS_KEEP_LAST) if action else None
+        diagnostic = prepared and prepared.priority == 3
+        lines.append(ActionLine(prepared.text if diagnostic else str(episode.get('summary') or ''),
+                                1, prepared.priority if prepared else 0))
+    return ActionBlock(lines)
+
+
+def _line_text(line):
+    # XML normalizes CR and CRLF to LF. Count and render the same visible lines.
+    return line.text.replace('\r\n', '\n').replace('\r', '\n')
+
+
+def _block_xml(block, selected):
+    if not selected:
+        return ''
+    if block.inline and len(selected) == 1:
+        return '  <actions>%s</actions>\n' % escape(_line_text(selected[0]), quote=False)
+    return ('  <actions>\n' + ''.join('    %s\n' % escape(_line_text(line), quote=False)
+                                     for line in selected) + '  </actions>\n')
+
+
+def render_action_blocks(blocks, policy):
+    """Hard whole-timeline limits, including escaped UTF-8 and omission markup.
+
+    Allocate structured records by priority/recency, render chronologically.
+    Even a flood of protected edits or diagnostics must fit; one global notice
+    accounts for omitted records across turns without spending a marker per turn.
+    """
+    full = [_block_xml(block, block.lines) for block in blocks]
+    n_lines = sum(_line_text(line).count('\n') + 1 for b in blocks for line in b.lines)
+    if n_lines <= policy.max_lines and sum(len(s.encode('utf-8')) for s in full) <= policy.max_bytes:
+        return full, ''
+    candidates = [(ti, li, line) for ti, block in enumerate(blocks)
+                  for li, line in enumerate(block.lines)]
+    total = sum(line.count for _, _, line in candidates)
+    priority_total = sum(line.count for _, _, line in candidates if line.priority)
+
+    def notice(count, turns, priority):
+        return ('<action_limit>%d actions omitted across %d turns by the timeline '
+                'action limit (%d priority actions); omissions are not absence '
+                'of activity.</action_limit>\n' % (count, turns, priority))
+
+    reserved = len(notice(total, len(blocks), priority_total).encode('utf-8'))
+    remaining_bytes, remaining_lines = policy.max_bytes - reserved, policy.max_lines - 1
+    selected = [{} for _ in blocks]
+    for ti, li, line in sorted(candidates, key=lambda item: (item[2].priority, item[0], item[1]), reverse=True):
+        # Charge a turn's wrapper once, and the exact incremental serialized cost.
+        before = _block_xml(blocks[ti], list(selected[ti].values()))
+        after = _block_xml(blocks[ti], list(selected[ti].values()) + [line])
+        cost = len(after.encode('utf-8')) - len(before.encode('utf-8'))
+        lines = _line_text(line).count('\n') + 1
+        if cost <= remaining_bytes and lines <= remaining_lines:
+            selected[ti][li] = line
+            remaining_bytes -= cost
+            remaining_lines -= lines
+    omitted = [(ti, line) for ti, li, line in candidates if li not in selected[ti]]
+    marker = notice(sum(line.count for _, line in omitted),
+                    len({ti for ti, _ in omitted}),
+                    sum(line.count for _, line in omitted if line.priority))
+    rendered = [_block_xml(block, [line for _, line in sorted(kept.items())])
+                for block, kept in zip(blocks, selected)]
+    assert sum(len(s.encode('utf-8')) for s in rendered) + len(marker.encode('utf-8')) <= policy.max_bytes
+    return rendered, marker
