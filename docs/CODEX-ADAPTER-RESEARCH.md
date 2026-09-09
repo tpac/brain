@@ -219,8 +219,9 @@ become `mcp__brain__recall` — not CC's `mcp__plugin_entity_brain__recall`).
 `enabled_tools`/`disabled_tools`, `tools.<tool>.output_token_limit`,
 `default_tools_approval_mode` = `auto | prompt | writes | approve` — `writes`
 prompts for every tool not annotated read-only. Codex **honors the MCP
-`instructions` field** (keep the first 512 chars self-contained) — the field
-Claude Code ignores (`3bab3268`). No tool-count budget for Legacy plugins; the
+`instructions` field** (keep the first 512 chars self-contained) — as does Claude
+Code, which injects it into the session system prompt (`2caf3389`; the
+zero-call-sites finding in `3bab3268` was Claude Desktop chat). No tool-count budget for Legacy plugins; the
 context cost of our 39-tool schema (75 k chars ≈ 19 k tokens **[measured]**) is
 paid on every turn unless trimmed.
 
