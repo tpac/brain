@@ -176,17 +176,22 @@ through the daemon after removal; contract tier.
   daemon-only command.
 
 **Verify:** `eval`'s annotations are the max-risk set (`destructiveHint` + `openWorldHint`
-true); a contract test pins the improvement-loop sentence so a future description trim cannot
-silently drop it.
+true); with `BRAIN_MCP_MAINTAINER` unset, `tools/list` carries the universal description and NOT
+the improvement-loop paragraph; with it set, both.
 
 ### `eval` as a self-retiring escape hatch
 
-`eval` exists because a capability has no door. Today that finding dies with the session: I
-answer the question and nobody learns which door was missing. The fix is one paragraph in the
-tool's own description — read at the moment the call is formed, which is the only moment the
+`eval` exists because a capability has no door. Today that finding dies with the session: the
+question gets answered and nobody learns which door was missing. The fix is a short paragraph in
+the tool's own description — read at the moment the call is formed, which is the only moment the
 question is live (the generation-time-enforcement property, id:55f960e5).
 
-Write it verbatim; don't paraphrase:
+**Two audiences, so two descriptions.** Tom's ruling 2026-09-08: the improvement loop helps the
+maintainer and is noise for everyone else — a normal user should never be asked to design an MCP
+door. So the danger warning and the mechanics ship to everyone, and the loop paragraph is
+appended only when `BRAIN_MCP_MAINTAINER=1`.
+
+**Universal — always shipped:**
 
 ```
 DANGEROUS — full capability. Evaluates an arbitrary Python expression inside the
@@ -195,34 +200,48 @@ either database, and can write, archive or delete through any method it reaches.
 The `safe_builtins` sandbox is weak and bypassable. Safe only because the daemon
 is loopback-bound and single-user — treat every call as an operator-level action.
 
-WHY IT EXISTS: to reach a brain capability that has no tool yet — including on an
-install that isn't the maintainer's, where it is the only way to diagnose a brain
-nobody can open directly.
-
-AFTER EVERY CALL, name the door you were missing: which existing tool should have
-covered this — a new parameter, a new `filter_nodes` field, a new `brain_batch`
-op — or which new tool is warranted. Tell the operator in one line, and
-`remember` it as a `gap` node so it accumulates instead of being re-discovered
-next session. `eval` standing in for a missing door is a finding about the tool
-surface, not a solution.
-
-`brain` and `json` are in the expression's LOCALS, so a lambda inside it
-NameErrors on `brain` AFTER its arguments have already run — side effects
-included. Use flat expressions.
+Use it to reach brain state that has no tool yet, including on an install nobody
+can open directly. `brain` and `json` are in the expression's LOCALS, so a lambda
+inside it NameErrors on `brain` AFTER its arguments have already run — side
+effects included. Use flat expressions.
 ```
 
-Cost: `eval` goes from 62 to roughly 330 net tokens, paid only when a caller fetches it.
+**Appended only under `BRAIN_MCP_MAINTAINER=1`:**
 
-**Two notes for whoever writes this.** First, it is deliberately the one place this plan ADDS
-prose to a description while Step 5 removes it — the rule being applied is "mechanics in MCP,
-audience-specific craft in the audience's prompt" (id:04ff3d58), and this text is neither
-audience-specific nor available anywhere else: no prompt owns "what to do after calling `eval`",
-and no encoder can reach the tool, so there is no cross-caller priming risk (id:807394de).
-Second, consider echoing one line of it on the RESULT as well (`_format_result` already
-special-cases per tool). Before the call the agent only knows it wants data; *after* the call it
-knows which method it reached for — which is when "what door was missing?" is actually
-answerable. The description shapes whether to reach for `eval` at all; the result-side echo is
-what makes the gap get written down.
+```
+After using it, consider whether this should have been a door — an existing tool
+with one more parameter or filter field, a new `brain_batch` op, or a tool of its
+own. When it should, say so in a line and `remember` it as a `gap` node so the
+suggestion accumulates instead of being rediscovered.
+```
+
+Deliberately a suggestion with two escape valves ("consider whether", "when it should") rather
+than a per-call obligation — Tom's constraint: it must not become an annoyance. The `gap` node is
+what makes it compound: a later session runs `filter_nodes(type='gap')` and reads the ranked list
+of doors `eval` has been standing in for, instead of the same gap being rediscovered.
+
+**The flag.** `~/.config/brain/env` is sourced unconditionally by `brain-env.sh:47` (it already
+carries `BRAIN_OPERATOR_NAME`, `BRAIN_AGENT_NAME`), and `mcp-launch.sh` sources `brain-env.sh`
+immediately before exec'ing `brain_mcp.py` — so a line in that file reaches `_build_tools()` with
+no new plumbing. Default off; the shipped catalog never carries the paragraph. Do NOT key it off
+`BRAIN_OPERATOR_NAME` — a name is not an opt-in.
+
+Cost: `eval` goes from 62 net tokens to roughly 180 universal, ~240 with the maintainer
+paragraph — paid only when a caller fetches the tool.
+
+**Three notes for whoever writes this.** First, it is deliberately the one place this plan ADDS
+prose to a description while Step 5 removes it. The rule being applied is "mechanics in MCP,
+audience-specific craft in the audience's prompt" (id:04ff3d58), and the universal half is pure
+mechanics; the maintainer half is audience-specific and therefore *conditioned*, not mixed into
+one string — which is the shape Step 5 should aim for wherever an audience split is real. No
+encoder can reach `eval`, so there is no cross-caller priming risk (id:807394de). Second, this
+introduces the first install-conditional tool text in the catalog: `test_contract_sync` and the
+annotation-coverage test must accept both shapes, and one of them should pin the maintainer
+sentence under the flag so a later description trim cannot silently drop it. Third, consider
+echoing one line of the loop on the RESULT as well, still flag-gated (`_format_result` already
+special-cases per tool) — before the call the agent only knows it wants data; *after* the call it
+knows which method it reached for, which is when "what door was missing?" is actually answerable.
+
 
 ---
 
