@@ -73,52 +73,50 @@ _SHELLS = frozenset({'sh', 'bash', 'dash', 'zsh', 'ksh'})
 _OPERATORS = re.compile(r'<<<|<<|>>|>&|<&|<>|&>|&&|\|\||\|&|[;&|()<>\n]')
 
 
-def _words(text):
-    """Keep raw quote/escape boundaries and recognize comments only at word start.
+def _words(text, start=0):
+    """Scan one logical shell header; return raw words and the next offset.
 
-    This lexer identifies literal command positions; it does not expand words.
+    Quotes, escapes and comments retain their shell boundaries. Reading from
+    an offset avoids repeatedly lexing the prefix of a multiline script.
     Incomplete historical cues return only their complete token prefix.
     """
-    words, word, quote, i = [], '', '', 0
+    words, word, quote, i = [], [], '', start
     while i < len(text):
         char = text[i]
         if char == "\\" and quote != "'":
             if i + 1 == len(text):
-                return words, False
-            if text[i + 1] == '\n' and i + 2 == len(text):
-                return words, False  # next physical line belongs to this command
+                return words, len(text)
             if text[i + 1] != "\n":
-                word += text[i:i + 2]
+                word.append(text[i:i + 2])
             i += 2
             continue
         if quote:
-            word += char
+            word.append(char)
             if char == quote:
                 quote = ''
         elif char in "\"'`":
             quote = char
-            word += char
+            word.append(char)
         elif char == '#' and not word:
             end = text.find('\n', i)
-            i = len(text) if end < 0 else end
-            continue
+            return words, len(text) if end < 0 else end + 1
         elif char in ' \t\r' or char in ';&|()<>\n':
             if word:
-                words.append(word)
-                word = ''
-            if char in ';&|()<>\n':
+                words.append(''.join(word))
+                word = []
+            if char == '\n':
+                return words, i + 1
+            if char in ';&|()<>':
                 operator = _OPERATORS.match(text, i).group()
                 words.append(operator)
                 i += len(operator)
                 continue
         else:
-            word += char
+            word.append(char)
         i += 1
-    if quote:
-        return words, False
-    if word:
-        words.append(word)
-    return words, True
+    if word and not quote:
+        words.append(''.join(word))
+    return words, i
 
 
 def _literal(word):
@@ -182,49 +180,42 @@ def _substitutions(text):
 
 
 def _command_chunks(command):
-    """Yield shell headers, keeping heredoc file bodies out of command syntax.
+    """Yield command words, skipping heredoc data without rescanning prefixes.
 
     A quoted heredoc is entirely data; only substitutions execute in an
-    unquoted one. Incomplete historical summaries can still contain a definite
-    leading Git invocation, so retain the token prefix on a lexical failure.
+    unquoted one. Incomplete historical summaries may still provide a definite
+    leading Git invocation, so the lexer retains complete token prefixes.
     """
-    pending, header, heredoc = [], '', ''
-    for line in command.splitlines(keepends=True):
-        if pending:
-            delimiter, quoted, strip_tabs = pending[0]
-            candidate = line.rstrip('\r\n')
-            if strip_tabs:
-                candidate = candidate.lstrip('\t')
-            if candidate == delimiter:
-                if not quoted:
-                    for body in _substitutions(heredoc):
-                        yield _words(body)[0]
-                pending.pop(0)
-                heredoc = ''
-            elif not quoted:
-                heredoc += line
-            continue
-        header += line
-        words, complete = _words(header)
-        if not complete:
-            continue
+    offset = 0
+    while offset < len(command):
+        words, offset = _words(command, offset)
         yield words
         for i, word in enumerate(words[:-1]):
-            if word == '<<':
-                delimiter = words[i + 1]
-                strip_tabs = delimiter.startswith('-')
+            if word != '<<':
+                continue
+            delimiter = words[i + 1]
+            strip_tabs = delimiter.startswith('-')
+            if strip_tabs:
+                delimiter = delimiter[1:]
+            quoted = any(c in delimiter for c in "\\\"'")
+            try:
+                literal = shlex.split(delimiter, comments=False)[0]
+            except (ValueError, IndexError):
+                literal = delimiter
+            body_start = offset
+            while offset < len(command):
+                end = command.find('\n', offset)
+                end = len(command) if end < 0 else end + 1
+                candidate = command[offset:end].rstrip('\r\n')
                 if strip_tabs:
-                    delimiter = delimiter[1:]
-                # Any quoting (including backslash quoting) disables expansion.
-                quoted = any(c in delimiter for c in "\\\"'")
-                try:
-                    literal = shlex.split(delimiter, comments=False)[0]
-                except (ValueError, IndexError):
-                    literal = delimiter
-                pending.append((literal, quoted, strip_tabs))
-        header = ''
-    if header:
-        yield _words(header)[0]
+                    candidate = candidate.lstrip('\t')
+                if candidate == literal:
+                    if not quoted:
+                        for body in _substitutions(command[body_start:offset]):
+                            yield from _command_chunks(body)
+                    offset = end
+                    break
+                offset = end
 
 
 def _segment_has_git(words, depth):
@@ -249,6 +240,8 @@ def _segment_has_git(words, depth):
                 flag = _literal(words[j])
                 if not flag.startswith('-') or flag == '--':
                     break  # a script filename ends the shell's option list
+                if flag == '--noexec' or (not flag.startswith('--') and 'n' in flag):
+                    return False  # syntax checking does not run the body
                 if flag.startswith('-') and not flag.startswith('--') and 'c' in flag:
                     return has_git_command(_shell_body(words[j + 1]), depth + 1)
             return False
@@ -291,6 +284,15 @@ def has_git_command(command, depth=0):
     if not isinstance(command, str) or depth > 8:
         return False
     for words in _command_chunks(command):
+        # Function bodies are deferred code, not observed invocations. Once a
+        # declaration appears, retain the call rather than attempt function
+        # execution/name resolution (the same boundary as aliases/scripts).
+        if any((word == 'function' and (i == 0 or words[i - 1] in _SEPARATORS
+                                        or words[i - 1] in _PREFIXES)) or (
+                re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', word)
+                and words[i + 1:i + 3] == ['(', ')'])
+               for i, word in enumerate(words)):
+            return False
         # Tokens have shell comments removed, while quote boundaries survive.
         if any(has_git_command(body, depth + 1)
                for body in _substitutions(' '.join(words))):

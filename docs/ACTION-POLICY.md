@@ -78,8 +78,10 @@ provenance filtering. `encode.py` only coordinates the whole-window call.
 
 Recognition reads shell syntax without executing it: command lists, pipelines,
 literal executables, common wrappers, shell `-c`, substitutions and heredocs.
-It does not resolve aliases, computed executable names or commands inside
-Python/other scripts. Historical summaries may already be cropped and cannot
+It does not resolve aliases, shell functions, computed executable names or
+commands inside Python/other scripts. Encountering a function declaration
+retains the call rather than treating its deferred body as execution.
+Historical summaries may already be cropped and cannot
 prove a later Git invocation. Unknown/malformed kinds are retained with a
 diagnostic. If the full command exceeds the hook transport allowance, capture
 also retains the row with a visible diagnostic and an error log rather than

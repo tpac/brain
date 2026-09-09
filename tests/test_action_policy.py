@@ -22,6 +22,7 @@ from tests import test_tool_result_stamp as hook_tests
     'diff <(git show HEAD:a) a', 'cat <<EOF\n$(\ngit status\n)\nEOF\n',
     'echo x#$(git status)', r'g\it status', "g'i't status",
     'g\\\nit status',
+    'printf function; git status',
 ])
 def test_git_anywhere_in_a_call_excludes_the_whole_call(command):
     assert has_git_command(command)
@@ -40,9 +41,18 @@ def test_git_anywhere_in_a_call_excludes_the_whole_call(command):
     'bash script.sh -c git', 'command -pv git', 'command -pV git',
     r"printf '%s\n' \( git status \)", 'sudo -l git status', 'env --help git',
     "'>' ignored git status", 'echo \\\ngit status', "printf '%s\\n' \\\ngit status",
+    'git() { echo wrapper; }', 'helper() { git status; }',
+    'function helper {\ngit status\n}',
+    "bash -n -c 'git status'", "sh -nc 'git status'",
 ])
 def test_mentions_and_file_bodies_are_not_git_commands(command):
     assert not has_git_command(command)
+
+
+def test_large_multiline_script_is_opaque_but_later_git_is_seen():
+    command = "python -c '\n" + 'print(1)\n' * 10000 + "'"
+    assert not has_git_command(command)
+    assert has_git_command(command + '\ngit status')
 
 
 @pytest.mark.parametrize('values', [
