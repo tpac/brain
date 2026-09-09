@@ -41,6 +41,27 @@ def _handle_trace_append(brain, args, graph_changes):
         env = brain.session_env_for(session_id) if session_id else {}
         if args.get('ref_type') == 'tool_result':
             raw_meta = stamp_tool_result(raw_meta, env)
+            raw_meta.pop('git_invocation', None)
+            raw_meta.pop('capture_filter_incomplete', None)
+            if raw_meta['kind'] == 'shell' and raw_meta['kind_status'] == 'ok':
+                from .action_policy import load_action_policy, has_git_command
+                policy = load_action_policy()
+                command = args.get('tool_command')
+                if args.get('tool_command_omitted'):
+                    raw_meta['capture_filter_incomplete'] = True
+                    brain._log_error('action_capture_filter_incomplete',
+                                     ValueError('full command exceeded trace transport limit'),
+                                     'retaining diagnostic; not classifying a cropped command',
+                                     session_id=session_id)
+                else:
+                    if not isinstance(command, str):
+                        command = str(args.get('summary') or '').partition(': ')[2]
+                    if has_git_command(command):
+                        if policy.exclude_git:
+                            return {'ok': True, 'result': {'excluded': 'git_call'}}
+                        # Preserve the observed fact if the user later enables
+                        # exclusion: a stored short cue may omit the invocation.
+                        raw_meta['git_invocation'] = True
             if raw_meta['kind_status'] == 'unknown':
                 # _log_error dedups by the first 100 message chars. Put a hash
                 # first so long raw names with a shared prefix stay distinct.

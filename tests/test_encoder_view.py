@@ -13,6 +13,15 @@ Two invariants under test, per policy surface:
 """
 import os
 import sys
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def balanced_action_policy(monkeypatch):
+    monkeypatch.setenv('BRAIN_ACTIONS_PROFILE', 'balanced')
+    monkeypatch.setenv('BRAIN_ACTIONS_EXCLUDE_GIT', '0')
+    monkeypatch.setenv('BRAIN_ACTIONS_MAX_LINES', '200')
+    monkeypatch.setenv('BRAIN_ACTIONS_MAX_BYTES', '24000')
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:

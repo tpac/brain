@@ -7,12 +7,12 @@ boundary rule: numbers shared with other consumers stay in encode_contract
 (ENCODING_AGENT is re-exported through pipeline_contract and read by
 brain_remember); single-consumer feeding decisions live here.
 
-FILTER AT RENDER, NEVER AT CAPTURE: the traces keep recording everything —
-the dashboard, episodes and recall_episodes read them. This policy only shapes
-the encoder's prompt view. Every filter marks itself in place (a stubbed
+This module shapes the encoder view. Explicit capture exclusions are owned
+by the shared action_policy, applied at the daemon write door; other traces
+remain available to the dashboard and episodic reads. Every filter marks itself in place (a stubbed
 <actions> says "trimmed", an aged catalog entry says how to expand), so
-absence can never be misread as "nothing happened" — which is why no prompt
-version registration rides this change: there are zero new how-to-read lines.
+omissions remain distinguishable from absence of activity. Git exclusion and
+the total action ceiling also apply when the view-policy flag is off.
 
 Flag: BRAIN_S1E_VIEW_POLICY, ON by default (arm D activated 2026-08-18 on an
 operator gate). Set to 0 for the emergency off-switch and the A/B control arm
@@ -189,50 +189,20 @@ STUBBED_ACTION_TOOLS = frozenset({
 # Kept head of a stubbed search line — enough for the query, not the args blob.
 ACTION_STUB_HEAD = 60
 
-# ── Actions condenser (encoder_actions.py — parse → condense → render) ──
-
-# Rendered action lines per turn before the middle rolls up into the
-# accounting line. The tail turn (the encoder's actual working material)
-# gets the larger budget; older unencoded turns the smaller. Generous on
-# purpose — we haven't measured what the encoder loses when sweeps collapse,
-# so v1 clamps only the floods (sample: a review turn carried ~105 actions,
-# a healthy build turn ~12). The real ceiling is budget + soft edge (below)
-# + however many write actions the turn carries (writes never roll up).
-ACTIONS_BUDGET = 15
-ACTIONS_BUDGET_TAIL = 30
-
-# An accounting line for 1-2 actions costs more than it saves: up to
-# budget + this many actions still render verbatim.
-ACTIONS_BUDGET_SOFT_EDGE = 2
-
-# The closing actions carry the turn's outcome (the commit, the merge, the
-# final verification) — always rendered verbatim, in place, and immune to
-# dedup-folding into earlier lines.
+# Action presentation tuning; shared user settings live in action_policy.
+ACTION_BUDGETS = {'thin': (5, 10), 'balanced': (15, 30)}
+ACTIONS_BUDGET, ACTIONS_BUDGET_TAIL = ACTION_BUDGETS['balanced']
 ACTIONS_KEEP_LAST = 2
-
-# One rendered line per action; longer labels mark their cut with '…'.
+ACTIONS_BUDGET_SOFT_EDGE = 2
 ACTION_LABEL_CAP = 180
-
-# Only explicitly supported vocabulary versions drive normalized behavior.
-# A future change in meaning needs a reader change; no read-time backfill.
-SUPPORTED_ACTION_VOCAB_VERSIONS = frozenset({1})
-
-# Edit kinds, git write-verbs and harvested-intent scripts never roll up.
-GIT_WRITE_VERBS = frozenset({'commit', 'rm', 'mv', 'merge', 'revert',
-                             'push', 'tag', 'am', 'cherry-pick'})
-
-# Caps inside the rollup accounting line — every one marks itself with
-# '+k more' when it truncates (the line's job is auditability).
-ROLLUP_TARGET_CAP = 8    # distinct file targets named
-ROLLUP_TOOLS_CAP = 6     # tools in the mix breakdown
-ROLLUP_SUBS_CAP = 4      # command words inside each display tool's entry
-
-# Lines scanned at the head of a script body for its intent ('#' comment or
-# first code line) and for a git-commit subject.
 COMMENT_SCAN_DEPTH = 8
-
-# Absolute paths ≥4 segments render as '/…/<last this-many segments>'.
 PATH_KEEP_SEGMENTS = 3
+ROLLUP_TARGET_CAP = 8
+ROLLUP_TOOLS_CAP = 6
+ROLLUP_SUBS_CAP = 4
+
+# Only supported recorded vocabulary versions may drive normalized behavior.
+SUPPORTED_ACTION_VOCAB_VERSIONS = frozenset({1})
 
 
 def action_mode(tool_name):

@@ -89,6 +89,24 @@ def test_pair_refuses_action_blocks_lost_by_prompt_renderer(tmp_path):
         compare_inputs(before, after)
 
 
+def test_strict_retention_gate_refuses_global_limit_omissions(tmp_path):
+    before, after, report = _pair(tmp_path)
+    report['action_allocation'] = {'notice': '<action_limit>1 action omitted</action_limit>'}
+    (after / 'input.json').write_text(json.dumps(report))
+    with pytest.raises(ValueError, match='exceeded the timeline action limit'):
+        compare_inputs(before, after)
+
+
+def test_pair_refuses_different_effective_action_settings(tmp_path):
+    before, after, report = _pair(tmp_path)
+    for path, profile in ((before, 'thin'), (after, 'balanced')):
+        record = json.loads((path / 'input.json').read_text())
+        record['action_allocation'] = {'policy': {'profile': profile}, 'notice': ''}
+        (path / 'input.json').write_text(json.dumps(record))
+    with pytest.raises(ValueError, match='action policy'):
+        compare_inputs(before, after)
+
+
 def test_eval_settings_apply_to_initial_and_followup_requests(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import Mock

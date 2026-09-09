@@ -62,6 +62,13 @@ def compare_inputs(before, after):
     """Refuse a code A/B with any input drift outside the changed actions."""
     a = json.loads((before / 'input.json').read_text())
     b = json.loads((after / 'input.json').read_text())
+    if any(report.get('action_allocation', {}).get('notice') for report in (a, b)):
+        raise ValueError('strict edit-retention comparison exceeded the timeline action limit; '
+                         'use a smaller window or bounded balanced control settings')
+    # Both absent preserves comparisons between historical reports. A new/old
+    # pair lacks an effective-policy snapshot and must be prepared again.
+    if a.get('action_allocation', {}).get('policy') != b.get('action_allocation', {}).get('policy'):
+        raise ValueError('paired input differs: action policy (regenerate legacy reports)')
     for key in ('snapshot_hashes', 'session', 'render_now', 'flags', 'messages',
                 'catalog_ids', 'interaction_stamp', 'interaction_config'):
         if a[key] != b[key]:
@@ -148,15 +155,26 @@ def main():
         if not messages:
             raise RuntimeError('empty session window')
         calls = []
-        original = encoder_actions.condense_actions
+        original = encoder_actions.prepare_action_block
+        original_render = encoder_actions.render_action_blocks
+        allocation = {}
 
-        def measured(episodes, is_tail=False):
-            lines = original(episodes, is_tail=is_tail)
-            parsed = [encoder_actions.parse_action(ep) for ep in episodes]
-            calls.append({'is_tail': is_tail, 'episodes': episodes,
-                          'parsed': [{key: getattr(a, key) for key in a.__slots__}
-                                     if a else None for a in parsed], 'lines': lines})
-            return lines
+        def measured(episodes, *, is_tail, encoded, view_policy, policy):
+            block = original(episodes, is_tail=is_tail, encoded=encoded,
+                             view_policy=view_policy, policy=policy)
+            if not encoded:
+                parsed = [encoder_actions.parse_action(ep) for ep in episodes]
+                calls.append({'is_tail': is_tail, 'episodes': episodes,
+                              'parsed': [{key: getattr(a, key) for key in a.__slots__}
+                                         if a else None for a in parsed],
+                              'lines': [line.text for line in block.lines]})
+            return block
+
+        def measured_render(blocks, policy):
+            rendered, notice = original_render(blocks, policy)
+            allocation.update(policy=vars(policy), blocks=rendered, notice=notice,
+                              serialized_bytes=len((''.join(rendered) + notice).encode('utf-8')))
+            return rendered, notice
 
         journal = encode._journal(brain, args.session)
         system = encode._build_system_prompt(
@@ -165,12 +183,13 @@ def main():
         tools = encode._get_tool_schemas()
         catalog = encode._build_catalog(brain, messages, args.session, True,
                                         view_policy=True, now=args.now)
-        with patch.object(encoder_actions, 'condense_actions', measured):
+        with patch.object(encoder_actions, 'prepare_action_block', measured), \
+                patch.object(encoder_actions, 'render_action_blocks', measured_render):
             preamble, body, _, catalog_ids = encode._build_user_content(
                 brain, messages, 5, args.session, journal=journal,
                 precomputed=catalog, view_now=args.now)
-        if not calls:
-            raise RuntimeError('production prompt did not call condense_actions')
+        if not calls or not allocation:
+            raise RuntimeError('production prompt did not prepare and allocate unencoded actions')
         stamped_edits = [ep for call in calls for ep in call['episodes']
                          if isinstance(ep.get('metadata'), dict)
                          and ep['metadata'].get('kind_status') == 'ok'
@@ -185,6 +204,7 @@ def main():
             'revision': code_revision(Path(encode.__file__).resolve().parents[3]),
             'consumer_hashes': {name: digest(Path(encoder_actions.__file__).parent / name)
                                 for name in ('encoder_actions.py', 'encoder_view.py')},
+            'action_policy_hash': digest(Path(encode.__file__).resolve().parents[2] / 'action_policy.py'),
             'snapshot_hashes': hashes, 'session': args.session,
             'render_now': args.now.isoformat(),
             'flags': {k: v for k, v in os.environ.items() if k.startswith('BRAIN_S1E_')},
@@ -200,6 +220,7 @@ def main():
                                'writes': 'dry-run'},
             'messages': messages, 'catalog_ids': sorted(catalog_ids),
             'calls': calls, 'stamped_edits': len(stamped_edits),
+            'action_allocation': allocation,
             'prompt_chars': len(content),
         }
         (args.out / 'input.json').write_text(json.dumps(report, indent=2, default=str))
