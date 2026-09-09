@@ -266,8 +266,14 @@ Target shape: mechanics + shapes + failure modes stay; craft, stance and audienc
 workflow move to the owning prompt. Front-load each description to a 1–2 sentence contract
 (current outliers: `brain_batch` 2,399 chars, `remember` 1,413) and let the schema field
 descriptions carry the detail. Cross-tool "when to reach for me" discipline that genuinely
-applies to every caller can go in `SERVER_INSTRUCTIONS` — one place, no per-tool tax, and on
-Claude Code it is delivered (id:2caf3389).
+applies to every caller can go in `SERVER_INSTRUCTIONS` — one place, no per-tool tax, delivered
+on BOTH hosts (id:2caf3389; Codex honours the field too).
+
+⚠ **But that valve is nearly full.** `SERVER_INSTRUCTIONS` is **501 characters** (measured
+2026-09-08) against the ~512 our own Codex research says must stay self-contained — 11 characters
+of headroom. Anything moved there displaces something already in it, so treat it as a fixed
+budget to be re-drafted whole, not an overflow bin. If Step 5 wants real room there, raising the
+budget needs a measurement of what Codex actually does past 512, which nobody has taken.
 
 **Verify:** benchmark-first — `eval/s1_encode_eval.py` before and after, plus
 `eval/mcp_tool_interview.py` on each edited tool to see how the consumer model reads the new
@@ -471,7 +477,7 @@ What the modes do, and where annotations land in them
 
 So Step 1's Codex value is narrower than "fewer prompts" and still real: `readOnlyHint` removes
 14 tools from the `writes`-mode ask AND lets them execute concurrently, and a correct
-`destructiveHint` means a user running `destructive_enabled = false` can still call 26 of the 30
+`destructiveHint` means a user running `destructive_enabled = false` can still call 23 of the 30
 tools instead of none. `brain_batch` being destructive costs one first-use confirmation, not a
 confirmation per encode — there is no reason to soften the hint.
 
