@@ -1,6 +1,49 @@
 # Host Contract — Design
 
-## Status — step 2 deployed; both hosts pass live capture/rendering (2026-09-08) ◀ ACTIVE ARC
+## Current continuation — step 3 envelopes (2026-09-10)
+
+**Next task:** step 3 of §10, harness envelopes and speaker attribution.
+Handoff: brain `id:938ac725`; it supersedes the step-2 opener `39ffdd98`.
+Read this head, §4, §6, D9–D11 and the step-3 row before editing.
+
+Steps 0–2 and the thin action-policy extension are deployed through `c58f533`.
+The step-3 plan clarification `7302038` is already on main. Thin groups action
+captions within a turn, preserves meaningful closing cues, excludes entire
+Git-containing calls and enforces 40 action lines / 6,000 serialized bytes for
+the full timeline. See [ACTION-POLICY.md](ACTION-POLICY.md). The final extension
+passed 246 tests plus independent correctness/simplification reviews; a recorded
+production window shrank from 5,670 to 2,597 action bytes. A fresh Sonnet run after
+that reload and the paid model-output A/B remain unverified/unrun respectively.
+
+**Step-3 boundary:** the prompt hook classifies envelopes because it consumes
+that classification immediately. Separate genuine operator text from harness
+content; record the latter as `env_message` with its conversational dial off.
+Preserve structured question answers. Tool-kind classification stays daemon-side.
+Retire notification marker readers only after legacy handling exists. Verify
+`self_peek` turn counts and the encoder lived timeline explicitly: neither had
+a marker filter, so the removal sweep cannot discover them. Include recall,
+presence and dashboard parity. Canonical argument normalization, historical
+backfill and step-4 reconciliation are outside this implementation scope.
+
+**First action:** inspect the actual prompt-envelope write path and consumers,
+then check newer decisions before resolving the remaining phase-2 rollout
+question (shared flip-day checklist versus its own evaluated cutover). Give a
+brief orientation receipt after reading, before acting. Proceed with authorized
+preparation; ask only for a decision still genuinely unresolved in the evidence.
+Keep implementation in existing owners and use independent code/simplification
+review before deployment. The brain handoff contains the working-set pointers;
+this head is sufficient to orient if memory or temporary files are unavailable.
+
+**Perishable state, checked 2026-09-10 about 20:08 UTC:** main was clean at
+`7302038`, in `/Users/tpac/.codex/worktrees/1f82/brain`; production source
+`/Users/tpac/brain` was clean at `c58f533` on `codex/contract-host`. The daemon
+reported that source, PID 13083 and fingerprint `8c33e3f67dc54c06`. Recheck refs,
+worktree status and daemon ping before mutation. Create an isolated worktree
+from current main before code changes; the pinned production checkout is not
+an editing workspace. Use `./dev`; access the live brain through MCP/daemon
+read doors, never a second database writer. This handoff is a docs-only update.
+
+## Step 2 checkpoint — historical implementation/deployment record (2026-09-08)
 
 **Step 2 checkpoint:** `codex/host-contract-step2`, based on main git:`450cff9`.
 Implementation git:`8ade88b` is on main and deployed from `/Users/tpac/brain`.
