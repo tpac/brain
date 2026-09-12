@@ -308,31 +308,33 @@ class HealerEncoder(IntegrationUnit):
                     lines.append('  [%s] "%s" (%s)%s' % (rel, title, ntype, desc_str))
 
             # Conversation context
-            conversation = p.get('conversation', [])
-            if conversation:
+            context = p.get('conversation') or {}
+            conversations = context.get('conversations', [])
+            if conversations:
                 lines.append('')
-                lines.append('CONVERSATION (around when this node was encoded):')
-
-                encoding_ts = p.get('encoding_timestamp', '')
-                for turn in conversation:
-                    role = 'operator' if turn['role'] == 'user' else 'assistant'
-                    content = (turn.get('content') or '')[:200]
-                    ts = turn.get('timestamp', '')
-
-                    marker = ''
-                    if encoding_ts and ts and ts >= encoding_ts:
-                        if not hasattr(self, '_marked_encoding'):
-                            self._marked_encoding = True
-                            marker = '  ← ENCODED AROUND HERE'
-
-                    lines.append('  [%s] %s%s' % (role, content, marker))
-
-                # Reset marker for next proposal
-                if hasattr(self, '_marked_encoding'):
-                    del self._marked_encoding
+                lines.append('SUPPORTING CONVERSATIONS:')
+                lines.append('CONTEXT BASIS: %s' % context['basis'])
+                for conversation in conversations:
+                    lines.append('Conversation %s' % conversation['session_id'])
+                    for i, window in enumerate(conversation['windows'], 1):
+                        if i > 1:
+                            lines.append('  [Separate excerpt]')
+                        refs = ', '.join(window['anchor_trace_ids']) or 'explicit timestamp'
+                        lines.append('  Window %d — anchors: %s' % (i, refs))
+                        for turn in window['turns']:
+                            ref_type = turn.get('ref_type', '')
+                            role = ('operator' if ref_type == 'user_message' else
+                                    'assistant' if ref_type == 'assistant_message' else
+                                    ref_type or turn['role'])
+                            content = (turn.get('content') or '')[:200]
+                            lines.append('    [%s] %s' % (role, content))
             else:
                 lines.append('')
-                lines.append('CONVERSATION: (not available — pre-trace node)')
+                lines.append('CONVERSATION: (not available)')
+            missing = context.get('missing_trace_ids', [])
+            if missing:
+                lines.append('Unavailable sources: %s (trace or recorded context unavailable)' %
+                             ', '.join(missing))
 
         return '\n'.join(lines)
 

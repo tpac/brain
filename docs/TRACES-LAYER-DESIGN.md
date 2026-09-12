@@ -10,16 +10,38 @@ fired spurious zero-row warnings) — the shared WHERE builder landed instead.
 ## Current conversation contract
 
 `get_conversation(session_id, ...)` is the shared reader for recent and centered
-windows. `get_conversation_around(...)` accepts an explicit session and timestamp,
-or resolves a node's origin from exact creation evidence: membership in an S1
+windows. `get_conversation_around(...)` reuses `get_source_refs(node_id)` →
+`get_traces(refs)` to resolve all cited conversations. Its stable result is
+`{basis, conversations, missing_trace_ids}`. Each conversation carries its
+`session_id` and `windows`; each window carries `anchor_trace_ids` and the
+existing turn records. Windows sharing trace IDs merge within a session;
+distant excerpts and distinct sessions remain separate. Ref position and
+insertion order never select a winning source.
+
+Cited windows retain whole timestamp groups at their boundaries. This keeps a
+cited dialogue row visible when multiple rows share its timestamp, including
+with zero before/after. Nominal window sizes may expand for ties. The shared
+reader's `include_timestamp_ties` option defaults to false for existing callers.
+
+Explicit session/timestamp arguments remain authoritative and produce one
+group. The eval caller already knows its session and uses `get_conversation`
+directly for its flat list of subsequent turns.
+
+For nodes without source refs, it resolves exact creation evidence: membership in an S1
 `encoding_run.created` array or a `node_created.ref_id` match. The DAL returns
 all such matches so conflicting recorded sessions can be rejected. An encoding
 run supplies the center when available; otherwise the creation trace does.
 
-Missing provenance returns no context and a diagnostic. An empty session stays
+Unavailable source anchors (missing trace, session stamp, or readable conversation)
+are named in `missing_trace_ids`; valid cited excerpts remain available. Missing
+creation provenance produces no context and a diagnostic. An empty session stays
 empty. A timestamp may position a window within a recorded session; it cannot
-select another session or a JSONL file. Both callers (the healer and the endo
-surface corpus builder) use this same session-only reader.
+select another session or a JSONL file. Both callers reach the same session reader.
+
+The healer renders separate conversation headings, excerpt gaps, the context
+basis (`source_refs`, `creation_trace`, or `explicit_session`), and unavailable
+sources. It counts actual excerpts in its availability metric. A cited exchange
+may predate the memory's creation, so it carries no inferred encoding-time marker.
 
 General `query_traces` and `recall_episodes` retain their existing time filters,
 cross-session searches, and defaults. LAF's structural moment-to-memory join is

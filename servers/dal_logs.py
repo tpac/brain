@@ -1545,7 +1545,8 @@ class TraceDAL(_LogsWriteBase):
                           with_judge_output: bool = True,
                           exclude_trace_id: str = None,
                           with_surfaced: bool = False,
-                          older_than: str = None) -> List[Dict[str, Any]]:
+                          older_than: str = None,
+                          include_timestamp_ties: bool = False) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
@@ -1593,6 +1594,9 @@ class TraceDAL(_LogsWriteBase):
                 clipping at wall-now and post-filtering the wrong rows.
                 Strict on purpose: a replay's cue row sits exactly AT as_of
                 and must not enter its own window.
+            include_timestamp_ties: expand historic window boundaries to keep
+                whole timestamp groups. Cited context uses this to retain every
+                source row without imposing a source priority on tied events.
         """
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
@@ -1721,6 +1725,11 @@ class TraceDAL(_LogsWriteBase):
                     center_idx = i
             start = max(0, center_idx - _before * 2)  # ×2 because user+assistant = 2 turns per exchange
             end = min(len(turns), center_idx + _after * 2 + 1)
+            if include_timestamp_ties and start < end:
+                while start > 0 and turns[start - 1]['timestamp'] == turns[start]['timestamp']:
+                    start -= 1
+                while end < len(turns) and turns[end]['timestamp'] == turns[end - 1]['timestamp']:
+                    end += 1
             turns = turns[start:end]
 
         return turns

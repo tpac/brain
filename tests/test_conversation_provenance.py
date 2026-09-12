@@ -1,4 +1,4 @@
-"""Conversation ownership comes from creation evidence, never time proximity.
+"""Conversation ownership comes from source refs or creation evidence.
 
 Fresh isolated brains reproduce the two observed wrong-session shapes and pin
 the boundary with general MCP trace/episode search. No model calls are needed.
@@ -34,8 +34,234 @@ class TestConversationProvenance(BrainTestBase):
                            metadata=delta, scale='s1')
 
     def _ids(self, **kwargs):
-        return [turn['trace_id'] for turn in self.brain.get_conversation_around(
-            before=0, after=0, **kwargs)]
+        context = self.brain.get_conversation_around(before=0, after=0, **kwargs)
+        return [turn['trace_id'] for conversation in context['conversations']
+                for window in conversation['windows'] for turn in window['turns']]
+
+    def _sequence(self, session, count):
+        return [self._trace(session, '2026-09-10T20:%02d:00+00:00' % i,
+                            'assistant_message' if i % 2 else 'user_message',
+                            content='%s turn %d' % (session, i))
+                for i in range(count)]
+
+    def _node_with_refs(self, refs):
+        return self.brain.remember(
+            type='fact', title='Cited context test node',
+            content='A memory with stored source references.', source_refs=refs)['id']
+
+    def test_source_refs_select_cited_session_and_time_over_creation(self):
+        cited = self._trace('cited', '2026-09-10T19:00:00+00:00', content='source exchange')
+        self._trace('cited', self.center, content='later unrelated exchange')
+        self._trace('writer', self.center, content='memory was written here')
+        node = self._node_with_refs([cited])
+        self._creation(node, 'writer')
+        self._run('writer', created=[node])
+        assert self._ids(node_id=node) == [cited]
+
+    def test_all_cited_sessions_survive_reordering_and_overlapping_clocks(self):
+        first = self._trace('first', self.center, content='first session')
+        second = self._trace('second', self.center, content='second session')
+        node = self._node_with_refs([second, first])
+        context = self.brain.get_conversation_around(node_id=node, before=0, after=0)
+        assert context['basis'] == 'source_refs'
+        assert context['missing_trace_ids'] == []
+        assert [(c['session_id'], [w['anchor_trace_ids'] for w in c['windows']])
+                for c in context['conversations']] == [('first', [[first]]), ('second', [[second]])]
+        assert self._ids(node_id=node) == [first, second]
+        self.brain.revise(node, source_refs=[first, second], reason='Reorder equivalent citations')
+        assert self.brain.get_conversation_around(node_id=node, before=0, after=0) == context
+
+    def test_overlapping_windows_merge_transitively_without_duplicate_turns(self):
+        turns = self._sequence('one', 16)
+        anchors = [turns[i] for i in (3, 7, 11)]
+        node = self._node_with_refs(list(reversed(anchors)))
+        context = self.brain.get_conversation_around(node_id=node, before=1, after=1)
+        assert len(context['conversations']) == 1
+        windows = context['conversations'][0]['windows']
+        assert len(windows) == 1
+        assert windows[0]['anchor_trace_ids'] == anchors
+        assert [t['trace_id'] for t in windows[0]['turns']] == turns[1:14]
+
+    def test_distant_windows_preserve_gaps_within_a_session(self):
+        turns = self._sequence('one', 16)
+        node = self._node_with_refs([turns[12], turns[2]])
+        context = self.brain.get_conversation_around(node_id=node, before=1, after=1)
+        windows = context['conversations'][0]['windows']
+        assert [w['anchor_trace_ids'] for w in windows] == [[turns[2]], [turns[12]]]
+        assert [[t['trace_id'] for t in w['turns']] for w in windows] == [turns[:5], turns[10:15]]
+
+    def test_zero_width_cited_window_retains_all_timestamp_ties(self):
+        first = self._trace('one', self.center, content='cited question')
+        second = self._trace('one', self.center, 'assistant_message', content='same-clock answer')
+        node = self._node_with_refs([first, second])
+        context = self.brain.get_conversation_around(node_id=node, before=0, after=0)
+        windows = context['conversations'][0]['windows']
+        assert len(windows) == 1
+        assert set(windows[0]['anchor_trace_ids']) == {first, second}
+        assert [t['trace_id'] for t in windows[0]['turns']] == [first, second]
+        self.brain.revise(node, source_refs=[first], reason='Cite only the question')
+        assert self._ids(node_id=node) == [first, second]
+        # Single-session readers retain their established sizing by default.
+        default = self.brain.get_conversation(
+            'one', around_timestamp=self.center, before=0, after=0)
+        assert [t['trace_id'] for t in default] == [second]
+
+    def test_cited_windows_expand_ties_at_both_boundaries(self):
+        timestamps = [0, 1, 1, 1, 2, 3, 3, 3, 4]
+        turns = [self._trace('one', '2026-09-10T20:%02d:00+00:00' % minute,
+                             content='row %d' % i) for i, minute in enumerate(timestamps)]
+        node = self._node_with_refs([turns[4]])
+        context = self.brain.get_conversation_around(node_id=node, before=1, after=1)
+        windows = context['conversations'][0]['windows']
+        assert len(windows) == 1
+        assert [t['trace_id'] for t in windows[0]['turns']] == turns[1:8]
+
+    def test_windows_with_tied_centers_merge_in_reader_order(self):
+        timestamps = [0, 1, 1, 1, 2, 3, 3, 3, 4]
+        turns = [self._trace('one', '2026-09-10T20:%02d:00+00:00' % minute,
+                             content='row %d' % i) for i, minute in enumerate(timestamps)]
+        node = self._node_with_refs([turns[i] for i in (7, 1, 6, 3)])
+        context = self.brain.get_conversation_around(node_id=node, before=1, after=1)
+        windows = context['conversations'][0]['windows']
+        assert len(windows) == 1
+        assert [t['trace_id'] for t in windows[0]['turns']] == turns[1:]
+
+    def test_explicit_session_overrides_a_nodes_cited_session(self):
+        cited = self._trace('cited', self.center, content='source')
+        explicit = self._trace('explicit', self.center, content='requested session')
+        node = self._node_with_refs([cited])
+        assert self._ids(node_id=node, session_id='explicit', timestamp=self.center) == [explicit]
+
+    def test_absorb_preserves_both_cited_conversations_despite_tied_ref_positions(self):
+        primary = self._trace('survivor', self.center, content='survivor source')
+        secondary = self._trace('absorbed', self.center, content='absorbed source')
+        survivor = self._node_with_refs([primary])
+        absorbed = self.brain.remember(
+            type='fact', title='Absorbed cited memory', content='Additional evidence',
+            source_refs=[secondary])['id']
+        self.brain.absorb(survivor, absorbed)
+        assert set(self.brain.get_source_refs(survivor)) == {primary, secondary}
+        context = self.brain.get_conversation_around(node_id=survivor, before=0, after=0)
+        assert {c['session_id'] for c in context['conversations']} == {'survivor', 'absorbed'}
+        assert set(self._ids(node_id=survivor)) == {primary, secondary}
+
+    def test_missing_source_is_visible_while_valid_source_survives(self):
+        secondary = self._trace('secondary', self.center, content='secondary source')
+        self._trace('writer', self.center, content='creation context')
+        node = self._node_with_refs(['ffffffff', secondary])
+        self._creation(node, 'writer')
+        context = self.brain.get_conversation_around(node_id=node, before=0, after=0)
+        assert context['basis'] == 'source_refs'
+        assert context['missing_trace_ids'] == ['ffffffff']
+        assert self._ids(node_id=node) == [secondary]
+
+    def test_sessionless_source_is_visible_without_using_creation_session(self):
+        primary = self._trace('', self.center, content='unscoped source')
+        self._trace('writer', self.center, content='creation context')
+        node = self._node_with_refs([primary])
+        self._creation(node, 'writer')
+        context = self.brain.get_conversation_around(node_id=node)
+        assert context == {'basis': 'source_refs', 'conversations': [],
+                           'missing_trace_ids': [primary]}
+
+    def test_all_missing_sources_do_not_fall_back_to_creation(self):
+        self._trace('writer', self.center, content='creation context')
+        node = self._node_with_refs(['ffffffff', 'eeeeeeee'])
+        self._creation(node, 'writer')
+        assert self.brain.get_conversation_around(node_id=node) == {
+            'basis': 'source_refs', 'conversations': [],
+            'missing_trace_ids': ['eeeeeeee', 'ffffffff']}
+
+    def test_failed_trace_batch_preserves_unavailable_source_ids(self):
+        cited = self._trace('cited', self.center)
+        node = self._node_with_refs([cited])
+        with patch.object(self.brain, 'get_traces', side_effect=RuntimeError('trace read failed')):
+            with patch.object(self.brain, '_log_error') as error:
+                context = self.brain.get_conversation_around(node_id=node)
+        assert context == {'basis': 'source_refs', 'conversations': [],
+                           'missing_trace_ids': [cited]}
+        assert 'trace read failed' in str(error.call_args.args[1])
+
+    def test_empty_cited_session_does_not_hide_another_sessions_context(self):
+        empty = self._run('empty')
+        valid = self._trace('valid', self.center, content='available context')
+        node = self._node_with_refs([empty, valid])
+        context = self.brain.get_conversation_around(node_id=node)
+        assert context['missing_trace_ids'] == [empty]
+        assert self._ids(node_id=node) == [valid]
+
+    def test_failed_session_read_does_not_hide_another_sessions_context(self):
+        failed = self._trace('failed', self.center, content='unreadable context')
+        valid = self._trace('valid', self.center, content='available context')
+        node = self._node_with_refs([failed, valid])
+        reader = self.brain._trace_dal.get_session_turns
+
+        def read(session_id, **kwargs):
+            if session_id == 'failed':
+                raise RuntimeError('session read failed')
+            return reader(session_id, **kwargs)
+
+        with patch.object(self.brain._trace_dal, 'get_session_turns', side_effect=read):
+            with patch.object(self.brain, '_log_error') as error:
+                context = self.brain.get_conversation_around(node_id=node)
+        assert context['missing_trace_ids'] == [failed]
+        assert [c['session_id'] for c in context['conversations']] == ['valid']
+        assert 'session read failed' in str(error.call_args.args[1])
+
+    def test_failed_source_ref_read_is_reported_without_creation_substitute(self):
+        self._trace('writer', self.center, content='creation context')
+        self._creation('authored', 'writer')
+        with patch.object(self.brain, 'get_source_refs', side_effect=RuntimeError('refs unavailable')):
+            with patch.object(self.brain, '_log_error') as error:
+                assert self._ids(node_id='authored') == []
+        assert error.call_count == 1
+        assert 'refs unavailable' in str(error.call_args.args[1])
+
+    def test_healer_renders_sessions_gaps_and_missing_sources_without_creation_marker(self):
+        from servers.scales.s2.healer_decoder import HealerDecoder
+        from servers.scales.s2.healer_encoder import HealerEncoder
+
+        turns = self._sequence('cited', 55)
+        other = self._trace('another', self.center, content='Independent cited evidence')
+        self._trace('writer', self.center, content='Wrong creation conversation')
+        node = self._node_with_refs([turns[0], turns[50], other, 'ffffffff'])
+        self._creation(node, 'writer')
+        proposals = HealerDecoder(self.brain)._build_proposals([node])
+        assert len(proposals) == 1
+        context = proposals[0]['conversation']
+        assert context['basis'] == 'source_refs'
+        assert len(context['conversations']) == 2
+        assert 'encoding_timestamp' not in proposals[0]
+        prompt = HealerEncoder(self.brain)._format_batch(proposals)
+        assert 'Conversation cited' in prompt
+        assert 'Conversation another' in prompt
+        assert 'CONTEXT BASIS: source_refs' in prompt
+        assert '[Separate excerpt]' in prompt
+        assert 'Unavailable sources: ffffffff' in prompt
+        assert '[operator] cited turn 0' in prompt
+        assert '[assistant] cited turn 1' in prompt
+        assert 'cited turn 20' not in prompt
+        assert 'Independent cited evidence' in prompt
+        for anchor in (turns[0], turns[50], other):
+            assert anchor in prompt
+        assert 'Wrong creation conversation' not in prompt
+        assert 'ENCODED AROUND HERE' not in prompt
+        assert 'around when this node was encoded' not in prompt
+
+    def test_healer_availability_counts_excerpts_not_empty_envelopes(self):
+        from servers.scales.s2.healer_decoder import HealerDecoder
+
+        cited = self._trace('cited', self.center, content='available context')
+        available = self._node_with_refs([cited])
+        missing = self._node_with_refs(['ffffffff'])
+        decoder = HealerDecoder(self.brain)
+        with patch.object(decoder, '_find_targets', return_value=[available, missing]):
+            with patch.object(decoder, 'trace') as trace:
+                result = decoder.run()
+        assert len(result['proposals']) == 2
+        metadata = next(call.kwargs['metadata'] for call in trace.call_args_list
+                        if call.args[1] == 'healer_proposals')
+        assert metadata['with_conversation'] == 1
 
     def test_observed_authored_memories_resolve_to_their_recorded_sessions(self):
         s1e = '01a08172-63d2-7913-be97-3a99ac8d0830'
@@ -51,6 +277,9 @@ class TestConversationProvenance(BrainTestBase):
                 self._run(other, timestamp, created=['different-node'])
                 self._creation(node, origin, timestamp)
                 assert self._ids(node_id=node) == [expected]
+                context = self.brain.get_conversation_around(node_id=node)
+                assert context['basis'] == 'creation_trace'
+                assert context['conversations'][0]['session_id'] == origin
 
     def test_encoded_origin_uses_exact_created_membership_and_run_center(self):
         self._creation('encoded-node', 'origin', '2026-09-10T20:00:00+00:00')
@@ -142,8 +371,13 @@ class TestConversationProvenance(BrainTestBase):
         second = self._trace('origin', self.center, 'assistant_message', content='answer')
         self._trace('other', self.center, content='not part of this conversation')
         recent = self.brain.get_conversation('origin', with_judge_output=False)
-        centered = self.brain.get_conversation_around(
+        context = self.brain.get_conversation_around(
             session_id='origin', timestamp=self.center)
+        assert context['basis'] == 'explicit_session'
+        assert context['missing_trace_ids'] == []
+        assert len(context['conversations']) == 1
+        assert context['conversations'][0]['session_id'] == 'origin'
+        centered = context['conversations'][0]['windows'][0]['turns']
         assert [row['trace_id'] for row in centered] == [first, second]
         assert [row['ref_type'] for row in centered] == ['user_message', 'assistant_message']
         assert centered == [{k: v for k, v in row.items() if k != 'judge_output'}

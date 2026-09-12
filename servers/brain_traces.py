@@ -14,7 +14,7 @@ Sections:
 - Journal + arc  — journal_notes, write_journal_notes, write_session_arc
 - Episodic       — recall_episodes (decode-over-traces sibling of recall)
 - Conversation   — get_conversation, turns_since_last_encode,
-                   get_conversation_around (session-scoped origin lookup)
+                   get_conversation_around (context grouped by session)
 
 Traces are the universal record of the whole fractal — S0 exchanges, S1 runs,
 S2 runs — so these are brain-level capabilities: they span every scale, owned
@@ -805,13 +805,14 @@ class BrainTracesMixin:
                          exclude_trace_id: str = None,
                          older_than: str = None, *,
                          around_timestamp: str = None,
-                         before: int = 10, after: int = 5) -> List[Dict]:
+                         before: int = 10, after: int = 5,
+                         include_timestamp_ties: bool = False) -> List[Dict]:
         """Get conversation turns within one required session.
 
         The simple path — S1E, scribe_due, the surface window, the LAF
         moment stack: anything that knows its session_id and wants the last
         N turns. A centered window uses the same reader and row contract;
-        get_conversation_around resolves a memory's origin before calling it.
+        get_conversation_around resolves a memory's anchors before calling it.
         A timestamp positions the window; it never selects a session.
 
         Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
@@ -837,6 +838,8 @@ class BrainTracesMixin:
                       instant", not "the last N turns now, minus the future".
             around_timestamp: ISO center for a historic window, using
                       before/after instead of the recent-turn limit.
+            include_timestamp_ties: keep whole timestamp groups at historic
+                      window boundaries, even if this exceeds before/after.
         """
         try:
             if not session_id:
@@ -845,7 +848,8 @@ class BrainTracesMixin:
                 session_id, limit=limit, with_judge_output=with_judge_output,
                 with_surfaced=with_surfaced, exclude_trace_id=exclude_trace_id,
                 older_than=older_than, around_timestamp=around_timestamp,
-                before=before, after=after)
+                before=before, after=after,
+                include_timestamp_ties=include_timestamp_ties)
             out = []
             for t in turns:
                 row = {'role': t['role'],
@@ -974,59 +978,104 @@ class BrainTracesMixin:
     def get_conversation_around(self, node_id: str = None,
                                 session_id: str = None,
                                 timestamp: str = None,
-                                before: int = 10, after: int = 5) -> List[Dict]:
-        """Get a centered conversation window in an authoritative session.
+                                before: int = 10, after: int = 5) -> Dict:
+        """Conversation context grouped by recorded session and excerpt.
 
-        Supply session_id + timestamp, or a node_id whose creation traces
-        record its session. Encoding runs must list the exact id in `created`;
-        node_created traces identify authored nodes and partial encode writes.
-        Missing/conflicting provenance or an empty session returns no context.
-        Neither nearby sessions nor timestamp-selected files are substitutes.
+        Node lookups expand ALL get_source_refs through get_traces. Ref order
+        never chooses a session. With no refs, exact creation evidence anchors
+        the window. An explicit session remains authoritative, with timestamp
+        (or the node's created_at) positioning its window. Session-known callers
+        needing only turns can use get_conversation directly.
 
-        Args:
-            node_id: Node ID — resolves to the conversation that created it
-            session_id: Full session UUID — skip searching, query directly
-            timestamp: ISO timestamp to center the window on
-            before: Exchanges before the timestamp (default 10)
-            after: Exchanges after the timestamp (default 5)
+        Returns {basis, conversations, missing_trace_ids}. Each conversation is
+        {session_id, windows: [{anchor_trace_ids, turns}]}. Overlapping excerpts
+        merge by shared trace ids within a session; gaps stay separate. before
+        and after count exchanges per anchor, as in get_conversation. Boundary
+        timestamp ties stay together, so a cited row cannot be clipped by a tie
+        and the nominal window size may expand.
 
-        Returns: [{role: 'user'|'assistant', content: str, timestamp: str}]
-                 Chronological order. Empty list if no conversation found.
+        missing_trace_ids names anchors whose trace, session stamp or conversation
+        could not be read. Valid excerpts survive missing citations. A failed
+        source lookup never substitutes the node's creation conversation.
         """
-        resolved_session = session_id
-        resolved_timestamp = timestamp
-
+        result = {'basis': None, 'conversations': [], 'missing_trace_ids': []}
         try:
-            if node_id and not resolved_session:
-                resolved_session, origin_timestamp = self._node_creation_origin(node_id)
-                resolved_timestamp = timestamp or origin_timestamp
-            elif node_id and not resolved_timestamp:
-                resolved_timestamp = self._resolve_node_timestamp(node_id)
-            if not resolved_session or not resolved_timestamp:
+            if before < 0 or after < 0:
+                raise ValueError('conversation window sizes must be nonnegative')
+            if session_id:
+                result['basis'] = 'explicit_session'
+                center = timestamp or self._resolve_node_timestamp(node_id)
+                anchors = [{'id': None, 'session_id': session_id, 'created_at': center}]
+            elif node_id:
+                refs = sorted(set(self.get_source_refs(node_id)))
+                if refs:
+                    result['basis'] = 'source_refs'
+                    # Preserve the unavailable list if the batch read fails.
+                    result['missing_trace_ids'] = refs
+                    by_id = {row['id']: row for row in self.get_traces(refs)}
+                    result['missing_trace_ids'] = [ref for ref in refs if ref not in by_id]
+                    anchors = [by_id[ref] for ref in refs if ref in by_id]
+                else:
+                    result['basis'] = 'creation_trace'
+                    origin = self._node_creation_anchor(node_id)
+                    anchors = [origin] if origin else []
+            else:
                 raise ValueError('conversation requires a recorded session and timestamp')
+
+            if not anchors:
+                raise ValueError('no recorded conversation anchors available')
+
+            by_session = {}
+            for anchor in sorted(anchors, key=lambda row: (
+                    row.get('session_id') or '', row.get('created_at') or '', row.get('id') or '')):
+                sid = anchor.get('session_id')
+                center = timestamp or anchor.get('created_at')
+                trace_id = anchor.get('id')
+                if not sid or not center:
+                    if trace_id:
+                        result['missing_trace_ids'].append(trace_id)
+                    self._log_error('get_conversation_around',
+                                    ValueError('anchor lacks a recorded session or timestamp'),
+                                    'trace=%s' % trace_id)
+                    continue
+                turns = self.get_conversation(
+                    sid, around_timestamp=center, before=before, after=after,
+                    with_judge_output=False, include_timestamp_ties=True)
+                if not turns:
+                    if trace_id:
+                        result['missing_trace_ids'].append(trace_id)
+                    continue
+                for turn in turns:
+                    turn.pop('judge_output', None)
+                windows = by_session.setdefault(sid, [])
+                anchor_ids = [trace_id] if trace_id else []
+                have = {turn['trace_id'] for turn in windows[-1]['turns']} if windows else set()
+                if have.intersection(turn['trace_id'] for turn in turns):
+                    # Centers are ordered within each session, with identical
+                    # window sizes. An overlapping excerpt extends the tail;
+                    # preserving reader order also preserves timestamp ties.
+                    windows[-1]['turns'].extend(turn for turn in turns if turn['trace_id'] not in have)
+                    windows[-1]['anchor_trace_ids'].extend(anchor_ids)
+                else:
+                    windows.append({'anchor_trace_ids': anchor_ids, 'turns': turns})
+            result['conversations'] = [
+                {'session_id': sid, 'windows': windows} for sid, windows in by_session.items()]
         except Exception as e:
             self._log_error(
                 'get_conversation_around', e,
                 'node=%s session=%s' % (node_id or '', session_id or ''))
-            return []
-
-        turns = self.get_conversation(
-            resolved_session, around_timestamp=resolved_timestamp,
-            before=before, after=after, with_judge_output=False)
-        for turn in turns:
-            turn.pop('judge_output', None)
-        return turns
+        result['missing_trace_ids'] = sorted(set(result['missing_trace_ids']))
+        return result
 
     def _resolve_node_timestamp(self, node_id):
         """Get a node's created_at timestamp — exact id match via NodeDAL."""
         node = self._nodes.get_naked_node(node_id) if node_id else None
         return node['created_at'] if node else None
 
-    def _node_creation_origin(self, node_id):
-        """Resolve exact creation evidence to (session_id, timestamp).
+    def _node_creation_anchor(self, node_id):
+        """Exact creation evidence for nodes without source refs.
 
-        The encoding delta supplies the run's center when present; a
-        node_created trace supplies the writer's center otherwise. Conflicting
+        Prefer the encoding run's center to its per-write event. Conflicting
         recorded sessions are an attribution error, never a tie to guess at.
         """
         origins = [row for row in self._trace_dal.get_node_creation_traces(node_id)
@@ -1036,8 +1085,8 @@ class BrainTracesMixin:
         if origins:
             hit = next((row for row in origins
                         if row['ref_type'] == 'encoding_run'), origins[0])
-            return hit['session_id'], hit['created_at']
-        return None, None
+            return hit
+        return None
 
     # ═══════════════════════════════════════════════════════════
     # Payload recorder (docs/TRACE-MODES-DESIGN.md)
