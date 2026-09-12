@@ -211,8 +211,8 @@ class HealerDecoder(IntegrationUnit):
         """Load the conversation exchanges around when this node was encoded.
 
         Uses brain.get_conversation_around — single source of truth for
-        conversation context. Handles both post-trace (S0 traces) and
-        pre-trace (JSONL logs).
+        conversation context. Missing creation-session evidence yields no
+        conversation, so the healer can work from the node alone.
 
         Returns: (turns_list, encoding_timestamp) or ([], '')
         """

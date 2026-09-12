@@ -7,6 +7,25 @@ to `query_traces`); the full-wrapper variant of Phase-0 finding #1 was rejected
 at implementation (it would have changed the hours×session composition rule and
 fired spurious zero-row warnings) — the shared WHERE builder landed instead.
 
+## Current conversation contract
+
+`get_conversation(session_id, ...)` is the shared reader for recent and centered
+windows. `get_conversation_around(...)` accepts an explicit session and timestamp,
+or resolves a node's origin from exact creation evidence: membership in an S1
+`encoding_run.created` array or a `node_created.ref_id` match. The DAL returns
+all such matches so conflicting recorded sessions can be rejected. An encoding
+run supplies the center when available; otherwise the creation trace does.
+
+Missing provenance returns no context and a diagnostic. An empty session stays
+empty. A timestamp may position a window within a recorded session; it cannot
+select another session or a JSONL file. Both callers (the healer and the endo
+surface corpus builder) use this same session-only reader.
+
+General `query_traces` and `recall_episodes` retain their existing time filters,
+cross-session searches, and defaults. LAF's structural moment-to-memory join is
+unchanged. The consolidation history below describes the original migration;
+its timestamp and JSONL fallbacks are no longer part of the conversation API.
+
 ## Problem
 
 The traces substrate (`trace_events` + `trace_embeddings` in `brain_logs.db`) has one
