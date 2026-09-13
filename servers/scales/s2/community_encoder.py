@@ -14,7 +14,7 @@ import os
 import time
 
 from .base import IntegrationUnit
-from .community_contract import COMMUNITY_DETECTION, S2CE_NODE_FORMAT
+from .community_contract import S2CE_NODE_FORMAT
 from servers.trace_contract import build_delta_metadata
 
 from .rejection_table import (
@@ -49,9 +49,10 @@ class CommunityEncoder(IntegrationUnit):
 
     def __init__(self, brain, dispatch_fn=None, config=None):
         super().__init__(brain, dispatch_fn)
-        # Same resolver read as CommunityDecoder — the pipeline passes its
-        # config down, so this fires only for standalone construction.
-        self.config = config or brain.get_interaction_config('s2_community')
+        # Resolve the complete configuration once. Explicit run/eval settings
+        # overlay it, so partial settings still honor deployed overrides.
+        self.config = {**brain.get_interaction_config('s2_community'),
+                       **(config or {})}
 
     def run(self, proposals, community_state):
         """Encode proposals into community nodes.
@@ -150,17 +151,11 @@ class CommunityEncoder(IntegrationUnit):
         # which proposals the encoder actually acted on. Only stamp skipped
         # ones. Accepted proposals auto-invalidate on the next decode because
         # the graph state changed (new community_member edges, etc.).
-        # Safety: if encoder failed (0 rounds or error), don't stamp anything.
+        # Completion is carried by the shared batch result. Model prose is
+        # evidence, never a control signal for suppression.
         action_details = result.get('action_details', [])
         final_text = result.get('final_text', '') or ''
-        encoder_failed = (
-            rounds == 0 or
-            bool(result.get('error')) or
-            'FAILED' in final_text or
-            'ERROR' in final_text[:200]
-        )
-
-        if encoder_failed:
+        if result.get('error'):
             print('[s2ce] Encoder failed or incomplete - NOT stamping rejections',
                   flush=True)
             result['rejection_skipped_count'] = 0
@@ -251,8 +246,9 @@ class CommunityEncoder(IntegrationUnit):
                                   'membership restorer failed')
 
         self.trace('delta', 'community_enriched',
-                   'COMPLETE: %d actions (%d writes) in %d rounds, %d stamped, '
+                   '%s: %d actions (%d writes) in %d rounds, %d stamped, '
                    '%dms, %d→%d tok' % (
+                       'FAILED' if result.get('error') else 'COMPLETE',
                        actions, write_actions, rounds,
                        result.get('rejection_skipped_count', 0),
                        result.get('elapsed_ms', 0),
@@ -276,6 +272,7 @@ class CommunityEncoder(IntegrationUnit):
                        cache_read_tokens=result.get('cache_read_tokens', 0),
                        cache_creation_tokens=result.get('cache_creation_tokens', 0),
                        model=result.get('model', ''),
+                       errors=[result['error']] if result.get('error') else [],
                        context_chars=result.get('context_chars', []),
                        membership_reconciled={
                            'communities_healed': recon.get('communities_healed', 0),
@@ -456,8 +453,7 @@ class CommunityEncoder(IntegrationUnit):
 
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)
-        context_limit = self.config.get(
-            'max_batch_context_chars', COMMUNITY_DETECTION['max_batch_context_chars'])
+        context_limit = self.config['max_batch_context_chars']
         total_result = {
             'rounds': 0, 'actions': 0, 'write_actions': 0,
             'action_details': [], 'read_calls': [], 'final_text': '',
@@ -529,28 +525,28 @@ class CommunityEncoder(IntegrationUnit):
                             self.chain_id(), seq_base=batch_num * 100)),
                     log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True))
 
-                # Accumulate + per-batch journal + truncation logging — shared
-                # multi-batch body (see IntegrationUnit._fold_batch_result).
-                self._fold_batch_result(
-                    total_result, result, batch_num, 's2ce_truncation',
-                    trunc_detail='tool call likely corrupted, community data may be lost')
+            except Exception as e:
+                print('[s2ce] BATCH %d FAILED: %s' % (batch_num, e), flush=True)
+                self.brain._log_error(self.NAME, e,
+                                      'encode batch %d' % batch_num)
+                result = {'error': str(e) or type(e).__name__}
 
-                # Refresh community state for next batch
-                current_state = decoder._read_community_state()
-
-                # Per-batch progress trace — visible in dashboard immediately
+            completed = self._fold_batch_result(
+                total_result, result, batch_num, 's2ce_truncation',
+                trunc_detail='tool call likely corrupted, community data may be lost')
+            # Reads must see writes from any completed rounds, including a
+            # batch that failed after dispatching some of its operations.
+            current_state = decoder._read_community_state()
+            if completed:
                 self.trace('delta', 'community_enriched',
                            'batch %d/%d: %d actions (%d writes), %d total' % (
                                batch_num, total_batches,
                                result.get('actions', 0), result.get('write_actions', 0),
                                total_result['actions']))
-
-            except Exception as e:
-                print('[s2ce] BATCH %d FAILED: %s' % (batch_num, e), flush=True)
-                self.brain._log_error(self.NAME, e,
-                                      'encode batch %d' % batch_num)
+            else:
                 self.trace('delta', 'community_enriched',
-                           'batch %d/%d FAILED: %s' % (batch_num, total_batches, str(e)[:80]))
+                           'batch %d/%d FAILED: %s' % (
+                               batch_num, total_batches, total_result['error'][-200:]))
             batch_idx += 1
 
         total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)

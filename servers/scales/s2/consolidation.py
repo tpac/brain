@@ -122,9 +122,13 @@ class Consolidation(ConsolidationDecoder):
             self.brain, self.dispatch, self.config)
         encode_result = encoder.run(clusters)
 
-        if not encode_result:
-            return {'actions': 0, 'clusters': len(clusters),
-                    'stats': stats, 'error': 'encoding failed'}
+        # Completion is a run-level contract. Partial writes survive, but a
+        # failed batch leaves this scan unsettled: neither fingerprint its
+        # clusters nor advance the incremental cutoff.
+        if not encode_result or encode_result.get('error'):
+            return {'actions': (encode_result or {}).get('write_actions', 0),
+                    'clusters': len(clusters), 'stats': stats,
+                    'error': (encode_result or {}).get('error') or 'encoding failed'}
 
         # Fingerprint EVERY processed cluster (2026-07-27) — suppression
         # follows the encoder's decision itself, not its edge vocabulary.

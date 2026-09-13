@@ -65,6 +65,18 @@ hard token ceiling or a claim about normal decoder workload. Raw local reports:
 `control_2/3/6/7`, `stress-budget-final.json`). Production-data model calls were
 explicitly authorized after automatic approval review initially rejected them.
 
+**Review follow-up — batch completion:** the shared batch fold now preserves
+execution errors across successful batches. Community and consolidation retain
+successful writes but withhold rejection fingerprints and scan cutoffs on a
+failed run; community also withholds unplaceable marking. Returned errors reach
+the coordinator's failure counter. The encoder resolves its complete config at
+construction, including overrides, before applying explicit run settings. The
+behavioral regressions exercise the real batch loops, failure in either order,
+preserved writes, and a successful retry without new graph changes. The design
+and the conservative run-level retry tradeoff live in `docs/S2-DESIGN.md`.
+Verification: 393 tests and two subtests passed, including the interaction
+resolver, journal, trace, SQL ownership, and dashboard guardrails.
+
 ---
 
 ## 0. Why this exists

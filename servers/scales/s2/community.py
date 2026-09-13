@@ -33,7 +33,7 @@ class CommunityDetection(CommunityDecoder):
     Callers that only need the decoder can use CommunityDecoder directly.
     """
 
-    # brain_meta key: epoch of the last actual decode (skipped cycles excluded).
+    # brain_meta key: epoch of the last completed pipeline.
     LAST_RUN_KEY = 's2_community_last_run_ts'
 
     def run(self):
@@ -57,10 +57,11 @@ class CommunityDetection(CommunityDecoder):
             result = self._run_pipeline()
             return result
         finally:
-            # Stamp AFTER the run so this unit's own writes (community nodes,
-            # member edges) precede the cutoff and don't self-trigger the
-            # no-change gate on the next cycle.
-            self.brain.set_config(self.LAST_RUN_KEY, str(_time.time()))  # clock-ok
+            # A failed pipeline has not settled its work. Hold the cutoff
+            # so the next cycle can retry; successful writes remain in the
+            # graph and the decoder observes them on its next scan.
+            if isinstance(result, dict) and not result.get('error'):
+                self.brain.set_config(self.LAST_RUN_KEY, str(_time.time()))  # clock-ok
             elapsed_ms = int((_time.time() - t0) * 1000)
             if isinstance(result, dict):
                 result['elapsed_ms'] = elapsed_ms
@@ -202,6 +203,16 @@ class CommunityDetection(CommunityDecoder):
                 self.brain, self.dispatch, self.config)
             encode_result = encoder.run(proposals, community_state)
 
+        # Failure must propagate BEFORE either suppression or scan completion.
+        # No placement during a failed call is not an unplaceable judgment.
+        if proposals and (not encode_result or encode_result.get('error')):
+            return {'actions': (encode_result or {}).get('write_actions', 0),
+                    'proposals': len(proposals),
+                    'raw_proposals': len(raw_proposals),
+                    'suppressed': suppressed_count,
+                    'auto_archived': len(archived_ids),
+                    'error': (encode_result or {}).get('error') or 'enrichment failed'}
+
         # Phase 2: mark unplaceable the pending nodes NOT actually placed into a
         # community this cycle. Read AFTER encode via get_communities_for, so it
         # observes real placement — correct under corridor-drop, quota deferral,
@@ -216,13 +227,6 @@ class CommunityDetection(CommunityDecoder):
                     'auto_archived': len(archived_ids),
                     'communities': len(community_state),
                     'skipped': 'all proposals suppressed'}
-
-        if not encode_result:
-            return {'actions': 0, 'proposals': len(proposals),
-                    'raw_proposals': len(raw_proposals),
-                    'suppressed': suppressed_count,
-                    'auto_archived': len(archived_ids),
-                    'error': 'enrichment failed'}
 
         return {
             'actions': encode_result.get('write_actions', 0),
