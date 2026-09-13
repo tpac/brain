@@ -166,3 +166,27 @@ class TestCommunityDecisionContext(BrainTestBase):
         self.assertIn('updated after first batch', seen[1])
         self.assertNotIn('old report', seen[1])
         self.assertNotIn('first batch private note', seen[1])
+
+    def test_packing_keeps_shared_target_together_without_reordering(self):
+        targets = [self.node('Target %d' % i, 'community',
+                             content=('Account %d. ' % i) * 300) for i in range(3)]
+        order = [targets[0], targets[1], targets[1], targets[2]]
+        props = [{'type': 'health_update', 'community_id': cid} for cid in order]
+        seen = []
+
+        def run(**kw):
+            seen.append(kw['user_content'])
+            return {'rounds': 1, 'actions': 0, 'write_actions': 0, 'final_text': ''}
+
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-not-a-key'}), \
+                patch('servers.scales.runner.make_client', return_value=object()), \
+                patch('servers.scales.runner.run_llm_loop', side_effect=run):
+            result = self.encoder(max_batch_context_chars=8500)._encode(props, [])
+        self.assertEqual([text.count('HEALTH UPDATE') for text in seen], [3, 1])
+        self.assertIn(targets[0], seen[0])
+        self.assertIn(targets[1], seen[0])
+        self.assertNotIn(targets[1], seen[1])
+        self.assertIn(targets[2], seen[1])
+        for text, parts in zip(seen, result['context_parts']):
+            self.assertEqual(sum(parts.values()), len(text))
+            self.assertLessEqual(len(text), 8500)

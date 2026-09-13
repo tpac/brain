@@ -213,6 +213,8 @@ BATCH_OP_SPECS = {
     "absorb": {
         "required": ["survivor_id", "absorbed_id"],
         "description": ("Lossless merge: fold absorbed INTO survivor. "
+                        "Merging two communities preserves their live members; "
+                        "ordinary node merges do not inherit community placement. "
                         "Accepts revise-shape field overrides (content, "
                         "title, confidence, situation)."),
         "properties": {

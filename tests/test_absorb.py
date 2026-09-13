@@ -49,13 +49,7 @@ class TestAbsorb(BrainTestBase):
         self.assertNotIn((absorbed, 'similar_to'), pairs)    # intra-pair gone
 
     def test_community_member_not_migrated(self):
-        """community_member never migrates to the survivor — placement is
-        the community unit's judged decision (affinity gate + encoder
-        accept/reject + drift detection), not a merge side effect. Semantic
-        edges in the same absorb still migrate, and edges_migrated counts
-        only them. See ABSORB_EXCLUDED_RELATIONS in dal_graph.py (audit 2026-06-12:
-        the consolidation prompt stated this exclusion while the code
-        migrated everything)."""
+        """Ordinary node merges leave placement to the community unit."""
         survivor = self._node('survivor')
         absorbed = self._node('absorbed')
         neighbor = self._node('neighbor')
@@ -303,6 +297,141 @@ class TestAbsorb(BrainTestBase):
         self.assertNotIn(neighbor, {c['id'] for c in conns})
         self.assertEqual(self.brain.conn.execute(
             "SELECT archived FROM nodes WHERE id = ?", (absorbed,)).fetchone()[0], 0)
+
+
+class TestCommunityAbsorb(BrainTestBase):
+    needs_embedder = False
+
+    def node(self, title, type='finding', **kw):
+        return self.brain.remember(type=type, title=title, content=title,
+                                   auto_connect=False, **kw)['id']
+
+    def members(self, cid):
+        return {m['id'] for m in self.brain._graph.get_members_bulk([cid]).get(cid, [])}
+
+    def pair(self):
+        # The observed failure: 13 + 11 members with 9 in common must yield 15.
+        members = [self.node('Member %d' % i) for i in range(15)]
+        survivor = self.node('Larger', 'community', community_members='creation seed')
+        absorbed = self.node('Smaller', 'community')
+        for member in members[:13]:
+            self.brain.connect(survivor, member, relation='community_member')
+        for i, member in enumerate(members[:9] + members[13:]):
+            # Both directions are valid in the membership reader.
+            src, dst = (absorbed, member) if i % 2 else (member, absorbed)
+            self.brain.connect(src, dst, relation='community_member', weight=0.7)
+        return survivor, absorbed, members
+
+    def test_merge_unions_live_members_preserving_other_relations(self):
+        survivor, absorbed, members = self.pair()
+        self.brain._graph.add_relation(absorbed, members[13], 'extends', weight=0.8,
+                                        description='Distinct evidence for the combined story')
+        retired = self.node('Retired member')
+        self.brain.connect(absorbed, retired, relation='community_member')
+        self.brain.archive_node(retired, archived_by='test', reason='retired')
+        legacy = self.node('Legacy nested community', 'community')
+        self.brain.connect(absorbed, legacy, relation='community_member')
+
+        result = self.brain.absorb(survivor, absorbed, content='Combined story')
+
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(self.members(survivor), set(members))
+        conns = self.brain._graph.get_connections_bulk([survivor])[survivor]
+        self.assertNotIn(legacy, {c['id'] for c in conns})
+        self.assertNotIn(retired, {c['id'] for c in conns})
+        relation = next(r for c in conns if c['id'] == members[13]
+                        for r in c['relations'] if r['relation'] == 'extends')
+        self.assertEqual(relation['weight'], 0.8)
+        self.assertEqual(relation['description'], 'Distinct evidence for the combined story')
+        for mid in members[13:]:
+            relation = next(r for c in conns if c['id'] == mid
+                            for r in c['relations'] if r['relation'] == 'community_member')
+            self.assertEqual(relation['weight'], 0.7)
+        self.assertTrue(self.brain._nodes.get_bulk([absorbed])[absorbed]['archived'])
+        self.assertEqual(self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+                         ['community_members'], 'creation seed')
+
+    def test_mixed_node_types_do_not_inherit_membership(self):
+        for survivor_type, absorbed_type in [('community', 'finding'),
+                                              ('finding', 'community')]:
+            with self.subTest(survivor_type=survivor_type):
+                survivor = self.node('Survivor', survivor_type)
+                absorbed = self.node('Absorbed', absorbed_type)
+                member = self.node('Member')
+                self.brain.connect(absorbed, member, relation='community_member')
+                self.assertTrue(self.brain.absorb(survivor, absorbed)['ok'])
+                self.assertNotIn(member, {c['id'] for c in
+                    self.brain._graph.get_connections_bulk([survivor]).get(survivor, [])})
+
+    def test_encoder_merge_stamps_union_and_next_decode_has_no_old_merge(self):
+        from unittest.mock import patch
+        from servers.scales.s2.community_encoder import CommunityEncoder
+        from servers.scales.s2.community_decoder import CommunityDecoder
+        survivor, absorbed, members = self.pair()
+        decoder = CommunityDecoder(self.brain)
+        operations = [{'op': 'absorb', 'survivor_id': survivor,
+                       'absorbed_id': absorbed, 'content': 'Combined story'}]
+
+        def respond(**kw):
+            response = kw['dispatch_fn']('brain_batch', {'operations': operations})
+            self.assertTrue(response['result']['results'][0]['ok'], response)
+            return {'rounds': 1, 'actions': 1, 'write_actions': 1,
+                    'action_details': [{'tool': 'brain_batch',
+                                        'input': {'operations': operations}}],
+                    'final_text': '## Review\n```\n```'}
+
+        with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-not-a-key'}), \
+                patch('servers.scales.runner.make_client', return_value=object()), \
+                patch('servers.scales.runner.run_llm_loop', side_effect=respond):
+            result = CommunityEncoder(self.brain).run([
+                {'type': 'merge_communities', 'larger_id': survivor,
+                 'smaller_id': absorbed}], decoder._read_community_state())
+        self.assertFalse(result.get('error'), result)
+        self.assertEqual(result['rejection_skipped_count'], 0)
+        self.assertEqual(self.members(survivor), set(members))
+        self.assertEqual(int(self.brain._meta_kv.get_all_bulk([survivor])[survivor]
+                             ['community_size']), 15)
+        next_run = decoder.run()
+        self.assertFalse(any(p['type'] == 'merge_communities'
+                             and absorbed in (p['larger_id'], p['smaller_id'])
+                             for p in next_run['proposals']))
+
+    def test_explicit_membership_pruning_remains_supported(self):
+        survivor, absorbed, members = self.pair()
+        result = self.brain.absorb(survivor, absorbed, prune_edges=['community_member'])
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(self.members(survivor), set(members[:13]))
+
+    def test_batch_failure_rolls_back_membership_content_and_archive(self):
+        from unittest.mock import patch
+        from servers.daemon_dispatch import COMMAND_TABLE
+        survivor, absorbed, members = self.pair()
+        with patch.object(self.brain, 'archive_node', side_effect=RuntimeError('archive failed')):
+            response = COMMAND_TABLE['brain_batch'].handler(self.brain, {'operations': [
+                {'op': 'absorb', 'survivor_id': survivor, 'absorbed_id': absorbed,
+                 'content': 'Combined story'}]}, [])
+        self.assertFalse(response['result']['results'][0]['ok'], response)
+        self.assertEqual(self.members(survivor), set(members[:13]))
+        self.assertEqual(self.members(absorbed), set(members[:9] + members[13:]))
+        self.assertEqual(self.brain.get_node(survivor)['content'], 'Larger')
+        self.assertFalse(self.brain._nodes.get_bulk([absorbed])[absorbed]['archived'])
+
+    def test_incomplete_transfer_refuses_archive_and_rolls_back(self):
+        from unittest.mock import patch
+        survivor, absorbed, members = self.pair()
+        add = self.brain._graph.add_relation
+
+        def drop_member(source_id, target_id, relation, *args, **kw):
+            if relation == 'community_member' and members[13] in (source_id, target_id):
+                return {'ok': False, 'error': 'injected missing link'}
+            return add(source_id, target_id, relation, *args, **kw)
+
+        with patch.object(self.brain._graph, 'add_relation', side_effect=drop_member):
+            with self.assertRaisesRegex(RuntimeError, 'community absorb lost member links'):
+                self.brain.absorb(survivor, absorbed, content='Combined story')
+        self.assertEqual(self.members(survivor), set(members[:13]))
+        self.assertEqual(self.members(absorbed), set(members[:9] + members[13:]))
+        self.assertEqual(self.brain.get_node(survivor)['content'], 'Larger')
 
 
 class TestAbsorbEmbedding(BrainTestBase):

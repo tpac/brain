@@ -100,6 +100,7 @@ def decide_turn(client, captured, brain):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--clusters', type=int, default=2)
+    ap.add_argument('--source-dir', help='frozen or synthetic snapshot containing both databases')
     args = ap.parse_args()
 
     import anthropic
@@ -107,12 +108,12 @@ def main():
     from eval.s2_consolidation_eval import run_decoder
     from servers.scales.s2.consolidation_encoder import ConsolidationEncoder
     from servers.scales.s2.consolidation_contract import CONSOLIDATION
-    from eval.agent_introspect._common import load_env
+    from servers.scales.dispatch import load_env
     import servers.scales.runner as runner_mod
     load_env()
     client = anthropic.Anthropic()
 
-    with IsolatedBrain(cleanup=True) as env:
+    with IsolatedBrain(production_dir=args.source_dir, cleanup=True) as env:
         brain = env.brain
         decode = run_decoder(brain)
         clusters = decode.get('clusters', [])[:args.clusters]

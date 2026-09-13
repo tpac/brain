@@ -274,6 +274,7 @@ class CommunityEncoder(IntegrationUnit):
                        model=result.get('model', ''),
                        errors=[result['error']] if result.get('error') else [],
                        context_chars=result.get('context_chars', []),
+                       context_parts=result.get('context_parts', []),
                        membership_reconciled={
                            'communities_healed': recon.get('communities_healed', 0),
                            'edges_backfilled': recon.get('edges_backfilled', 0),
@@ -458,6 +459,7 @@ class CommunityEncoder(IntegrationUnit):
             'rounds': 0, 'actions': 0, 'write_actions': 0,
             'action_details': [], 'read_calls': [], 'final_text': '',
             'context_chars': [],
+            'context_parts': [],
         }
         # Cost/latency telemetry — loop counts, per-tool records, and tokens are
         # folded per batch by the shared _accumulate_run; elapsed by a wall-clock
@@ -471,31 +473,21 @@ class CommunityEncoder(IntegrationUnit):
         # Need a decoder instance to refresh community state between batches
         decoder = CommunityDecoder(self.brain, self.dispatch, self.config)
 
-        batches = [proposals[i:i + batch_size]
-                   for i in range(0, len(proposals), batch_size)]
+        proposal_offset = 0
         batch_idx = 0
-        while batch_idx < len(batches):
-            batch = batches[batch_idx]
-
-            # Format this batch
-            user_content = self._format_proposals(batch)
+        while proposal_offset < len(proposals):
             continuity = journal_prefix + self.journal.messages()
-
-            # Exact decision targets, then nearby context within the budget.
-            relevant_comms = self._find_relevant_communities(
-                batch, current_state,
-                max_chars=context_limit - len(continuity) - len(user_content) - 2)
-            if relevant_comms:
-                user_content = relevant_comms + '\n\n' + user_content
-            else:
-                user_content = "EXISTING COMMUNITIES: None.\n\n" + user_content
-
-            user_content = continuity + user_content
+            batch = proposals[proposal_offset:proposal_offset + batch_size]
+            # Largest contiguous prefix that fits. Shared targets are rendered
+            # once, so count-based halving can needlessly repeat their evidence.
+            # Search actual renders: optional recall can make sizes non-monotonic.
+            while True:
+                user_content, context_parts = self._build_batch_context(
+                    batch, current_state, continuity, context_limit)
+                if len(user_content) <= context_limit or len(batch) == 1:
+                    break
+                batch = batch[:-1]
             if len(user_content) > context_limit:
-                if len(batch) > 1:
-                    mid = len(batch) // 2
-                    batches[batch_idx:batch_idx + 1] = [batch[:mid], batch[mid:]]
-                    continue
                 self.brain._log_warning(
                     's2ce_oversized_context',
                     'single proposal exceeds community context budget',
@@ -503,10 +495,10 @@ class CommunityEncoder(IntegrationUnit):
                         len(user_content), context_limit))
 
             batch_num = batch_idx + 1
-            total_batches = len(batches)
-            print('[s2ce] Batch %d/%d (%d proposals, %d context chars)' % (
-                batch_num, total_batches, len(batch), len(user_content)), flush=True)
+            print('[s2ce] Batch %d (%d proposals, %d context chars)' % (
+                batch_num, len(batch), len(user_content)), flush=True)
             total_result['context_chars'].append(len(user_content))
+            total_result['context_parts'].append(context_parts)
 
             try:
                 result = retry_on_transient_api_error(
@@ -539,14 +531,15 @@ class CommunityEncoder(IntegrationUnit):
             current_state = decoder._read_community_state()
             if completed:
                 self.trace('delta', 'community_enriched',
-                           'batch %d/%d: %d actions (%d writes), %d total' % (
-                               batch_num, total_batches,
+                           'batch %d: %d actions (%d writes), %d total' % (
+                               batch_num,
                                result.get('actions', 0), result.get('write_actions', 0),
                                total_result['actions']))
             else:
                 self.trace('delta', 'community_enriched',
-                           'batch %d/%d FAILED: %s' % (
-                               batch_num, total_batches, total_result['error'][-200:]))
+                           'batch %d FAILED: %s' % (
+                               batch_num, total_result['error'][-200:]))
+            proposal_offset += len(batch)
             batch_idx += 1
 
         total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)
@@ -664,13 +657,33 @@ class CommunityEncoder(IntegrationUnit):
                         smaller, larger, len(transfer), ', '.join(transfer) or '(none)'))
         return '\n'.join(lines), set(communities)
 
+    def _build_batch_context(self, proposals, community_state, continuity, limit):
+        """Assemble the actual model input and account for each contribution."""
+        proposal_text = self._format_proposals(proposals)
+        decision = self._decision_context(proposals)
+        relevant = self._find_relevant_communities(
+            proposals, community_state,
+            max_chars=limit - len(continuity) - len(proposal_text) - 2,
+            decision_context=decision) or 'EXISTING COMMUNITIES: None.'
+        text = continuity + relevant + '\n\n' + proposal_text
+        return text, {
+            'decision_chars': len(decision[0]),
+            'nearby_chars': len(relevant) - len(decision[0]),
+            'proposal_chars': len(proposal_text),
+            'continuity_chars': len(continuity),
+            'separator_chars': 2,
+        }
+
     def _find_relevant_communities(self, batch_proposals, community_state,
-                                   max_chars=None):
+                                   max_chars=None, decision_context=None):
         """Exact decision targets plus compact semantically recalled neighbours."""
         from servers.contract import render_rich_node
         from .community_contract import S2CE_COMMUNITY_FORMAT
 
-        decision_text, decision_ids = self._decision_context(batch_proposals)
+        decision_text, decision_ids = (decision_context if decision_context is not None
+                                       else self._decision_context(batch_proposals))
+        if max_chars is not None and len(decision_text) >= max_chars:
+            return decision_text or None
 
         # Build a query from member titles in this batch
         titles = []
@@ -717,7 +730,9 @@ class CommunityEncoder(IntegrationUnit):
                 lines.append('')
             if omitted:
                 lines.append(omission_notice % omitted)
-            return '\n'.join(lines)
+            text = '\n'.join(lines)
+            # Even an omission notice is optional; it cannot force a split.
+            return decision_text if max_chars is not None and len(text) > max_chars else text
         except Exception as e:
             # Fallback: compact one-liner listing
             print('[s2ce] Community recall failed: %s — using compact listing' % e,
@@ -737,7 +752,8 @@ class CommunityEncoder(IntegrationUnit):
                 shown += 1
             if len(community_state) > shown:
                 lines.append(notice % (len(community_state) - shown))
-            return '\n'.join(lines)
+            text = '\n'.join(lines)
+            return decision_text if max_chars is not None and len(text) > max_chars else text
 
     # ══════════════════════════════════════════════════════════
     # Proposal formatting (text rendering for the encoder agent)

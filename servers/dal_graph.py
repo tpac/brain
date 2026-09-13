@@ -67,16 +67,20 @@ EDGE_CONTEXT_MIN_DESC_LENGTH = 10
 # text) — the OTHER half of the same producer/backfill parity contract.
 EDGE_CONTEXT_EXCLUDED_RELATIONS = frozenset({'community_member'})
 
-# Relations absorb() must NOT migrate to the survivor. Community placement
-# is the community unit's judged decision (affinity gate ≥0.25 + encoder
-# accept/reject + drift detection re-evaluation) — a merge inheriting the
-# absorbed node's membership would bypass all three. The absorbed node is
-# archived, so its membership edge dies with it (dangling-edge restorer);
-# the survivor gets (re-)placed through the normal community cycle, scored
-# on the semantic edges the absorb just enriched. Audit 2026-06-12: the
-# consolidation prompt + the comment above stated this exclusion as fact
-# while the code migrated everything — this constant makes it true.
-ABSORB_EXCLUDED_RELATIONS = frozenset(['community_member'])
+# Ordinary node absorption cannot assign the survivor to a community:
+# placement belongs to S2's judgment. Merging two communities is itself that
+# judgment, so their live ordinary-node members follow the merged story.
+def absorb_migrates_relation(relation, survivor_type, absorbed_type, neighbor_type):
+    """Which relations survive absorption, given the three endpoint types.
+
+    Community-to-community membership is not a member of either story; those
+    legacy edges must not turn into hierarchy as a side effect of absorption.
+    """
+    if relation != 'community_member':
+        return True
+    return (relation == 'community_member'
+            and survivor_type == absorbed_type == 'community'
+            and neighbor_type != 'community')
 
 # When `include_archived=False` is the default, every edge-reading method
 # filters `archived = 0` in its WHERE clause. v25 added the column;
@@ -1301,5 +1305,3 @@ class GraphDAL:
         self.conn.execute(
             'UPDATE edges SET weight = ? WHERE edge_id = ?',
             (new_weight, edge_id))
-
-

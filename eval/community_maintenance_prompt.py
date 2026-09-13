@@ -53,3 +53,36 @@ def make_candidate(prompt):
         assert prompt.count(old) == 1, 'community maintenance anchor drift: %r' % old
         prompt = prompt.replace(old, new)
     return prompt
+
+
+def make_merge_candidate(prompt):
+    """Align the existing MERGE recipe with community-aware absorption."""
+    old = '''## MERGE
+
+```
+brain_batch({operations: [
+  {op: "revise", node_id: "larger_id", reason: "merged with Smaller Title",
+   content: "Combined narrative..."},
+  {op: "connect", source_id: "larger_id", target_id: "unique_member", relation: "community_member", weight: 0.3},
+  {op: "archive", node_id: "smaller_id", reason: "merged into Larger Title"}
+]})
+```'''
+    new = '''## MERGE
+
+Use `absorb` to merge two communities. It preserves the union of their live
+ordinary-node members, source references, and semantic edges, then archives
+the smaller community in the same transaction. Synthesize the combined
+current account in the field overrides; an older merged story does not
+automatically replace the latest development. Structural fields are stamped
+from the final live edges after your actions.
+
+```
+brain_batch({operations: [
+  {op: "absorb", survivor_id: "larger_id", absorbed_id: "smaller_id",
+   reason: "Both communities describe the same ongoing work",
+   content: "The combined account connects the original investigation with its validated result.",
+   community_latest_development: "Validation passed; rollout remains."}
+]})
+```'''
+    assert prompt.count(old) == 1, 'community merge anchor drift'
+    return prompt.replace(old, new)

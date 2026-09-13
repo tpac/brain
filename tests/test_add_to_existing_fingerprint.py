@@ -151,6 +151,31 @@ class TestMatcherRecognizesPlacement:
         assert skipped == [prop]
 
 
+class TestMatcherRecognizesCommunityWrites:
+    def test_creation_matches_connect_to_members_only(self):
+        prop = {'type': 'new_community', 'members': ['a', 'b', 'c', 'd']}
+        unrelated = {'type': 'new_community', 'members': ['x', 'y']}
+        actions = [{'tool': 'brain_batch', 'input': {'operations': [{
+            'op': 'remember', 'type': 'community', 'connect_to': [
+                {'title': 'a', 'relation': 'community_member'},
+                {'title': 'b', 'relation': 'community_member'},
+                {'title': 'x', 'relation': 'extends'},
+                {'title': 'y', 'relation': 'extends'},
+            ]}]}}]
+        acted, skipped = match_proposals_to_actions([prop, unrelated], actions)
+        assert acted == [prop]
+        assert skipped == [unrelated]
+
+    def test_absorb_matches_only_the_merged_pair(self):
+        prop = {'type': 'merge_communities', 'larger_id': 'a', 'smaller_id': 'b'}
+        unrelated = {'type': 'merge_communities', 'larger_id': 'a', 'smaller_id': 'c'}
+        actions = [{'tool': 'brain_batch', 'input': {'operations': [{
+            'op': 'absorb', 'survivor_id': 'a', 'absorbed_id': 'b'}]}}]
+        acted, skipped = match_proposals_to_actions([prop, unrelated], actions)
+        assert acted == [prop]
+        assert skipped == [unrelated]
+
+
 class TestPrioritySortByAffinity:
     """sort_proposals_by_priority read phantom top-level affinity → every
     add_to_existing sorted as confidence 0, losing strong-first ordering."""

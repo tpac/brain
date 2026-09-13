@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
-"""A/B the community encoder model or prompt on isolated production copies.
+"""A/B community encoder revisions, models or prompts on isolated copies.
 
 One invocation = one arm-run: copy the (frozen) source brain, decode with
 the production decoder (eval seam run_decoder), run the REAL
 CommunityEncoder with an interaction override, then report its deltas.
-Use --prompt-file for prompt arms and --proposals-file for the same frozen
-proposal subset in every arm. All writes stay in the isolated copy.
+Use --code-root for complete revision arms, --prompt-file for prompt arms,
+and --proposals-file for the same frozen proposal subset in every arm.
+All writes stay in the isolated copy. --dry-run exercises the actual batch
+planner with empty model decisions, without calling the model. Later batches
+can differ from a live run because the empty decisions make no graph changes.
 
   completion   — write_actions / proposals sent, rounds, communities created
   edge_omission— membership-backfill firings during the run (the restorer
@@ -14,7 +17,14 @@ proposal subset in every arm. All writes stay in the isolated copy.
   discipline   — rejections stamped, brain_batch invalid ops
   quality      — per-created-community field presence (question, situation,
                  latest_development) + sizes, for the judge pass
-  cost         — tokens in/out, wall-clock
+  cost         — uncached input, cache reads/writes, output, wall-clock
+  calls        — actual dispatched initial user/system/tool character counts,
+                 loop usage, reads and errors (includes retry attempts)
+
+Sum input_tokens + cache_read_tokens + cache_creation_tokens for total input
+processed; these have different billing rates. Initial character counts omit
+later tool results and repeated conversation history. payload_chars is only a
+pre-run formatting estimate; use dispatched_context_chars for batch comparisons.
 
 Run arms in parallel with PYTHONHASHSEED=0 and a shared frozen --source-dir
 so every arm decodes identical proposals:
@@ -25,17 +35,15 @@ so every arm decodes identical proposals:
         --source-dir <master> --out <reports>/haiku_1.json &
 """
 import argparse
+import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
-
-from eval.s2_community_decoder_eval import run_decoder  # noqa: E402
-from servers.scales.s2.community_contract import COMMUNITY_DETECTION  # noqa: E402
 
 ACTIONABLE = ('new_community', 'add_to_existing', 'drift',
               'health_update', 'merge_communities')
@@ -117,17 +125,48 @@ def main():
     ap.add_argument('--source-dir', required=True,
                     help='frozen dir holding brain.db + brain_logs.db')
     ap.add_argument('--out', required=True, help='JSON report path')
+    ap.add_argument('--code-root', default=ROOT,
+                    help='checkout to import; compare full revisions with the same harness')
+    ap.add_argument('--dry-run', action='store_true',
+                    help='exercise batching with empty model decisions in the isolated copy')
     ap.add_argument('--prompt-file', help='candidate or control prompt; isolated override only')
     ap.add_argument('--proposals-file', help='frozen proposal JSON list; skip decoding')
     ap.add_argument('--answers-file', help='JSON item-id → answer map, applied only in the copy')
     args = ap.parse_args()
 
+    # Select before ANY project import. Both arms use their actual encoder,
+    # renderer, journal, prompt and contracts; the harness only observes them.
+    code_root = os.path.realpath(args.code_root)
+    sys.path.insert(0, code_root)
+    from eval.s2_community_decoder_eval import run_decoder
+    from servers.scales.s2.community_contract import COMMUNITY_DETECTION
+    from servers.scales.s2.rejection_table import get_proposed_ids
+    from servers.scales.s2 import community_encoder as encoder_module
+    from servers.scales import runner, journal
+    from servers import trace_contract, brain_remember, dal_graph, contract
+    from servers.scales.s2 import community_contract, community_enrichment_prompt, rejection_table
     from tests.isolated_brain import IsolatedBrain
     from tests.interaction_override import override_interaction
 
-    report = {'label': args.label, 'model': args.model}
+    sources = {}
+    for module in (encoder_module, runner, journal, trace_contract, brain_remember,
+                   dal_graph, contract, community_contract, community_enrichment_prompt,
+                   rejection_table):
+        path = os.path.realpath(module.__file__)
+        if os.path.commonpath([code_root, path]) != code_root:
+            raise RuntimeError('arm imported code outside its checkout: %s' % path)
+        with open(path, 'rb') as f:
+            sources[os.path.relpath(path, code_root)] = hashlib.sha256(f.read()).hexdigest()
+    report = {'label': args.label, 'model': args.model, 'dry_run': args.dry_run,
+              'code_root': code_root,
+              'commit': subprocess.check_output(
+                  ['git', '-C', code_root, 'rev-parse', 'HEAD'], text=True).strip(),
+              'source_sha256': sources}
     with IsolatedBrain(production_dir=args.source_dir, cleanup=True) as env:
         brain = env.brain
+        from servers import embedder
+        if not embedder.is_ready():
+            raise RuntimeError('embedding model unavailable; comparison would omit recall evidence')
         if args.answers_file:
             from servers.channels.thalamus import thalamus
             with open(args.answers_file) as f:
@@ -151,6 +190,7 @@ def main():
             sys.exit(2)
         report['model_effective'] = (brain.get_interaction_config(
             's2_community_enrichment') or {}).get('model')
+        report['interaction_stamp'] = brain.get_interaction_stamp('s2_community_enrichment')
 
         if args.proposals_file:
             from servers.scales.s2.community_decoder import CommunityDecoder
@@ -163,6 +203,13 @@ def main():
             dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         actionable = [p for p in proposals if p.get('type') in ACTIONABLE]
+        # Observation-only IDs: the rejection contract covers proposal nodes;
+        # overlap/home are extra context roles, including on older revisions.
+        target_ids = list(dict.fromkeys(
+            nid for p in actionable for nid in get_proposed_ids(p) + [
+                p.get('home_id'), (p.get('overlaps_existing') or {}).get('id')]
+            if nid))
+        report['proposals'] = actionable
         report['decode'] = {
             'proposals': len(proposals),
             'actionable': len(actionable),
@@ -179,10 +226,16 @@ def main():
         rej_before = _rejections(brain)
         log_mark = _log_max_id(brain)
 
-        from servers.scales.s2.community_encoder import CommunityEncoder
         cfg = dict(COMMUNITY_DETECTION)
         cfg['model'] = args.model
-        encoder = CommunityEncoder(brain, config=cfg)
+        encoder = encoder_module.CommunityEncoder(brain, config=cfg)
+        report['decision_targets_before'] = brain.get_node(target_ids)
+        from servers.channels.thalamus import thalamus
+        report['messages_before'] = thalamus.producer_items(
+            brain, encoder.ENCODING_SOURCE, '', settled_days=7)
+        community_ids = [n['id'] for n in report['decision_targets_before'].values()
+                         if n.get('type') == 'community']
+        report['members_before'] = brain._graph.get_members_bulk(community_ids)
         batch_size = cfg['max_proposals_per_call']
         report['payload_chars'] = [len(
             (encoder._find_relevant_communities(actionable[i:i + batch_size],
@@ -190,8 +243,37 @@ def main():
             encoder._format_proposals(actionable[i:i + batch_size]))
             for i in range(0, len(actionable), batch_size)]
 
+        calls = []
+        real_loop = runner.run_llm_loop
+
+        def observe_loop(**kw):
+            call = {'user_chars': len(kw['user_content']),
+                    'system_chars': len(kw['system_prompt']),
+                    'tools_chars': len(json.dumps(kw['tools'], ensure_ascii=False))}
+            calls.append(call)
+            started = time.time()
+            try:
+                if args.dry_run:
+                    result = {'rounds': 1, 'actions': 0, 'write_actions': 0,
+                              'final_text': ''}
+                else:
+                    result = real_loop(**kw)
+                call['usage'] = {k: result.get(k, 0) for k in runner.USAGE_FIELDS}
+                call['rounds'] = result.get('rounds', 0)
+                call['truncations'] = result.get('truncations', [])
+                call['read_calls'] = result.get('read_calls', [])
+                if result.get('error'):
+                    call['error'] = result['error']
+                return result
+            except Exception as exc:
+                call['error'] = str(exc)
+                raise
+            finally:
+                call['wall_s'] = round(time.time() - started, 2)
+
         t0 = time.time()
-        result = encoder.run(proposals, dec['community_state']) or {}
+        with patch.object(runner, 'run_llm_loop', side_effect=observe_loop):
+            result = encoder.run(proposals, dec['community_state']) or {}
         wall_s = round(time.time() - t0, 1)
 
         comms_after = _live_communities(brain)
@@ -204,11 +286,18 @@ def main():
             if r.get('chain_id') == run_chain]
 
         report.update({
-            'dispatched_context_chars': result.get('context_chars', []),
+            'calls': calls,
+            'encoder_error': result.get('error'),
+            'dispatched_context_chars': [c['user_chars'] for c in calls],
+            'context_parts': result.get('context_parts', []),
             'final_text': result.get('final_text', ''),
             'action_details': result.get('action_details', []),
-            'decision_targets_after': brain.get_node(
-                encoder._decision_community_ids(actionable)),
+            'read_calls': result.get('read_calls', []),
+            'decision_targets_after': brain.get_node(target_ids),
+            'created_communities': brain.get_node(sorted(new_comms)),
+            'members_after': brain._graph.get_members_bulk(community_ids + sorted(new_comms)),
+            'messages_after': thalamus.producer_items(
+                brain, encoder.ENCODING_SOURCE, '', settled_days=7),
             'completion': {
                 'rounds': result.get('rounds', 0),
                 'actions': result.get('actions', 0),

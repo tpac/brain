@@ -181,22 +181,11 @@ def simulate_acceptance(brain, proposals, accept_rate=0.6, run_seed=42):
             larger_id = p.get('larger_id')
             smaller_id = p.get('smaller_id')
             if larger_id and smaller_id:
-                smaller_members = set(r[0] for r in brain.conn.execute("""
-                    SELECT CASE WHEN e.source_id = ? THEN e.target_id
-                           ELSE e.source_id END
-                    FROM edges e
-                    JOIN edge_relations er ON er.edge_id = e.edge_id
-                    WHERE (e.source_id = ? OR e.target_id = ?)
-                    AND er.relation = 'community_member'
-                    AND er.archived = 0
-                """, (smaller_id, smaller_id, smaller_id)).fetchall())
-                for mid in smaller_members:
-                    graph_dal.add_relation(
-                        larger_id, mid, 'community_member', weight=0.3,
-                        encoding_source='s2:community_detection')
-                brain.conn.execute(
-                    "UPDATE nodes SET archived = 1 WHERE id = ?",
-                    (smaller_id,))
+                result = brain.absorb(larger_id, smaller_id,
+                                      archived_by='s2:community_detection',
+                                      reason='simulated acceptance of community merge')
+                if not result.get('ok'):
+                    raise RuntimeError('simulated merge failed: %s' % result)
 
     record_rejections(brain, rejected)
     brain.conn.commit()
@@ -377,11 +366,12 @@ def main():
     ap.add_argument('--keep', action='store_true',
                     help='keep the isolated temp dir for inspection')
     ap.add_argument('--save', help='write JSON report to this path')
+    ap.add_argument('--source-dir', help='frozen snapshot containing both databases')
     args = ap.parse_args()
 
     from tests.isolated_brain import IsolatedBrain
 
-    with IsolatedBrain(cleanup=not args.keep) as env:
+    with IsolatedBrain(production_dir=args.source_dir, cleanup=not args.keep) as env:
         brain = env.brain
         runs = run_multi(brain, n_runs=args.runs,
                          accept_rate=args.accept_rate, seed=args.seed,
