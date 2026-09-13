@@ -80,7 +80,8 @@ class TestInjectEndToEnd:
         acts = {'bbbbbbbb': 0.9, 'aaaaaaaa': 0.5}
 
         out = format_surface_output_activation(
-            acts, {}, rich, query_vec=None, brain=None)
+            acts, {}, rich, selected_mode={'bbbbbbbb': 'arc', 'aaaaaaaa': 'arc'},
+            query_vec=None, brain=None)
 
         assert 'Node B' in out and 'Node A' in out   # both render as roots
         assert out.count('bbbbbbbb') == 1            # ONCE (root header), not also A's edge
@@ -94,5 +95,5 @@ class TestInjectEndToEnd:
         ])
         out = format_surface_output_activation(
             {'aaaaaaaa': 0.9}, {}, {'aaaaaaaa': a},
-            query_vec=None, brain=None)
+            selected_mode={'aaaaaaaa': 'arc'}, query_vec=None, brain=None)
         assert 'dddddddd' in out  # D never rendered as root → edge kept

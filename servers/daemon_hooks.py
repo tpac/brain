@@ -353,10 +353,12 @@ def hook_recall(brain, args, graph_changes):
         # <candidates>. The v13 <shown> prompt rule alone doesn't hold —
         # Haiku re-picked shown nodes with the element in-prompt (2026-07-27
         # capture) — so out-of-scope is now structural, in code. The seen
-        # set reuses the turns pulled above (no extra query). Haiku's
-        # agentic tools can still fetch a shown node deliberately; only
-        # ambient re-injection stops. Falls back to the plain cap when the
-        # turns pull failed (recent_messages empty → seen empty).
+        # set reuses the turns pulled above (no extra query). The same set
+        # gates Haiku's tool results and the final selection in run_surface:
+        # a node the stream already has in context this window does not
+        # render again through any door (the stream can get_nodes it). Falls
+        # back to the plain cap when the turns pull failed (recent_messages
+        # empty → seen empty).
         from .scales.s1.surface import seen_node_ids
         _seen = seen_node_ids(recent_messages)
         if _seen:

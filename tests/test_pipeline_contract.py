@@ -37,7 +37,9 @@ class TestTruncationInvariants(unittest.TestCase):
         from servers.pipeline_contract import PIPELINE
         self.assertGreaterEqual(
             PIPELINE['recent_message_content'],
-            max(SURFACE['user_message_limit'], SURFACE['anchor_message_limit']),
+            max(SURFACE['user_message_limit'], SURFACE['anchor_message_limit'],
+                SURFACE['last_anchor_message_limit'],
+                SURFACE['current_message_limit']),
             "recent_message_content (upstream cap) clips messages below the "
             "per-role display limits in build_surface_prompt")
 

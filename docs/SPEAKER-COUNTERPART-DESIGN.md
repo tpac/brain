@@ -310,8 +310,8 @@ keyless-boot notices (`:454-464`), edit auto-suggest (`brain_voice.py:133-234`),
 and the recall-failure notice (`pre_response_recall.py:98`). Two census
 corrections (2026-07-27): the host-environment notice (`:1095-1105`) builds the
 markers but is **log-only** (`return {"output": ""}` — never reaches context),
-and the per-turn recall injection is **already unmarked** ("Brain activated N
-memories:", `surface_contract.py`) — so "marker for interjections" is the
+and the per-turn recall injection is **already unmarked** (the seed blocks
+open the inject directly, `surface_contract.py`) — so "marker for interjections" is the
 prescriptive rule, not a description of the highest-volume path today. The line
 is principled: those are **interjections** — the brain interrupting mid-flow — which
 is precisely what the locked distinct-voice decision (id:279e065f) exists for, and

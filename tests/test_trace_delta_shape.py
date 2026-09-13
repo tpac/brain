@@ -507,7 +507,7 @@ class TestSurfaceSelectionJournal:
                 return 's1r-test-journal'
 
         cands = [{'id': 'a' * 32, 'title': 'T', 'score': 0.9, 'type': 'fact'}]
-        _write_traces(brain, _Ctx(), cands, {'aaaaaaaa'}, [], [],
+        _write_traces(brain, _Ctx(), cands, {'aaaaaaaa'}, [],
                       'ctx', 'query', [], 'ref-1',
                       {'fingerprint': 'abcdef123456', 'source': 'override',
                        'version': 1, 'id': 7},

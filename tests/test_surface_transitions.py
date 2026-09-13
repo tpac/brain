@@ -413,55 +413,6 @@ class TestDecodeTransitions(BrainTestBase):
 
         self.assertEqual(captured['layout'], 'sentinel-layout')
 
-    def test_recently_surfaced_is_session_scoped(self):
-        """_get_recently_surfaced must not leak surfaces from parallel sessions.
-
-        Each session's Haiku gets an exclusion list of nodes already shown to
-        Anchor. That list must come from THIS session's surface_selected traces
-        only — otherwise Session B sees Session A's picks marked 'already seen'
-        and Haiku skips re-selecting them even when relevant to B.
-        """
-        from servers.scales.s1.surface import _get_recently_surfaced
-
-        n_a = self.brain.remember(type='rule', title='Session A surfaced this',
-                                  content='Only A should see this in exclusion list')
-        n_b = self.brain.remember(type='rule', title='Session B surfaced this',
-                                  content='Only B should see this in exclusion list')
-
-        self.brain._trace_dal.append(
-            chain_id='s1r-sessA-1', scale='s1', event_type='K',
-            ref_type='surface_selected', ref_id=json.dumps([n_a['id']]),
-            session_id='sess-A')
-        self.brain._trace_dal.append(
-            chain_id='s1r-sessB-1', scale='s1', event_type='K',
-            ref_type='surface_selected', ref_id=json.dumps([n_b['id']]),
-            session_id='sess-B')
-
-        only_a = _get_recently_surfaced(self.brain, 'sess-A')
-        only_b = _get_recently_surfaced(self.brain, 'sess-B')
-
-        a_ids = {entry['id'] for entry in only_a}
-        b_ids = {entry['id'] for entry in only_b}
-
-        self.assertIn(n_a['id'], a_ids, "Session A's surface missing from A's exclusion list")
-        self.assertNotIn(n_b['id'], a_ids,
-                         "Session B's surface LEAKED into Session A's exclusion list")
-        self.assertIn(n_b['id'], b_ids, "Session B's surface missing from B's exclusion list")
-        self.assertNotIn(n_a['id'], b_ids,
-                         "Session A's surface LEAKED into Session B's exclusion list")
-
-
-class TestSelectionLivenessGate(BrainTestBase):
-    """2026-06-12 — archived nodes must be dropped from Haiku's resolved
-    selection before they become spread seeds. Production incident: node
-    90664c51 was absorbed by S2 consolidation mid-session; Haiku kept
-    re-selecting its id from session history (conversation text +
-    recently-surfaced block). Each acceptance seeded a vector-less node
-    (spread_seed_no_vectors) and re-wrote the dead id into the
-    surface_selected trace — a self-perpetuating loop."""
-
-    needs_embedder = False
-
     def test_archived_selection_dropped_live_kept(self):
         from servers.scales.s1.surface import _drop_archived_selected
 
@@ -476,16 +427,12 @@ class TestSelectionLivenessGate(BrainTestBase):
         self.assertTrue(arch.get('ok'))
 
         selected_mode = {live['id']: 'arc', dead['id']: 'arc'}
-        selected_short_ids = {live['id'][:8], dead['id'][:8]}
 
-        dropped = _drop_archived_selected(
-            self.brain, selected_mode, selected_short_ids)
+        dropped = _drop_archived_selected(self.brain, selected_mode)
 
         self.assertEqual(dropped, [dead['id']])
         self.assertNotIn(dead['id'], selected_mode)
-        self.assertNotIn(dead['id'][:8], selected_short_ids)
         self.assertIn(live['id'], selected_mode)
-        self.assertIn(live['id'][:8], selected_short_ids)
 
     def test_all_live_selection_untouched(self):
         from servers.scales.s1.surface import _drop_archived_selected
@@ -494,10 +441,8 @@ class TestSelectionLivenessGate(BrainTestBase):
                                 auto_connect=False,
                                 encoding_source='anchor:test')
         selected_mode = {a['id']: 'arc'}
-        selected_short_ids = {a['id'][:8]}
 
-        dropped = _drop_archived_selected(
-            self.brain, selected_mode, selected_short_ids)
+        dropped = _drop_archived_selected(self.brain, selected_mode)
 
         self.assertEqual(dropped, [])
         self.assertIn(a['id'], selected_mode)

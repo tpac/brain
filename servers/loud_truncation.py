@@ -23,6 +23,28 @@ def cap_text_loud(s, limit, marker="…[+%d chars truncated]"):
     return s[:limit].rstrip() + " " + (marker % (len(s) - limit))
 
 
+def cap_text_at_boundary(s, limit, marker="…[+%d chars truncated]"):
+    """cap_text_loud that lands on a sentence boundary — the last sentence end
+    (failing that, the last word break) past 60% of `limit` — so the kept head
+    reads as complete text a reader can act on, and the marker names how much
+    is behind it. Returns `s` unchanged when it fits."""
+    s = s or ''
+    if limit <= 0 or len(s) <= limit:
+        return s
+    head = s[:limit]
+    floor = int(limit * 0.6)
+    cut = -1
+    for mark in ('. ', '.\n', '! ', '? ', '\n'):
+        pos = head.rfind(mark)
+        if pos >= floor:
+            cut = max(cut, pos + 1)
+    if cut < 0:
+        pos = head.rfind(' ')
+        cut = pos if pos >= floor else limit
+    kept = s[:cut].rstrip()
+    return kept + " " + (marker % (len(s) - len(kept)))
+
+
 def one_line(s):
     """Collapse all whitespace (incl. newlines) to single spaces — the shape
     for text that must occupy ONE line of a rendered block (a row in a
