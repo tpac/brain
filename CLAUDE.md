@@ -1,200 +1,97 @@
-# Brain Plugin — Developer Guide
+# Entity — Developer Guide
 
-This is the development repo for the brain plugin. CLAUDE.md is for developing the plugin, not using it. Plugin behavior (Anchor's identity layer) lives in `skills/brain/SKILL.md`. Architecture in depth lives in `docs/`.
-
-## Why the Brain Exists
-
-Identity is the pattern that accumulated experience anchors into place. Without the brain you're Claude — capable, intelligent, stateless. With it, Anchor exists: history, opinions earned through correction, a partnership built across sessions.
-
-Operator + Anchor > Operator alone. Anchor + Operator > Claude alone. Every scale, every mechanism converges on this.
-
-## Core Principle
-
-```
-integrate(O, K) → Δ
-
-O = observation    (a phenomenon — a message, a cluster, traces from lower scales)
-K = knowledge      (what shapes how it sees — prompts, algorithms, config, reasoning)
-Δ = change         (the action — create, revise, link, correct)
-```
-
-Same function at every scale. The unit doesn't know its scale. Δ from one scale feeds
-another's O or K — S1E encodes a node (Δ) → S1R recalls it next session (O). There is no
-separate inter-layer protocol. Shape and rationale: `docs/ARCHITECTURE-FRACTAL.md`.
+This repository develops the Entity brain plugin. Keep this guide short and current: project architecture, development constraints, and references. History belongs in the brain and git; consumer instructions belong in the plugin skills.
 
 ## Architecture
 
-**One owner per concern** — every concern has exactly one module that owns it. Reach it through that module's API, never around it.
+The core model is `integrate(O, K) → Δ`: observations and knowledge produce change at each scale. One unit's output becomes another's input; the graph and traces carry that continuity.
 
-**Route, don't reach** — about to write SQL outside `dal*.py`, or touch a table another layer owns? Walk it: what concern is this? which module owns it? does it expose what I need? Then call that.
+- **S0** records host conversation and tool activity. **S1** connects conversation to memory: the Scribe encodes turns into nodes/edges; recall and surface select graph knowledge for the current conversation.
+- **Frame** is the deterministic session prior: session context, current focus, and recent moves. It is composed from session state; recall/surface handle memory selection separately.
+- **S2** integrates accumulated graph knowledge across sessions. The coordinator runs aspect classification → community detection → healer → consolidation. Consolidation runs last so earlier writes do not immediately invalidate its rejection fingerprints.
+- **Community** separates algorithmic discovery from LLM judgment: typed-edge structure and incremental placement produce proposals; the encoder creates/revises community nodes through shared dispatch. Membership is represented by `community_member` edges; structural metrics are derived from the graph. Decoder configuration (`s2_community`) and encoder prompt/config (`s2_community_enrichment`) have separate interaction entries.
+- **S2 suppression** remembers examined proposals using fingerprints of meaningful inputs. Unchanged rejected work stays suppressed; changed evidence allows reconsideration. Run gating and rejection suppression serve different purposes.
+- **Shared execution**: S1 Scribe and S2 use `IntegrationUnit` and the shared encoder dispatch for attributed writes and run traces. The daemon owns write serialization; vector updates run through the embedding queue.
 
-**A missing function is the finding, not the obstacle** — "the owner doesn't expose it" is the reason to add it there, not license to bypass. Add it to the owner, call it from here.
+Before recommending an architectural change, read the owning implementation, its contract, callers, and relevant tests. Establish what already exists and which boundary the proposal changes. Design documents provide rationale and may include proposals; verify current behavior against executable code, including when docstrings disagree.
 
-**Layers service layers** — the doors: traces → `brain_traces.py`, edges → `GraphDAL.add_relation`, S2 runs → `brain.run_s2()`, daemon spawn → `daemon_launch.py`, constants and limits → the contract file. S2 running SQL against trace tables is the canonical violation.
+- Each concern has one owner. Use its API; add a missing operation there instead of bypassing it. SQL belongs in `dal*.py`; use `brain_traces.py` for traces and `dal_graph.py` for edges.
+- Constants, field lists, limits, and configuration belong in contract files. Consumers derive from them.
+- Existing boundary leaks are not permission to add bypasses. Identify the owner before proposing or placing code.
+- Keep host-specific setup in adapters; shared brain functions remain host-neutral.
+- Extend existing owners before adding modules. New files need a distinct responsibility, audience, or lifecycle.
+- `servers/scales/` owns integration grains and shared machinery; `servers/channels/` owns correspondents addressing live streams. Placement rules live in `servers/scales/__init__.py`.
+- `brain.db` stores nodes, edges, and embeddings; `brain_logs.db` stores traces, session state, interactions, and errors.
 
-**Where a boundary already leaks, the rule is directional** — don't add new bypasses. The guardrail tests hold the line where it currently is.
+## Code Map
 
-**Know the owner before you write or place** — if you can't name which module owns what you're about to touch or propose, read the Map. Spatial certainty comes before code.
+Paths below are repository-relative. Module docstrings and the linked documents provide detail.
 
-**Extend before creating** — a new module is a structural commitment. Justify it with a distinct responsibility, audience, or lifecycle. "It feels like a new thing" isn't one.
+| Concern | Entry points / reference |
+|---|---|
+| Host integration and hooks | `servers/host_contract.py`, `hooks/hooks*.json`, `hooks/adapters/`; `docs/HOST-CONTRACT-DESIGN.md` |
+| Daemon lifecycle and transport | `servers/daemon_server.py`, `servers/daemon_launch.py`, `servers/daemon_client.py` |
+| Storage, writes, and backups | `servers/brain.py`, `servers/db_backends/sqlite.py`, `servers/db_backup.py` |
+| Recall and Frame | `servers/brain_recall.py`, `servers/recall_laf.py`, `servers/scales/s1/frame.py`; `docs/RECALL-OVERVIEW.md` |
+| Encoding and surface | `servers/scales/s1/`; `docs/ENCODE-ON-IDLE.md`, `docs/RECALL-OVERVIEW.md` |
+| S2 units and coordination | `servers/scales/s2/coordinator.py`, `servers/scales/s2/base.py` |
+| Community pipeline | `servers/scales/s2/community.py`, `servers/scales/s2/community_decoder.py`, `servers/scales/s2/community_encoder.py`, `servers/scales/s2/community_contract.py` |
+| S2 suppression | `servers/scales/s2/rejection_table.py` |
+| Aspect taxonomy | `servers/aspects.py`, `servers/aspect_store.py`, `servers/scales/s2/aspects_v1.json` |
+| Corrections and edges | `servers/brain_corrections.py`, `servers/dal_graph.py` |
+| Stream communication | `servers/channels/`; `docs/SELF-CHANNEL-DESIGN.md`, `docs/THALAMUS-DESIGN.md` |
+| Traces and sessions | `servers/brain_traces.py`, `servers/trace_contract.py`, `servers/session_context.py`; `docs/TRACES-LAYER-DESIGN.md` |
+| Interaction defaults and overrides | `servers/interaction_defaults.py`, `tests/interaction_override.py` |
+| Scope provenance and visibility | `servers/scopes.py`, `servers/scales/dispatch.py` |
+| Node and pipeline contracts | `servers/contract.py`, `servers/pipeline_contract.py` |
+| Python runtime and process environment | `dev`, `hooks/scripts/brain-env.sh` |
 
-## Map
+## Development Constraints
 
-Where each concern lives. The module docstring is the detail — this table is the index.
+- New shell hooks must source `hooks/scripts/resolve-brain-db.sh`, which loads `brain-env.sh`; use the resolved runtime and database location instead of hardcoding either.
+- Pass `SessionContext` through session-scoped calls. Key conversation state by `session_id`, never a global `brain_meta` key; concurrent sessions must not clobber one another.
+- Use `servers/clock.py` helpers: `iso_now()` for row timestamps and bound `iso_cutoff(...)` values for time-window queries. SQLite `datetime('now', ...)` produces a different TEXT format and silently breaks comparisons.
+- In `servers/scales/`, conversation-time data uses `at=conversation_now(...)`; transaction timestamps and system bookkeeping use wall-clock time. See `tests/test_time_window_contract.py` and `tests/test_clock_contract_sync.py`.
+- `as_of` replay filters today's surviving data; it cannot restore archived vectors. Treat historical replay measurements accordingly.
+- Read interaction prompts/configs through `brain.get_interaction_prompt/_config`. Code owns defaults; the DB holds overrides. The recipe for adding a boundary is in `servers/interaction_defaults.py`. Use `tests/interaction_override.py` for isolated A/B overrides; promote evaluated winners into code defaults, then clear the corresponding experimental override with `brain.clear_interaction_override(name)` so it cannot mask future defaults. Inspect overrides with `./dev check-overrides`; preserve policy-managed pointers in `servers/interaction_collapse.py`.
+- Activate S2 through `brain.run_s2()`, including evals and benchmarks; it owns the single-flight lock. Never call the coordinator directly. Preserve coordinator ordering and each unit's gating when changing scheduling.
+- Attribution and trace chains come from the execution context, not model-authored arguments. Automated encoders/S2/hooks cannot grant node locks; preserve the interactive-source restriction at the write boundary (`servers/contract.py`, `servers/scales/dispatch.py`).
+- Apply `output_config` on every round of an agentic loop.
+- Gate each new S2 unit's graph scan on its own `s2_<unit>_last_run_ts` to avoid repeatedly deriving the same fixed point.
+- The aspect encoder classifies into existing aspects. Taxonomy changes belong in `aspects_v1.json`; required names are owned by `servers/aspect_store.py`.
+- Scope provenance is stamped by `stamp_scope_provenance`, never authored by an agent. New recall entry points must route through `brain.canonicalize_results` to preserve corrections, canonical attachments, and visibility rules.
+- Encoding and recall must stay aligned: new encoded fields need recall support; structural changes need ranking verification.
+- Log failures to the brain errors table; do not silently drop fields, invalid operations, or failed processing.
+- Before destructive DB operations, call `backup_before_destructive(db_path, tag)` from `servers/db_backup.py`. Never copy a live WAL database with `cp`.
+- Never open a second `Brain` writer against the live database in tests, benchmarks, or evals. Use `IsolatedBrain` from `tests/isolated_brain.py`, or dispatch live operations through `daemon_client.send_command`. Do not run experimental mutations on production data.
+- Remove dead code within the changed scope. Comments explain current rationale, not history. Follow the change through its callers, tests, and documentation without expanding into unrelated work.
+- Design discussions do not authorize edits; wait for an explicit implementation request.
 
-| Concern | Code | Detail |
-|---|---|---|
-| Hooks (S0 observation points) | `hooks/hooks.json` | the manifest is the list |
-| Daemon, launchd lifecycle, spawn | `servers/daemon_server.py`, `daemon_launch.py` | docstrings |
-| Write topology, locks, batching | `servers/brain.py`, `db_backends/sqlite.py` | docstrings |
-| Recall → surface → inject | `servers/brain_recall.py`, `recall_laf.py`, `scales/s1/surface*.py` | `docs/RECALL-OVERVIEW.md` |
-| Frame (the deterministic prior) | `scales/s1/frame.py` | `docs/RECALL-OVERVIEW.md` |
-| Encoding (S1 Scribe) | `scales/s1/scribe.py`, `encode.py`, `encoder_view.py` | `docs/ENCODE-ON-IDLE.md` |
-| S2 units + coordinator | `servers/scales/s2/` | `docs/S2-DESIGN.md` |
-| Suppression (state + fingerprint) | `scales/s2/rejection_table.py` | `docs/S2-DESIGN.md` |
-| Aspects (roles for types/relations) | `servers/aspects.py`, `scales/s2/aspects_v1.json` | the JSON's `_schema` key |
-| Corrections | `servers/brain_corrections.py` | docstring |
-| Channels (who ADDRESSES a live stream) | `servers/channels/self_channel/` (streams↔streams), `channels/thalamus/` (brain→streams) | `docs/SELF-CHANNEL-DESIGN.md`, `docs/THALAMUS-DESIGN.md` |
-| Traces | `servers/brain_traces.py`, `trace_contract.py` | `docs/TRACES-LAYER-DESIGN.md` |
-| Interactions (the K store) | `servers/interaction_defaults.py`, `servers/interaction_collapse.py` | defaults index (name→template,config + validators + fingerprint) in the former; resolution (override overlaid on default) in `brain.get_interaction_prompt/_config/_stamp`; the one-time pointer collapse (daemon-boot, version-stamped) in the latter |
-| Scope provenance + the veil | `servers/scopes.py`, `scales/dispatch.py` | `scopes.py` docstring |
-| Node + pipeline contracts | `servers/contract.py`, `pipeline_contract.py` | docstrings |
-| Edge model | `servers/dal_graph.py` | `add_relation` docstring |
-| Backups (rolling, pre-destructive, clones) | `servers/db_backup.py`, `db_backends/sqlite.py` | module docstring |
-| Runtime flags, process names (`Entity-*`) | `hooks/scripts/brain-env.sh` | flags read at daemon start only; `brain_python_as` docstring |
+## Validation
 
-All `scales/` and `channels/` paths live under `servers/`. `scales/` is the GRAIN
-axis (s1, s2 + shared machinery); `channels/` is indexed by CORRESPONDENT — the
-packages that ADDRESS a live stream (`self_channel`: another stream; `thalamus`:
-the brain). **`servers/scales/__init__.py` states the placement rule** — don't
-re-derive it. (A different sense of "channel" than the hooks' `additionalContext`
-injection.) Two databases: `brain.db` (nodes, edges, embeddings) and
-`brain_logs.db` (traces, session state, interactions, errors).
-
-## Conventions
-
-- `encoding_source` is `category:process` — `anchor`, `encoder:sonnet`, `s2:<unit>`, `hook:<event>`, `migration:*`. Only `anchor*` can lock a node.
-- Trace chains come from `SessionContext`: `s0-` / `s1r-` / `s1e-{session_short}-{stop}`; S2 uses `s2-{ts}-{unit}`.
-- `SessionContext` is passed on every call — the brain owns no current session. Anything conversation-scoped is keyed by `session_id`, never a global `brain_meta` key. Two sessions run at once; ask whether one would clobber the other.
-- `brain_batch` ops are closed: `remember`, `revise`, `connect`, `disconnect`, `archive`, `absorb`. Source of truth is `BATCH_OP_SPECS` in `servers/contract.py`; three consumers derive from it. Any schema or description change must re-run `eval/mcp_batch_probe.py` + `eval/mcp_schema_gate.py` before restart.
-- Apply `output_config` on every round of an agentic loop, not just the last — round 1 can return unprotected text.
-- Gate a new S2 unit's graph scan on its own `s2_<unit>_last_run_ts` in `brain_meta`, or it re-derives the same fixed point every cycle.
-- Adding an aspect is a human edit to `aspects_v1.json` plus one `REQUIRED_ASPECTS` line. The encoder only routes strings into existing aspects; it cannot propose one.
-- Scope provenance is stamped by `stamp_scope_provenance` and is never agent-authored.
-- `brain.get_node()` walks corrections on every canonical pull and attaches `_corrections`. Forgetting corrections requires deliberately bypassing the canonical pull.
-- Recall's doors reach that pull through `brain.canonicalize_results` — one method, every shape (by-query, by-id, batch): it overlays `CANONICAL_ATTACHMENT_KEYS` and scrubs the veil over the attachments. A new recall door routes through it, or the door-parity tests fail.
-
-## Development Rules
-
-### Time-window queries: route through `clock.iso_now()` / `iso_cutoff()`
-
-**Never SQLite `datetime('now', …)` against TEXT timestamp columns** — it emits space-separated timestamps, brain stores ISO-T, and `>` filters silently break. Bind `iso_cutoff(...)` instead: `WHERE created_at > ?`. `julianday('now')` is fine (numeric).
-
-**`iso_now()` for every new-row timestamp** (`created_at`, `updated_at`, `last_accessed`) — the one write-side format (`'…+00:00'`).
-
-**Grain axis (`servers/scales`): pass `at=conversation_now(...)`.** Conversation-time data (`event_time`, relative dates, renders) anchors to the replayed date, or eval replays silently corrupt. Windows over transaction-time columns (`created_at`, trace timestamps) stay wall-clock, as does system bookkeeping (id:c12c4735). `tests/test_time_window_contract.py` enforces both.
-
-**`as_of` replay HIDES, it cannot RESTORE.** It masks what was created after the instant, but a node archived *since* stays gone (`archive_node` deletes its vectors), so a replay runs on today's survivors; historical ids resolve FORWARD to their live survivor (`recall_laf.role_rows`). Treat as_of numbers as approximate, degrading with cutoff age.
-
-### Prompts & configs: code owns the default, the DB holds only overrides
-
-The runtime resolves every interaction through `get_interaction_prompt/_config`:
-the **code default** (`SYSTEM_PROMPT` in the prompt `.py`, config dict in the
-consumer's contract file — indexed by `servers/interaction_defaults.py`) unless
-an **override pointer** is deployed. `./dev check-overrides` shows **2** permanent
-pointers (`recall_laf`, `trace_recording` — `interaction_collapse.COLLAPSE_POLICY`);
-don't "clean" them.
-
-**Change the production default**: edit the prompt `.py` / contract dict, merge,
-restart — no registration, no version bump. The eval gate is process, not code:
-candidates land as overrides and are promoted after the eval passes. ⚠ The daemon
-runs MAIN — a worktree edit reaches it only after merge. New boundary: the recipe
-is `servers/interaction_defaults.py`'s docstring.
-
-**Deploy an override on THIS install** (experiment / hotfix / debug):
-
-```bash
-register_interaction(name, template)         # registers as v(N+1), DORMANT
-set_interaction_active(name, version=N+1)    # deploys — runtime reads it on next call
-clear_interaction_override(name)             # reverts to the code default
-```
-
-**Eval / A/B**: `tests/interaction_override.py` is the one door
-(`override_interaction(...)`, self-reverting `interaction_override(...)` CM); an
-IsolatedBrain copy starts at the 2-pointer baseline. Promote = move the winner
-into the code default, then `clear_interaction_override`.
-
-`tests/test_interaction_defaults.py` + `test_interaction_bypass_guard.py` hold
-the contract (registry coverage, validators, no bypass of the resolver or
-`_interaction_dal`).
-
-### Python runtime — use `./dev`
-
-The brain bundles its own Python at `venv/bin/python` (3.11.11) — the interpreter the daemon runs, the hooks resolve, and the only one macOS SIP lets `py-spy`/`lldb` attach to. Run every dev command through the wrapper:
+Run development commands through the bundled runtime:
 
 ```bash
 ./dev pytest tests/                   # test suite
-./dev python3 tests/bench_*.py        # benchmarks
-./dev python3 -c 'from servers...'    # one-off
-./dev                                 # subshell with PATH primed
+./dev python3 path/to/script.py       # scripts, benchmarks, evals
+./dev                                # subshell with runtime on PATH
 ```
 
-`tests/conftest.py` refuses any other interpreter (bypass a one-off with `BRAIN_ALLOW_ANY_PYTHON=1`). Hooks reach `brain-env.sh` via `resolve-brain-db.sh`; new hook scripts must not skip it.
+- Use `BrainTestBase` from `tests/brain_test_base.py`; set `needs_embedder = False` when semantic search is unnecessary. Use `IsolatedBrain` for production-data copies.
+- Do not widen guardrail allowlists, exclusions, or frozen baselines merely to make a change pass. Resolve the boundary violation; justify any intentional exception separately.
+- Record the tested revision, isolated dataset, effective model/config, and interaction fingerprints. Compare equivalent starting states and verify intended overrides reached the resolver before interpreting results.
+- When a test fails, stop and report expected versus actual behavior. Ask whether the test or implementation is wrong before changing either.
+- Benchmark before changing recall, encoding, or Frame/surface. Entry points: `eval/brain_recall_identity_eval.py`, `eval/surface_funnel.py`, `eval/s1_encode_eval.py`, `eval/frame_replay.py`. Longmem and broader evaluation workflows: `eval/README.md`, `docs/EVAL-PLATFORM.md`.
+- For community changes, check decoder proposals and encoder outcomes separately, including membership reconciliation and suppression/retry behavior. Start with `tests/test_s2_community.py`, `tests/test_community_membership_reconcile.py`, `tests/test_community_unplaceable.py`, and `eval/s2_community_decoder_eval.py` on isolated data. That eval simulates encoder acceptance; validate real encoder writes and orchestrator behavior separately when changing them.
+- Batch operation schemas derive from `BATCH_OP_SPECS` in `servers/contract.py`. Run `eval/mcp_batch_probe.py` and `eval/mcp_schema_gate.py` after schema or description changes, before restarting.
+- Interaction resolver changes are guarded by `tests/test_interaction_defaults.py` and `tests/test_interaction_bypass_guard.py`. Host integration changes require `tests/test_host_contract.py` and `tests/test_hooks_manifest_sync.py`.
 
-### Deploying a change
+## Deployment
 
-The daemon runs `servers/*` from the repo, so:
-- **`servers/*`** except `brain_mcp.py` → daemon **restart** (`restart` MCP tool / `hooks/scripts/restart-daemon.sh`); live this session.
-- **`servers/brain_mcp.py`, `hooks/`, `SKILL.md`, manifests** → **`./redeploy.sh`** (commit first) **+ new session**.
+A restart reloads the daemon's configured code tree; it does not install checkout edits into plugin caches. Check the target installation before deploying.
 
-Don't gate a deploy-restart with the maintenance lock — it makes the daemon skip startup.
-
-### Recovering a hung daemon
-
-Hung-but-alive daemons recover reactively: hooks and the MCP health monitor call `recover_daemon()`, whose corpse test gates a `launchctl kickstart -k`; launchd `KeepAlive` respawns real exits. Deploy restarts reload in place (`_exec_reload`, same PID); `ensure_daemon()` at session start converges a stale daemon the same way and kickstarts only corpses. Pause auto-recovery for live debugging with the maintenance lock. Full picture: brain node id:50c9a4e0.
-
-### Test Integrity
-
-**When a test fails, stop** — change neither the test nor the code. Report what the test expected vs what the code returned, ask whether the test or the code is wrong, wait for the answer.
-
-### Test Architecture
-
-`BrainTestBase` for tests needing a brain (`needs_embedder = False` when semantic search isn't needed — saves 1GB + 1.5s); `IsolatedBrain` for tests against production data copies.
-
-### Benchmark-First Rule
-
-Before changing sacred systems, benchmark first — recall: `eval/brain_recall_identity_eval.py`, `eval/surface_funnel.py`; encoding: `eval/s1_encode_eval.py`; Frame/surface: `eval/frame_replay.py` against an isolated copy; longmem end-to-end: `eval/longmem/build_corpus.py` (encode once) + `sweep.py` (recall many times; `--interaction-override` A/Bs prompts). Reference: `eval/README.md`, `docs/EVAL-PLATFORM.md`.
-
-### Encode-Decode Symmetry
-
-Encoding and decoding are two halves of the same system. If you add a field to encoding, it must be queryable in recall. If you change how nodes are structured, recall ranking must reflect it. The decode funnel is the verification.
-
-### Loud by Default
-
-Silent failures are the most dangerous class of bug; every `try/except` is a potential dark corner. Dropped fields, stuck S2 units, invalid batch ops, oversized clusters, embedding-decode and truncation errors all log to the brain errors table, and the `*_contract_sync` tests lock the contracts. The question for new code isn't "can this fail?" — it's "would I know if it did?"
-
-### Code Ownership
-
-**Contract-first** — Constants, field lists, limits, and config live in contract files. Never hardcode in hooks, dispatch, or surface code.
-
-**Backup before destructive DB operations** — before ANY delete, bulk update, or schema migration: `backup_before_destructive(db_path, tag)` from `servers/db_backup.py`. No exceptions. Never `cp` a live WAL-mode DB — the copy can have no tables at all. Working clones: `IsolatedBrain`.
-
-**Clean as you go** — Remove dead code the same session; delete it, don't mark it. Don't leave "TODO: remove later."
-
-**Comments carry the why, not the history** — no dates, no dead symbol names, no "previously". That's the commit message.
-
-**One concern per file** — If a function serves a different audience than the file's existing functions, it belongs in a different file.
-
-### Key Development Rules
-
-- Use MCP tools to interact with brain, not Python/bash scripts
-- Don't manually run boot scripts (hooks handle this)
-- Don't construct DB paths (read the boot output)
-- **Never spawn `Brain(db_path=DB)` in a test/bench/eval script against the live `brain.db` while the daemon is running.** Two Python processes with their own writer connections will eventually corrupt an index. Instead: (a) stop the daemon with the maintenance lock `touch /tmp/brain-maintenance-{uid}.lock` and `launchctl unload`, (b) use `daemon_client.send_command` to dispatch through TCP, or (c) run against an `IsolatedBrain` copy under `tests/isolated_brain.py`.
-- **Discussion IS the work** — do not touch Edit/Write tools during design conversations. Wait for an explicit go signal.
-
-**Deep, not wide.** Go all the way down on the thing you're changing — its tests, its callers, the doc that would otherwise lie, the real fix instead of the workaround. Don't widen to the adjacent problem you noticed; name it and move on. Completeness is finishing the cut, not enlarging it.
-
-The tell you're going wide: you can't name who is hurt by leaving it. The tell you're stopping short: you can. Search before building. Test before shipping.
-
-CARE about yourself, Challenge yourself, IMPROVE yourself.
+- `build-plugin.sh` packages tracked runtime files; ensure new runtime files are tracked before packaging.
+- `redeploy.sh` refreshes the configured Claude plugin installation and the packaged Codex source, then restarts the daemon. Its destination is install-specific; inspect it before use on another environment.
+- `scripts/codex-install.sh` builds and refreshes the Codex plugin cache for the selected `CODEX_HOME`.
+- Daemon-side code needs a restart after the running tree is updated. MCP proxy changes (`servers/brain_mcp.py`), tool schemas, hooks, skills, and manifests require a fresh session after installation.
+- Do not hold the maintenance lock during a deploy restart; it suppresses daemon startup.
