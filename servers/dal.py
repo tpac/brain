@@ -1186,49 +1186,20 @@ class VectorDAL:
         where = ['n.archived = 0']
         params: list = []
 
-        # Graph-sourced staleness: a present row whose source has moved on.
-        # kv-sourced groups need nothing here — revise() DELETES their
-        # enrichment rows when a source field changes (vectors_affected_by),
-        # so they re-enter this query as genuinely missing. edge_context's
-        # source is the GRAPH, and an edge write cannot delete a row it does
-        # not know about, so "present" has to mean "not older than the edges
-        # it summarises" or the row is never revisited. Same eligibility
-        # filter as the producer and as require_described_edge below — the
-        # three must agree, or a node is called stale and then yields the
-        # identical text, and the sweep repairs it forever.
-        stale_sql, stale_params = '', []
-        if require_described_edge:
-            _excl = sorted(EDGE_CONTEXT_EXCLUDED_RELATIONS)
-            stale_sql = ('''
-                  AND NOT EXISTS (
-                      SELECT 1 FROM edges se
-                      JOIN edge_relations ser ON ser.edge_id = se.edge_id
-                      WHERE (se.source_id = ne.node_id
-                             OR se.target_id = ne.node_id)
-                        AND ser.archived = 0
-                        AND ser.relation NOT IN (%s)
-                        AND ser.description IS NOT NULL
-                        AND length(ser.description) > ?
-                        AND ser.created_at > ne.created_at
-                  )''' % ','.join('?' * len(_excl)))
-            stale_params = list(_excl) + [EDGE_CONTEXT_MIN_DESC_LENGTH]
-
         if model:
             where.append('''n.id NOT IN (
                 SELECT ne.node_id FROM node_enrichments ne
                 WHERE ne.vector_type = ?
                   AND ne.embedding IS NOT NULL
-                  AND ne.model = ?%s
-            )''' % stale_sql)
+                  AND ne.model = ?
+            )''')
             params.extend([vector_type, model])
-            params.extend(stale_params)
         else:
             where.append('''n.id NOT IN (
                 SELECT ne.node_id FROM node_enrichments ne
-                WHERE ne.vector_type = ? AND ne.embedding IS NOT NULL%s
-            )''' % stale_sql)
+                WHERE ne.vector_type = ? AND ne.embedding IS NOT NULL
+            )''')
             params.append(vector_type)
-            params.extend(stale_params)
 
         if node_ids:
             ids = list(node_ids)
