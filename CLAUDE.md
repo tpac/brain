@@ -88,6 +88,12 @@ Run development commands through the bundled runtime:
 
 ## Deployment
 
+**Production runs only from `main`.** The designated production checkout must stay on `main`; never switch it to a feature branch or develop in it. Develop and commit in separate worktrees, validate against isolated databases, then merge reviewed changes into `main` before deploying.
+
+- Before merging or deploying, verify the target checkout's actual branch, revision, working-tree changes, daemon source directory, and database. A directory name does not establish its branch. Do not include unrelated branch commits in a merge.
+- A feature worktree isolates code, not the shared daemon or production data. Its MCP calls can still reach production; tests and evals must explicitly use isolated data.
+- The daemon follows its configured directory, not the Git branch name. Updates there can become live on restart or a source-directory startup check. After deployment, verify the daemon's reported source directory and loaded-code fingerprint against the intended `main` tree.
+
 A restart reloads the daemon's configured code tree; it does not install checkout edits into plugin caches. Check the target installation before deploying.
 
 - `build-plugin.sh` packages tracked runtime files; ensure new runtime files are tracked before packaging.
