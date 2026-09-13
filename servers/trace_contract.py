@@ -1187,12 +1187,13 @@ def _producer_view_line(r):
     if fate == FATE_ANSWERED:
         fate = 'answered: %s' % cap_text_loud(one_line(r['answer']),
                                               PRODUCER_VIEW_NOTE_LIMIT)
-    return '%s — %s' % (
-        _journal_line(r['tag'],
-                      cap_text_loud(one_line(r['subject']),
-                                    PRODUCER_VIEW_SUBJECT_LIMIT),
-                      cap_text_loud(one_line(r['note']),
-                                    PRODUCER_VIEW_NOTE_LIMIT)), fate)
+    # Read-only feedback deliberately differs from the writable review
+    # grammar. Appending fate to `ask · subject · body` made encoders copy
+    # "— open" into the body and re-arm an otherwise unchanged message.
+    return '- %s [%s]\n  Message: %s\n  Status: %s' % (
+        r['tag'], cap_text_loud(one_line(r['subject']),
+                               PRODUCER_VIEW_SUBJECT_LIMIT),
+        cap_text_loud(one_line(r['note']), PRODUCER_VIEW_NOTE_LIMIT), fate)
 
 
 def render_producer_view(rows):

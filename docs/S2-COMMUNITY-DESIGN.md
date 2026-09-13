@@ -345,6 +345,16 @@ _decode()
 
 Uses `brain_batch` tool to create community nodes directly. Same `run_llm_loop` as S1E.
 
+Current decision-context contract: named targets are fetched directly with their
+full narratives, bounded metadata, eight newest member summaries, all live member
+IDs, and a complete merge transfer set. Membership comes from live edges;
+`community_members` is only a creation-time recovery seed. The encoder revises
+meaning fields when new evidence changes the community's current account.
+Nearby context is compact and omitted with disclosure when needed. Batches split
+at a 48,000-character soft input budget; an indivisible oversized proposal is
+retained and logged. See the September 12 verification in
+`S2-COMMUNITY-CHECKLIST.md` for measured costs and remaining limitations.
+
 Prompt (v6, `s2_community_enrichment` interaction):
 - "What pattern do these nodes reveal that no single node names?"
 - "What would change how the next you approaches this area?"

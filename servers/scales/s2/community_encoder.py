@@ -14,7 +14,7 @@ import os
 import time
 
 from .base import IntegrationUnit
-from .community_contract import S2CE_NODE_FORMAT
+from .community_contract import COMMUNITY_DETECTION, S2CE_NODE_FORMAT
 from servers.trace_contract import build_delta_metadata
 
 from .rejection_table import (
@@ -276,6 +276,7 @@ class CommunityEncoder(IntegrationUnit):
                        cache_read_tokens=result.get('cache_read_tokens', 0),
                        cache_creation_tokens=result.get('cache_creation_tokens', 0),
                        model=result.get('model', ''),
+                       context_chars=result.get('context_chars', []),
                        membership_reconciled={
                            'communities_healed': recon.get('communities_healed', 0),
                            'edges_backfilled': recon.get('edges_backfilled', 0),
@@ -451,13 +452,16 @@ class CommunityEncoder(IntegrationUnit):
         client = make_client()
 
         # Residue continuity — the last few runs' review notes, rendered by base.
-        journal_prefix = self.journal.continuity()
+        journal_prefix = self.journal.residue()
 
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)
+        context_limit = self.config.get(
+            'max_batch_context_chars', COMMUNITY_DETECTION['max_batch_context_chars'])
         total_result = {
             'rounds': 0, 'actions': 0, 'write_actions': 0,
             'action_details': [], 'read_calls': [], 'final_text': '',
+            'context_chars': [],
         }
         # Cost/latency telemetry — loop counts, per-tool records, and tokens are
         # folded per batch by the shared _accumulate_run; elapsed by a wall-clock
@@ -471,25 +475,42 @@ class CommunityEncoder(IntegrationUnit):
         # Need a decoder instance to refresh community state between batches
         decoder = CommunityDecoder(self.brain, self.dispatch, self.config)
 
-        for batch_idx in range(0, len(proposals), batch_size):
-            batch = proposals[batch_idx:batch_idx + batch_size]
-            batch_num = batch_idx // batch_size + 1
-            total_batches = (len(proposals) + batch_size - 1) // batch_size
-
-            print('[s2ce] Batch %d/%d (%d proposals)' % (
-                batch_num, total_batches, len(batch)), flush=True)
+        batches = [proposals[i:i + batch_size]
+                   for i in range(0, len(proposals), batch_size)]
+        batch_idx = 0
+        while batch_idx < len(batches):
+            batch = batches[batch_idx]
 
             # Format this batch
             user_content = self._format_proposals(batch)
+            continuity = journal_prefix + self.journal.messages()
 
-            # Relevant existing communities (via recall, not full listing)
-            relevant_comms = self._find_relevant_communities(batch, current_state)
+            # Exact decision targets, then nearby context within the budget.
+            relevant_comms = self._find_relevant_communities(
+                batch, current_state,
+                max_chars=context_limit - len(continuity) - len(user_content) - 2)
             if relevant_comms:
                 user_content = relevant_comms + '\n\n' + user_content
             else:
                 user_content = "EXISTING COMMUNITIES: None.\n\n" + user_content
 
-            user_content = journal_prefix + user_content
+            user_content = continuity + user_content
+            if len(user_content) > context_limit:
+                if len(batch) > 1:
+                    mid = len(batch) // 2
+                    batches[batch_idx:batch_idx + 1] = [batch[:mid], batch[mid:]]
+                    continue
+                self.brain._log_warning(
+                    's2ce_oversized_context',
+                    'single proposal exceeds community context budget',
+                    '%d chars > %d; retaining complete decision evidence' % (
+                        len(user_content), context_limit))
+
+            batch_num = batch_idx + 1
+            total_batches = len(batches)
+            print('[s2ce] Batch %d/%d (%d proposals, %d context chars)' % (
+                batch_num, total_batches, len(batch), len(user_content)), flush=True)
+            total_result['context_chars'].append(len(user_content))
 
             try:
                 result = retry_on_transient_api_error(
@@ -530,6 +551,7 @@ class CommunityEncoder(IntegrationUnit):
                                       'encode batch %d' % batch_num)
                 self.trace('delta', 'community_enriched',
                            'batch %d/%d FAILED: %s' % (batch_num, total_batches, str(e)[:80]))
+            batch_idx += 1
 
         total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)
         return total_result
@@ -560,15 +582,99 @@ class CommunityEncoder(IntegrationUnit):
     # Relevant community lookup
     # ══════════════════════════════════════════════════════════
 
-    def _find_relevant_communities(self, batch_proposals, community_state):
-        """Find existing communities relevant to this batch via recall.
+    @staticmethod
+    def _decision_community_ids(proposals):
+        """Every community named by a decision, independently of recall."""
+        ids = []
+        for p in proposals:
+            ids.extend(p.get(k) for k in (
+                'community_id', 'home_id', 'larger_id', 'smaller_id'))
+            ids.extend(c.get('id') for k in ('communities', 'foreign')
+                       for c in p.get(k, []))
+            ids.append((p.get('overlaps_existing') or {}).get('id'))
+        return list(dict.fromkeys(i for i in ids if i))
 
-        Instead of listing all 100+ communities, recall the 15 most
-        semantically relevant based on proposal member titles.
-        Uses brain.get_node() + render_rich_node() with S2CE_COMMUNITY_FORMAT.
+    def _decision_context(self, proposals):
+        """Render targets and proposed members through the shared node view.
+
+        The member preview is evidence, not a second stored membership list.
+        A merge also needs the COMPLETE transfer set to execute correctly.
         """
         from servers.contract import render_rich_node
+        from .community_contract import S2CE_DECISION_FORMAT, S2CE_MEMBER_PREVIEW
+
+        ids = self._decision_community_ids(proposals)
+        node_ids = list(dict.fromkeys(p['node_id'] for p in proposals
+                                     if p.get('node_id')))
+        if not ids and not node_ids:
+            return '', set()
+        nodes = self.brain.get_node(list(dict.fromkeys(ids + node_ids))) or {}
+        communities = {n['id']: n for n in nodes.values()
+                       if n.get('type') == 'community' and not n.get('archived')}
+        members = self.brain._graph.get_members_bulk(list(communities))
+        lines = ['DECISION EVIDENCE (targets fetched by ID; full community narrative, '
+                 'metadata values capped at %d characters):' %
+                 S2CE_DECISION_FORMAT['metadata_limit']]
+        for requested_id, node in nodes.items():
+            if requested_id != node['id']:
+                lines.append('  ID MOVED: %s → %s; use the current ID for writes.' % (
+                    requested_id, node['id']))
+        for nid, node in communities.items():
+            # Pure membership has its own read below. Keep mixed-relation
+            # edges: a member can also correct or extend the community.
+            member_rows = sorted(members.get(nid, []),
+                                 key=lambda m: (m.get('created_at') or '', m['id']),
+                                 reverse=True)
+            view = dict(node, connections=[e for e in node.get('connections', [])
+                                          if any(r.get('relation') != 'community_member'
+                                                 for r in e.get('relations') or [e])])
+            lines.append(render_rich_node(view, S2CE_DECISION_FORMAT))
+            shown = member_rows[:S2CE_MEMBER_PREVIEW]
+            lines.append('  Live members: %d; %d newest shown, %d not shown. '
+                         'Use get_nodes on member IDs for more detail.' % (
+                             len(member_rows), len(shown), len(member_rows) - len(shown)))
+            for m in shown:
+                lines.append('    [%s] "%s" (id:%s, %s)' % (
+                    m.get('type', '?'), m.get('title', '?'), m['id'],
+                    (m.get('created_at') or '?')[:10]))
+            # All IDs stay available, including members outside the preview.
+            lines.append('  All live member IDs: %s' % (
+                ', '.join(m['id'] for m in member_rows) or '(none)'))
+            lines.append('')
+
+        for nid in ids + node_ids:
+            if nid not in nodes:
+                lines.append('  UNAVAILABLE: %s — inspect before deciding on it.' % nid)
+        rendered = set(communities)
+        for nid in ids + node_ids:
+            node = nodes.get(nid)
+            if node and node['id'] not in rendered:
+                lines.append('  Node detail (content capped at %d characters):' %
+                             S2CE_NODE_FORMAT['content_limit'])
+                lines.append(render_rich_node(node, S2CE_NODE_FORMAT))
+                rendered.add(node['id'])
+        for p in proposals:
+            if p['type'] == 'merge_communities':
+                larger = nodes.get(p['larger_id'], {}).get('id')
+                smaller = nodes.get(p['smaller_id'], {}).get('id')
+                if larger == smaller and larger in communities:
+                    lines.append('  Merge already resolved to %s; do not merge it '
+                                 'with itself.' % larger)
+                elif larger in communities and smaller in communities:
+                    existing = {m['id'] for m in members.get(larger, [])}
+                    transfer = sorted(m['id'] for m in members.get(smaller, [])
+                                      if m['id'] not in existing)
+                    lines.append('  Merge %s → %s: ALL %d member IDs to transfer: %s' % (
+                        smaller, larger, len(transfer), ', '.join(transfer) or '(none)'))
+        return '\n'.join(lines), set(communities)
+
+    def _find_relevant_communities(self, batch_proposals, community_state,
+                                   max_chars=None):
+        """Exact decision targets plus compact semantically recalled neighbours."""
+        from servers.contract import render_rich_node
         from .community_contract import S2CE_COMMUNITY_FORMAT
+
+        decision_text, decision_ids = self._decision_context(batch_proposals)
 
         # Build a query from member titles in this batch
         titles = []
@@ -580,7 +686,7 @@ class CommunityEncoder(IntegrationUnit):
                 titles.append(p['node_title'])
         query = ' '.join(titles)[:500]
         if not query.strip():
-            return None
+            return decision_text or None
 
         try:
             recall_result = self.brain.recall(
@@ -588,31 +694,53 @@ class CommunityEncoder(IntegrationUnit):
                 filter={'type': {'in': ['community']}})
             results = recall_result.get('results', []) if isinstance(recall_result, dict) else []
             if not results:
-                return None
+                return decision_text or None
 
             # Batch-fetch full nodes for rendering
-            result_ids = [r['id'] for r in results if r.get('id')]
-            rich_nodes = self.brain.get_node(result_ids)
+            result_ids = [r['id'] for r in results
+                          if r.get('id') and r['id'] not in decision_ids]
+            rich_nodes = self.brain.get_node(result_ids) if result_ids else {}
             if not rich_nodes:
-                return None
+                return decision_text or None
 
-            lines = ['RELEVANT EXISTING COMMUNITIES (%d of %d total):' % (
-                len(rich_nodes), len(community_state))]
+            lines = [decision_text, 'NEARBY COMMUNITIES (compact context; %d total):' %
+                     len(community_state)]
+            omitted = 0
+            omission_notice = ('  %d nearby communities omitted to preserve '
+                               'the decision evidence within the batch budget.')
             for nid, node in rich_nodes.items():
                 rendered = render_rich_node(node, S2CE_COMMUNITY_FORMAT)
+                # Optional context yields to decision evidence. Reserve room
+                # for the omission notice so the budget remains honest.
+                if max_chars is not None and (
+                        len('\n'.join(lines)) + len(rendered) + 3 +
+                        len(omission_notice % len(rich_nodes)) > max_chars):
+                    omitted += 1
+                    continue
                 lines.append(rendered)
                 lines.append('')
+            if omitted:
+                lines.append(omission_notice % omitted)
             return '\n'.join(lines)
         except Exception as e:
             # Fallback: compact one-liner listing
             print('[s2ce] Community recall failed: %s — using compact listing' % e,
                   flush=True)
-            lines = ['EXISTING COMMUNITIES (%d total):' % len(community_state)]
+            lines = [decision_text,
+                     'EXISTING COMMUNITIES (%d total):' % len(community_state)]
+            shown = 0
+            notice = '  ... %d communities not shown'
             for comm in community_state[:20]:
-                lines.append('  "%s" (%d members)' % (
-                    comm['title'][:60], len(comm['members'])))
-            if len(community_state) > 20:
-                lines.append('  ... +%d more' % (len(community_state) - 20))
+                line = '  "%s" (%d members)' % (
+                    comm['title'][:60], len(comm['members']))
+                if max_chars is not None and (
+                        len('\n'.join(lines)) + len(line) + 2 +
+                        len(notice % len(community_state)) > max_chars):
+                    continue
+                lines.append(line)
+                shown += 1
+            if len(community_state) > shown:
+                lines.append(notice % (len(community_state) - shown))
             return '\n'.join(lines)
 
     # ══════════════════════════════════════════════════════════
@@ -698,8 +826,9 @@ class CommunityEncoder(IntegrationUnit):
                     prop.get('node_type', '?'),
                     prop.get('node_title', '?'),
                     node_id[:8] if node_id else '?'))
-                lines.append('    Home: "%s" (affinity: %.0f%%)' % (
+                lines.append('    Home: "%s" (community_id: %s, affinity: %.0f%%)' % (
                     prop.get('home_community', '?'),
+                    prop.get('home_id', '?'),
                     prop.get('home_affinity', 0) * 100))
                 lines.append('    Current threshold: %.1fx (reject to raise by 0.1)' % (
                     prop.get('current_drift_threshold', 1.5)))

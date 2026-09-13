@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""A/B the community encoder MODEL on isolated production copies.
+"""A/B the community encoder model or prompt on isolated production copies.
 
 One invocation = one arm-run: copy the (frozen) source brain, decode with
 the production decoder (eval seam run_decoder), run the REAL
-CommunityEncoder with only `model` overridden, then report deltas the
-model choice owns:
+CommunityEncoder with an interaction override, then report its deltas.
+Use --prompt-file for prompt arms and --proposals-file for the same frozen
+proposal subset in every arm. All writes stay in the isolated copy.
 
   completion   — write_actions / proposals sent, rounds, communities created
   edge_omission— membership-backfill firings during the run (the restorer
@@ -18,7 +19,7 @@ model choice owns:
 Run arms in parallel with PYTHONHASHSEED=0 and a shared frozen --source-dir
 so every arm decodes identical proposals:
 
-    cp brain.db brain_logs.db <master>/
+    # Create <master> with db_backends.current.snapshot_to (WAL-safe).
     PYTHONHASHSEED=0 ./dev python3 eval/ab_community_model.py \
         --model claude-haiku-4-5-20251001 --label haiku_1 \
         --source-dir <master> --out <reports>/haiku_1.json &
@@ -116,6 +117,9 @@ def main():
     ap.add_argument('--source-dir', required=True,
                     help='frozen dir holding brain.db + brain_logs.db')
     ap.add_argument('--out', required=True, help='JSON report path')
+    ap.add_argument('--prompt-file', help='candidate or control prompt; isolated override only')
+    ap.add_argument('--proposals-file', help='frozen proposal JSON list; skip decoding')
+    ap.add_argument('--answers-file', help='JSON item-id → answer map, applied only in the copy')
     args = ap.parse_args()
 
     from tests.isolated_brain import IsolatedBrain
@@ -124,14 +128,21 @@ def main():
     report = {'label': args.label, 'model': args.model}
     with IsolatedBrain(production_dir=args.source_dir, cleanup=True) as env:
         brain = env.brain
+        if args.answers_file:
+            from servers.channels.thalamus import thalamus
+            with open(args.answers_file) as f:
+                for item_id, answer in json.load(f).items():
+                    thalamus.resolve(brain, item_id, answer=answer)
 
-        # The encoder resolves model DB-FIRST: interaction parameters beat
-        # the config= dict (community_encoder.py `config.get('model',
-        # self.config.get(...))`). A config-only override silently runs the
-        # DB model — stamp the arm's model into THIS copy's interaction
-        # parameters and verify, or the A/B measures nothing.
+        # The encoder resolves its prompt and model from the interaction.
+        # Set the isolated override through the verified resolver door.
         try:
+            template = None
+            if args.prompt_file:
+                with open(args.prompt_file) as f:
+                    template = f.read()
             override_interaction(brain, 's2_community_enrichment',
+                                 template=template,
                                  parameters={'model': args.model}, merge=True,
                                  set_by='eval:ab_model')
         except RuntimeError as e:
@@ -141,7 +152,15 @@ def main():
         report['model_effective'] = (brain.get_interaction_config(
             's2_community_enrichment') or {}).get('model')
 
-        dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
+        if args.proposals_file:
+            from servers.scales.s2.community_decoder import CommunityDecoder
+            with open(args.proposals_file) as f:
+                frozen_proposals = json.load(f)
+            dec = {'proposals': frozen_proposals, 'stats': {},
+                   'community_state': CommunityDecoder(
+                       brain, config=dict(COMMUNITY_DETECTION))._read_community_state()}
+        else:
+            dec = run_decoder(brain, dict(COMMUNITY_DETECTION))
         proposals = dec['proposals']
         actionable = [p for p in proposals if p.get('type') in ACTIONABLE]
         report['decode'] = {
@@ -164,6 +183,12 @@ def main():
         cfg = dict(COMMUNITY_DETECTION)
         cfg['model'] = args.model
         encoder = CommunityEncoder(brain, config=cfg)
+        batch_size = cfg['max_proposals_per_call']
+        report['payload_chars'] = [len(
+            (encoder._find_relevant_communities(actionable[i:i + batch_size],
+                                               dec['community_state']) or '') +
+            encoder._format_proposals(actionable[i:i + batch_size]))
+            for i in range(0, len(actionable), batch_size)]
 
         t0 = time.time()
         result = encoder.run(proposals, dec['community_state']) or {}
@@ -179,6 +204,11 @@ def main():
             if r.get('chain_id') == run_chain]
 
         report.update({
+            'dispatched_context_chars': result.get('context_chars', []),
+            'final_text': result.get('final_text', ''),
+            'action_details': result.get('action_details', []),
+            'decision_targets_after': brain.get_node(
+                encoder._decision_community_ids(actionable)),
             'completion': {
                 'rounds': result.get('rounds', 0),
                 'actions': result.get('actions', 0),
@@ -205,6 +235,8 @@ def main():
             'quality': _community_quality(brain, new_comms),
             'cost': {
                 'input_tokens': result.get('input_tokens', 0),
+                'cache_read_tokens': result.get('cache_read_tokens', 0),
+                'cache_creation_tokens': result.get('cache_creation_tokens', 0),
                 'output_tokens': result.get('output_tokens', 0),
                 'wall_s': wall_s,
             },

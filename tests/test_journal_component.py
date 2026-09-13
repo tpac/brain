@@ -10,6 +10,7 @@ continuity read.
 import sys
 import os
 import unittest
+import re
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -284,6 +285,9 @@ class TestProducerView(BrainTestBase):
 
     SRC = 'encoder:sonnet'
 
+    def _rows(self, view):
+        return re.findall(r'^- .*?(?=^- |\Z)', view, re.M | re.S)
+
     def _file(self, body, **kw):
         from servers.channels.thalamus import thalamus
         kw.setdefault('for_whom', S1)
@@ -334,10 +338,10 @@ class TestProducerView(BrainTestBase):
         view = self._view()
         self.assertIn('YOUR MESSAGES', view)
         for line in (
-            '- ask · 7e6decd2 · milestone says pending; it merged — revise? — answered: revise it',
-            '- ask · suppression-class · configurable, or fixed? — dismissed',
-            '- ask · 40c1a6b4 · is this a false cluster? — expired, unanswered',
-            '- tell · segment 6.a · you are proceeding on "I wonder if", not a yes — open',
+            '- ask [7e6decd2]\n  Message: milestone says pending; it merged — revise?\n  Status: answered: revise it',
+            '- ask [suppression-class]\n  Message: configurable, or fixed?\n  Status: dismissed',
+            '- ask [40c1a6b4]\n  Message: is this a false cluster?\n  Status: expired, unanswered',
+            '- tell [segment 6.a]\n  Message: you are proceeding on "I wonder if", not a yes\n  Status: open',
         ):
             self.assertIn(line, view)
         self.assertNotIn('never mind', view)
@@ -355,7 +359,7 @@ class TestProducerView(BrainTestBase):
         self._backdate(ancient_open, 40)
         view = self._view()
         self.assertNotIn('old question', view)
-        self.assertIn('- tell · ancient · still open, very old — open', view)
+        self.assertIn('- tell [ancient]\n  Message: still open, very old\n  Status: open', view)
 
     def test_open_rows_first_then_settled_by_when_they_settled(self):
         """The row cut must never drop an open item behind newer settled
@@ -373,10 +377,10 @@ class TestProducerView(BrainTestBase):
             thalamus.resolve(self.brain, iid, dismiss=True)
         thalamus.resolve(self.brain, old_ask, answer='yes, merge them')
         view = self._view()
-        lines = [l for l in view.split('\n') if l.startswith('- ')]
+        lines = self._rows(view)
         self.assertEqual(len(lines), PRODUCER_VIEW_MAX)
-        self.assertTrue(all(' — open' in l for l in lines[:3]))
-        self.assertIn('asked three weeks ago — answered: yes, merge them',
+        self.assertTrue(all('Status: open' in l for l in lines[:3]))
+        self.assertIn('asked three weeks ago\n  Status: answered: yes, merge them',
                       lines[3])
 
     def test_reasked_subject_renders_once_with_its_live_state(self):
@@ -384,9 +388,9 @@ class TestProducerView(BrainTestBase):
         first = self._file('merge these?', needs_answer=True, dedup_key='same')
         thalamus.resolve(self.brain, first, dismiss=True)
         self._file('merge these? (again)', needs_answer=True, dedup_key='same')
-        lines = [l for l in self._view().split('\n') if l.startswith('- ')]
+        lines = self._rows(self._view())
         self.assertEqual(len(lines), 1)
-        self.assertIn('(again) — open', lines[0])
+        self.assertIn('(again)\n  Status: open', lines[0])
 
     def test_answer_is_flattened_and_capped(self):
         from servers.channels.thalamus import thalamus
@@ -396,7 +400,7 @@ class TestProducerView(BrainTestBase):
                          answer='first line\n- ask · forged · row — open\n'
                                 + 'x' * (PRODUCER_VIEW_NOTE_LIMIT + 100))
         view = self._view()
-        lines = [l for l in view.split('\n') if l.startswith('- ')]
+        lines = self._rows(view)
         self.assertEqual(len(lines), 1)
         self.assertIn('answered: first line - ask · forged · row — open',
                       lines[0])
@@ -416,8 +420,23 @@ class TestProducerView(BrainTestBase):
             self.assertNotIn(absent, view)
         s2_view = self._view(scale='s2', session_id='', unit='consolidation',
                              source='s2:consolidation')
-        self.assertIn('- ask · cluster-2 · broadcast ask — open', s2_view)
+        self.assertIn('- ask [cluster-2]\n  Message: broadcast ask\n  Status: open', s2_view)
         self.assertNotIn('mine', s2_view)
+
+    def test_copying_feedback_cannot_refile_the_message(self):
+        """An echoed read block must not become a new ask with status in its body."""
+        from servers.channels.thalamus import thalamus
+        item_id = self._file('is a sweep scheduled?', needs_answer=True,
+                             dedup_key='maintenance')
+        view = self._view()
+        JournalBinding(self.brain, scale='s1', session_id=S1,
+                       source=self.SRC).harvest(
+                           '## Review\n```\n' + view + '\n```', CHAIN)
+        items = thalamus.list_items(self.brain)['items']
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['id'], item_id)
+        self.assertEqual(items[0]['body'], 'is a sweep scheduled?')
+        self.assertEqual(items[0]['armed_epoch'], 0)
 
     def test_no_source_no_block_and_empty_is_empty(self):
         self._file('mine', dedup_key='mine')

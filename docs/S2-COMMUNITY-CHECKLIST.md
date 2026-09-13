@@ -8,6 +8,63 @@ boxes **while the work is in flight**. Current-state design truth belongs in
 Everything below was measured or read this session unless a row says otherwise.
 **Rows marked ⚠ UNVERIFIED are reasoning, not measurement — check before acting.**
 
+## September 12 quick fixes
+
+Tom authorized the decision-context and feedback repairs, with Thalamus answers
+after verification. Splits and the broader community redesign remain deferred.
+This cut is narrower than the historical phases below.
+
+- Decision targets are fetched by ID for ADD, DRIFT (including its home),
+  HEALTH, MERGE, and overlap review. They carry full narratives, bounded
+  metadata, eight newest live-member summaries, and all live member IDs.
+  Both directions of membership count. Merges carry the complete transfer set;
+  absorbed IDs resolve visibly and retired targets remain visibly archived.
+- Nearby communities stay compact and yield to decision evidence with an
+  omission notice. Oversized batches split at a **48,000-character soft input
+  budget**, including residue/messages/proposals, excluding system/tools and
+  later tool results. A single oversized proposal is preserved and logged.
+  The delta records `context_chars` for every dispatched batch.
+- `community_members` stays a creation-time orphan-recovery seed. The encoder
+  maintains meaning fields when evidence changes them; its ADD example now
+  demonstrates the semantic revision alongside the edge. The healer's role is
+  stated accurately. Legacy stored member lists are absent from both initial
+  decision evidence and subsequent S2CE inspections.
+- Community, consolidation, and healer freeze residue per run but read live
+  Thalamus feedback per batch. Producer feedback has separate message/status
+  lines, so copying it cannot refile a message with `— open` in its body.
+
+**Why the compact view existed:** commit `6f88395` introduced the 150-character,
+zero-edge/zero-metadata profile on April 16. Tom approved relevant-community
+selection and minification after a ~50K-input-token, 16-minute failed run;
+the exact render profile was an implementation choice. Applying that same
+profile to decision targets was the information gap.
+
+**Verification:** the focused final suite passed 144 tests. The broader
+selection passed 780 tests and 202 subtests; seven localhost-bind failures
+passed outside the sandbox, and the unchanged installed-runtime process-name
+test passed with process-inspection access. Additional focused passes cover
+the subsequent budget and mixed-relation-edge changes.
+
+The existing `eval/ab_community_model.py` now accepts frozen proposals, prompt
+files, and isolated answer fixtures. `eval/community_maintenance_prompt.py`
+derives the candidate from the control with exact asserted anchors. The final
+9,881-character prompt updated the new branch constraint's latest development
+in four repetitions; the four corresponding old-prompt controls did not.
+No final candidate rewrote the recovery seed. With the planned Thalamus answers
+applied equally to both arms, neither of two candidate runs requested a healer
+sweep. Residual journal noise is not fully solved: one retained unnecessary
+seed-mismatch notes; the other retired old subjects individually.
+
+**Inflation stress:** a constructed eight-DRIFT batch naming 32 large distinct
+targets was 232,155 input characters unsplit. The budgeted encoder dispatched
+all eight proposals in eight calls, peak **49,101**, total **384,012** characters.
+One indivisible proposal exceeded the soft limit and was logged. This trades
+lower peak context for repeated notes/instructions and more calls; it is not a
+hard token ceiling or a claim about normal decoder workload. Raw local reports:
+`/private/tmp/s2-community-quick-fixes-eval/` (`candidate_4/5/6/7`,
+`control_2/3/6/7`, `stress-budget-final.json`). Production-data model calls were
+explicitly authorized after automatic approval review initially rejected them.
+
 ---
 
 ## 0. Why this exists

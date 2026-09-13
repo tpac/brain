@@ -67,6 +67,10 @@ class JournalBinding:
         return 's2_%s_journal_%s' % (self.unit, op)
 
     def continuity(self):
+        """Current residue and message feedback for a single request."""
+        return self.residue() + self.messages()
+
+    def residue(self):
         """The READ side: last K note-bearing runs' notes rendered as the
         self-labeled RECENT REVIEW NOTES block ('' when there are none — a
         clean history adds nothing). Failure-isolated: a transient logs.db
@@ -82,14 +86,24 @@ class JournalBinding:
                 self._log_key('read'), e,
                 'residue continuity read failed — encoding without it')
             out = ''
-        if self.addressed:
-            try:
-                out += self._producer_view()
-            except Exception as e:
-                self.brain._log_error(
-                    self._log_key('view'), e,
-                    'producer view read failed — encoding without it')
         return out
+
+    def messages(self):
+        """Live outcomes, read for EACH batch even when residue is frozen.
+
+        Earlier batches can file or resolve an item. Reusing their input
+        snapshot lets a later batch overwrite the newer message or miss an
+        answer. Residue stays separate so a run doesn't echo its own notes.
+        """
+        if not self.addressed:
+            return ''
+        try:
+            return self._producer_view()
+        except Exception as e:
+            self.brain._log_error(
+                self._log_key('view'), e,
+                'producer view read failed — encoding without it')
+            return ''
 
     def _producer_view(self):
         """The join for the producer view: this binding's own items (the
