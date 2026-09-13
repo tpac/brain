@@ -226,8 +226,17 @@ SURFACE = {
                                     # Bumped to give Haiku more axis-of-context room while
                                     # multi-axis candidate generation is being designed.
     'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
-    'user_message_limit': 300,
-    'anchor_message_limit': 400,    # v9: was 150. Anchor responses carry design context
+    # Conversation caps for the selector's <conversation> block. The current
+    # message is the moment and arrives whole up to 8,000 (the S0 store keeps
+    # 8,000). The assistant's message right before it is the single richest
+    # prior turn — most of the vocabulary Haiku borrows from history comes
+    # from assistant turns, sniper-style from the most recent — so it gets
+    # the same room. Older turns are context, capped tighter. Every cap
+    # must stay under PIPELINE['recent_message_content'] (the trace pull).
+    'current_message_limit': 8000,
+    'last_anchor_message_limit': 8000,
+    'user_message_limit': 1000,     # older user turns
+    'anchor_message_limit': 1200,   # older assistant turns
     'recent_messages': 8,           # previous MESSAGES (~4 exchanges when turns alternate;
                                     # interrupted turns leave lone user messages, so pairing
                                     # is not guaranteed). Single source of truth: daemon_hooks
@@ -467,7 +476,10 @@ def _build_user_content_xml(candidates, user_message, recent_messages,
 
     lines = ['<conversation>']
     n = 0
-    for g in _group_turns((recent_messages or [])[-(cfg['recent_messages']):]):
+    groups = _group_turns((recent_messages or [])[-(cfg['recent_messages']):])
+    last_assistant_gi = max((i for i, g in enumerate(groups) if g.get('assistant')),
+                            default=-1)
+    for gi, g in enumerate(groups):
         n += 1
         lines.append('<turn n="%d">' % n)
         u = g.get('user')
@@ -479,14 +491,21 @@ def _build_user_content_xml(candidates, user_message, recent_messages,
                     str(s.get('id', ''))[:8], (s.get('title') or '')[:80]))
         a = g.get('assistant')
         if a:
+            # The most recent assistant message gets its own, larger cap
+            # (SURFACE['last_anchor_message_limit']); older assistant turns
+            # are context at 'anchor_message_limit'. Keyed on the last group
+            # that HAS an assistant — an interrupted turn leaves a trailing
+            # lone user message, and that must not demote the real last reply.
+            a_limit = (cfg.get('last_anchor_message_limit', cfg['anchor_message_limit'])
+                       if gi == last_assistant_gi else cfg['anchor_message_limit'])
             lines.append('<assistant>%s</assistant>'
-                         % (a.get('content') or '')[:cfg['anchor_message_limit']])
+                         % (a.get('content') or '')[:a_limit])
         lines.append('</turn>')
     n += 1
     lines.append('<turn n="%d" current_msg="true">' % n)
     lines.append('<user>%s</user>' % (
-        user_message[:cfg['user_message_limit']] if user_message
-        else '(no message)'))
+        user_message[:cfg.get('current_message_limit', cfg['user_message_limit'])]
+        if user_message else '(no message)'))
     lines.append('</turn>')
     lines.append('</conversation>')
     parts.append('\n'.join(lines))
@@ -704,92 +723,126 @@ Candidates:
 
 
 # ═══════════════════════════════════════════════════════════════
-# RENDER FORMATS — per-mode constants for the surface OUTPUT
+# INJECT RENDER POLICY — what the stream reads after Haiku's selection
 # ═══════════════════════════════════════════════════════════════
 
-# `format_surface_output_activation` is the live path. It picks a mode
-# based on Haiku's per-pick `mode` annotation, looks up the matching
-# SURFACE_*_FORMAT constant, then resolves it to a concrete
-# render_rich_node cfg via resolve_surface_format(fmt, budget).
-#
-# Constants here use *proportions* (of the per-node budget) rather than
-# absolute char limits — the budget allocator decides how many chars
-# each node gets; the format decides the within-node split. Floors
-# (min_*_chars) prevent micro-budgets from producing empty renders.
+# Seeds first: Haiku's picks are the memories the moment needs. They split
+# the budget between them and every one of them renders; spread neighbors
+# are peripheral vision, one title line each, after the seeds. A field is
+# shown whole or not at all — a cut names how much is behind it and where
+# to get it, and nothing renders as a stub. The 12-moment audit behind the
+# ruling: content carried the stream's need 21 times and was cut or absent
+# in 27 of its renders; situation, reasoning and edge descriptions carried
+# it 0 times in 36 blocks.
 
-# Arc mode — DEFAULT for surfaced nodes. State-of-mind framing: Anchor
-# reads the gist + situation + voice fields; low-activation fields are
-# masked out so noise drops cleanly.
-SURFACE_ARC_FORMAT = {
-    'content_proportion':  0.60,
-    'metadata_proportion': 0.15,
-    'min_content_chars':   50,
-    'min_metadata_chars':  40,
-    'edge_limit':          3,
-    'time_format':         'relative',
-    'show_confidence':     False,
-    'show_encoding_source': False,
-    'extra_skip_keys':     ('question',),   # recall scaffold
-    'correction_render':   'balanced',
-}
+# Soft target for the whole inject; the hard exit cap is _MAX_INJECT_CHARS.
+SURFACE_INJECT_BUDGET = 7000
 
-# Fact mode — verbatim content. Used when Haiku tags a pick as carrying
-# a specific value/quote/date the operator literally asked for. Larger
-# content budget; no field masking.
-SURFACE_FACT_FORMAT = {
-    'content_proportion':  0.75,
-    'metadata_proportion': 0.15,
-    'min_content_chars':   120,
-    'min_metadata_chars':  60,
-    'edge_limit':          3,
-    'time_format':         'relative',
-    'show_confidence':     False,
-    'show_encoding_source': False,
-    'extra_skip_keys':     ('question',),
-    'correction_render':   'balanced',
-}
+# Hard byte cap on the inject. Claude Code spills additionalContext to a
+# file above ~10k chars, and Anchor doesn't read that file path back. Cap
+# below the ceiling with headroom for any wrapper bytes Claude Code adds.
+_MAX_INJECT_CHARS = 9500
 
-# Background mode — title + 1-line situation only. Cheap context.
-# Doesn't go through render_rich_node (too minimal); inline-rendered.
-SURFACE_BACKGROUND_FORMAT = {
-    'situation_max_chars': 200,
-}
+# When the picks' content was cut under the soft target, the second pass may
+# grow it into the room below the hard cap, keeping this much back.
+SURFACE_HARD_CAP_MARGIN = 300
+
+# Below this a content cut is a stub, not a memory: the content is left out
+# and a pointer line says how long it is. A sentence cut's trailing
+# ' … (+N chars: get_nodes)' marker is budgeted at SURFACE_CUT_MARKER_CHARS.
+SURFACE_CONTENT_MIN_CHARS = 400
+SURFACE_CUT_MARKER_CHARS = 32
+
+# Peripheral vision: how many lit-but-unpicked neighbors get a title line.
+SURFACE_ALSO_LIT_LIMIT = 10
+
+# Corrections on a seed: the first few as one-liners, then a count.
+SURFACE_CORRECTION_LIMIT = 2
 
 # Valid render modes Haiku may emit in selection JSON. Default 'arc'
 # when a pick has no `mode` field.
 SURFACE_MODES = ('arc', 'fact', 'background')
 SURFACE_MODE_DEFAULT = 'arc'
 
+# Fields that never render in the inject. situation and reasoning sit on
+# every node and are selection / encoding scaffolding once the pick is
+# made; question and keywords are recall scaffolding; my own quote earned
+# its place once in 17 renders where the counterpart's did seven times in
+# 16; source_context is session bookkeeping; event_time renders once, as
+# the Event date line under the header, never again through the KV loop;
+# evolution_status renders as the header's ⚠ DISPROVEN / ⚠ DISMISSED mark
+# (mark_status), not as a KV line — the other statuses are bookkeeping.
+SURFACE_SKIP_KEYS = ('question', 'situation', 'reasoning', 'my_raw_quote',
+                     'source_context', 'event_time', 'evolution_status',
+                     'keywords')
+# A community seed is its title + narrative; its community_* bookkeeping
+# rendered as 40-char stubs.
+SURFACE_SKIP_KEY_PREFIXES = ('community_',)
 
-def resolve_surface_format(fmt, budget, scope=None):
-    """Resolve a SURFACE_*_FORMAT contract into a concrete render_rich_node cfg.
+# Seed render for arc and fact modes. Content depth is decided per seed by
+# the budget split (the renderer sets content_limit); the rest is fixed
+# policy: edges as titles with the neighbor's id, corrections capped, the
+# counterpart's quote labeled with their name, sparse fields (event date,
+# correction pattern, thought, evolution status) when a node has them, and
+# the Conversation pointer when it carries source_refs.
+SURFACE_SEED_FORMAT = {
+    'edge_limit': 3,
+    'edge_style': 'oneline',
+    'edge_ids': True,
+    'time_format': 'relative',
+    'show_confidence': False,
+    'show_encoding_source': False,
+    'correction_render': 'lean',
+    'correction_limit': SURFACE_CORRECTION_LIMIT,
+    'extra_skip_keys': SURFACE_SKIP_KEYS,
+    'skip_key_prefixes': SURFACE_SKIP_KEY_PREFIXES,
+    'content_cut': 'sentence',
+    'mark_status': True,
+    'show_source_refs': True,
+    'metadata_limit': 300,
+}
 
-    Translates proportional fields (content_proportion, metadata_proportion)
-    into absolute char limits using the per-node budget. Honours min_*
-    floors so micro-budgets don't produce empty renders. Returns a cfg
-    dict ready to pass to `render_rich_node(node, cfg)`.
+# Background mode — the header line (plus the event date) and nothing else:
+# framing that is not load-bearing, at the cost of a title.
+SURFACE_BACKGROUND_FORMAT = {
+    'content_limit': 0,
+    'metadata_limit': 0,
+    'edge_limit': 0,
+    'correction_render': 'none',
+    'time_format': 'relative',
+    'show_confidence': False,
+    'show_encoding_source': False,
+    'mark_status': True,
+    # metadata_limit 0 silences the KV loop; situation is a top-level field
+    # and needs the skip named to stay out of the header-only block.
+    'extra_skip_keys': SURFACE_SKIP_KEYS,
+}
 
-    `scope`: the session's declared scope dimensions — injected here (the
-    cfg is already a fresh dict) so callers never hand-clone a shared format
-    constant; a forgotten clone would leak one session's scope into every
-    other session's renders.
-    """
-    cfg = {k: v for k, v in fmt.items()
-           if k not in ('content_proportion', 'metadata_proportion',
-                        'min_content_chars', 'min_metadata_chars',
-                        'situation_max_chars')}
-    if 'content_proportion' in fmt:
-        cfg['content_limit'] = max(
-            fmt.get('min_content_chars', 50),
-            int(budget * fmt['content_proportion']))
-    if 'metadata_proportion' in fmt:
-        cfg['metadata_limit'] = max(
-            fmt.get('min_metadata_chars', 30),
-            int(budget * fmt['metadata_proportion']))
+
+def surface_voice_labels(scope):
+    """The quote label for the inject: the counterpart's name from the
+    session scope ('Tom said'), or 'They said' when the session declares
+    none. Only the counterpart's quote renders (my_raw_quote is a skip
+    key); the label says whose words they are, in a form the reader reads
+    through rather than parses."""
+    who = str((scope or {}).get('counterpart') or '').strip()
+    return {'their_raw_quote': ('%s said' % who) if who else 'They said'}
+
+
+def seed_render_cfg(mode, scope=None, content_limit=None):
+    """A fresh render_rich_node cfg for one seed: the mode's format plus
+    the session scope and this seed's content cap. Always a new dict — the
+    format constants are shared, and a scope written into one would leak
+    into every other session's renders."""
+    fmt = (SURFACE_BACKGROUND_FORMAT if mode == 'background'
+           else SURFACE_SEED_FORMAT)
+    cfg = dict(fmt)
+    if mode != 'background':
+        cfg['content_limit'] = content_limit
+        cfg['voice_labels'] = surface_voice_labels(scope)
     if scope:
         cfg['scope'] = scope
     return cfg
-
 
 # ═══════════════════════════════════════════════════════════════
 # PICKER RENDER — what Haiku reads when selecting 3-5 from 25
@@ -1897,40 +1950,8 @@ def select_edges(connections, query_vec, limit=3, prior_vecs=None,
 
 
 # ═══════════════════════════════════════════════════════════════
-# ACTIVATION-DRIVEN RENDERING
-#
-# Once spread_activation has produced {node_activation, field_activation},
-# format_surface_output_activation renders nodes by activation rank, with
-# each node's token budget proportional to its activation and each field
-# appearing only when its per-field activation clears a minimum threshold.
-#
-# No SURFACE_FORMAT whitelist. No hardcoded "show content but not reasoning."
-# Fields with high activation surface; fields with low activation don't.
-# Fading means less and less data surfaced.
+# INJECT RENDER — seeds first, whole or nothing, neighbors as one line
 # ═══════════════════════════════════════════════════════════════
-
-# Minimum per-node budget — below this, we stop rendering further nodes
-# rather than emit a stub that can't carry meaning.
-_MIN_NODE_BUDGET_CHARS = 150
-
-# Hard byte cap on the inject. Claude Code spills additionalContext to a
-# file above ~10k chars, and Anchor doesn't read that file path back. Cap
-# below the ceiling with headroom for any wrapper bytes Claude Code adds.
-_MAX_INJECT_CHARS = 9500
-
-
-def _allocate_budget_softmax(activations, total_budget):
-    """Softmax-weighted budget per node. High-activation nodes get more share;
-    saturated-at-1.0 nodes split evenly; weak nodes still get minimum viable.
-    Returns list of int budgets aligned with activations input.
-    """
-    if not activations:
-        return []
-    arr = np.array(activations, dtype=np.float64)
-    # Subtract max for numerical stability, then softmax
-    exps = np.exp(arr - arr.max())
-    weights = exps / exps.sum()
-    return [max(_MIN_NODE_BUDGET_CHARS, int(w * total_budget)) for w in weights]
 
 
 def _event_time_line(node):
@@ -1970,191 +1991,319 @@ def _event_time_line(node):
     return '  Event date: %s' % et_str
 
 
-def _render_node_activation(node, budget, activation,
-                             query_vec=None, brain=None, mode='arc',
-                             seen_root_ids=None, scope=None):
-    """Render a single activated node within a char budget.
+def _prepare_seed_edges(node, query_vec, brain, seen_root_ids):
+    """A seed's edges for its block: drop edge-lines to nodes already
+    rendered as roots in this inject (their target is shown in full above,
+    so the line is a redundant restatement), then re-rank the rest by query
+    relevance so the pertinent bridges come first. Conservative —
+    seen_root_ids only ever holds nodes rendered BEFORE this one, so a
+    dropped edge always has its target shown above. Returns a copy."""
+    seed = dict(node)
+    connections = seed.get('connections') or []
+    if seen_root_ids and connections:
+        connections = [c for c in connections
+                       if c.get('id') not in seen_root_ids]
+    if query_vec is not None and connections:
+        connections = select_edges(
+            connections, query_vec, limit=10,
+            brain_conn=brain.conn if brain is not None else None,
+            brain=brain)
+    seed['connections'] = connections
+    return seed
 
-    Mode controls layout depth; the encoder's attached fields are trusted
-    in every mode (no cosine masking — the encoder picked these fields for
-    a reason, the renderer doesn't second-guess).
 
-      - 'arc' (default): full render via SURFACE_ARC_FORMAT; edges
-        re-ranked by query relevance via select_edges. State-of-mind /
-        identity nodes.
-      - 'fact': verbatim content, larger budget; SURFACE_FACT_FORMAT.
-        Specific values / quotes / exact wording.
-      - 'background': title + 1-line situation only; SURFACE_BACKGROUND_FORMAT.
-        Low-weight framing context.
+def _render_seed(node, mode, content_cap, query_vec=None, brain=None,
+                 seen_root_ids=None, scope=None, edges=True,
+                 prepare_edges=True, force_cut=False):
+    """Render one Haiku pick with at most `content_cap` chars of content.
 
-    Common behavior:
-      • Budget scales content / metadata / edge limits proportionally.
-      • Structured event_time kv (when present) is rendered as a dedicated
-        line via _event_time_line, just after the title.
+    Returns (text, meta); meta = {'content_chars': N, 'content': disposition}
+    with disposition 'whole' | 'cut' | 'omitted' | 'none' (no content).
+
+      - 'background': the header line (+ event date) only.
+      - 'fact': content whole — verbatim is the point (`force_cut` overrides
+        it, for the hard-cap ladder).
+      - 'arc': whole when it fits `content_cap`; a sentence-boundary cut
+        naming the remainder when at least SURFACE_CONTENT_MIN_CHARS fit;
+        otherwise no content and a pointer line saying how long it is.
+        `content_cap=None` means no cap.
+
+    `edges=False` drops the Edges block (the ladder's second rung);
+    `prepare_edges=False` says the caller already ran _prepare_seed_edges.
     """
     from servers.contract import render_rich_node
     event_line = _event_time_line(node)
 
-    def _inject_event_line(body):
-        """Place the structured event_time line right after the title."""
-        if not event_line:
-            return body
-        body_lines = body.split('\n', 1)
-        if len(body_lines) == 2:
-            return body_lines[0] + '\n' + event_line + '\n' + body_lines[1]
-        return body + '\n' + event_line
+    def _after_header(body, line):
+        head, _, tail = body.partition('\n')
+        return head + '\n' + line + ('\n' + tail if tail else '')
 
+    content = node.get('content') or ''
+    meta = {'content_chars': len(content), 'content': 'none'}
     if mode == 'background':
-        # Background — title + 1-line situation only. No render_rich_node
-        # round-trip (output is too minimal to benefit). Reads
-        # SURFACE_BACKGROUND_FORMAT for the situation char cap.
-        title = node.get('title', '')
-        kv = node.get('metadata_kv') or node.get('kv') or {}
-        sit_max = SURFACE_BACKGROUND_FORMAT['situation_max_chars']
-        situation = (kv.get('situation') or '')[:sit_max]
-        body_lines = ['[%s] %s' % (node.get('type', '?'), title)]
-        if event_line:
-            body_lines.append(event_line)
-        # Differential scope marks even at minimal depth — a foreign node
-        # is foreign regardless of render budget (mark, don't hide).
-        if scope:
-            from servers.contract import scope_marks
-            body_lines.extend(scope_marks(node, scope, meta=kv))
-        if situation:
-            body_lines.append('  ' + situation)
-        return '\n'.join(body_lines)
+        text = render_rich_node(node, seed_render_cfg('background', scope=scope))
+        return (_after_header(text, event_line) if event_line else text), meta
 
-    if mode == 'fact':
-        cfg = resolve_surface_format(SURFACE_FACT_FORMAT, budget, scope=scope)
-        return _inject_event_line(render_rich_node(node, cfg))
+    seed = (_prepare_seed_edges(node, query_vec, brain, seen_root_ids)
+            if prepare_edges else dict(node))
+    if not edges:
+        seed['connections'] = []
 
-    # 'arc' (default) — full encoder-attached fields render; edges
-    # re-ranked by query relevance so the most pertinent bridges appear
-    # under the node header.
-    arc_node = dict(node)
-    connections = arc_node.get('connections') or []
-    # Dedup edge-lines that point to a node already rendered as a root in this
-    # inject: the neighbor is shown in full elsewhere, so the edge-line is a
-    # redundant restatement that wastes budget. Conservative — seen_root_ids
-    # only ever holds nodes rendered BEFORE this one (higher activation), so a
-    # dropped edge always has its target shown above; an edge to a node that
-    # never renders is kept (its only appearance).
-    if seen_root_ids and connections:
-        connections = [c for c in connections
-                       if c.get('id') not in seen_root_ids]
-        arc_node['connections'] = connections
-    if query_vec is not None and connections:
-        arc_node['connections'] = select_edges(
-            connections, query_vec, limit=10,
-            brain_conn=brain.conn if brain is not None else None,
-            brain=brain)
+    if not content:
+        limit = 0
+    elif content_cap is None or (mode == 'fact' and not force_cut) \
+            or len(content) <= content_cap:
+        limit, meta['content'] = None, 'whole'
+    elif content_cap >= SURFACE_CONTENT_MIN_CHARS:
+        limit = max(SURFACE_CONTENT_MIN_CHARS,
+                    content_cap - SURFACE_CUT_MARKER_CHARS)
+        meta['content'] = 'cut'
+    else:
+        limit, meta['content'] = 0, 'omitted'
 
-    cfg = resolve_surface_format(SURFACE_ARC_FORMAT, budget, scope=scope)
-    return _inject_event_line(render_rich_node(arc_node, cfg))
+    text = render_rich_node(seed, seed_render_cfg(mode, scope=scope,
+                                                  content_limit=limit))
+    if meta['content'] == 'omitted':
+        text = _after_header(
+            text, '  (content: %d chars — get_nodes)' % len(content))
+    if event_line:
+        text = _after_header(text, event_line)
+    return text, meta
+
+
+def _render_node_activation(node, budget, activation, query_vec=None,
+                            brain=None, mode='arc', seen_root_ids=None,
+                            scope=None):
+    """One seed block as text — `budget` is the content cap. The single-node
+    door the render tests drive; render_surface_inject is the production
+    path (`activation` is accepted for signature compatibility only)."""
+    return _render_seed(node, mode, budget, query_vec=query_vec, brain=brain,
+                        seen_root_ids=seen_root_ids, scope=scope)[0]
+
+
+def _also_lit_block(neighbors, rich_nodes):
+    """Peripheral vision — one title line per lit neighbor; the reader
+    fetches what it wants with get_nodes."""
+    if not neighbors:
+        return ''
+    from servers.contract import render_skinny_node
+    lines = ['Also lit (%d):' % len(neighbors)]
+    for nid in neighbors:
+        n = rich_nodes.get(nid) or {}
+        lines.append('  ' + render_skinny_node(
+            {'id': nid, 'type': n.get('type', '?'),
+             'title': (n.get('title') or '?')[:100]}))
+    return '\n'.join(lines)
+
+
+def _inject_log(brain, level, source, message, context=''):
+    """Log through the brain's own loggers, which never raise; a brain-less
+    render (tests, offline eval) has nowhere to log."""
+    if brain is None:
+        return
+    if level == 'error':
+        brain._log_error(source, RuntimeError(message), context)
+    else:
+        brain._log_warning(source, message, context)
+
+
+def render_surface_inject(node_activation, field_activation, rich_nodes,
+                          selected_mode=None, query_vec=None, brain=None,
+                          total_budget=SURFACE_INJECT_BUDGET, scope=None,
+                          seen_ids=None):
+    """Render the inject: Haiku's picks in full, then one line per lit neighbor.
+
+    Returns {'text', 'shown', 'not_shown', 'also_lit'}:
+      shown     — full ids of the seeds that rendered, in render order
+      not_shown — [{'id': short id, 'reason'}] for seeds the render could
+                  not deliver: 'no_node' (not in rich_nodes) or 'budget'
+                  (the hard-cap ladder's last rung — logged as an error)
+      also_lit  — full ids of the neighbors rendered as title lines
+
+    Budget: the seeds split `total_budget` (less the neighbor-list
+    reservation) in activation order, each rendered once and cut only when
+    its whole block outgrows its share; what one leaves unused flows to the
+    next, and a second pass hands cut seeds the soft leftover plus, when a
+    pick overran its share, the room below the hard cap up to that overrun
+    — one long pick must not starve the others while the inject sits under
+    the ceiling. Nothing scales with how many nodes spread lit. Over the
+    hard cap the block shrinks from its
+    least valuable end (the neighbor list, then edges, then content to the
+    minimum, then the lowest seeds) and never mid-line.
+
+    `seen_ids`: nodes already shown to this stream in the window — never a
+    neighbor line (they are in context already).
+    """
+    selected_mode = selected_mode or {}
+    node_activation = node_activation or {}
+    field_activation = field_activation or {}
+    rich_nodes = rich_nodes or {}
+    seen8 = {str(s)[:8] for s in (seen_ids or ()) if s}
+    out = {'text': '', 'shown': [], 'not_shown': [], 'also_lit': []}
+    if not selected_mode:
+        return out
+
+    def _mean_field(nid):
+        fa = field_activation.get(nid) or {}
+        return (sum(fa.values()) / len(fa)) if fa else 0.0
+
+    def _mode(nid):
+        return selected_mode.get(nid) or SURFACE_MODE_DEFAULT
+
+    # Seeds in activation order (Haiku's pick order breaks ties): the order
+    # they render in, and the order the hard-cap ladder shrinks from the end.
+    pick_order = {nid: i for i, nid in enumerate(selected_mode)}
+    seeds = sorted(selected_mode, key=lambda nid: (
+        -node_activation.get(nid, 0.0), -_mean_field(nid), pick_order[nid]))
+    for nid in [s for s in seeds if s not in rich_nodes]:
+        out['not_shown'].append({'id': nid[:8], 'reason': 'no_node'})
+    seeds = [s for s in seeds if s in rich_nodes]
+    if not seeds:
+        return out
+
+    # Edges once per seed (a background seed renders none — no ranking
+    # work for it). Then the neighbors: lit, not a seed, not in the window's
+    # shown set, and not already named by a seed's edge line — the edge line
+    # carries the relation, the richer mention.
+    prepared, roots = {}, set()
+    for nid in seeds:
+        prepared[nid] = (dict(rich_nodes[nid]) if _mode(nid) == 'background'
+                         else _prepare_seed_edges(rich_nodes[nid], query_vec,
+                                                  brain, roots))
+        roots.add(nid)
+    edge_limit = SURFACE_SEED_FORMAT['edge_limit']
+    named = {c.get('id') for nid in seeds if _mode(nid) != 'background'
+             for c in (prepared[nid].get('connections') or [])[:edge_limit]}
+    neighbors = [nid for nid, _act in sorted(node_activation.items(),
+                                             key=lambda kv: -kv[1])
+                 if nid not in selected_mode and nid in rich_nodes
+                 and nid[:8] not in seen8 and nid not in named
+                 ][:SURFACE_ALSO_LIT_LIMIT]
+    also_lit = _also_lit_block(neighbors, rich_nodes)
+    reserve = len(also_lit) + 2 if also_lit else 0
+
+    def _render(nid, cap, **kw):
+        return _render_seed(prepared[nid], _mode(nid), cap, scope=scope,
+                            prepare_edges=False, **kw)
+
+    # Pass 1 — fair share with carry-forward. Render whole; cut only when
+    # the whole block outgrows the share, to what the share leaves after
+    # the block's skeleton (header, quote, corrections, edges).
+    blocks, metas, caps = {}, {}, {}
+    remaining = total_budget - reserve
+    overrun = 0   # chars picks took beyond their share (whole fact content)
+    for i, nid in enumerate(seeds):
+        share = max(0, remaining) // (len(seeds) - i)
+        text, meta = _render(nid, None)
+        cap = None
+        if (meta['content'] == 'whole' and _mode(nid) != 'fact'
+                and len(text) > share):
+            skeleton = len(text) - len(prepared[nid].get('content') or '')
+            cap = max(0, share - skeleton)
+            text, meta = _render(nid, cap)
+        blocks[nid], metas[nid], caps[nid] = text, meta, cap
+        overrun += max(0, len(text) + 2 - share)
+        remaining -= len(text) + 2
+
+    def _assemble(seed_list, with_neighbors):
+        parts = [blocks[nid] for nid in seed_list]
+        if with_neighbors and also_lit:
+            parts.append(also_lit)
+        return '\n\n'.join(parts)
+
+    # Pass 2 — leftover flows back to seeds whose content was cut or left
+    # out, split evenly. What the soft target has left, plus — when a pick
+    # overran its share — the room below the hard cap, up to that overrun:
+    # one long pick must not starve the others while the inject sits under
+    # the ceiling, and the soft target still governs when nothing overran.
+    cut = [nid for nid in seeds if metas[nid]['content'] in ('cut', 'omitted')]
+    if cut:
+        headroom = ((_MAX_INJECT_CHARS - SURFACE_HARD_CAP_MARGIN)
+                    - len(_assemble(seeds, True)))
+        leftover = max(remaining, min(overrun, headroom))
+        floor = SURFACE_CONTENT_MIN_CHARS + SURFACE_CUT_MARKER_CHARS
+        for i, nid in enumerate(cut):
+            if leftover <= SURFACE_CUT_MARKER_CHARS:
+                break
+            # An even split below the content minimum would leave every
+            # starved pick a pointer; when the room is short, the top-ranked
+            # picks reach the minimum first and the tail stays honest.
+            grow = leftover // (len(cut) - i)
+            if grow < floor:
+                grow = min(leftover, floor)
+            # A cut seed's block already holds its pass-1 cap of content; an
+            # omitted seed's holds none, so its cap starts from zero or the
+            # block would grow by cap + grow and outrun the grant.
+            base = caps[nid] if metas[nid]['content'] == 'cut' else 0
+            new_cap = (base or 0) + grow
+            text, meta = _render(nid, new_cap)
+            leftover -= len(text) - len(blocks[nid])
+            blocks[nid], metas[nid], caps[nid] = text, meta, new_cap
+
+    shown = list(seeds)
+    with_neighbors = bool(also_lit)
+    text = _assemble(shown, with_neighbors)
+    if len(text) > _MAX_INJECT_CHARS:
+        _inject_log(brain, 'warning', 'surface_inject_shrink',
+                    'inject %d > cap %d — shrinking: neighbors, edges, '
+                    'content, seeds' % (len(text), _MAX_INJECT_CHARS),
+                    'seeds=%d neighbors=%d' % (len(shown), len(neighbors)))
+        with_neighbors = False
+        text = _assemble(shown, False)
+        # Edges off, lowest seed first.
+        for nid in reversed(shown):
+            if len(text) <= _MAX_INJECT_CHARS:
+                break
+            blocks[nid], metas[nid] = _render(nid, caps[nid], edges=False)
+            text = _assemble(shown, False)
+        # Content down to the minimum, lowest seed first — only where more
+        # than the minimum is showing (an omitted or short block would GROW).
+        for nid in reversed(shown):
+            if len(text) <= _MAX_INJECT_CHARS:
+                break
+            if (metas[nid]['content'] not in ('whole', 'cut')
+                    or metas[nid]['content_chars']
+                    <= SURFACE_CONTENT_MIN_CHARS + SURFACE_CUT_MARKER_CHARS):
+                continue
+            blocks[nid], metas[nid] = _render(
+                nid, SURFACE_CONTENT_MIN_CHARS, edges=False, force_cut=True)
+            text = _assemble(shown, False)
+        # Last rung: keep the seeds that fit, in rank order — the shared
+        # fit-under-cap composer (an oversize first seed still shows).
+        if len(text) > _MAX_INJECT_CHARS:
+            from servers.loud_truncation import compose_block_loud
+            text, kept, dropped = compose_block_loud(
+                shown, lambda nid: blocks[nid], _MAX_INJECT_CHARS)
+            for nid in shown[kept:]:
+                out['not_shown'].append({'id': nid[:8], 'reason': 'budget'})
+            shown = shown[:kept]
+            if dropped:
+                _inject_log(brain, 'error', 'surface_inject_overflow',
+                            'inject over cap %d after shrinking — %d pick(s) '
+                            'dropped' % (_MAX_INJECT_CHARS, dropped),
+                            'seeds_left=%d' % len(shown))
+            if len(text) > _MAX_INJECT_CHARS:
+                # One seed, still over: cut at a line boundary rather than
+                # lose the inject to the spill file.
+                _inject_log(brain, 'error', 'surface_inject_overflow',
+                            'single seed %d > cap %d — cut at a line boundary'
+                            % (len(text), _MAX_INJECT_CHARS), 'seeds=1')
+                text = text[:_MAX_INJECT_CHARS].rsplit('\n', 1)[0]
+
+    out['text'] = text
+    out['shown'] = shown
+    out['also_lit'] = neighbors if with_neighbors else []
+    return out
 
 
 def format_surface_output_activation(node_activation, field_activation,
-                                      rich_nodes, selected_mode=None,
-                                      query_vec=None, brain=None,
-                                      total_budget=7000,
-                                      scope=None):
-    """Render activated nodes as additionalContext.
-
-    Args:
-        node_activation:  {node_id: float} from spread_activation — drives
-                          ranking + softmax budget weighting.
-        field_activation: {node_id: {field_name: float}} from spread_activation —
-                          used only for sort-tie-breaking (mean across fields).
-                          Per-field masking removed 2026-05-17 — the renderer
-                          trusts the encoder's attached fields.
-        rich_nodes:       {node_id: rich_node_dict} from brain.get_node(ids)
-        selected_mode:    {node_id: str} — the Haiku-selected seed ids (dict
-                          keys) → per-seed render mode (fact/arc/background).
-                          Omitted → 'arc'.
-        query_vec:        query embedding, used to re-rank each node's edges
-        brain:            Brain instance — for select_edges + overflow logging
-        total_budget:     soft target for the total inject; per-node budgets
-                          are softmax-allocated from this. Hard exit cap is
-                          _MAX_INJECT_CHARS.
-    """
-    if not node_activation:
-        return ""
-
-    selected_mode = selected_mode or {}
-
-    # Rank the inject. Two modes (BRAIN_SURFACE_RANK_MODE, default 'activation'):
-    #   'activation' — (node_activation, mean_field_activation): the historical
-    #                  default. node_activation saturates (tanh, :1154) so this
-    #                  ranks by graph CONNECTIVITY once many nodes hit 1.0.
-    #   'cosine'     — (mean_field_activation, node_activation): rank by honest
-    #                  query relevance; activation only breaks ties. Spread still
-    #                  expands the pool + allocates budget — we just stop letting
-    #                  connectivity bury relevance at the inject point.
-    # Inject-precision A/B (finding 29f0f385): 'activation' buried essentials at
-    # rank ~36 / 81% noise; cosine-rank put them at ~4 / 55% noise. Flag-gated,
-    # off by default — production byte-identical until flipped after the A/B.
-    import os
-    _cosine_rank = os.environ.get('BRAIN_SURFACE_RANK_MODE', 'activation').lower() == 'cosine'
-
-    def sort_key(item):
-        nid, act = item
-        fa = field_activation.get(nid, {})
-        mean_fa = (sum(fa.values()) / len(fa)) if fa else 0.0
-        if _cosine_rank:
-            return (mean_fa, act, nid)   # relevance primary, activation tiebreak
-        return (act, mean_fa, nid)       # activation primary (historical default)
-
-    ranked = sorted(node_activation.items(), key=sort_key, reverse=True)
-
-    # Filter to nodes we have full rich data for
-    ranked = [(nid, act) for nid, act in ranked if nid in rich_nodes]
-
-    if not ranked:
-        return ""
-
-    # Softmax budget allocation
-    acts = [a for _, a in ranked]
-    budgets = _allocate_budget_softmax(acts, total_budget)
-
-    lines = ['Brain activated %d memories:' % len(ranked), '']
-    remaining = total_budget - len(lines[0])
-    seen_root_ids = set()  # nodes already rendered as roots — dedup their edge-lines
-
-    for (nid, activation), budget in zip(ranked, budgets):
-        if remaining < _MIN_NODE_BUDGET_CHARS:
-            break
-
-        node = rich_nodes[nid]
-        mode = selected_mode.get(nid, 'arc')
-
-        # Fact-mode gets a 1.5× budget bump — ensures verbatim content
-        # survives truncation when many candidates compete for budget.
-        effective_budget = min(int(budget * 1.5) if mode == 'fact' else budget,
-                                remaining)
-        rendered = _render_node_activation(
-            node, effective_budget, activation,
-            query_vec=query_vec, brain=brain, mode=mode,
-            seen_root_ids=seen_root_ids, scope=scope)
-
-        lines.append(rendered)
-        lines.append('')  # blank line between nodes
-        remaining -= len(rendered) + 2
-        seen_root_ids.add(nid)  # now a rendered root — later nodes dedup edges to it
-
-    result = '\n'.join(lines)
-    # Hard byte cap. Claude Code spills additionalContext to a file path
-    # above ~10k chars, and Anchor doesn't read that path back — the inject
-    # would be effectively lost. Truncate at a clean line boundary so the
-    # tail isn't a half-rendered field.
-    if len(result) > _MAX_INJECT_CHARS:
-        if brain is not None:
-            try:
-                brain._log_error(
-                    'surface_inject_overflow',
-                    ValueError('inject %d > cap %d' % (len(result), _MAX_INJECT_CHARS)),
-                    'ranked=%d primary=%d; truncated at byte cap' % (
-                        len(ranked), len(selected_mode)))
-            except Exception:
-                pass
-        result = result[:_MAX_INJECT_CHARS].rsplit('\n', 1)[0]
-    return result
+                                     rich_nodes, selected_mode=None,
+                                     query_vec=None, brain=None,
+                                     total_budget=SURFACE_INJECT_BUDGET,
+                                     scope=None, seen_ids=None):
+    """Text-only door over render_surface_inject — the shape the eval
+    harness and the render tests consume."""
+    return render_surface_inject(
+        node_activation, field_activation, rich_nodes,
+        selected_mode=selected_mode, query_vec=query_vec, brain=brain,
+        total_budget=total_budget, scope=scope, seen_ids=seen_ids)['text']

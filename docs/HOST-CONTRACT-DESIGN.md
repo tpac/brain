@@ -1,6 +1,49 @@
 # Host Contract — Design
 
-## Status — step 2 deployed; both hosts pass live capture/rendering (2026-09-08) ◀ ACTIVE ARC
+## Current continuation — step 3 envelopes (2026-09-10)
+
+**Next task:** step 3 of §10, harness envelopes and speaker attribution.
+Handoff: brain `id:938ac725`; it supersedes the step-2 opener `39ffdd98`.
+Read this head, §4, §6, D9–D11 and the step-3 row before editing.
+
+Steps 0–2 and the thin action-policy extension are deployed through `c58f533`.
+The step-3 plan clarification `7302038` is already on main. Thin groups action
+captions within a turn, preserves meaningful closing cues, excludes entire
+Git-containing calls and enforces 40 action lines / 6,000 serialized bytes for
+the full timeline. See [ACTION-POLICY.md](ACTION-POLICY.md). The final extension
+passed 246 tests plus independent correctness/simplification reviews; a recorded
+production window shrank from 5,670 to 2,597 action bytes. A fresh Sonnet run after
+that reload and the paid model-output A/B remain unverified/unrun respectively.
+
+**Step-3 boundary:** the prompt hook classifies envelopes because it consumes
+that classification immediately. Separate genuine operator text from harness
+content; record the latter as `env_message` with its conversational dial off.
+Preserve structured question answers. Tool-kind classification stays daemon-side.
+Retire notification marker readers only after legacy handling exists. Verify
+`self_peek` turn counts and the encoder lived timeline explicitly: neither had
+a marker filter, so the removal sweep cannot discover them. Include recall,
+presence and dashboard parity. Canonical argument normalization, historical
+backfill and step-4 reconciliation are outside this implementation scope.
+
+**First action:** inspect the actual prompt-envelope write path and consumers,
+then check newer decisions before resolving the remaining phase-2 rollout
+question (shared flip-day checklist versus its own evaluated cutover). Give a
+brief orientation receipt after reading, before acting. Proceed with authorized
+preparation; ask only for a decision still genuinely unresolved in the evidence.
+Keep implementation in existing owners and use independent code/simplification
+review before deployment. The brain handoff contains the working-set pointers;
+this head is sufficient to orient if memory or temporary files are unavailable.
+
+**Perishable state, checked 2026-09-10 about 20:08 UTC:** main was clean at
+`7302038`, in `/Users/tpac/.codex/worktrees/1f82/brain`; production source
+`/Users/tpac/brain` was clean at `c58f533` on `codex/contract-host`. The daemon
+reported that source, PID 13083 and fingerprint `8c33e3f67dc54c06`. Recheck refs,
+worktree status and daemon ping before mutation. Create an isolated worktree
+from current main before code changes; the pinned production checkout is not
+an editing workspace. Use `./dev`; access the live brain through MCP/daemon
+read doors, never a second database writer. This handoff is a docs-only update.
+
+## Step 2 checkpoint — historical implementation/deployment record (2026-09-08)
 
 **Step 2 checkpoint:** `codex/host-contract-step2`, based on main git:`450cff9`.
 Implementation git:`8ade88b` is on main and deployed from `/Users/tpac/brain`.
@@ -422,7 +465,7 @@ ways). Anything not in this table is a gap; add the row before adding the code.
 | 0 | **BUILT.** `HOST_CONTRACT` + CC and Codex entries + validator + fingerprint; output vocabularies + `tool_result` shape/builder in `trace_contract` (required key: `tool` only — what every writer already sends); boot validation; the drift fences; `is_machine_turn` reads the constant | no behaviour change | merge; restart optional |
 | 1 | **BUILT.** hook sends raw facts (tells present, `tool_use_id`, `turn_id`/`prompt_id`, `payload_keys`, capped patch body) — **the tool-capture hook change**, additive; write door builds via `build_tool_result_metadata` **then** `stamp_s0_session` (build-then-stamp — the builder refuses `model`/`host`); `kind_status 'unknown'` → one errors-table row (the detector for a new host name); normalization keys join the shape's required set; `HOST_STATUS 'legacy'` for old clients; per-event `host` never mutates session env; `hook_common.host_name` and the prompt/Stop host wire field retired with Tom’s approval (ratchet baseline lowered) | additive, see below | redeploy (hook) + restart |
 | 2 | **DEPLOYED; both hosts verified live.** D7(a) per-tool `subs`; D7(b) kind consumers; four pre-edit defaults now empty; three-state read; ratchet lowered, frozen legacy exception explicit | first behavior change; fixed-input and live capture/rendering checks passed; paid model-output comparison unrun | git:`8ade88b`; daemon fingerprint `a5eb8f3f2b48ecee`; both installed copies synchronized |
-| 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); retire the downstream `<task-notification>` readers **after** §6's legacy path exists; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence | redeploy + restart; Tom's gate for phase 2 |
+| 3 | envelopes: populate `envelopes` for both hosts + `extract:question_reply`; prompt hook classifies from the contract (retires its literal); envelope rows land as their own correspondent (`env_message`, dial OFF in `S0_CONVERSATIONAL_INCOMING`) — the harness joins operator/stream/brain as a typed speaker (`3570a1bd`), so consumers select it out by ref_type instead of matching the marker text; retire the downstream `<task-notification>` readers **after** §6's legacy path exists; **verify the no-filter consumers** — `self_peek`'s turn_count (`dal_logs`) and the encoder lived timeline (`encode.py`, via `SAID_AND_DID_REF_TYPES`) never filtered the marker at all, so neither surfaces in the reader sweep or the ratchet; both should read correctly once the ref_type moves, so assert it rather than assume it; dashboard mirror test | removing readers early re-admits machine chatter to recall/presence. The mirror risk: a consumer that never filtered has no literal to retire and no ratchet entry, so it fails silently in the other direction — today the encoder renders a wake envelope as a `USER` turn (it opens a turn and is attributed to the operator), and `self_peek` counts it toward turn_count while the Scribe cadence does not | redeploy + restart; Tom's gate for phase 2 |
 | 4 | reconciliation against the host's own record | needs step 1's source IDs | restart |
 
 **"Additive" has a hard boundary.** Consumers parse rendered summary text; edit summaries

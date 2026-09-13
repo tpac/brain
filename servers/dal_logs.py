@@ -1033,9 +1033,7 @@ class TraceDAL(_LogsWriteBase):
         # historical sessions don't silently truncate to empty. exclude_ref_types
         # drops residue (journal_note) so "recent integration deltas" don't
         # count encoder notes. The XOR guard + predicate build live in
-        # _event_where (the one WHERE source for trace_events readers;
-        # latest_in_window and find_by_metadata_substring stay inline — their
-        # inclusive bounds / metadata-only LIKE differ from the builder's forms).
+        # _event_where (the one WHERE source for generic trace_events readers).
         where, params = self._event_where(
             scale=scale, event_type=event_type,
             session_id=session_id, session_ids=session_ids,
@@ -1078,9 +1076,9 @@ class TraceDAL(_LogsWriteBase):
         session scope while get_by_ref_type applies both; each door passes (or
         withholds) `hours` accordingly.
 
-        Needles: contains → (summary OR metadata) LIKE %s% (same idiom as
-        find_by_metadata_substring; metadata is JSON text, so it greps the full
-        body, not the 200-char summary). Structural: scale/event_type/ref_type/
+        Needles: contains → (summary OR metadata) LIKE %s% (metadata is JSON
+        text, so it searches the full body, not the 200-char summary).
+        Structural: scale/event_type/ref_type/
         ref_id equality. ref_types: an INCLUDE whitelist (te.ref_type IN (...));
         None/empty = no filter (the recall_episodes caller sources its default
         whitelist from the trace_contract dial, so there's no hardcoded list
@@ -1349,19 +1347,6 @@ class TraceDAL(_LogsWriteBase):
 
         return {r[0] or '': r[1] for r in rows}
 
-    def latest_in_window(self, scale: str, ref_type: str,
-                         upper_iso: str, lower_iso: str) -> Optional[Dict[str, str]]:
-        """Most recent trace matching (scale, ref_type) with
-        lower_iso <= created_at <= upper_iso. Returns
-        {'session_id', 'created_at'} or None. Forensic/historic lookup.
-        """
-        row = self.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = ? AND ref_type = ? AND created_at <= ? AND created_at >= ? "
-            "ORDER BY created_at DESC LIMIT 1",
-            (scale, ref_type, upper_iso, lower_iso)).fetchone()
-        return {'session_id': row[0], 'created_at': row[1]} if row else None
-
     def active_sessions_by_turn(self, cutoff_iso: str, exclude_session: str = '',
                                 limit: int = 5,
                                 sort_by: str = 'recency') -> List[Dict[str, Any]]:
@@ -1528,17 +1513,31 @@ class TraceDAL(_LogsWriteBase):
             params.append(since_iso)
         return self.conn.execute(sql, params).fetchone()[0]
 
-    def find_by_metadata_substring(self, scale: str, ref_type: str,
-                                   substring: str) -> Optional[Dict[str, str]]:
-        """First trace matching (scale, ref_type) whose metadata contains
-        `substring` (LIKE %substring%). Returns {'session_id', 'created_at'}
-        or None. Used to locate the trace that recorded a given node id.
+    def get_node_creation_traces(self, node_id: str) -> List[Dict[str, str]]:
+        """Exact creation evidence, oldest first, across recorded sessions.
+
+        A node_created ref_id or an encoding_run's structured `created` list
+        proves creation. Mentions elsewhere and revisions do not. Return all
+        matches so the caller can detect conflicting provenance; a row limit
+        could hide a contradictory session. Historic malformed metadata cannot
+        establish a link. This is independent of generic time-based searches.
         """
-        row = self.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = ? AND ref_type = ? AND metadata LIKE ? LIMIT 1",
-            (scale, ref_type, '%' + substring + '%')).fetchone()
-        return {'session_id': row[0], 'created_at': row[1]} if row else None
+        if not node_id:
+            return []
+        rows = self.conn.execute(
+            "SELECT session_id, created_at, ref_type, id FROM trace_events te "
+            "WHERE event_type = 'delta' AND ("
+            "  (ref_type = 'node_created' AND ref_id = ?) OR "
+            "  (scale = 's1' AND ref_type = 'encoding_run' AND EXISTS ("
+            "    SELECT 1 FROM json_each(CASE WHEN json_valid(te.metadata) "
+            "      THEN te.metadata ELSE '{}' END) field, "
+            "      json_each(CASE WHEN field.type = 'array' "
+            "        THEN field.value ELSE '[]' END) item "
+            "    WHERE field.key = 'created' AND field.type = 'array' "
+            "      AND item.type = 'text' AND item.value = ?))) "
+            "ORDER BY created_at ASC, rowid ASC", (node_id, node_id)).fetchall()
+        return [dict(zip(('session_id', 'created_at', 'ref_type', 'id'), row))
+                for row in rows]
 
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
@@ -1546,7 +1545,8 @@ class TraceDAL(_LogsWriteBase):
                           with_judge_output: bool = True,
                           exclude_trace_id: str = None,
                           with_surfaced: bool = False,
-                          older_than: str = None) -> List[Dict[str, Any]]:
+                          older_than: str = None,
+                          include_timestamp_ties: bool = False) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
@@ -1594,6 +1594,9 @@ class TraceDAL(_LogsWriteBase):
                 clipping at wall-now and post-filtering the wrong rows.
                 Strict on purpose: a replay's cue row sits exactly AT as_of
                 and must not enter its own window.
+            include_timestamp_ties: expand historic window boundaries to keep
+                whole timestamp groups. Cited context uses this to retain every
+                source row without imposing a source priority on tied events.
         """
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
@@ -1722,6 +1725,11 @@ class TraceDAL(_LogsWriteBase):
                     center_idx = i
             start = max(0, center_idx - _before * 2)  # ×2 because user+assistant = 2 turns per exchange
             end = min(len(turns), center_idx + _after * 2 + 1)
+            if include_timestamp_ties and start < end:
+                while start > 0 and turns[start - 1]['timestamp'] == turns[start]['timestamp']:
+                    start -= 1
+                while end < len(turns) and turns[end]['timestamp'] == turns[end - 1]['timestamp']:
+                    end += 1
             turns = turns[start:end]
 
         return turns
@@ -1854,5 +1862,3 @@ class SessionStateDAL(_LogsWriteBase):
                 '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
                 (session_id, key, node_id, value, iso_now()))
             commit_unless_batched(self.wconn)
-
-

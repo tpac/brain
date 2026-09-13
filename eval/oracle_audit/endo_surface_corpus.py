@@ -61,8 +61,8 @@ def _meta_content(row):
 def _next_turns(brain, session_id, ts, n=2):
     """The turn(s) right after the moment — the uptake window."""
     try:
-        win = brain.get_conversation_around(session_id=session_id, timestamp=ts,
-                                            before=0, after=n)
+        win = brain.get_conversation(session_id=session_id, around_timestamp=ts,
+                                     before=0, after=n, with_judge_output=False)
         return [{'role': t.get('role'), 'content': (t.get('content') or '')[:400],
                  'ts': t.get('timestamp', '')} for t in win
                 if t.get('timestamp', '') > ts][:n]

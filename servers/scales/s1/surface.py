@@ -23,43 +23,6 @@ from servers.trace_contract import (
 
 # SURFACE_SELECTION_SCHEMA lives in surface_contract.py alongside the other
 # surface I/O contracts (the render formats for each mode). Imported below.
-def _get_recently_surfaced(brain, session_id):
-    """Get recently surfaced node IDs from S1 traces (for dedup).
-
-    Scoped to this session — parallel sessions must not see each other's
-    surfaced nodes in their exclusion lists.
-    """
-    from servers.scales.s1.surface_contract import SURFACE
-    lookback = SURFACE.get('recent_recalls_messages', 10)
-    recent_k = brain.query_traces(
-        ref_type='surface_selected', scale='s1', hours=None, limit=lookback,
-        session_id=session_id)['events']
-    seen_ids = set()
-    for evt in recent_k:
-        raw = evt.get('ref_id', '[]')
-        try:
-            for nid in json.loads(raw):
-                seen_ids.add(nid)
-        except (ValueError, TypeError) as _e:
-            # Malformed ref_id silently dropped node IDs from the
-            # surfaced-recently dedup set — Haiku could re-surface nodes
-            # we already showed. Log so a corrupt producer surfaces.
-            try:
-                brain._log_error(
-                    'surface_seen_ids_parse', _e,
-                    'malformed ref_id in surface_selected trace; '
-                    'sample=%r' % str(raw)[:120])
-            except Exception:
-                pass
-    dal = brain._nodes
-    recently_surfaced = []
-    for nid in list(seen_ids)[:20]:
-        title = dal.get_title(nid)
-        if title:
-            recently_surfaced.append({"id": nid, "title": title})
-    return recently_surfaced
-
-
 def seen_node_ids(recent_messages):
     """Short (8-char) ids of nodes already injected in this session's window.
 
@@ -105,13 +68,6 @@ def _call_surface(brain, candidates_data, user_message,
         build_surface_prompt, prepare_presented_candidates,
         presentation_shuffle_seed, SURFACE_MODEL)
 
-    # Recently surfaced (for dedup)
-    recently_surfaced = []
-    try:
-        recently_surfaced = _get_recently_surfaced(brain, session_id)
-    except Exception as e:
-        brain._log_error('surface_recently_recalled', e, 'fetching recently surfaced titles')
-
     # Retrieval stats from recall result. (Recall no longer returns an `intent`
     # field — the regex classifier and the field were both removed.)
     retrieval_stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
@@ -148,7 +104,6 @@ def _call_surface(brain, candidates_data, user_message,
     user_content, max_tokens = build_surface_prompt(
         candidates_data, user_message,
         recent_messages=recent_messages,
-        recently_recalled=recently_surfaced,
         retrieval_stats=retrieval_stats,
         frame=frame,
         layout=layout,
@@ -168,7 +123,7 @@ def _call_surface(brain, candidates_data, user_message,
     # `capture` below is None-safe.
     capture = surface_capture.begin(
         brain, candidates_data=candidates_data, user_message=user_message,
-        recent_messages=recent_messages, recently_surfaced=recently_surfaced,
+        recent_messages=recent_messages,
         retrieval_stats=retrieval_stats, frame=frame, layout=layout,
         shuffle_seed=shuffle_seed, scope=scope,
         surface_instructions=surface_instructions,
@@ -185,11 +140,13 @@ def _call_surface(brain, candidates_data, user_message,
         # Agentic path: Haiku has tools, can extend the candidate pool
         # before final selection. Tool-fetched candidates are appended to
         # `candidates_data` in place so the downstream short_to_full
-        # mapping resolves them.
+        # mapping resolves them. The window's shown set (the same one that
+        # deduped the cosine pool in the hook) gates tool results too.
         raw, tool_trace, telemetry = _call_surface_agentic(
             client, brain, candidates_data, surface_instructions,
             user_content, max_tokens, session_id, SURFACE_MODEL,
-            layout=layout, capture=capture, scope=scope)
+            layout=layout, capture=capture, scope=scope,
+            seen_ids=seen_node_ids(recent_messages))
         # Attach tool trace to brain for the caller to write into K trace.
         # Stashed on the brain instance per-session-id so parallel sessions
         # don't clobber each other.
@@ -251,7 +208,7 @@ def _call_surface(brain, candidates_data, user_message,
 def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                            user_content, max_tokens, session_id, model,
                            max_rounds=2, layout='legacy', capture=None,
-                           scope=None):
+                           scope=None, seen_ids=None):
     """Agentic surface call: Haiku may use fetch tools to extend the candidate
     pool before final JSON selection.
 
@@ -267,6 +224,11 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
 
     Mutates `candidates_data` IN PLACE — tool-fetched candidates are appended
     so the downstream short_to_full ID mapping (in run_surface) can resolve them.
+
+    `seen_ids` (8-char): nodes already shown to this stream in the window.
+    Tool results carrying them are dropped before Haiku sees them — the
+    stream has them in context, and a re-fetch through a tool was how one
+    audited turn re-rendered 8,431 chars it already had.
     """
     from servers.scales.s1.fetch_tools import (
         TOOL_DEFINITIONS, execute_tool, format_tool_result_for_haiku,
@@ -483,6 +445,21 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                             'score-contract drift if this repeats'
                             % (len(_raw_results), _pool_median, _top_fetched),
                             'args=%r' % str(tool_input)[:200])
+                # Same-session dedup on tool results — the shown set that
+                # already gates the cosine pool. Filtered IN PLACE so the
+                # rendered tool output and the pool agree (Haiku never sees
+                # an id it can't select).
+                _dropped_seen_ids = []
+                if seen_ids:
+                    _kept_seen = []
+                    for c in (exec_result.get('results') or []):
+                        _cid8 = (str(c.get('id') or '')[:8]
+                                 if isinstance(c, dict) else '')
+                        if _cid8 and _cid8 in seen_ids:
+                            _dropped_seen_ids.append(_cid8)
+                        else:
+                            _kept_seen.append(c)
+                    exec_result['results'] = _kept_seen
                 # Append fetched results to candidates_data (dedupe)
                 for cand in exec_result.get('results') or []:
                     cid = cand.get('id') if isinstance(cand, dict) else None
@@ -502,6 +479,8 @@ def _call_surface_agentic(client, brain, candidates_data, surface_instructions,
                                    if isinstance(c, dict)],
                     'dropped_below_floor': _dropped_below_floor,
                     'dropped_ids': _dropped_ids,
+                    'dropped_seen': len(_dropped_seen_ids),
+                    'dropped_seen_ids': _dropped_seen_ids,
                     'latency_ms': exec_result.get('latency_ms', 0),
                     'error': exec_result.get('error'),
                     'dropped_args': exec_result.get('dropped_args'),
@@ -730,12 +709,26 @@ def _graph_expand(brain, selected_ids, query_vec=None, prior_vecs=None):
     }
 
 
-def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
+def _write_traces(brain, ctx, candidates_data, selected_ids,
                   graph_neighbors, additional_context, enriched, results,
                   recall_ref, stamp, session_id, expansion=None,
                   frame='', telemetry=None, pt=None, selection_reason='',
-                  seen_dropped=0, judge_pointer=None):
+                  seen_dropped=0, judge_pointer=None, picked=None,
+                  not_shown=None, redirected=None, also_lit=None):
     """Write S1 surface traces: O (candidates), K (surfaced), Δ (additionalContext).
+
+    `selected_ids` is what the stream SAW — the seeds the render delivered.
+    Every reader of the K trace's `selected` / ref_id (the per-turn <shown>
+    list and pool dedup, co-access, LAF's surfaced role, the time tool's
+    'discussed' anchor, the S2 decoders) means exactly that, so it is the
+    fact recorded there. Haiku's decision stays auditable alongside:
+    `picked` (its resolved picks before any gate), `not_shown` (every pick
+    that did not render, with its reason: unresolvable, archived_no_survivor,
+    veil_unavailable, walled, already_shown, no_node, budget), `redirected`
+    (archived pick → survivor that rendered instead) and `also_lit`
+    (neighbors shown as one title line — in context by title only, so NOT
+    part of `selected`). The Δ trace's selection fields stay the picker's
+    verdict over its menu (built from `picked`).
 
     `expansion` carries activation data from spread_activation when present —
     we attach per-node activation values and the kernel's per-hop trace to
@@ -789,12 +782,16 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         nb.get('id', '')[:8], nb.get('title', '')[:60], nb.get('relation', ''))
         for nb in graph_neighbors[:10]]
 
-    # Selection delta metadata — unified shape for decode-style units.
+    # Selection delta metadata — the PICKER's verdict over the menu it saw
+    # (trace_links / recall_laf read `dropped` as "offered to Haiku, not
+    # picked" — a supervision negative). Built from `picked`, never from the
+    # shown set: a pick a gate or the budget removed is not a negative.
     candidate_ids = [c.get('id', '')[:8] for c in candidates_data]
-    selected_short = sorted(selected_ids)
-    dropped_short = [cid for cid in candidate_ids if cid not in selected_ids]
+    _picked = set(picked) if picked is not None else set(selected_ids)
+    selected_short = sorted(_picked)
+    dropped_short = [cid for cid in candidate_ids if cid not in _picked]
     outcomes_per_candidate = {
-        cid: ('selected' if cid in selected_ids else 'dropped')
+        cid: ('selected' if cid in _picked else 'dropped')
         for cid in candidate_ids
     }
 
@@ -813,7 +810,10 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         frame_meta = {'frame_chars': 0, 'frame_unavailable': True}
 
     # Activation metadata — per-node activation values + kernel trace.
-    # Empty when no expansion ran (e.g. no selected seeds, query_vec absent).
+    # run_surface always passes _graph_expand's dict (keys present, empty
+    # when nothing lit: no picks, no query_vec), so a no-selection turn
+    # records activation_count 0 rather than omitting the keys. None only
+    # from callers that never expanded.
     activation_meta = {}
     if expansion:
         node_act = expansion.get('node_activation') or {}
@@ -846,6 +846,13 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
     # so Surface now carries BOTH cost and loop detail — the gap this closes.
     k_metadata = {
         'selected': sel_detail, 'expanded': exp_detail,
+        # The picker's decision and what became of it — logging beside the
+        # shown set (see the docstring). `picked` ⊇ shown ∪ not_shown ids,
+        # modulo redirects.
+        'picked': sorted(picked or []),
+        'not_shown': list(not_shown or []),
+        'redirected': dict(redirected or {}),
+        'also_lit': list(also_lit or []),
         # Seen-dedup observability: how many pool candidates the hook
         # dropped as already-surfaced this window. Without this the filter
         # is write-only telemetry — unverifiable in production, the exact
@@ -859,13 +866,14 @@ def _write_traces(brain, ctx, candidates_data, selected_ids, selected,
         **frame_meta, **activation_meta,
         # Agentic surface tool trace (v5 only; empty for v4). Stashed by
         # _call_surface_agentic on the brain instance so we don't change the
-        # run_surface signature.
-        'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).get(session_id) or [],
+        # run_surface signature; popped here so one recall's record can't
+        # ride on the next and the stash never grows.
+        'tool_trace': (getattr(brain, '_surface_tool_traces', {}) or {}).pop(session_id, None) or [],
         # Presentation shuffle record (§20.12 A2): shuffle_seed + the exact
         # round-1 menu order Haiku saw (presented_order, 8-char ids).
         # cand_detail in the O trace stays scorer-ordered — propensity
         # analysis joins picked/dropped against presented_order.
-        **((getattr(brain, '_surface_presented', {}) or {}).get(session_id) or {}),
+        **((getattr(brain, '_surface_presented', {}) or {}).pop(session_id, None) or {}),
         'surface_variant': os.environ.get('BRAIN_SURFACE_VARIANT', 'v4'),
         # telemetry is already a complete build_run_telemetry dict from both
         # surface paths; spread it flat (fallback to the all-zero block on None).
@@ -945,111 +953,71 @@ def _record_judge_payload(ctx, recall_ref, surface_prompt, output, brain):
     })
 
 
-def _drop_archived_selected(brain, selected_mode, selected_short_ids):
-    """Drop archived nodes from Haiku's resolved selection, in place.
+def _drop_archived_selected(brain, selected_mode, redirected=None):
+    """Resolve Haiku's picks to live nodes, in place.
 
-    Mutates selected_mode (full-id keyed) and selected_short_ids (8-char
-    set), and logs an ERROR per event — operator mandate: an archived node
-    being picked anywhere must be loud, never stat-only. Runs BEFORE
-    seeding and the surface_selected trace, so a dead id never seeds
-    spread or re-enters the recently-surfaced loop.
+    An archived pick WITH a survivor becomes the survivor — the memory lives
+    on there, and the render marks the redirect (the canonical pull's own
+    behavior, applied before seeding so the survivor has vectors to seed
+    with). An archived pick with NO survivor is dropped, with an ERROR per
+    event — operator mandate: an archived node being picked anywhere must
+    be loud, never stat-only. Runs BEFORE seeding and the surface_selected
+    trace, so a dead id never seeds spread or re-enters the shown set.
 
-    Returns the list of dropped full ids (for tests / callers).
+    Mutates selected_mode (full-id keyed). `redirected`, when a dict is
+    passed, is filled {picked_full_id: survivor_full_id}. Returns the list
+    of dropped full ids.
     """
     if not selected_mode:
         return []
     try:
-        archived = brain._nodes.archived_subset(list(selected_mode))
+        walk = brain.resolve_live(list(selected_mode), on_orphan='mark')
     except Exception as e:
         brain._log_error(
             'surface_liveness_gate', e,
-            'archived check failed — selection passes unfiltered')
+            'survivor walk failed — selection passes unfiltered')
         return []
-    dead = sorted(nid for nid in selected_mode if nid in archived)
+    swaps = walk.get('redirected') or {}
+    for old, new in swaps.items():
+        mode = selected_mode.pop(old, None)
+        if mode is not None and new not in selected_mode:
+            selected_mode[new] = mode
+        if redirected is not None:
+            redirected[old] = new
+    if swaps:
+        brain._log_warning(
+            'surface_selected_redirected',
+            'archived pick(s) followed their survivor pointer: %s' % ', '.join(
+                '%s→%s' % (o[:8], n[:8]) for o, n in swaps.items()),
+            'the id came from session history, not the candidate menu; '
+            'the survivor renders with the redirect marker')
+    dead = sorted(walk.get('orphans') or [])
     if not dead:
         return []
     for nid in dead:
         selected_mode.pop(nid, None)
-    selected_short_ids -= {nid[:8] for nid in dead}
     brain._log_error(
         'surface_selected_archived',
-        RuntimeError('Haiku selected archived node(s) %s — dropped before '
-                     'seeding' % ','.join(nid[:8] for nid in dead)),
+        RuntimeError('Haiku selected archived node(s) %s with no survivor — '
+                     'dropped before seeding' % ','.join(nid[:8] for nid in dead)),
         'liveness gate in run_surface; the id came from session history '
         '(conversation / recently-surfaced block), not the candidate menu')
     return dead
 
 
-def run_surface(brain, ctx, candidates_data, user_message,
-                recent_messages, result, enriched, results, recall_ref,
-                session_id, graph_changes, query_vec=None, prior_vecs=None,
-                frame='', pt=None):
-    """S1 Surface: Haiku-select → spread_activation → activation-render → trace.
+def _resolve_picks(brain, selected, candidates_data, session_id):
+    """Haiku's emitted picks → ({full_id: render_mode}, not_shown entries for
+    ids that resolved to nothing).
 
-    The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
-    query_vec + prior_vecs are required for the spreading-activation kernel —
-    when absent, the surface falls back to Haiku-selected rendering only
-    (no graph expansion), which is degraded but safe.
-
-    `pt` (optional PhaseTimer): when supplied by hook_recall, surface marks
-    its internal phases on the same timer so the daemon log line splits
-    `surface_haiku`, `surface_spread`, `surface_render`, `surface_trace`.
-    No-op if None — surface still runs, just without the breakdown.
-
-    Returns: additional_context string or None.
+    An emitted id resolves against the candidate menu (whitespace-sanitized,
+    then by unique prefix when corruption left fewer than 8 chars), else
+    against the brain by exact id — a real node Haiku saw only in session
+    history, admitted loud — with the leading-zero recovery for 7-char
+    emissions. Modes come from the contract; anything else renders as the
+    default mode.
     """
-    load_env()
-
-    def _mark(label):
-        if pt is not None:
-            pt.mark(label)
-
-    # Differential scope exposure: the session's declared side of every
-    # scope dimension, computed ONCE here (run_surface is the pipeline's
-    # session boundary) and threaded as plain data everywhere below — never
-    # re-derived at depth (a deep brain lookup is a hidden dependency test
-    # doubles can't see). None when nothing is declared.
-    scope = brain.session_scope(session_id)
-
-    # Call Haiku selector (unchanged — picks ≤5 from 25 candidates)
-    surfaced, surface_prompt, max_tokens, stamp, telemetry = _call_surface(
-        brain, candidates_data, user_message, recent_messages,
-        session_id, result, frame=frame, scope=scope)
-    _mark('surface_haiku')
-
-    selected = surfaced.get("selected", [])
-    # Haiku's per-recall rationale. Rendered nowhere (Anchor never sees
-    # it) — its one consumer is the S1Surface journal in the K trace.
-    selection_reason = surfaced.get("reason") or ''
-
-    # Replay-bench capture stashed by _call_surface — popped (not read) so
-    # a failed finish can't leak a stale capture into the next recall.
-    capture = (getattr(brain, '_surface_captures', {}) or {}).pop(
-        session_id, None)
-
-    if not selected:
-        judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
-                                          "(no selection)", brain)
-        try:
-            _write_traces(brain, ctx, candidates_data, set(), [], [],
-                          None, enriched, results,
-                          recall_ref, stamp, session_id,
-                          frame=frame, telemetry=telemetry, pt=pt,
-                          selection_reason=selection_reason,
-                          seen_dropped=((result.get('_retrieval_stats') or {})
-                                    .get('seen_dropped', 0)
-                                    if isinstance(result, dict) else 0),
-                          judge_pointer=judge_ptr)
-        except Exception as e:
-            brain._log_error('trace_s1_surface_empty', e, 'S1 surface trace (no selection)')
-        # Empty selections are corpus-worthy — a prompt candidate that
-        # changes WHEN Haiku picks nothing needs these to be judged.
-        surface_capture.finish(
-            brain, capture, recall_ref=recall_ref, surfaced=surfaced,
-            resolved_mode={}, selection_reason=selection_reason,
-            telemetry=telemetry)
-        return None
-
+    from servers.scales.s1.surface_contract import (
+        SURFACE_MODES, SURFACE_MODE_DEFAULT)
     # Map short-id → full-id over the WHOLE candidate pool (≤25 entries) —
     # sanitized / prefix-recovered ids below must be able to land on any
     # candidate, not just ones whose raw emitted form matched.
@@ -1058,14 +1026,8 @@ def run_surface(brain, ctx, candidates_data, user_message,
         cid = c.get('id', '')
         if cid:
             short_to_full[cid[:8]] = cid
-    # selected_mode is the resolved-pick registry: {full_id: render_mode}.
-    # Its keys ARE the selection (what spread seeds on, what the render and
-    # liveness gate key off); the value is the per-node render mode, default
-    # 'arc'. Valid modes come from the contract (SURFACE_MODES) — the schema
-    # enum derives from the same constant, so both stay in sync by construction.
-    from servers.scales.s1.surface_contract import (
-        SURFACE_MODES, SURFACE_MODE_DEFAULT)
     selected_mode = {}
+    not_shown = []
     for s in selected:
         raw_id = s.get('id', '')
         short_id = _sanitize_selected_id(raw_id)[:8]
@@ -1088,85 +1050,142 @@ def run_surface(brain, ctx, candidates_data, user_message,
                     'session=%s' % session_id)
         if full_id:
             selected_mode[full_id] = mode
-        else:
-            # Haiku returned an ID not in its candidate menu — either a
-            # hallucination or a typo. Check it against the brain by exact
-            # id (the ID might be a real node from session context). If
-            # found, use it; if not, log loudly so the failure isn't silent.
-            try:
-                # get_title as a 1-column existence probe (title is NOT NULL;
-                # `is not None` so an empty-string title still counts as found)
-                ndal = brain._nodes
-                resolved = (short_id
-                            if ndal.get_title(short_id) is not None else None)
-                # 2026-05-02: Haiku occasionally drops a leading '0' from
-                # 8-char IDs, producing a 7-char output (e.g. '95c2b96'
-                # instead of '095c2b96'). Verified via brain error logs:
-                # 2 of 4 'unresolvable' cases were leading-0 drops to real
-                # nodes. When the short_id is 7 chars and doesn't resolve,
-                # retry with '0' prepended — that reconstructs a full 8-char
-                # id, still an exact match. If THAT resolves, recover the
-                # selection and log it as a leading-zero recovery (distinct
-                # from real hallucinations).
-                if not resolved and len(short_id) == 7:
-                    _padded = '0' + short_id
-                    if ndal.get_title(_padded) is not None:
-                        resolved = _padded
-                        try:
-                            brain._log_error(
-                                'haiku_id_leading_zero_recovered',
-                                RuntimeError('Haiku dropped leading 0 — recovered'),
-                                'short_id=%s recovered_as=%s' % (short_id, resolved[:8]))
-                        except Exception:
-                            pass
-            except Exception as _re:
-                # A bare except here used to mask real DB errors as
-                # "ID is hallucinated" — a SQL/index issue would become
-                # indistinguishable from a Haiku confabulation, breaking
-                # the diagnostic value of the haiku_id_outside_candidates
-                # vs surface_unknown_selected_id distinction below.
-                resolved = None
-                try:
+            continue
+        # Haiku returned an ID not in its candidate menu — either a
+        # hallucination or a typo. Check it against the brain by exact
+        # id (the ID might be a real node from session context). If
+        # found, use it; if not, log loudly so the failure isn't silent.
+        try:
+            # get_title as a 1-column existence probe (title is NOT NULL;
+            # `is not None` so an empty-string title still counts as found)
+            ndal = brain._nodes
+            resolved = (short_id
+                        if ndal.get_title(short_id) is not None else None)
+            # Haiku occasionally drops a leading '0' from 8-char IDs,
+            # producing a 7-char output ('95c2b96' for '095c2b96') — 2 of 4
+            # 'unresolvable' cases in the error log were this. When the
+            # short_id is 7 chars and doesn't resolve, retry with '0'
+            # prepended — that reconstructs a full 8-char id, still an
+            # exact match. If THAT resolves, recover the selection and log
+            # it as a leading-zero recovery (distinct from hallucinations).
+            if not resolved and len(short_id) == 7:
+                _padded = '0' + short_id
+                if ndal.get_title(_padded) is not None:
+                    resolved = _padded
                     brain._log_error(
-                        'haiku_id_resolve_failed', _re,
-                        'exact-id lookup raised for short_id=%s — treating as unresolvable but real cause logged'
-                        % short_id)
-                except Exception:
-                    pass
-            if resolved:
-                selected_mode[resolved] = mode
-                brain._log_error(
-                    'haiku_id_outside_candidates',
-                    RuntimeError('Haiku selected an ID not in its candidate menu but it resolves to a real node'),
-                    'short_id=%s resolved=%s' % (short_id, resolved[:12]))
-            else:
-                # Single loud channel for an id that exists nowhere — the
-                # scoreboard's drift section counts this stream, and the
-                # dashboard error feed shows warnings alongside errors. A
-                # silent drop here is exactly how the v12_1_full
-                # empty-context miss went unnoticed.
-                brain._log_warning(
-                    'surface_unknown_selected_id',
-                    'emitted id %r matches no candidate and resolves to '
-                    'no node — pick dropped' % raw_id,
-                    'sanitized=%s session=%s' % (short_id, session_id))
+                        'haiku_id_leading_zero_recovered',
+                        RuntimeError('Haiku dropped leading 0 — recovered'),
+                        'short_id=%s recovered_as=%s' % (short_id, resolved[:8]))
+        except Exception as _re:
+            # A bare except here used to mask real DB errors as "ID is
+            # hallucinated" — a SQL/index issue would become
+            # indistinguishable from a Haiku confabulation, breaking the
+            # diagnostic value of the haiku_id_outside_candidates vs
+            # surface_unknown_selected_id distinction below.
+            resolved = None
+            brain._log_error(
+                'haiku_id_resolve_failed', _re,
+                'exact-id lookup raised for short_id=%s — treating as '
+                'unresolvable but real cause logged' % short_id)
+        if resolved:
+            selected_mode[resolved] = mode
+            brain._log_error(
+                'haiku_id_outside_candidates',
+                RuntimeError('Haiku selected an ID not in its candidate menu '
+                             'but it resolves to a real node'),
+                'short_id=%s resolved=%s' % (short_id, resolved[:12]))
+        else:
+            # Single loud channel for an id that exists nowhere — the
+            # scoreboard's drift section counts this stream, and the
+            # dashboard error feed shows warnings alongside errors. A
+            # silent drop here is exactly how the v12_1_full
+            # empty-context miss went unnoticed.
+            brain._log_warning(
+                'surface_unknown_selected_id',
+                'emitted id %r matches no candidate and resolves to '
+                'no node — pick dropped' % raw_id,
+                'sanitized=%s session=%s' % (short_id, session_id))
+            not_shown.append({'id': (short_id or str(raw_id))[:8],
+                              'reason': 'unresolvable'})
+    return selected_mode, not_shown
 
-    # Trace input derives from what actually RESOLVED, so a recovered pick
-    # lands as its real short id (not the corrupted emission) and
-    # unresolvable ids never leak downstream.
-    selected_short_ids = {fid[:8] for fid in selected_mode}
+
+def run_surface(brain, ctx, candidates_data, user_message,
+                recent_messages, result, enriched, results, recall_ref,
+                session_id, graph_changes, query_vec=None, prior_vecs=None,
+                frame='', pt=None):
+    """S1 Surface: Haiku-select → gates → spread_activation → seeds-first
+    render → trace.
+
+    The complete S1 Surface chain. Called from hook_recall in daemon_hooks.py.
+    query_vec + prior_vecs feed the spreading-activation kernel; without them
+    no neighbors light and the picks render alone.
+
+    `pt` (optional PhaseTimer): when supplied by hook_recall, surface marks
+    its internal phases on the same timer so the daemon log line splits
+    `surface_haiku`, `surface_spread`, `surface_render`, `surface_trace`.
+    No-op if None — surface still runs, just without the breakdown.
+
+    Returns: additional_context string, or None when nothing rendered.
+    """
+    load_env()
+
+    def _mark(label):
+        if pt is not None:
+            pt.mark(label)
+
+    def _seen_dropped():
+        stats = result.get('_retrieval_stats') if isinstance(result, dict) else None
+        return int((stats or {}).get('seen_dropped', 0) or 0)
+
+    # Differential scope exposure: the session's declared side of every
+    # scope dimension, computed ONCE here (run_surface is the pipeline's
+    # session boundary) and threaded as plain data everywhere below — never
+    # re-derived at depth (a deep brain lookup is a hidden dependency test
+    # doubles can't see). None when nothing is declared.
+    scope = brain.session_scope(session_id)
+
+    # Call Haiku selector — picks ≤5 from the candidate menu.
+    surfaced, surface_prompt, max_tokens, stamp, telemetry = _call_surface(
+        brain, candidates_data, user_message, recent_messages,
+        session_id, result, frame=frame, scope=scope)
+    _mark('surface_haiku')
+
+    selected = surfaced.get("selected", [])
+    # Haiku's per-recall rationale. Rendered nowhere (Anchor never sees
+    # it) — its one consumer is the S1Surface journal in the K trace.
+    selection_reason = surfaced.get("reason") or ''
+
+    # Replay-bench capture stashed by _call_surface — popped (not read) so
+    # a failed finish can't leak a stale capture into the next recall.
+    capture = (getattr(brain, '_surface_captures', {}) or {}).pop(
+        session_id, None)
+
+    # Haiku's picks as {full_id: render_mode}. Every pick that does not
+    # reach the stream is recorded in not_shown with its reason, so the K
+    # trace's `selected` can mean SHOWN while the picker's decision stays
+    # auditable (`picked`, `redirected`).
+    selected_mode, not_shown = _resolve_picks(
+        brain, selected, candidates_data, session_id)
+    picked_short = sorted(fid[:8] for fid in selected_mode)
+    redirected = {}
+
+    def _drop(fid, reason):
+        selected_mode.pop(fid, None)
+        not_shown.append({'id': fid[:8], 'reason': reason})
 
     # Liveness gate — Haiku's prompt carries node ids in historical text
-    # (conversation, recently-surfaced block) that read-time archived
-    # filters can't reach, so a node archived mid-session (S2 absorb) can
-    # come back as a selection: the outside-candidates path above resolves
-    # it to a real-but-archived node and admits it. Its vectors are gone
+    # (conversation, <shown> elements) that read-time archived filters can't
+    # reach, so a node archived mid-session (S2 absorb) can come back as a
+    # selection through the outside-candidates path. Its vectors are gone
     # (deleted at archive), so seeding it yields zero activation, and every
-    # acceptance re-writes the id into the surface_selected trace that the
-    # recently-surfaced block is built from — a self-perpetuating loop
-    # (2026-06-12: node 90664c51, 4 selections over 2.5h). Enforce
-    # liveness structurally — code beats prompt compliance.
-    _drop_archived_selected(brain, selected_mode, selected_short_ids)
+    # acceptance would re-write the id into the shown set — a
+    # self-perpetuating loop. Enforce liveness structurally — code beats
+    # prompt compliance. A pick with a survivor is redirected to it rather
+    # than dropped.
+    for _dead in _drop_archived_selected(brain, selected_mode,
+                                         redirected=redirected):
+        not_shown.append({'id': _dead[:8], 'reason': 'archived_no_survivor'})
 
     # Scope veil on the SELECTION — same structural stance as the archived
     # gate above (code beats prompt compliance): Haiku can emit an id it saw
@@ -1183,29 +1202,82 @@ def run_surface(brain, ctx, candidates_data, user_message,
             'CRITICAL: veil unavailable — failing CLOSED (selection purged)')
         _veil = None
     if _veil is None:
-        selected_mode.clear()
-        selected_short_ids.clear()
+        for _pid in list(selected_mode):
+            _drop(_pid, 'veil_unavailable')
         _veil = frozenset()
-    if _veil:
-        for _wid in [i for i in selected_mode if i in _veil]:
-            del selected_mode[_wid]
-            selected_short_ids.discard(_wid[:8])
-            brain._log_error(
-                'surface_selected_walled',
-                RuntimeError('walled node %s reached selection — dropped '
-                             '(isolation veil)' % _wid[:8]),
-                'session=%s' % session_id)
+    for _wid in [i for i in selected_mode if i in _veil]:
+        _drop(_wid, 'walled')
+        brain._log_error(
+            'surface_selected_walled',
+            RuntimeError('walled node %s reached selection — dropped '
+                         '(isolation veil)' % _wid[:8]),
+            'session=%s' % session_id)
 
+    # Same-session gate — a pick the stream already has in context this
+    # window (the shown set the traces record) does not render again. The
+    # prompt tells Haiku never to re-pick a <shown> id; this is the code
+    # that holds it, loud so the re-pick rate stays visible.
+    seen8 = seen_node_ids(recent_messages)
+    for _sid in [i for i in selected_mode if i[:8] in seen8]:
+        _drop(_sid, 'already_shown')
+        brain._log_warning(
+            'surface_selected_already_shown',
+            'Haiku re-picked %s, shown to this stream earlier in the window '
+            '— not rendered again' % _sid[:8],
+            'session=%s' % session_id)
     _mark('surface_id_resolve')
 
-    # Graph expansion via spreading activation. The kernel replaces what
-    # select_edges + per-seed top-3 neighbors + mutual-traversal used to do.
-    # The veil gates the EXPANSION OUTPUT: spread walks edges freely, but a
-    # walled node's activation/fields/rich payload never reach the render —
-    # graph edges are exactly how content crosses an isolation wall.
+    # Graph expansion via spreading activation — what lights around the
+    # picks; the render shows it as one title line per neighbor.
     expansion = _graph_expand(
-        brain, list(selected_mode.keys()),
-        query_vec=query_vec, prior_vecs=prior_vecs)
+        brain, list(selected_mode), query_vec=query_vec, prior_vecs=prior_vecs)
+    rich_nodes = expansion['rich_nodes']
+
+    # Every seed renders, so every seed needs its rich node — spread only
+    # fetches what it lit (nothing when query_vec is absent). The rest come
+    # through the canonical pull. A redirected pick is fetched by the id
+    # Haiku picked: the pull resolves it forward and marks the survivor it
+    # returns (REDIRECTED_FROM_KEY) — the one owner of that mark. A seed
+    # that still has no node vanished between resolution and here (an
+    # idle-time archive racing the recall) and is dropped loud.
+    _keys_for = {}   # seed → the ids to fetch it by (its picks, else itself)
+    for _old, _new in redirected.items():
+        _keys_for.setdefault(_new, []).append(_old)
+    for _s in selected_mode:
+        if _s not in rich_nodes and _s not in _keys_for:
+            _keys_for[_s] = [_s]
+    if _keys_for:
+        _all_keys = [k for ks in _keys_for.values() for k in ks]
+        try:
+            _fetched = brain.get_node(_all_keys) or {}
+        except Exception as _fe:
+            brain._log_error('surface_seed_fetch', _fe,
+                             'canonical pull for %d seed(s) failed' % len(_all_keys))
+            _fetched = {}
+        from servers.contract import REDIRECTED_FROM_KEY
+        for _s, _ks in _keys_for.items():
+            _hits = [_fetched[k] for k in _ks if _fetched.get(k)]
+            if _hits:
+                # Two picks absorbed into one survivor: the pull stamps each
+                # requested id on its own copy; the seed carries them all.
+                _node = _hits[0]
+                _marks = [m for h in _hits for m in (h.get(REDIRECTED_FROM_KEY) or [])]
+                if len(_marks) > 1:
+                    _node[REDIRECTED_FROM_KEY] = list(dict.fromkeys(_marks))
+                rich_nodes[_s] = _node
+            elif _s not in rich_nodes:
+                _drop(_s, 'no_node')
+                brain._log_error(
+                    'surface_seed_missing',
+                    RuntimeError('pick %s resolved but has no node to render'
+                                 % _s[:8]),
+                    'session=%s' % session_id)
+
+    # The veil gates the EXPANSION OUTPUT in one pass, seeds included: spread
+    # walks edges freely, but a walled node's activation, fields and rich
+    # payload never reach the render, and every surviving node's edge list
+    # is scrubbed — a walled neighbor's title + edge description is a
+    # paraphrase of the walled claim.
     if _veil:
         from servers.scopes import scrub_node
         for _k in ('node_activation', 'field_activation', 'rich_nodes'):
@@ -1213,88 +1285,89 @@ def run_surface(brain, ctx, candidates_data, user_message,
             if isinstance(_d, dict):
                 expansion[_k] = {i: v for i, v in _d.items()
                                  if i not in _veil}
-        # Surviving rich nodes still carry edge lists — a walled neighbor's
-        # title + edge description (a paraphrase of the walled claim) must
-        # not render in the inject.
-        for _n in (expansion.get('rich_nodes') or {}).values():
+        rich_nodes = expansion['rich_nodes']
+        for _n in rich_nodes.values():
             scrub_node(_n, _veil)
     _mark('surface_spread')
 
-    # Activation-driven render — fields appear by their own per-field activation
-    # score, budget is allocated softmax-weighted by node activation.
-    from servers.scales.s1.surface_contract import format_surface_output_activation
-    additional_context = format_surface_output_activation(
+    # The conversation behind each pick — the inject names it as the call
+    # that opens it (Conversation: get_traces([...])).
+    try:
+        _refs = brain.get_source_refs_bulk(list(selected_mode))
+    except Exception as _re:
+        brain._log_error('surface_source_refs', _re,
+                         'source_refs pull for the picks failed — line omitted')
+        _refs = {}
+    for _s in selected_mode:
+        if _s in rich_nodes:
+            rich_nodes[_s]['source_refs'] = _refs.get(_s, [])
+
+    # Seeds-first render: Haiku's picks in full, lit neighbors as one line
+    # each, the window's shown set kept out of the neighbor list.
+    from servers.scales.s1.surface_contract import render_surface_inject
+    inject = render_surface_inject(
         node_activation=expansion['node_activation'],
         field_activation=expansion['field_activation'],
-        rich_nodes=expansion['rich_nodes'],
+        rich_nodes=rich_nodes,
         selected_mode=selected_mode,
         query_vec=query_vec,
         brain=brain,
         scope=scope,
+        seen_ids=seen8,
     )
+    additional_context = inject['text']
+    not_shown.extend(inject['not_shown'])
+    # What the stream SAW — the K trace's `selected`. The picks are kept in
+    # `picked`; the difference is spelled out in `not_shown`/`redirected`.
+    shown_short_ids = {fid[:8] for fid in inject['shown']}
     _mark('surface_render')
 
-    # Judge payload first — its pointer rides the K trace below, so the
-    # dashboard's polled feed reads it O(1) instead of globbing payloads/.
-    judge_ptr = _record_judge_payload(ctx, recall_ref, surface_prompt,
-                                      additional_context, brain)
-
-    # Trace writing — compat neighbor list for legacy readers, plus full
-    # activation data in metadata for S3 / dashboard observability.
+    # One tail for every turn — picks or none, rendered or all gated — so
+    # the K trace has one shape. Judge payload first: its pointer rides the
+    # K trace, so the dashboard's polled feed reads it O(1).
+    judge_ptr = _record_judge_payload(
+        ctx, recall_ref, surface_prompt,
+        additional_context or '(no selection)', brain)
     try:
-        graph_neighbors_compat = _activation_to_trace_list(
-            expansion, selected_mode)
-        _write_traces(brain, ctx, candidates_data, selected_short_ids, selected,
-                      graph_neighbors_compat, additional_context,
-                      enriched, results,
+        _write_traces(brain, ctx, candidates_data, shown_short_ids,
+                      _activation_to_trace_list(expansion, selected_mode),
+                      additional_context, enriched, results,
                       recall_ref, stamp, session_id,
                       expansion=expansion, frame=frame, telemetry=telemetry, pt=pt,
                       selection_reason=selection_reason,
-                      seen_dropped=((result.get('_retrieval_stats') or {})
-                                    .get('seen_dropped', 0)
-                                    if isinstance(result, dict) else 0),
-                      judge_pointer=judge_ptr)
+                      seen_dropped=_seen_dropped(),
+                      judge_pointer=judge_ptr,
+                      picked=picked_short, not_shown=not_shown,
+                      redirected={o[:8]: n[:8] for o, n in redirected.items()},
+                      also_lit=[i[:8] for i in inject['also_lit']])
     except Exception as e:
         brain._log_error('trace_s1_surface', e, 'S1 surface trace capture')
 
     # Replay-bench capture — written last, with the post-gate resolution
     # (production's actual picks are the concordance baseline for replay).
+    # Empty selections are corpus-worthy too: a prompt candidate that
+    # changes WHEN Haiku picks nothing needs them to be judged.
     surface_capture.finish(
         brain, capture, recall_ref=recall_ref, surfaced=surfaced,
         resolved_mode=selected_mode, selection_reason=selection_reason,
         telemetry=telemetry)
     _mark('surface_trace')
 
-    return additional_context
+    return additional_context or None
 
 
 def _activation_to_trace_list(expansion, selected_mode):
-    """Convert activation expansion output to the legacy neighbor-list shape
-    the trace writer expects. Kept minimal — Part I will upgrade the trace
-    contract itself to carry activation data natively.
-
-    `selected_mode` keys are the seed ids — excluded from the neighbor list.
-    """
-    out = []
-    for nid, act in expansion['node_activation'].items():
-        if nid in selected_mode:
-            continue  # seeds aren't "neighbors"
-        rich = expansion['rich_nodes'].get(nid, {})
-        out.append({
-            "id": nid,
-            "type": rich.get('type', ''),
-            "title": rich.get('title', ''),
-            "content": (rich.get('content') or '')[:300],
-            "relation": "activation_spread",
-            "edge_description": "activation=%.2f" % act,
-            "confidence": rich.get('confidence', 0),
-            "locked": rich.get('locked', 0) == 1,
-            "direction": "outgoing",
-            "created_at": rich.get('created_at'),
-            "revised_at": rich.get('revised_at'),
-            "seed_id": "(activation)",
-        })
-    return out
+    """The lit neighbors (seeds excluded), strongest first, in the shape the
+    trace writer's `expanded` detail reads: id, title, and the activation
+    in the relation slot."""
+    rich = expansion.get('rich_nodes') or {}
+    return [
+        {"id": nid,
+         "title": (rich.get(nid) or {}).get('title', ''),
+         "relation": "activation=%.2f" % act}
+        for nid, act in sorted((expansion.get('node_activation') or {}).items(),
+                               key=lambda kv: -kv[1])
+        if nid not in selected_mode]
 
 
 # Backward compat — old name

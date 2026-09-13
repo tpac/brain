@@ -349,6 +349,13 @@ class BrainRecallMixin:
         SourceRefDAL. Readers (eval, tooling) route here, never _source_refs."""
         return self._source_refs.get_source_refs(node_id) if node_id else []
 
+    def get_source_refs_bulk(self, node_ids) -> dict:
+        """Source refs for many nodes in one query — {node_id: [trace ids]},
+        nodes without refs absent. The surface attaches these to Haiku's
+        picks so the inject can name the conversation behind a memory."""
+        return (self._source_refs.get_source_refs_bulk(node_ids)
+                if node_ids else {})
+
     def resolve_live(self, ids, *, on_orphan: str = 'drop'):
         """Owner door for the survivor walk (NodeDAL.resolve_live) — id-SET
         conversion for callers that transform an id collection BEFORE any

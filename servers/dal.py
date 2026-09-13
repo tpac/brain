@@ -893,6 +893,23 @@ class SourceRefDAL:
             (node_id,)).fetchall()
         return [r[0] for r in rows]
 
+    def get_source_refs_bulk(self, node_ids) -> Dict[str, List[str]]:
+        """Trace ids per node for a set of nodes, each list in encoder-written
+        position order — one query for the whole set. Nodes without refs are
+        absent from the result (callers `.get(id, [])`). v29: 8-char hex."""
+        ids = [i for i in dict.fromkeys(node_ids or []) if i]
+        if not ids:
+            return {}
+        placeholders = ','.join('?' for _ in ids)
+        rows = self.conn.execute(
+            'SELECT node_id, trace_id FROM node_source_refs '
+            'WHERE node_id IN (%s) ORDER BY node_id, position ASC' % placeholders,
+            ids).fetchall()
+        out: Dict[str, List[str]] = {}
+        for node_id, trace_id in rows:
+            out.setdefault(node_id, []).append(trace_id)
+        return out
+
     def get_nodes_referencing(self, trace_id: str) -> List[str]:
         """All node_ids anchored to a given trace (v29: 8-char hex). Engram
         cohort detection primitive — nodes that share a trace are part of

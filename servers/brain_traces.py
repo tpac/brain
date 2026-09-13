@@ -14,8 +14,7 @@ Sections:
 - Journal + arc  — journal_notes, write_journal_notes, write_session_arc
 - Episodic       — recall_episodes (decode-over-traces sibling of recall)
 - Conversation   — get_conversation, turns_since_last_encode,
-                   get_conversation_around (+ JSONL fallback for pre-trace
-                   history)
+                   get_conversation_around (context grouped by session)
 
 Traces are the universal record of the whole fractal — S0 exchanges, S1 runs,
 S2 runs — so these are brain-level capabilities: they span every scale, owned
@@ -28,8 +27,6 @@ import json
 import os
 import re
 import time
-from bisect import bisect_left
-from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 from . import embedder
@@ -806,13 +803,17 @@ class BrainTracesMixin:
                          with_judge_output: bool = True,
                          with_surfaced: bool = False,
                          exclude_trace_id: str = None,
-                         older_than: str = None) -> List[Dict]:
-        """Get recent conversation turns for a session.
+                         older_than: str = None, *,
+                         around_timestamp: str = None,
+                         before: int = 10, after: int = 5,
+                         include_timestamp_ties: bool = False) -> List[Dict]:
+        """Get conversation turns within one required session.
 
         The simple path — S1E, scribe_due, the surface window, the LAF
         moment stack: anything that knows its session_id and wants the last
-        N turns. No timestamp resolution, no JSONL fallback (historic
-        center-on-a-moment lookups are get_conversation_around's job).
+        N turns. A centered window uses the same reader and row contract;
+        get_conversation_around resolves a memory's anchors before calling it.
+        A timestamp positions the window; it never selects a session.
 
         Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
             ref_type: the CORRESPONDENT axis (user_message = operator,
@@ -835,12 +836,20 @@ class BrainTracesMixin:
             older_than: ISO strict `created_at <` bound, applied in SQL —
                       the replay as-of cut: "the last N turns as of that
                       instant", not "the last N turns now, minus the future".
+            around_timestamp: ISO center for a historic window, using
+                      before/after instead of the recent-turn limit.
+            include_timestamp_ties: keep whole timestamp groups at historic
+                      window boundaries, even if this exceeds before/after.
         """
         try:
+            if not session_id:
+                raise ValueError('conversation requires a session_id')
             turns = self._trace_dal.get_session_turns(
                 session_id, limit=limit, with_judge_output=with_judge_output,
                 with_surfaced=with_surfaced, exclude_trace_id=exclude_trace_id,
-                older_than=older_than)
+                older_than=older_than, around_timestamp=around_timestamp,
+                before=before, after=after,
+                include_timestamp_ties=include_timestamp_ties)
             out = []
             for t in turns:
                 row = {'role': t['role'],
@@ -969,124 +978,115 @@ class BrainTracesMixin:
     def get_conversation_around(self, node_id: str = None,
                                 session_id: str = None,
                                 timestamp: str = None,
-                                before: int = 10, after: int = 5) -> List[Dict]:
-        """Get conversation exchanges around a point in time.
+                                before: int = 10, after: int = 5) -> Dict:
+        """Conversation context grouped by recorded session and excerpt.
 
-        Resolution order:
-        1. If session_id + timestamp given: query that session directly
-        2. If node_id given: find encoding trace → get session_id + timestamp
-        3. If only timestamp given: find nearest session from traces
-        4. If traces fail: fall back to JSONL conversation logs
+        Node lookups expand ALL get_source_refs through get_traces. Ref order
+        never chooses a session. With no refs, exact creation evidence anchors
+        the window. An explicit session remains authoritative, with timestamp
+        (or the node's created_at) positioning its window. Session-known callers
+        needing only turns can use get_conversation directly.
 
-        Args:
-            node_id: Node ID — resolves to the conversation that created it
-            session_id: Full session UUID — skip searching, query directly
-            timestamp: ISO timestamp to center the window on
-            before: Exchanges before the timestamp (default 10)
-            after: Exchanges after the timestamp (default 5)
+        Returns {basis, conversations, missing_trace_ids}. Each conversation is
+        {session_id, windows: [{anchor_trace_ids, turns}]}. Overlapping excerpts
+        merge by shared trace ids within a session; gaps stay separate. before
+        and after count exchanges per anchor, as in get_conversation. Boundary
+        timestamp ties stay together, so a cited row cannot be clipped by a tie
+        and the nominal window size may expand.
 
-        Returns: [{role: 'user'|'assistant', content: str, timestamp: str}]
-                 Chronological order. Empty list if no conversation found.
+        missing_trace_ids names anchors whose trace, session stamp or conversation
+        could not be read. Valid excerpts survive missing citations. A failed
+        source lookup never substitutes the node's creation conversation.
         """
-        resolved_session = session_id
-        resolved_timestamp = timestamp
+        result = {'basis': None, 'conversations': [], 'missing_trace_ids': []}
+        try:
+            if before < 0 or after < 0:
+                raise ValueError('conversation window sizes must be nonnegative')
+            if session_id:
+                result['basis'] = 'explicit_session'
+                center = timestamp or self._resolve_node_timestamp(node_id)
+                anchors = [{'id': None, 'session_id': session_id, 'created_at': center}]
+            elif node_id:
+                refs = sorted(set(self.get_source_refs(node_id)))
+                if refs:
+                    result['basis'] = 'source_refs'
+                    # Preserve the unavailable list if the batch read fails.
+                    result['missing_trace_ids'] = refs
+                    by_id = {row['id']: row for row in self.get_traces(refs)}
+                    result['missing_trace_ids'] = [ref for ref in refs if ref not in by_id]
+                    anchors = [by_id[ref] for ref in refs if ref in by_id]
+                else:
+                    result['basis'] = 'creation_trace'
+                    origin = self._node_creation_anchor(node_id)
+                    anchors = [origin] if origin else []
+            else:
+                raise ValueError('conversation requires a recorded session and timestamp')
 
-        if node_id and not timestamp:
-            resolved_timestamp = self._resolve_node_timestamp(node_id)
+            if not anchors:
+                raise ValueError('no recorded conversation anchors available')
 
-        if not resolved_timestamp:
-            return []
-
-        # If we have node_id but no session, find the encoding session
-        if node_id and not resolved_session:
-            resolved_session, enc_ts = self._find_encoding_session(
-                node_id, resolved_timestamp)
-            if enc_ts:
-                # Use encoding timestamp, more precise than created_at
-                resolved_timestamp = enc_ts
-
-        # Strategy 1: S0 traces (post-April 5)
-        if resolved_session:
-            turns = self._conversation_by_session(
-                resolved_session, resolved_timestamp, before, after)
-            if turns:
-                return turns
-
-        # Strategy 2: Find session by timestamp proximity
-        turns = self._conversation_by_timestamp(
-            resolved_timestamp, before, after)
-        if turns:
-            return turns
-
-        # Strategy 3: JSONL conversation logs (pre-April 5)
-        return _from_jsonl(resolved_timestamp, before, after)
+            by_session = {}
+            for anchor in sorted(anchors, key=lambda row: (
+                    row.get('session_id') or '', row.get('created_at') or '', row.get('id') or '')):
+                sid = anchor.get('session_id')
+                center = timestamp or anchor.get('created_at')
+                trace_id = anchor.get('id')
+                if not sid or not center:
+                    if trace_id:
+                        result['missing_trace_ids'].append(trace_id)
+                    self._log_error('get_conversation_around',
+                                    ValueError('anchor lacks a recorded session or timestamp'),
+                                    'trace=%s' % trace_id)
+                    continue
+                turns = self.get_conversation(
+                    sid, around_timestamp=center, before=before, after=after,
+                    with_judge_output=False, include_timestamp_ties=True)
+                if not turns:
+                    if trace_id:
+                        result['missing_trace_ids'].append(trace_id)
+                    continue
+                for turn in turns:
+                    turn.pop('judge_output', None)
+                windows = by_session.setdefault(sid, [])
+                anchor_ids = [trace_id] if trace_id else []
+                have = {turn['trace_id'] for turn in windows[-1]['turns']} if windows else set()
+                if have.intersection(turn['trace_id'] for turn in turns):
+                    # Centers are ordered within each session, with identical
+                    # window sizes. An overlapping excerpt extends the tail;
+                    # preserving reader order also preserves timestamp ties.
+                    windows[-1]['turns'].extend(turn for turn in turns if turn['trace_id'] not in have)
+                    windows[-1]['anchor_trace_ids'].extend(anchor_ids)
+                else:
+                    windows.append({'anchor_trace_ids': anchor_ids, 'turns': turns})
+            result['conversations'] = [
+                {'session_id': sid, 'windows': windows} for sid, windows in by_session.items()]
+        except Exception as e:
+            self._log_error(
+                'get_conversation_around', e,
+                'node=%s session=%s' % (node_id or '', session_id or ''))
+        result['missing_trace_ids'] = sorted(set(result['missing_trace_ids']))
+        return result
 
     def _resolve_node_timestamp(self, node_id):
         """Get a node's created_at timestamp — exact id match via NodeDAL."""
         node = self._nodes.get_naked_node(node_id) if node_id else None
         return node['created_at'] if node else None
 
-    def _find_encoding_session(self, node_id, node_created_at):
-        """Find which session encoded this node.
+    def _node_creation_anchor(self, node_id):
+        """Exact creation evidence for nodes without source refs.
 
-        Checks S1E traces for this node_id. Returns (session_id,
-        encoding_timestamp).
+        Prefer the encoding run's center to its per-write event. Conflicting
+        recorded sessions are an attribution error, never a tie to guess at.
         """
-        short_id = node_id[:8]
-        try:
-            # Direct match: S1E trace metadata contains this node ID
-            hit = self._trace_dal.find_by_metadata_substring(
-                's1', 'encoding_run', short_id)
-            if hit and hit['session_id']:
-                return hit['session_id'], hit['created_at']
-
-            # Fallback: nearest S1E trace before node creation, SAME DAY
-            # (prevents matching traces from completely different sessions)
-            node_date = node_created_at[:10]
-            hit = self._trace_dal.latest_in_window(
-                's1', 'encoding_run', node_created_at, node_date + 'T00:00:00')
-            if hit and hit['session_id']:
-                return hit['session_id'], hit['created_at']
-
-        except Exception:
-            pass
-
-        return None, None
-
-    def _conversation_by_session(self, session_id, timestamp, before, after):
-        """Get conversation from S0 traces for a specific session."""
-        try:
-            turns = self._trace_dal.get_session_turns(
-                session_id,
-                around_timestamp=timestamp,
-                before=before,
-                after=after,
-                with_judge_output=False,
-            )
-            if turns:
-                # Same passthrough contract as get_conversation: ref_type is
-                # the correspondent axis — dropping it here would render every
-                # correspondent as the operator in historic lookups.
-                return [{'role': t['role'], 'ref_type': t.get('ref_type', ''),
-                          'trace_id': t.get('trace_id'),
-                          'content': t.get('content', ''),
-                          'timestamp': t.get('timestamp', '')} for t in turns]
-        except Exception:
-            pass
-        return []
-
-    def _conversation_by_timestamp(self, timestamp, before, after):
-        """Find the session active at a timestamp and get its conversation."""
-        try:
-            # Find the S0 trace closest to this timestamp
-            hit = self._trace_dal.latest_in_window(
-                's0', 'user_message', timestamp, timestamp[:10] + 'T00:00:00')
-            if hit and hit['session_id']:
-                return self._conversation_by_session(
-                    hit['session_id'], timestamp, before, after)
-        except Exception:
-            pass
-        return []
+        origins = [row for row in self._trace_dal.get_node_creation_traces(node_id)
+                   if row['session_id']]
+        if len({row['session_id'] for row in origins}) > 1:
+            raise ValueError('conflicting sessions in node creation traces')
+        if origins:
+            hit = next((row for row in origins
+                        if row['ref_type'] == 'encoding_run'), origins[0])
+            return hit
+        return None
 
     # ═══════════════════════════════════════════════════════════
     # Payload recorder (docs/TRACE-MODES-DESIGN.md)
@@ -1388,169 +1388,3 @@ class BrainTracesMixin:
         except OSError as e:
             self._log_error('read_payload', e, context=norm)
             return None
-
-
-# ═══════════════════════════════════════════════════════════════
-# JSONL Conversation Log Support (pre-trace history)
-# ═══════════════════════════════════════════════════════════════
-
-@lru_cache(maxsize=1)
-def _get_conv_dir():
-    """Locate the conversations/ dir under the brain repo root (or '' if
-    absent). __file__ is servers/brain_traces.py → repo root is TWO dirname
-    hops up. Path depth is load-bearing: a wrong hop count silently kills the
-    JSONL fallback (empty dir, no error). Cached once per process
-    (cache_clear() resets — e.g. a test pointing at a temp dir)."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidate = os.path.join(repo_root, 'conversations')
-    return candidate if os.path.isdir(candidate) else ''
-
-
-def _from_jsonl(timestamp, before, after):
-    """Get conversation from JSONL log files."""
-    conv_dir = _get_conv_dir()
-    if not conv_dir:
-        return []
-
-    target_file = _find_conversation_file(conv_dir, timestamp)
-    if not target_file:
-        return []
-
-    return _extract_window(target_file, timestamp, before, after)
-
-
-def _find_conversation_file(conv_dir, timestamp):
-    """Find which JSONL file covers a timestamp.
-
-    Checks files by their internal message timestamps, not just filenames.
-    Caches time ranges to avoid re-scanning.
-    """
-    target_date = timestamp[:10]
-    best_file = None
-    best_distance = float('inf')
-
-    for fname in os.listdir(conv_dir):
-        if not fname.endswith('.jsonl'):
-            continue
-        path = os.path.join(conv_dir, fname)
-
-        first_ts, last_ts = _get_file_time_range(path)
-        if not first_ts or not last_ts:
-            continue
-
-        # Check if target falls within this file's range
-        if first_ts[:10] <= target_date <= last_ts[:10]:
-            return path  # Exact match
-
-        # Track closest file for near-misses
-        if first_ts[:10] <= target_date:
-            distance = ord(target_date[9]) - ord(last_ts[9]) if last_ts else 99
-            if distance < best_distance:
-                best_distance = distance
-                best_file = path
-
-    return best_file
-
-
-def _get_file_time_range(path):
-    """Get first and last message timestamps from a JSONL file."""
-    first_ts = None
-    last_ts = None
-
-    try:
-        with open(path) as f:
-            for i, line in enumerate(f):
-                if i > 50:
-                    break
-                try:
-                    obj = json.loads(line.strip())
-                    if obj.get('type') in ('user', 'assistant', 'human'):
-                        ts = obj.get('timestamp', '')
-                        if ts and not first_ts:
-                            first_ts = ts
-                except (json.JSONDecodeError, KeyError):
-                    pass
-
-        with open(path, 'rb') as f:
-            f.seek(0, 2)
-            size = f.tell()
-            f.seek(max(0, size - 20480))
-            tail = f.read().decode('utf-8', errors='ignore')
-            for line in reversed(tail.split('\n')):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get('type') in ('user', 'assistant', 'human'):
-                        ts = obj.get('timestamp', '')
-                        if ts:
-                            last_ts = ts
-                            break
-                except (json.JSONDecodeError, KeyError):
-                    pass
-    except (IOError, OSError):
-        pass
-
-    return first_ts, last_ts
-
-
-def _extract_window(path, timestamp, before, after):
-    """Extract conversation messages around a timestamp from JSONL file."""
-    messages = []
-
-    try:
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if obj.get('type') not in ('user', 'assistant', 'human'):
-                        continue
-
-                    ts = obj.get('timestamp', '')
-                    if not ts:
-                        continue
-
-                    role = 'user' if obj['type'] in ('user', 'human') else 'assistant'
-
-                    msg = obj.get('message', {})
-                    if isinstance(msg, dict):
-                        content = msg.get('content', '')
-                    else:
-                        content = obj.get('content', '')
-
-                    if isinstance(content, list):
-                        texts = [p.get('text', '') for p in content
-                                 if isinstance(p, dict) and p.get('type') == 'text']
-                        content = ' '.join(texts)
-
-                    if not content or len(content.strip()) < 2:
-                        continue
-
-                    messages.append({
-                        'role': role,
-                        'content': content[:500],
-                        'timestamp': ts,
-                    })
-
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    continue
-    except (IOError, OSError):
-        return []
-
-    if not messages:
-        return []
-
-    # Find message closest to target timestamp
-    timestamps = [m['timestamp'] for m in messages]
-    idx = bisect_left(timestamps, timestamp)
-    idx = min(idx, len(messages) - 1)
-
-    # Window: before × 2 and after × 2 (user + assistant = 2 per exchange)
-    start = max(0, idx - before * 2)
-    end = min(len(messages), idx + after * 2 + 1)
-
-    return messages[start:end]
