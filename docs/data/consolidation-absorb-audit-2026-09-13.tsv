@@ -1,0 +1,208 @@
+archived_id	survivor_id	verdict	confidence	evidence
+00270873	a74d282c	CORRECT	HIGH	Survivor: "resolving the pre-execution blocker (id:00270873)"; answers all 4 numbered sub-questions verbatim
+02c43a80	154793b6	CORRECT	HIGH	Survivor: "Transferred from absorb work (id:02c43a80)"; near-identical 8-step method, both re commit 9c57b9a0
+053488da	949e94a8	CORRECT	HIGH	Survivor cites "(id:053488da)" and near-verbatim quotes "edge model, reclassification, 120 relation types emerge"
+05a1b897	fb1a4308	CORRECT	HIGH	Survivor quotes archived verbatim: "the conversation history IS Anchor's working state-of-mind (id:05a1b897)"
+05e8bd3d	00ae9653	CORRECT	HIGH	Both cite commit 5cff407, 57,672 rows stamped, 22,416 cleaned; survivor: "(id:05e8bd3d) was a significant side effect"
+072aa054	0b273401	CORRECT	HIGH	Survivor repeats exact figures "1318 fresh / 4737 cached-read / 4737 cached-write / 514 out, 50% hit (id:072aa054)"
+07995b77	a6db48d1	CORRECT	HIGH	Survivor quotes same FB+YouTube 12+21 example verbatim and cites "(id:07995b77)"
+0b665446	ac445839	CORRECT	HIGH	Survivor: "Replaces the problematic two-writer architecture (id:0b665446)"; same conn_recall_write race
+0f8f5146	83fcf1a3	UNCERTAIN	LOW	Survivor cites a DIFFERENT id (5736eefa) for the turn-6 3-way decision; archived's 32-dim decision-rules list is absent from survivor
+1017b4ac	a068777c	CORRECT	HIGH	Survivor: "Extended thinking was definitively rejected (id:1017b4ac)"; matching 22-27s/30-90% cost figures
+119e6a49	b9f78d07	CORRECT	HIGH	Survivor cites exact path "/tmp/brain-maintenance-503.lock (id:119e6a49)"
+12fa1c45	f161d81a	CORRECT	HIGH	Survivor cites "gpt4_2487a7cb (id:12fa1c45)" with matching "7/40 event_time nodes" stat
+1603a494	5fea6323	CORRECT	HIGH	Survivor: "Steps 2+3+4: source_refs write path live (id:1603a494)" — MCP schema/F1 fix detail matches
+165f35c7	12c6ea35	CORRECT	HIGH	Both list same 12 numbered items/decisions (fatigue storage, VACUUM, SKILL.md); survivor cites "(id:165f35c7)"
+1945957a	9d55cc47	CORRECT	MEDIUM	Survivor: "Prior session 2026-05-11...not registered to live brain (id:1945957a)" matches archived verbatim; different-date time_anchors
+1a7d07f2	fe2a6ba4	CORRECT	HIGH	Survivor: "Option A vs B analysis (id:1a7d07f2)"; both describe same Sonnet-4.6 junior-Anchor answerer decision
+1c3baf0b	feb42fbf	CORRECT	MEDIUM	Survivor cites "(id:1c3baf0b)" and matches "interaction seed pulled from live DB" 2026-05-03 fact; different-date time_anchors
+1c9821d3	856dc948	CORRECT	HIGH	Survivor: "friction emerged during eval agent work (id:1c9821d3)"; both propose identical get_node_lineage(node_id) signature
+238af40e	60356227	CORRECT	HIGH	Survivor: "Phase 1 verified (id:238af40e)"; both cite qid 58470ed2, 87.6s smoke test
+297aff39	0c63792a	CORRECT	HIGH	Survivor: "v15.6 Results (id:297aff39): 3/15 pass = 20%" — exact figure match, same abstention-100% finding
+2a61532a	9352fcec	CORRECT	HIGH	Survivor: "Validation framing (id:2a61532a)" with matching 49/50 items and 6pp noise-band figures
+2b9f0569	758734ad	CORRECT	HIGH	Survivor quotes "dateparser does NOT parse Q1 2024...verified by looking at source (id:2b9f0569)" verbatim
+2be4d0cf	5b6570d8	CORRECT	HIGH	Near-duplicate titles; survivor: "Tom's constraint: Wave 2 must show Sonnet how to invent...(id:2be4d0cf)"
+2c016c9e	6242ef85	CORRECT	HIGH	Survivor: "Implemented as commit 039a243 (id:2c016c9e)" — exact commit and candidates_detail field match
+2d105730	16c9a0b4	CORRECT	HIGH	Survivor: "Root cause (id:2d105730)"; both quote same trace "(+3 more waiting — drained but over budget)"
+2e8e1c4d	bd896b92	CORRECT	HIGH	Identical bug title verbatim in both; survivor: "Empirical confirmation (id:2e8e1c4d)", same hook_common.py:229 fix
+311bff0f	01bb19e5	CORRECT	HIGH	Survivor cites "(id:311bff0f, id:b06956b6)" and repeats identical 645/830/360-line three-module split plan.
+320b8f5a	4eab0429	CORRECT	HIGH	Both on EPISODIC-REFERENCES.md; survivor names same two blockers (§7.6 examples, §15.1 identity rendering) as archived.
+34e09074	dcb5b951	CORRECT	HIGH	Survivor: "Proposed design (id:34e09074): Single function used everywhere..." direct citation, same brain_now() design.
+36b6b5bb	3de3aacf	CORRECT	HIGH	Survivor cites "(id:36b6b5bb)"; both describe Tom correcting v14+v6 proposal to the v15.11+v6 candidate.
+3cbc498f	3934d09f	CORRECT	HIGH	Survivor: "Deferred explicitly by Tom: session-aware shutdown triggering (id:3cbc498f)"; same hung-corpse design.
+3ebda2b9	00ed3f3d	CORRECT	HIGH	Survivor cites "(brain node 3ebda2b9)" and repeats exact score 1.0607505686049896 and same test name.
+4197b181	116140c8	CORRECT	HIGH	Survivor cites "(id:4197b181)"; both quote "the run was on 2023-03-19" and "22 MCU films" examples.
+41a8a67f	7bbb2b1f	CORRECT	HIGH	Survivor: "Phase 1 methodology (id:41a8a67f)"; lists same named qualities (operator_idiom_preservation, slogan_node).
+43090c2c	84458163	CORRECT	HIGH	Survivor cites "(id:43090c2c)" and repeats exact "NOT WIRED yet (2026-05-08)" vs coordinator.py:33 05-10 example.
+43fbc277	893cf8c6	CORRECT	HIGH	Survivor: "Inspection details (id:43fbc277)"; both cite same qid gpt4_b0863698 5K charity run details.
+45d95b3d	48f013d3	CORRECT	HIGH	Survivor cites "(id:45d95b3d, id:cb130e9f)"; both track EPISODIC-REFERENCES.md progress checkpoints.
+460d5c3e	50c9253a	CORRECT	HIGH	Survivor: "false assumption (id:460d5c3e)"; both cite same commits fce3570 and d3a0fa1, stream 00504773.
+46476d6a	77219293	CORRECT	MEDIUM	No id citation, but survivor repeats "5/7 through item 7" and "items 8-12 pending" verbatim from archived.
+47ac34b2	4148677a	CORRECT	HIGH	Survivor: "trigger case (id:47ac34b2)"; both cite 19+ 📊 PATTERN nodes firing the error 3x per cycle.
+48f013d3	320b8f5a	CORRECT	HIGH	Survivor: "Built from prior checkpoints at ... 604 lines ... (id:48f013d3)"; same EPISODIC-REFERENCES.md doc thread.
+4d12dba5	80d02daf	CORRECT	HIGH	Survivor cites "(id:4d12dba5)" and repeats identical lean/balanced/heavy 350/700/2271-token table.
+4dd157df	01a9826f	CORRECT	HIGH	Survivor cites "(id:4dd157df)"; both describe hallucinated /remote-control CLI flag and QR mobile session.
+52fe5db3	32c2cde6	CORRECT	HIGH	Survivor: "TAXONOMY (id:52fe5db3)"; both list identical 3-category failure taxonomy (items 1/4, 6/12, 10).
+56ab6fe8	0c63792a	UNCERTAIN	MEDIUM	Survivor's matching v15.6 numbers (15 items/20%/100% abstention) are attributed to a different id (297aff39), not 56ab6fe8.
+5736eefa	83fcf1a3	CORRECT	HIGH	Survivor: "(per turn 6, id:5736eefa)"; both describe the same v19/v21/v22 3-way eval gate requirement.
+57a0a5e0	0d1e8d6b	CORRECT	HIGH	Survivor cites "(id:57a0a5e0)"; both describe identical two-layer trace-string + graph-node participant architecture.
+57b1fe80	00885456	CORRECT	HIGH	Survivor cites "(id:57b1fe80, id:fcdfc01f)"; both frame eval divergence as contract fuzziness, not authoring error.
+581e463f	494d9fc3	CORRECT	HIGH	Survivor cites "(id:581e463f)"; near-identical text, same 4-tier decay table (today+20%/week+12%/month+6%/qtr+2%).
+5a042d42	1aac590f	CORRECT	HIGH	Survivor: "ROOT CAUSE (id:5a042d42)"; both cite exact 255 round-trip figure and 5/50/200 hop breakdown.
+5adfa05f	423bc5c7	CORRECT	HIGH	Survivor cites "(id:5adfa05f)"; both describe Tom's relative-vs-non-relative edge classification epiphany.
+5d290577	000a2873	CORRECT	HIGH	Survivor cites "(id:5d290577)"; both list identical S1S rewrite decisions (decisions removed, corrections kept).
+613ca962	605145f7	CORRECT	HIGH	Survivor cites id:613ca962, lists identical 8-commit stack (cfaefdf..4acea64) for same 2026-05-17 merge.
+63fd2100	7bca8943	CORRECT	MEDIUM	All 3 planned items (layout pivot, recall pulse, insights scanner MVP) delivered in P2.1-12 list; no id cite.
+64e1649d	972dfb9d	CORRECT	HIGH	Survivor cites id:64e1649d verbatim, same commit ba89bb9 +268/-33, same Scope B gate details.
+675cf847	384204ca	CORRECT	HIGH	Survivor cites (id:675cf847), same merge 061cb40/081a634, same HOLD-signal/brain_remember.py story.
+69544d97	5feaee1a	CORRECT	HIGH	Identical title verbatim; survivor cites id:69544d97, same Deficit1/2 revise-bias analysis.
+6988892b	00ed3f3d	CORRECT	HIGH	Survivor lists same 4 failing tests (fatigue_accumulates/dampens/increments, hub_dampening) verbatim.
+6b0c86ee	71f3d669	CORRECT	HIGH	Survivor cites (id:6b0c86ee), identical before/after table: 11000ms->711ms, 72528ms->768ms.
+6b30f56d	1ab83f3e	CORRECT	HIGH	Survivor cites (id:6b30f56d) quoting 'cell doesn't know it's in a liver' from archived content.
+6b9900eb	ba3d3a25	CORRECT	HIGH	Survivor cites (id:6b9900eb): 'Haiku 81%, edge embed 15%, recall 4%' quoted verbatim as history.
+6e6fb975	55b446fe	CORRECT	HIGH	Survivor explains hash mismatch: '47c5907 (id:6e6fb975) — same changes... rebase/amend'.
+6ee71e74	20ccc2c5	CORRECT	HIGH	Survivor cites (id:6ee71e74), repeats 'edge but no correction_of metadata' near-verbatim.
+6ef29ce5	0fa73320	CORRECT	HIGH	Survivor cites (id:6ef29ce5), extends same 3 scenarios (Borges essay, $350K/$400K, sparse operator).
+7055ce9e	221c7677	CORRECT	HIGH	Identical title; near-verbatim fatigue/STUCK content; survivor ends '(id:7055ce9e)'.
+722929d9	9ac8668b	CORRECT	HIGH	Survivor cites (id:722929d9); identical metrics R@3=97.9%, R@8=100%, MRR=0.920, abstention 53%.
+725a8993	04e2c838	CORRECT	HIGH	Near-identical hub-dampening vs live-thread text; survivor ends '(id:725a8993)'.
+726f9cb7	cf717e6d	CORRECT	HIGH	Survivor cites (id:726f9cb7); both describe Decision 23, same files daemon_dispatch.py/brain_mcp.py.
+733c5992	aa720d3c	CORRECT	HIGH	Survivor cites (id:733c5992); repeats 'spawn_task creates UI button, not started session' verbatim.
+7409033b	274ca4a1	CORRECT	HIGH	Survivor cites (id:7409033b), quotes Tom's exact correction; same entity_dates schema in both.
+7759efa6	67976011	CORRECT	HIGH	Archived says 'Superseded by...67976011'; survivor cites (id:7759efa6); same Task ID brr9tf30o.
+78976316	26bcfd9f	CORRECT	HIGH	Survivor cites (id:78976316); same 3-layer split (S1 encoder/S1 recall/S2 healer) worded identically.
+7a84e653	db62236f	CORRECT	MEDIUM	Same S2Aspect thread: archived=NOT yet in coordinator; survivor step4 wires AspectIntegration into coordinator.py (later state, no id cite)
+7ac1a40d	ab137dc3	CORRECT	HIGH	Survivor cites (id:7ac1a40d) verbatim and restates 'passes through the plugin's context layer', generalizing the same principle
+7d659302	e830fdb0	CORRECT	HIGH	Survivor cites (id:7d659302), same qid 58470ed2, same 0->4,000 char measurement on the Borges sphere smoke test
+7ffe4303	86f096b4	WRONG	HIGH	Correction, not absorption: survivor gives root cause (validator misses recently-surfaced IDs); archived's Phase B+1 reasoning absent
+80837aa1	f446f7e2	CORRECT	HIGH	Survivor quotes archived verbatim as (id:80837aa1), incl. exact rule text 'same merit as original 25' at surface_v6_prompt.txt:103
+80ae3ce7	85e85c79	CORRECT	HIGH	Survivor cites (id:80ae3ce7) and reproduces both corrupt-gold items 15745da0_abs and 37f165cf verbatim
+81c6ba82	5fea6323	CORRECT	HIGH	Survivor's 'Steps 2+3+4' bullet matches archived verbatim: MCP schemas, brain_remember.py persistence, dispatch validation, 129 tests.
+82f6b104	08fb7441	CORRECT	HIGH	Survivor cites '(id:82f6b104)' and repeats same metrics table (200-330s->605ms/43ms, RSS 500MB->4GB).
+835671c8	00b204a9	CORRECT	HIGH	Survivor cites '(id:835671c8)'; same Option 2 (50 items workers=8) and Eval B (15 items workers=4) figures.
+8557700e	6ee9c770	CORRECT	HIGH	Survivor cites '(id:8557700e)'; same probe family (aspect/compliance/coherence/counterfactual) and file paths.
+85ce0fef	9d828412	CORRECT	HIGH	Survivor quotes '(id:85ce0fef)' and restates the 'share literal artifacts' MCP-description coupling claim verbatim.
+8745f7a2	505a5653	CORRECT	HIGH	Survivor cites '(id:8745f7a2)'; identical 3-hook list (hook_pre_edit/hook_pre_bash_safety/hook_recall) and same next-steps ranking.
+890da0a4	c2425119	CORRECT	HIGH	Survivor cites '(id:890da0a4)'; same Granola/LevelDB/CTVOnboarding facts and 'not EX.CO-specific' line.
+8afc8620	70ec8fda	CORRECT	HIGH	Survivor cites '(id:8afc8620)'; same commit 255b9de and identical 12-site list incl. brain_remember.py:722.
+8b1841ff	56ed9aef	CORRECT	HIGH	Survivor cites 'id:8b1841ff' as 'same pattern'; same task id blau76wcm and 201,081-token error.
+8c5288be	0d06a03d	CORRECT	HIGH	Survivor cites '(id:8c5288be)'; same 8 select-0 vs 2 select-prefer trigger count and line numbers.
+8c59ca85	268f21d5	CORRECT	HIGH	Survivor cites '(id:8c59ca85)'; near-identical text, same commit 2d7d6a1 and SessionContext fields.
+90382657	6bf3aded	CORRECT	HIGH	Survivor cites '(id:90382657)'; same 35/50 pass, 15 fail figures for Eval A.
+922697f6	77219293	CORRECT	HIGH	Near-identical titles/content ('5/7 through item 7'); survivor adds per-item pass/fail breakdown of same run.
+928f8ff8	8c7c0873	CORRECT	HIGH	Survivor cites '(id:928f8ff8)' and repeats identical 6 commit hashes (9015636...669ecee) and '83/83 tests'.
+92b890e7	638ae97b	CORRECT	HIGH	Survivor cites '(id:92b890e7)'; identical rule/result table (event_time_kv 20%, cross_event_allen 0%).
+93a095b4	6b07b072	CORRECT	HIGH	Survivor cites '(id:93a095b4)' for the intent.py implementation; same turn-18 proposal and file path.
+97a534e8	c478373d	CORRECT	HIGH	Same 'reviewed from ANY one edge' key-property wording; same Layer1/Layer2 suppression structure, created same second.
+9849edd5	3fda5caf	CORRECT	HIGH	Survivor cites '(id:9849edd5)'; same corpus hash a300d2, background id bot8py2z3, ~68min runtime.
+9a080330	04788501	CORRECT	HIGH	Survivor cites '(id:9a080330)'; identical scoring formula and three-timescale mapping to LTP/habituation/depression.
+9d16d613	4ea1fe7b	CORRECT	HIGH	Survivor cites '(id:9d16d613)'; same daemon_config.py constants (5min/1hr/4hr) and idle_prompt April 7 outage.
+a00747a1	10b21b7e	CORRECT	HIGH	Survivor labels archived content 'Phase 1 (id:a00747a1)' verbatim, describing same no-target-button UX correction.
+a0e2b141	e414e467	UNCERTAIN	MEDIUM	Same phase order (migrate->rewrite->remove->docs) but survivor omits archived's specific HAIKU/ENCODER format token figures.
+a20abd41	01fa17c7	CORRECT	MEDIUM	Same function names get_unsurfaced_hook_errors/mark_hook_errors_surfaced and boot_brain.py gap; survivor records the fix.
+a2dd63a8	5fea6323	CORRECT	HIGH	Same Phase B file list (encode.py, brain_remember.py, daemon_dispatch.py) as scope precursor to survivor's shipped-steps rollup.
+a32ef01b	a068777c	CORRECT	MEDIUM	Survivor resolves both archived option-3 items: max_tokens bumped to a concrete value and thinking eval completed/rejected.
+a4372cee	b7b18164	CORRECT	HIGH	Survivor explicitly labels it 'Prior pattern (2026-05-11, id:a4372cee)' and repeats the same 4 doc-cleanup items.
+a4385b16	2198815b	CORRECT	HIGH	Survivor states "Absorbed from (id:a4385b16)"; same nested-transaction bug, same dispatch_write.py fix.
+a59ed303	b4b6073f	CORRECT	HIGH	Survivor cites "(id:a59ed303)"; both trace last_activity reset by IPC/hook calls starving S2 idle timer.
+a60ca667	5b30f5bc	CORRECT	HIGH	Survivor cites "(id:a60ca667)"; near-identical titles, same Turn 4 "great lets do it" example.
+a61f8a3f	776314cd	CORRECT	HIGH	Survivor cites "(id:a61f8a3f)"; identical figures 2349 scanned/189 pairs/135 clusters/95 needs_judgment/40 keep.
+a64c971d	12475ae1	CORRECT	MEDIUM	Same regression id 54026fce + verbatim root-cause sentence; created same second (02:11:08); no id citation.
+a66fe41b	5fea6323	UNCERTAIN	MEDIUM	Both "Phase B" "UNBLOCKED as of 2026-05-24" but step counts conflict (6 vs 8) and no id citation in survivor.
+a6c1f914	8aace219	CORRECT	HIGH	Survivor cites "(id:a6c1f914)"; both detail same gpt4_85da3956 two-layer root cause (scout leak + paraphrase).
+a6f6f291	f935cca3	CORRECT	HIGH	Survivor cites "(id:a6f6f291)"; identical fan-out+debounce fix, same pool-worker dispatch timing bug.
+a733d37d	6d5b789e	CORRECT	HIGH	Survivor cites "(id:a733d37d)"; same build_muster_context() bug, same '5K run today' 2023-03-19 example.
+a973c7ab	c1343a4c	CORRECT	HIGH	Survivor cites "(id:a973c7ab)"; identical segment_node_ids + type-gated suppression proposal from Turn 18.
+aa055c0a	08641318	CORRECT	HIGH	Survivor cites "(id:aa055c0a)"; both same eval Item 4, virtual-coffee-breaks recall detail.
+ab61fa43	68c93af1	CORRECT	HIGH	Survivor cites "(id:ab61fa43)"; verbatim quote "Auth:Clerk instead of Glo pricing" in both.
+adf327eb	5feaee1a	UNCERTAIN	MEDIUM	Same "double deficit" revise-description finding, but survivor cites different ids (69544d97,85accae2), not adf327eb.
+adf890d4	8643ef33	CORRECT	HIGH	Survivor cites "(id:adf890d4)" and narrates balanced-then-heavy timeline for same correction_render key.
+af15097b	ba34d99d	CORRECT	HIGH	Survivor cites "(id:af15097b)"; preserves exact figures ~3000 vs ~4500 chars while superseding the hypothesis.
+afdff28d	210f9baa	CORRECT	HIGH	Survivor cites "(id:afdff28d)"; identical 4-run accuracy table (68.3/74.9/75.7/78.2%).
+b138e4d8	2c3295a8	CORRECT	HIGH	Survivor cites "(id:b138e4d8)"; same Example 7 / 37f165cf novels-domain rewrite story.
+b1f9ee75	b03cb1d0	CORRECT	HIGH	Survivor cites "(id:b1f9ee75)"; same PID 1404 / 486MB / 99 tests migration details.
+b2a2d73c	66e3b75d	UNCERTAIN	MEDIUM	LongMemEval/BEAM text verbatim-identical, but older survivor lacks archived's unique MemoryAgentBench/Mem2ActBench items, no citation.
+b331646f	a2376bde	CORRECT	HIGH	Survivor cites "(id:b331646f)"; repeats same 3-gap breakdown (soft budget, per-node hints, no byte cap).
+b408ac56	01650549	CORRECT	MEDIUM	Near-identical title/thesis "outcome IS next cycle's O/observation"; no direct id citation (cites id:8e9d7f41 instead).
+b5aa690b	f3997410	CORRECT	HIGH	Survivor cites "(id:b5aa690b)"; identical fix (enable_cpu_mem_arena/enable_mem_pattern=False), same 6GB->217MB figure.
+b5c6a7ac	175d51a1	CORRECT	HIGH	Survivor cites "(id:b5c6a7ac)"; same Turn 10 / stream 2be1295e /watch ignition story.
+b78946f5	5ae7fad0	CORRECT	HIGH	Survivor cites "(id:b78946f5)"; identical v19/v21/v22 topic-count table (15/14/17).
+b7c685e1	2679b6ac	CORRECT	HIGH	Survivor cites "(id:b7c685e1)"; both name node 0ec84007 rank #2 score 0.720 for gpt4_85da3956.
+b7dd25af	a3e6c7e6	CORRECT	HIGH	Survivor cites "(id:c0040772,b7dd25af)"; identical 327-node 70/25/5% verdict distribution.
+b85cd6a7	57c757e9	CORRECT	HIGH	Survivor cites (id:b85cd6a7) and restates the eval/ground_truth/ 7-conversation slate details verbatim.
+b8f1c8f8	5fea6323	CORRECT	MEDIUM	Shipped Steps 0-4 text matches near-verbatim (schema v27/v29, DAL methods); no id cite; Remaining lists diverge 7 vs 8 steps.
+b96ff489	92ef68ed	CORRECT	HIGH	Identical titles; survivor cites (id:b96ff489) and repeats the 511K cosine ops / 7-query breakdown verbatim.
+ba3d3a25	0c24dc3f	CORRECT	HIGH	Survivor quotes the exact sub-phase timer block (25,647ms total, surface_spread 11,260ms) and cites (id:ba3d3a25).
+bae295c8	01bb19e5	UNCERTAIN	MEDIUM	Survivor covers commit 8c474fd extracting cfg dicts but never mentions the "invisible mode mapping" flaw or cites bae295c8.
+bc687563	6eae51e5	CORRECT	HIGH	Survivor cites (id:bc687563) and repeats gpt4_385a5000 atoms + "Tomatoes first — Feb 20 vs March 3" verbatim.
+be159674	7d866995	CORRECT	HIGH	Survivor cites (id:be159674) and repeats PID 79831, 778ms recall, mode 600 details from the archived event.
+be16cafd	5c78ef76	CORRECT	HIGH	Survivor cites (id:be16cafd) and repeats the exact +1,949 chars / 82% smaller than v15.3's +10,800 figures.
+bebb4959	96635da9	CORRECT	HIGH	Survivor cites (id:bebb4959) and reproduces the identical pass-rate table (v15.8 10/12, v15.9 8/12, v15.10 7/12).
+bf76ad7c	07cb6e5f	CORRECT	HIGH	Survivor cites (id:bf76ad7c) and reassigns the same 5 gaps into a before/after table.
+c17f46b3	31686313	CORRECT	HIGH	Survivor cites (id:c17f46b3) and lists the identical commits (0db9b6d, 58b4c17, 40cf428).
+c27e2379	988de522	CORRECT	HIGH	Same title verbatim; survivor cites (id:c27e2379) and repeats the 96d2fdf8→426ae3cd audit table.
+c3571f66	7463a2aa	CORRECT	HIGH	Survivor cites (id:c3571f66); its table's brain_engineering.py row matches archived's -188 lines exactly.
+c43d8981	04ee9e89	CORRECT	HIGH	Survivor cites (id:c43d8981) and repeats "4 of 6 tool-using items", surface.py lines 209-246, one-round rule.
+c4971916	04616b47	CORRECT	HIGH	Survivor cites (id:c4971916) and repeats commit ff12524 + "a signal is a terse tap, not a letter" quote.
+c4a33f1b	e35602ca	UNCERTAIN	MEDIUM	Archived's specific commit c057c3f (16 files, 1518/254) is absent from survivor's 6 listed commit hashes; no id cite.
+c51c4f07	4eefbbae	CORRECT	HIGH	Survivor cites (id:c51c4f07) and reproduces the identical 7/12 checkpoint numbers (v15.8 7/7, v15.9 5/7, v15.10 4/7).
+c645750a	397ae880	CORRECT	HIGH	Survivor cites (id:c645750a) and summarizes the same Q1/Q2/Q3 verification queries from the archived plan.
+c85d19ea	48ceedee	CORRECT	HIGH	Survivor cites (id:c85d19ea) and restates the same ENABLE_TOOL_SEARCH vs per-tool _meta distinction.
+c9cb7df1	3a27b792	CORRECT	HIGH	Survivor cites (id:c9cb7df1) and repeats the identical 3-commit list (d1bb40e, d701df9, 9ddd36f) with matching stats.
+ca18b33d	c6a128bc	CORRECT	HIGH	Survivor cites (id:ca18b33d) and repeats the 5/5 then 6/6 agent-confirmation detail and the same fix files.
+cb8a7cc7	60356227	CORRECT	MEDIUM	Same exact path eval/longmem/reports/{run}/items/{qid}/ and phase name; no id cite; file list evolved since spec.
+ce385190	3d91b89f	CORRECT	HIGH	Survivor cites (id:ce385190) and repeats the "251 activated nodes" / 3-6 rendered funnel finding verbatim.
+cf2047d3	ca407812	CORRECT	HIGH	Near word-for-word identical text on both nodes; survivor cites (id:cf2047d3).
+d1296337	5071da32	CORRECT	HIGH	Survivor cites (id:d1296337) and repeats "unit 5, 60s idle cycles, 500-item batches" plus the same deleted file paths.
+d3066c01	260ccbd5	CORRECT	HIGH	Survivor cites (id:d3066c01) and repeats the ~19K vs ~11K char figures and the try/except correction scenario.
+d31c7476	89ca4404	CORRECT	HIGH	Survivor embeds same 4/6 progression (1✓2✓3✗4✓5✗6✓) and cites archived "(id:d31c7476)" for item 5 failure.
+d392f7b2	2d0a15ab	CORRECT	HIGH	Identical titles; survivor cites "Designed (id:d392f7b2), not yet coded" for Track 1b, same Turn-5 directive quote.
+d3d08a42	2e8e2f70	CORRECT	HIGH	Same 68% vs 100% losslessness finding; survivor cites "(id:d3d08a42)" directly for the root-cause claim.
+d413364e	f2ae224b	CORRECT	HIGH	Survivor reproduces the 5-product table verbatim and cites "(id:d413364e)" calling them "products, not mechanisms".
+d48d6e28	cfb9c465	CORRECT	HIGH	Both quote Tom's "make sure the last directive is JSON output only"; survivor cites "(id:d48d6e28)".
+d4f782e8	aeb41fc9	CORRECT	HIGH	Survivor reproduces the create/don't-create time_anchor bullet list nearly verbatim from archived.
+d61ef774	41c01312	CORRECT	HIGH	Same S2_EVERY_N_ENCODINGS=2 fact and Tom quote; survivor ends "Absorbed from (id:d61ef774)".
+d6d86399	cc834325	CORRECT	HIGH	Same seed_7 metrics (0 synthesis fails, 7-8 dedup dates); survivor cites "(id:d6d86399)" for noun-retention regression.
+d7da76af	c5609188	CORRECT	MEDIUM	Survivor's 2026-05-09 bullet matches archived verbatim, though the "(id:d7da76af)" citation is misattached to the 04-27 bullet.
+d8944b27	42bbe89d	CORRECT	HIGH	Survivor cites "(id:d8944b27)" and repeats "structurally identical event types at every scale" claim.
+d895d6bd	12475ae1	CORRECT	MEDIUM	Same file/function (_call_surface_agentic, surface.py) and exact fix (tools=None -> tools=[]); no direct id citation though.
+d95dae0b	336b443e	CORRECT	HIGH	Survivor quotes Tom's exact words and cites "(id:d95dae0b)" for the genome/synapse framing.
+d963a91c	5c8fee27	CORRECT	HIGH	Survivor says "completes the earlier bucket analysis (id:d963a91c)" reusing same 55241a1f/54026fce items.
+d9a91459	96635da9	UNCERTAIN	LOW	Survivor's replay/final tables omit archived's 982b5123 FAIL and 71017276 "mid-encoding" details; cites a different id (bebb4959).
+d9f35269	68f5d56b	CORRECT	HIGH	Near-identical title and content; survivor cites "(id:d9f35269)" for the debounce-doesn't-fix-algorithmic-cost point.
+dda6b8df	f3610c93	CORRECT	HIGH	Survivor cites "(id:dda6b8df)" for the "15 points" rich-traces claim, same Meta-Harness paper facts.
+de80f1a0	f6e7e090	CORRECT	HIGH	Identical titles; survivor cites "(id:de80f1a0)" as "the broader lesson", same 13th-site detail.
+e02fddb2	3a27b792	CORRECT	HIGH	Survivor cites "(id:e02fddb2)" for the exact "Phase 3+4... prompts updated" line, same bundle versions v17/v6/v3.
+e0bd25fa	49346996	UNCERTAIN	LOW	Archived fixes timeout at 180.0s in s2/base.py; survivor's own "Supersedes" note names a different prior value (600.0 in runner.py, commit 02f5c32), no 180 or id reference.
+e2882a7e	d5a96619	CORRECT	HIGH	Survivor cites "(id:e2882a7e)" and repeats "operator/Anchor register... not cleaned-up pre-digested summaries".
+e33f3e2a	8aab7e56	CORRECT	HIGH	Survivor cites "(id:e33f3e2a)" reproducing "8 minutes, 14 communities, 38.3%" verbatim.
+e3e54e90	4815ba61	CORRECT	HIGH	Nodes cross-cite each other's ids ("(id:4815ba61)" in archived, "(id:e3e54e90)" in survivor), same 3 failure examples.
+e478eaf5	06efdeb4	CORRECT	HIGH	Survivor cites "(id:e478eaf5)" for the exact scope-drift pattern and Tom's "I dont mind..." quote.
+e51cc55a	dbc297b0	CORRECT	HIGH	Survivor cites "(id:e51cc55a)" reproducing the "2000 nodes, 10K typed edges, 114 communities" figures.
+e9789d8b	70c080c9	CORRECT	HIGH	Survivor cites "(id:e9789d8b)" and reuses the identical eec84556 yoga/anxiety canonical-failure example.
+ea7bd0b2	d80c0fd3	CORRECT	HIGH	Survivor cites "(id:ea7bd0b2)" reproducing "21 min -> 8 min. Zero wasted rounds" verbatim.
+ea8363cd	a179e711	CORRECT	HIGH	Verbatim shared quote: "fact in content embedding AND node exists AND recall doesn't return it = recall failure"
+ec6b9d42	22d07fd4	CORRECT	HIGH	Identical eval table (55241a1f 115.8s->124.5s, +11% s1e time); survivor cites (id:ec6b9d42)
+ed5aa2a5	231df0b4	CORRECT	HIGH	Same bug/commit range 386b38d->6b92f53, same segment_boundary SQL bug; survivor cites (id:ed5aa2a5)
+eeb57910	34ef44ec	CORRECT	HIGH	Same nodes 96d2fdf8/426ae3cd and lock story; survivor cites (id:eeb57910)
+f024a5a1	b05ca36d	CORRECT	HIGH	Same bridge-vector-duplication claim reproduced; survivor cites (id:f024a5a1)
+f0aaadef	fe9a4623	CORRECT	HIGH	Same 4-item A-D hygiene checklist, date 2026-05-08; survivor cites (id:f0aaadef)
+f1e3b5d1	e477cb3a	CORRECT	HIGH	Same v29 hex-migration/dashboard coordination text; survivor cites (id:f1e3b5d1)
+f35329ac	9bfd8a2d	UNCERTAIN	MEDIUM	Survivor cites "(id:f35329ac)" headline only; the 13-item L2-L6 layer breakdown table itself is never reproduced
+f3761a00	349ebbf7	CORRECT	HIGH	Same "347 chains" figure, commit d53311e, same double-write bug; survivor cites (id:f3761a00)
+f39c114b	8235de68	CORRECT	HIGH	Same SESSION-HANDOFF.md decision and file list; survivor cites (id:f39c114b)
+f4a39ef0	72999439	CORRECT	HIGH	Same "aspect_decoder.py early-out fixed" wording; survivor cites (id:f4a39ef0)
+f4a572e8	4eab0429	CORRECT	HIGH	Same doc, "1427 lines, 25 decisions locked"; survivor cites (id:f4a572e8)
+f56834d3	ea03bdcd	CORRECT	HIGH	Same PID 5006, RSS 505.6MB, "12/12 new tests"; survivor cites (id:f56834d3)
+f97bf8d0	cf6f4382	CORRECT	HIGH	Same commit a0434c2 and identical 3 file:line refs; survivor cites (id:f97bf8d0)
+fadd2854	5a54b06d	CORRECT	HIGH	Near-identical title/content on single-token query waste; survivor cites (id:fadd2854)
+fbb75cdf	a4e58ac9	CORRECT	HIGH	Same "43% per-item flip rate" figure reused; survivor cites (id:fbb75cdf)
+fc15f930	5132a1be	CORRECT	HIGH	Same get_neighbors_bulk / "0.1% of surface_spread cost" finding; survivor cites (id:fc15f930)
+fc3c8eb9	f390eff3	CORRECT	HIGH	Same 4 root causes of healer over-fill reproduced; survivor cites (id:fc3c8eb9)
+fc9dcf30	ee0766c4	CORRECT	HIGH	Identical title and vintage-cameras example; survivor cites (id:fc9dcf30)
+fcc63664	82d1b6a2	CORRECT	HIGH	Identical title, same camera/coffee-break examples, near-duplicate content
+fce4c438	aeb41fc9	CORRECT	HIGH	Same "event_time belongs on any temporally-located node" claim quoted; survivor cites (id:fce4c438)
+fea96505	17751056	CORRECT	MEDIUM	Identical title; survivor states "absorbed from (id:fea96505)" though the producer-fate table details diverge slightly
+feeef933	72d0b35f	CORRECT	HIGH	Same S1/S2/S3 format_node() hierarchy text reproduced; survivor cites (id:feeef933)
+ff4ba8a6	f5a5f227	CORRECT	HIGH	Same commit 4e16ab5 and _caller_meta() fix; survivor cites (id:ff4ba8a6)
+ffdaf04c	cedbb306	CORRECT	HIGH	Same 3 item ids (71017276, gpt4_1a1dc16d, e493bb7c); survivor cites (id:ffdaf04c)

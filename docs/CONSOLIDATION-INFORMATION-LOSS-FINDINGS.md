@@ -100,9 +100,13 @@ revisions is **not measured here** and is the obvious next question.
 
 ## Reproducing
 
-Pairs, per-pair verdicts with evidence, and the read-only judging helper were produced
-against an isolated copy of `brain.db`. The audited pair set is derivable from the
-trace substrate:
+All 207 per-pair verdicts with their evidence lines are in
+`docs/data/consolidation-absorb-audit-2026-09-13.tsv`
+(`archived_id, survivor_id, verdict, confidence, evidence`). They were produced by
+content-blind judges against an isolated copy of `brain.db` — the pre-write backup,
+decompressed — never against the live database.
+
+The audited pair set is derivable from the trace substrate:
 
 ```sql
 SELECT created_at, ref_id, metadata FROM trace_events
