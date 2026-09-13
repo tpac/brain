@@ -767,7 +767,7 @@ def _write_traces(brain, ctx, candidates_data, selected_ids,
     # <shown> text) are surfaced too — record them, or they never enter
     # the seen-dedup set and ambient re-injection survives through
     # exactly this path (a98143f review, finding 6). Rare (loud-logged
-    # as haiku_id_outside_candidates), so the per-id title lookup is fine.
+    # as surface_selected_from_context), so the per-id title lookup is fine.
     _in_menu = {c.get('id', '')[:8] for c in candidates_data}
     for _sid in selected_ids:
         if _sid and _sid not in _in_menu:
@@ -1080,7 +1080,7 @@ def _resolve_picks(brain, selected, candidates_data, session_id):
             # A bare except here used to mask real DB errors as "ID is
             # hallucinated" — a SQL/index issue would become
             # indistinguishable from a Haiku confabulation, breaking the
-            # diagnostic value of the haiku_id_outside_candidates vs
+            # diagnostic value of the surface_selected_from_context vs
             # surface_unknown_selected_id distinction below.
             resolved = None
             brain._log_error(
@@ -1089,10 +1089,22 @@ def _resolve_picks(brain, selected, candidates_data, session_id):
                 'unresolvable but real cause logged' % short_id)
         if resolved:
             selected_mode[resolved] = mode
-            brain._log_error(
-                'haiku_id_outside_candidates',
-                RuntimeError('Haiku selected an ID not in its candidate menu '
-                             'but it resolves to a real node'),
+            # NOT a failure — the pick is kept. Haiku never queries; a real
+            # id outside <candidates> came from the prompt's other visible
+            # sources: a <shown> element, or a node id named in an earlier
+            # conversation turn. `seen_node_ids` strips already-shown ids
+            # from the candidate pool on purpose, so a <shown> re-pick is
+            # outside-the-menu BY CONSTRUCTION. The two outcomes that do
+            # cost something each have their own channel: an id that
+            # resolves nowhere (surface_unknown_selected_id) and a re-pick
+            # this stream already holds (surface_selected_already_shown,
+            # dropped below). This one stays visible as a rate, not an
+            # alarm.
+            brain._log_warning(
+                'surface_selected_from_context',
+                'Haiku selected %s from prompt context (<shown> or an '
+                'earlier turn) rather than the candidate menu — it '
+                'resolves, selection kept' % short_id,
                 'short_id=%s resolved=%s' % (short_id, resolved[:12]))
         else:
             # Single loud channel for an id that exists nowhere — the
