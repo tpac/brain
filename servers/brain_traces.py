@@ -466,7 +466,7 @@ class BrainTracesMixin:
                 compact=True)
             return {'scope': scope, 'events': events, 'notes': notes,
                     'cursor': page['cursor'],
-                    'selected': {n['event_id'] for n in notes},
+                    'admitted': {n['event_id'] for n in notes},
                     'subjects': {journal_key(n['subject']) for n in notes},
                     'history_truncated': page['truncated'],
                     'changes_pending': False}
@@ -474,6 +474,7 @@ class BrainTracesMixin:
         # Build a new receipt; a read failure leaves the binding's last
         # committed view and cursor intact, including partially read pages.
         events = list(previous['events'])
+        admitted = set(previous['admitted'])
         cursor = previous['cursor']
         subjects = previous['subjects']
         for _ in range(JOURNAL_VIEW_MAX_PAGES):
@@ -488,6 +489,7 @@ class BrainTracesMixin:
                           if tag in JOURNAL_RESOLVE_TAGS else subj)
                 if tag in JOURNAL_LIFECYCLE_TAGS and target in subjects:
                     events.append(e)
+                    admitted.add(e['id'])
             cursor = page['cursor']
             if not page['truncated']:
                 break
@@ -496,12 +498,11 @@ class BrainTracesMixin:
             events, scale=scale, unit=unit, session_id=session_id,
             k=len(events), compact=True)
         # K chose the private notes at invocation start, not anew per batch.
-        # Lifecycle updates replace those entries without importing older
-        # unselected observations from the supporting history.
-        notes = [n for n in notes if n['event_id'] in previous['selected']
-                 or (journal_key(n['tag']) in JOURNAL_LIFECYCLE_TAGS
-                     and journal_key(n['subject']) in subjects)]
+        # Only admitted post-cursor updates can extend that selection;
+        # supporting history must not become newly eligible context.
+        notes = [n for n in notes if n['event_id'] in admitted]
         return dict(previous, events=events, notes=notes, cursor=cursor,
+                    admitted=admitted,
                     changes_pending=page['truncated'])
 
     def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):

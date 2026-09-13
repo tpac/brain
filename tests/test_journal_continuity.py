@@ -74,6 +74,38 @@ class TestJournalContinuity(BrainTestBase):
         self.assertEqual(parse_journal_notes(line)[0][0]['tag'], 'open')
         self.assertEqual(self.brain.journal_notes(subject='item', scale='s2'), history)
 
+    def test_unchanged_refresh_keeps_old_resolution_outside_run_window(self):
+        b = self.binding()
+        self.write(b, 's2-0-community_detection', 'resolved · item · old closure')
+        for i, subject in enumerate(('other-a', 'other-b', 'item'), start=1):
+            self.write(b, 's2-%d-community_detection' % i,
+                       'doubt · %s · current observation' % subject)
+        first = b.continuity(chain_id='run')
+        self.assertNotIn('old closure', first)
+        self.assertEqual(b.continuity(chain_id='run'), first)
+        self.write(b, 's2-4-community_detection', 'resolved · item · new closure')
+        updated = b.continuity(chain_id='run')
+        self.assertIn('new closure', updated)
+        self.assertNotIn('old closure', updated)
+        self.assertEqual(b.continuity(chain_id='run'), updated)
+
+    def test_unchanged_refresh_keeps_old_open_beyond_pin_cap(self):
+        from servers.trace_contract import JOURNAL_OPEN_PIN_CAP
+
+        b = self.binding()
+        # Three newest runs are in the window; more than ten older open
+        # subjects overflow the pin cap. The oldest subject is selected
+        # only through its newest ordinary observation.
+        for i in range(JOURNAL_OPEN_PIN_CAP + 3):
+            self.write(b, 's2-%d-community_detection' % i,
+                       'open · item-%d · old open %d' % (i, i))
+        self.write(b, 's2-latest-community_detection',
+                   'doubt · item-0 · current observation')
+        first = b.continuity(chain_id='run')
+        self.assertIn('current observation', first)
+        self.assertNotIn('old open 0', first)
+        self.assertEqual(b.continuity(chain_id='run'), first)
+
     def test_healer_and_consolidation_real_batch_entry_points_refresh(self):
         from servers.scales.s2.healer_contract import HEALER
         from servers.scales.s2.consolidation_contract import CONSOLIDATION

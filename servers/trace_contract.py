@@ -1114,6 +1114,10 @@ def render_prompt_closure():
     )
 
 
+JOURNAL_NOTES_HEADER = ('%s — residue your recent runs flagged, for continuity '
+                        '(not a to-do list):')
+
+
 def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES', *,
                                 annotate_tag=True):
     """Render journal_notes() output into a prompt prefix — the READ side of
@@ -1128,45 +1132,48 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES', *,
     """
     if not notes:
         return ''
-    lines = ['%s — residue your recent runs flagged, for continuity (not a '
-             'to-do list):' % label]
-    for n in notes:
-        tag = (n.get('tag') or '').strip()
-        line = _journal_line(tag, n.get('subject', ''), n.get('note', ''))
-        # Open items render their persistence: the loader computed ×N (distinct
-        # runs mentioning the subject) and pins the newest note beyond the
-        # window. Past the threshold, the nudge appears ON the item, in the run
-        # that should act — zero standing prompt cost.
-        runs = n.get('open_runs') or 0
-        if runs:
-            since = (n.get('first_seen') or '')[5:10]
-            persistence = '×%d%s' % (runs, (' since %s' % since) if since else '')
-            if annotate_tag:
-                line = '- %s %s · %s · %s' % (
-                    tag or 'open', persistence,
-                    n.get('subject', ''), n.get('note', ''))
-            else:
-                # Keep the copyable lifecycle tag intact. Persistence is
-                # read-side context, never a new encoder-authored tag.
-                line += '\n  Persistence: %s' % persistence
-        if n.get('undelivered'):
-            # The line was addressed to the people working and the door
-            # refused it — the reason is what the encoder reads next run.
-            line += ' — not delivered: %s' % n['undelivered']
-        if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-            # A note that has persisted this long is a question for the live
-            # work, not residue — hand it up through the addressed verb; the
-            # door delivers it, budgets it, expires it, and carries the
-            # answer back (YOUR MESSAGES).
-            line += (
-                "\n  ⚠ long-lived — resolve it, or hand it up: "
-                "`%(ask)s %(d)s %(s)s %(d)s <the question>`, then "
-                "`resolved %(d)s %(s)s %(d)s handed up` (the pin clears; "
-                "the item carries it from here)"
-                % {'ask': JOURNAL_ASK_TAG, 'd': JOURNAL_NOTE_DELIMITER,
-                   's': n.get('subject', '')})
-        lines.append(line)
+    lines = [JOURNAL_NOTES_HEADER % label]
+    lines.extend(_render_journal_note(n, annotate_tag=annotate_tag) for n in notes)
     return '\n'.join(lines) + '\n\n'
+
+
+def _render_journal_note(n, *, annotate_tag):
+    """Render one complete note, including persistence and delivery feedback."""
+    tag = (n.get('tag') or '').strip()
+    line = _journal_line(tag, n.get('subject', ''), n.get('note', ''))
+    # Open items render their persistence: the loader computed ×N (distinct
+    # runs mentioning the subject) and pins the newest note beyond the
+    # window. Past the threshold, the nudge appears ON the item, in the run
+    # that should act — zero standing prompt cost.
+    runs = n.get('open_runs') or 0
+    if runs:
+        since = (n.get('first_seen') or '')[5:10]
+        persistence = '×%d%s' % (runs, (' since %s' % since) if since else '')
+        if annotate_tag:
+            line = '- %s %s · %s · %s' % (
+                tag or 'open', persistence,
+                n.get('subject', ''), n.get('note', ''))
+        else:
+            # Keep the copyable lifecycle tag intact. Persistence is
+            # read-side context, never a new encoder-authored tag.
+            line += '\n  Persistence: %s' % persistence
+    if n.get('undelivered'):
+        # The line was addressed to the people working and the door
+        # refused it — the reason is what the encoder reads next run.
+        line += ' — not delivered: %s' % n['undelivered']
+    if runs >= JOURNAL_OPEN_NUDGE_RUNS:
+        # A note that has persisted this long is a question for the live
+        # work, not residue — hand it up through the addressed verb; the
+        # door delivers it, budgets it, expires it, and carries the
+        # answer back (YOUR MESSAGES).
+        line += (
+            "\n  ⚠ long-lived — resolve it, or hand it up: "
+            "`%(ask)s %(d)s %(s)s %(d)s <the question>`, then "
+            "`resolved %(d)s %(s)s %(d)s handed up` (the pin clears; "
+            "the item carries it from here)"
+            % {'ask': JOURNAL_ASK_TAG, 'd': JOURNAL_NOTE_DELIMITER,
+               's': n.get('subject', '')})
+    return line
 
 
 def render_journal_view(view):
@@ -1204,9 +1211,9 @@ def render_journal_view(view):
     # Reserve the largest omission notice before selecting complete rows.
     reserve = len(notice(len(notes)))
     for note in ordered:
-        block = render_journal_notes_prefix([note], annotate_tag=False)
-        candidate = (text.rstrip('\n') + '\n' + block.split('\n', 1)[1]
-                     if text else block)
+        row = _render_journal_note(note, annotate_tag=False)
+        prefix = text.rstrip('\n') if text else JOURNAL_NOTES_HEADER % 'RECENT REVIEW NOTES'
+        candidate = prefix + '\n' + row + '\n\n'
         if len(candidate) + reserve <= JOURNAL_VIEW_MAX_CHARS:
             text = candidate
             rendered += 1

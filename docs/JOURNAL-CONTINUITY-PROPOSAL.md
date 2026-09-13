@@ -9,7 +9,7 @@ or deployed. The implementation keeps the existing call name,
 extensions below remain the decision record; reference syntax, explicit
 reopening, and concurrent stale-write arbitration are not implemented.
 
-Implementation validation: **296 tests and 12 subtests passed** across journal,
+Implementation validation: **298 tests and 12 subtests passed** across journal,
 all encoder paths, Community membership, trace/API contracts, and ownership
 guardrails. Eight captured history replays remain identical. On the 20:26
 snapshot, the working view compacts 189 rows to 38 entries, renders 35 in 7,986
@@ -17,6 +17,20 @@ characters, and explicitly reports three omissions. The correct resolution
 `3dfcd143` reaches the next request. No paid model evaluation or deployment has
 run. Reproduction script and full rendered outputs:
 `/private/tmp/journal-continuity-implementation/replay.py` and `replay.json`.
+
+Review of `e1b50f5` covered placement, caller unification, cohesion, coupling,
+and abstraction level. The owner boundaries require no restructuring. One
+P2 selection leak was reproduced and corrected: an unchanged refresh could
+admit old lifecycle rows from supporting history that the initial run window
+or pin cap had excluded. The receipt now tracks admitted event IDs, extended
+only by qualifying post-cursor lifecycle updates. Two regression tests cover
+both exclusion paths and preservation of a newly admitted update.
+
+The simplify pass extracted the shared complete-note renderer, removing the
+working view's render-a-prefix/strip-its-header sequence. A deterministic
+1,000-case differential comparison against `e1b50f5` preserved working text,
+telemetry, and both historical render formats exactly. The full test selection
+and eight captured replays above passed again after the correction.
 
 **Recommendation:** extend `JournalBinding` with a run-scoped working view. Freeze the selection of private residue at the start of a run, but apply committed lifecycle changes to that selection before each subsequent request. Construct next-run continuity as compact state plus recent observations, rather than replaying every surviving assertion. Keep the historical journal append-only. All five encoders use this operation; none owns its own refresh policy.
 
