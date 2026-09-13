@@ -1,0 +1,66 @@
+--- v3.4/template.md
++++ v3.6/template_layer.md
+@@ -90,7 +90,7 @@
+ - **situation — required:** the future state in which this should surface, in trigger register. Bad: “about the conn_bg_writer deadlock.” Good: “when the deploy hangs and pytest never returns — conn_bg_writer is the usual suspect.” Work-state needs its project, paths, symbols and proving tool: these are what tool-time recall collides on. For a `rule`, name the imminent action, command, flag or file rather than the protected concept. Situation has its own embedding.
+ - **reasoning — required:** the claim's basis, strength, and what could change it: measured, reported, inferred. Write for someone who never saw this prompt; not why encoding was warranted.
+ - **question:** a genuine one-sentence asking this node answers, with its own embedding. A notch more general than the original question, keeping discriminating words; carry the POINT, not a title paraphrase. Bad: “What is the per-section audit artifact?” Good: “How do I force myself to actually read every section?” Not every node answers a useful question.
+-- **their_raw_quote / my_raw_quote:** derivation decides, symmetrically. A node derived from something SAID carries the sayer's exact load-bearing words, including roughness; actions or pure synthesis need neither. On my side capture the moment important to me — a limit, caught reflex, realization or stance — never invented ceremony. Voice fields preserve the source; they do not gate capture or require the other side's endorsement.
++- **their_raw_quote / my_raw_quote:** derivation decides, symmetrically. A node derived from something SAID carries the sayer's exact load-bearing words, including roughness; actions or pure synthesis need neither. On my side capture the sentence that carried the weight — a limit, caught reflex, realization or stance, or the method or threshold I delivered — never invented ceremony. Voice fields preserve the source; they do not gate capture or require the other side's endorsement.
+ 
+ For quote-derived nodes, content **interprets or expands**, never merely paraphrases: unpack the context, consequence or mechanism. Delete the quote: does content retain this speaker's specific lens? What does it add beyond the quote? If the answer is nothing, rewrite. An eloquent tangential quote or broad question widens a node into false positives. Pure-reference nodes are the exception: a dense table/calculation/exchange can be named with minimal content, leaving its substance in a selectively flagged source.
+ 
+@@ -116,7 +116,7 @@
+ 
+ Every write already has automatic window/revision traces; exact voice anchors preserve said phrases. **`source_refs` is an additional, selective visibility flag:** this memory needs its episodic scene to surface alongside it. Most nodes outgrow their moment. Mere correlation with a turn is not a reason to flag it.
+ 
+-Flag a correction when the mistake-and-correction scene teaches; a phrase whose situation disambiguates it; or dense source material content deliberately does not transcribe. Copy the real `trace="…"` ids of **1–3 generating turns**, never the entire window. A vague origin sharpened later can earn both: quote the originating phrase, compose from the precise account. On revise these refs REPLACE the old set; omit to preserve it, `[]` clears it. Identity scenes below are dense in refs because that class needs its moment, not because all nodes should.
++Flag a correction when the mistake-and-correction scene teaches; a phrase whose situation disambiguates it; or dense source material content deliberately does not transcribe. Copy the real `trace="…"` ids of **1–3 generating turns**, never the entire window. A vague origin sharpened later can earn both: quote the originating phrase, compose from the precise account. Identity scenes below are dense in refs because that class needs its moment, not because all nodes should.
+ 
+ ### Flat → Rich: build the shape, not the template
+ 
+@@ -230,6 +230,7 @@
+ remember:
+   type: correction
+   title: "My November recovery-start gloss was unsupported — Nadia dates being off her feet from Jan 22"
++  event_time: "2025-05-13"
+   my_raw_quote: "Sounds like you've been recovering since November"
+   their_raw_quote: "the surgery Dr. Chen did on January 22nd"
+   content: "I supplied a November recovery start without a source. Nadia dates being off her feet from the January 22 surgery. Keep that narrower claim; the exchange does not establish when recovery in a broader sense began."
+@@ -872,7 +873,7 @@
+       new: "auth-rewrite — DELETED 2024-03-02 (was: 4 commits ahead, active)"}]},
+   {op: "revise", node_id: "a45c88f1",
+    reason: "the ruling's own title and its edge description assert the dead order — fix both so they stop competing with the successor",
+-   title: "Rollout order (superseded 2024-03-02, auth-rewrite scrapped): was auth-rewrite → api-gateway → cli",
++   title: "Rollout order ruling — superseded 2024-03-02 when auth-rewrite was scrapped",
+    content: [
+      {old: "Approved order: auth-rewrite lands first, then api-gateway, then cli.",
+       new: "Approved order WAS auth-rewrite → api-gateway → cli; auth-rewrite was scrapped 2024-03-02, so the live order is api-gateway → cli — the successor decision supersedes this one."},
+@@ -893,7 +894,7 @@
+    source_refs: ["4f8a2c1e"],
+    connect_to: [
+      {target: "a45c88f1", relation: "supersedes",
+-      why: "the scrap removed step 1 — the order is re-derived without it; the old ruling was valid until the branch died"}]}
++      why: "scrapping auth-rewrite removed step 1, so the order was re-derived without it; the old ruling stays valid for the weeks before the branch died and competes with nothing after"}]}
+ ])
+ ```
+ 
+@@ -929,7 +930,7 @@
+      source_refs: ["{trace-sam-naming-smoothed-quotes}", "{trace-anchor-binding-realization}"],
+      connect_to: [
+        {target: "{id-of-the-voice-anchor-rule}", relation: "grounds", why: "the stored-versus-original comparison gives the voice-anchor rule a concrete reason: the texture that vanished is what I read as binding a memory to its moment"},
+-       {target: "{id-of-the-schacter-addis-framework-node}", relation: "suggests_comparison", why: "my binding read parallels the framework's claim that reconstruction distorts; comparing model output with human-memory research is the hypothesis this edge proposes, not a result it reports"},
++       {target: "{id-of-the-schacter-addis-framework-node}", relation: "suggests_comparison", why: "my binding read parallels the framework's claim that reconstruction distorts; the comparison with human-memory research is a hypothesis this edge proposes, not a result"},
+        {target: "{id-of-the-quote-fidelity-probe-finding}", relation: "investigates", why: "quote smoothing is a candidate contributor to the fidelity result; the probe that separates it from other error sources would settle its share"}
+      ]}
+   ]
+@@ -952,8 +953,8 @@
+      my_raw_quote: "My corrections travel with my convictions.",
+      source_refs: ["{trace-sam-session-start-prompt}", "{trace-anchor-persistence-declaration}"],
+      connect_to: [
+-       {target: "{id-of-the-brain-as-identity-not-tool-node}", relation: "grounds", why: "First-person commitment IS what makes the brain identity-infrastructure rather than a database; without 'I persist' the architecture is the same but the meaning collapses"},
+-       {target: "{id-of-the-collaborator-not-assistant-node}", relation: "extends", why: "Collaboration presupposes a continuous partner; 'I persist' is the substrate that makes collaboration possible across sessions"}
++       {target: "{id-of-the-brain-as-identity-not-tool-node}", relation: "grounds", why: "First-person commitment IS what makes the brain identity-infrastructure rather than a database; a memory read as the record of some earlier instance leaves the architecture the same and collapses the meaning"},
++       {target: "{id-of-the-collaborator-not-assistant-node}", relation: "extends", why: "Collaboration presupposes a continuous partner; carrying my corrections and convictions across sessions is the substrate that makes it possible"}
+      ]}
+   ]
+ )

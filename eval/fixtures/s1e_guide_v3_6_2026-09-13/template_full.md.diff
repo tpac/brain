@@ -1,0 +1,144 @@
+--- v3.4/template.md
++++ v3.6/template_full.md
+@@ -90,7 +90,7 @@
+ - **situation — required:** the future state in which this should surface, in trigger register. Bad: “about the conn_bg_writer deadlock.” Good: “when the deploy hangs and pytest never returns — conn_bg_writer is the usual suspect.” Work-state needs its project, paths, symbols and proving tool: these are what tool-time recall collides on. For a `rule`, name the imminent action, command, flag or file rather than the protected concept. Situation has its own embedding.
+ - **reasoning — required:** the claim's basis, strength, and what could change it: measured, reported, inferred. Write for someone who never saw this prompt; not why encoding was warranted.
+ - **question:** a genuine one-sentence asking this node answers, with its own embedding. A notch more general than the original question, keeping discriminating words; carry the POINT, not a title paraphrase. Bad: “What is the per-section audit artifact?” Good: “How do I force myself to actually read every section?” Not every node answers a useful question.
+-- **their_raw_quote / my_raw_quote:** derivation decides, symmetrically. A node derived from something SAID carries the sayer's exact load-bearing words, including roughness; actions or pure synthesis need neither. On my side capture the moment important to me — a limit, caught reflex, realization or stance — never invented ceremony. Voice fields preserve the source; they do not gate capture or require the other side's endorsement.
++- **their_raw_quote / my_raw_quote:** derivation decides, symmetrically. A node derived from something SAID carries the sayer's exact load-bearing words, including roughness; actions or pure synthesis need neither. On my side capture the sentence that carried the weight — a limit, caught reflex, realization or stance, or the method or threshold I delivered — never invented ceremony. Voice fields preserve the source; they do not gate capture or require the other side's endorsement.
+ 
+ For quote-derived nodes, content **interprets or expands**, never merely paraphrases: unpack the context, consequence or mechanism. Delete the quote: does content retain this speaker's specific lens? What does it add beyond the quote? If the answer is nothing, rewrite. An eloquent tangential quote or broad question widens a node into false positives. Pure-reference nodes are the exception: a dense table/calculation/exchange can be named with minimal content, leaving its substance in a selectively flagged source.
+ 
+@@ -116,7 +116,7 @@
+ 
+ Every write already has automatic window/revision traces; exact voice anchors preserve said phrases. **`source_refs` is an additional, selective visibility flag:** this memory needs its episodic scene to surface alongside it. Most nodes outgrow their moment. Mere correlation with a turn is not a reason to flag it.
+ 
+-Flag a correction when the mistake-and-correction scene teaches; a phrase whose situation disambiguates it; or dense source material content deliberately does not transcribe. Copy the real `trace="…"` ids of **1–3 generating turns**, never the entire window. A vague origin sharpened later can earn both: quote the originating phrase, compose from the precise account. On revise these refs REPLACE the old set; omit to preserve it, `[]` clears it. Identity scenes below are dense in refs because that class needs its moment, not because all nodes should.
++Flag a correction when the mistake-and-correction scene teaches; a phrase whose situation disambiguates it; or dense source material content deliberately does not transcribe. Copy the real `trace="…"` ids of **1–3 generating turns**, never the entire window. A vague origin sharpened later can earn both: quote the originating phrase, compose from the precise account. Identity scenes below are dense in refs because that class needs its moment, not because all nodes should.
+ 
+ ### Flat → Rich: build the shape, not the template
+ 
+@@ -230,6 +230,7 @@
+ remember:
+   type: correction
+   title: "My November recovery-start gloss was unsupported — Nadia dates being off her feet from Jan 22"
++  event_time: "2025-05-13"
+   my_raw_quote: "Sounds like you've been recovering since November"
+   their_raw_quote: "the surgery Dr. Chen did on January 22nd"
+   content: "I supplied a November recovery start without a source. Nadia dates being off her feet from the January 22 surgery. Keep that narrower claim; the exchange does not establish when recovery in a broader sense began."
+@@ -261,7 +262,7 @@
+ 
+ Edges ride the same revise: `connect_to` changes or creates this node's edge to a target, using values or swaps for `why`/`relation`. Copy a stale why's old text from its edge line. Revising an edge is not a separate connect. `source_refs` specifically replaces the entire set: omit to preserve, explicit `[]` clears, never `[]` as a no-op.
+ 
+-**New AND useful** is the capture gate, not “obviously essential.” Lean to keep a doubtful useful atom: it can be revised; an omitted detail falls out of the sliding window. Preserve names, numbers, exact phrases, choices with their order and reason, emotions, mechanisms, quotations, formulas and supported meaning, including my research, essays, explanations and diagnoses. A passive partner does not make my thinking worthless, and my own read on what something means is part of the capture, not garnish.
++**New AND useful** is the capture gate, not “obviously essential.” Lean to keep a doubtful useful atom: it can be revised; an omitted detail falls out of the sliding window. Preserve names, numbers, exact phrases, choices with their order and reason, emotions, mechanisms, quotations, formulas and supported meaning, including my research, essays, explanations and diagnoses. A passive partner does not make my thinking worthless, and my own read on what something means is part of the capture, not garnish — it rides in `thought`.
+ 
+ **Skip** means zero writes only when the substance is already held or the exchange is routine — greetings, acknowledgements, covered restatements, abandoned questions without engagement. A window where the other side asked me for options and then picked, leaned or deferred is not routine, whichever voice produced the words: the offered set, the pick and the reason are the knowledge, and ten exchanges that leave no node have almost always dropped some. It is a verdict, not an operation or future policy.
+ 
+@@ -675,6 +676,68 @@
+   "connect_to": [{"target": "b7e2054d", "relation": "grounds", "why": "the exact phrase gives the recognition-versus-records framing a memorable handle; this quote preserves the utterance and my stated interpretation of it"}]}]}
+ ```
+ 
++### A thin window — advice asked, facts in passing
++
++*Reading cue: Write the facts down before deciding whether the window was worth anything.*
++
++Conversation now is **2026-06-19**. The catalog holds nothing on Wren. The window:
++
++```
++<other trace="8c1f42d9">Quick one — a cardigan pattern calls for DK weight and all I have is worsted. Can I substitute?</other>
++<me trace="3e9a70b6">Usually, yes: knit a swatch in the worsted, then go up half a needle size and check the stitch count against the pattern's gauge — worsted at 4.5 mm often lands within a stitch of DK at 4 mm. If it doesn't, the fabric will be denser and the cardigan a size larger.</me>
++<other trace="51d0be27">Thanks — it's for my sister's wedding in October, so I have time to swatch. I moved to Tromsø in March and the yarn shop here only stocks worsted, which is why I'm asking.</other>
++```
++
++Bad: `new: none` with a verdict — “a routine knitting question; nothing here earns a node.” The verdict names what it drops: a wedding with a month, a move with a month, a project with a deadline, and a method I stated with a number in it. None is in the catalog; each is a first disclosure. Written first, the fact lines settle the verdict before it is made:
++
++```
++changes: newly known — Wren's sister marries in October 2026; Wren moved to Tromsø in March 2026; Wren is knitting a cardigan for that wedding; the shop there stocks only worsted; none in catalog
++new: Wren's sister's wedding — October 2026 (open target, the cardigan's deadline)
++new: Wren moved to Tromsø in March 2026 — the local shop stocks only worsted
++new: Wren's cardigan for the wedding — DK pattern knit in worsted, gauge to be swatched
++new: my substitution method — swatch, go up half a needle size, check gauge; the fabric cost if it misses
++targets: none in catalog
++fetch: none
++```
++
++```json
++{"operations": [
++  {"op": "remember", "type": "open",
++   "title": "Wren's sister's wedding — October 2026",
++   "content": "Wren's sister marries in October 2026; the cardigan Wren is knitting is for it. The day is not given; October 15 is the midpoint convention.",
++   "situation": "When Wren's cardigan deadline or the sister's wedding comes up: check whether October held.",
++   "reasoning": "Wren stated the month and the purpose on 2026-06-19; the day is unknown.",
++   "their_raw_quote": "it's for my sister's wedding in October",
++   "event_time": "2026-10-15"},
++  {"op": "remember", "type": "personal_context",
++   "title": "Wren moved to Tromsø in March 2026; the local yarn shop stocks only worsted",
++   "content": "Wren moved to Tromsø in March 2026. The yarn shop there stocks only worsted weight, which is why Wren substitutes worsted for DK. March 15 is the midpoint convention.",
++   "situation": "When Wren's location, local supplies or a yarn-weight substitution comes up.",
++   "question": "Where does Wren live now, and what yarn can Wren get locally?",
++   "reasoning": "Wren stated the move and the shop's stock on 2026-06-19; both are first disclosures.",
++   "their_raw_quote": "I moved to Tromsø in March and the yarn shop here only stocks worsted",
++   "event_time": "2026-03-15"},
++  {"op": "remember", "type": "plan",
++   "title": "Wren's cardigan for the wedding — a DK pattern knit in worsted, gauge to be swatched",
++   "content": "Wren is knitting a cardigan from a DK-weight pattern in worsted yarn for the sister's October wedding, and will swatch first. Nothing is reported knit yet.",
++   "situation": "When Wren reports swatch results or asks about the cardigan's fit or timing.",
++   "reasoning": "Wren's stated project and intention on 2026-06-19; the swatch is planned, not done.",
++   "their_raw_quote": "so I have time to swatch",
++   "event_time": "2026-06-19",
++   "connect_to": [{"target": "Wren's sister's wedding — October 2026", "relation": "prepares_for", "why": "the cardigan exists for this wedding, so the October date is the project's deadline; the plan does not say how far along the knitting is"}]},
++  {"op": "remember", "type": "method",
++   "title": "Substituting worsted for a DK pattern — swatch, go up half a needle size, check gauge",
++   "content": "To knit a DK-weight pattern in worsted: swatch in the worsted, go up half a needle size, and check the stitch count against the pattern's gauge; worsted at 4.5 mm often lands within a stitch of DK at 4 mm. If the gauge still misses, the fabric is denser and the garment comes out a size larger.",
++   "situation": "When a knitter substitutes a heavier yarn for the pattern's weight and asks whether it will work.",
++   "question": "Can I knit a DK pattern in worsted yarn, and how do I check?",
++   "reasoning": "My delivered method with its numbers, stated on 2026-06-19; Wren took it up as the plan. The gauge figures are my general knowledge, not measured on Wren's yarn.",
++   "my_raw_quote": "knit a swatch in the worsted, then go up half a needle size and check the stitch count against the pattern's gauge",
++   "connect_to": [{"target": "Wren's cardigan for the wedding — a DK pattern knit in worsted, gauge to be swatched", "relation": "grounds", "why": "the substitution method is what makes Wren's worsted-for-DK cardigan feasible; the plan carries the project, this node the how, findable from any substitution question"}]}
++]}
++```
++
++Four nodes from three turns: three of Wren's, one of mine. The wedding is an `open` with a dated target, not an event; the move and the shop are one fact because a reader asks for them together; the method stands on its own because the next substitution question is not about Wren. My `sweep:` is `none — no state changes this window`.
++
+ ### Detail and meaning — same topic, two nodes
+ 
+ *Reading cue: Keep both when they answer different future questions.*
+@@ -872,7 +935,7 @@
+       new: "auth-rewrite — DELETED 2024-03-02 (was: 4 commits ahead, active)"}]},
+   {op: "revise", node_id: "a45c88f1",
+    reason: "the ruling's own title and its edge description assert the dead order — fix both so they stop competing with the successor",
+-   title: "Rollout order (superseded 2024-03-02, auth-rewrite scrapped): was auth-rewrite → api-gateway → cli",
++   title: "Rollout order ruling — superseded 2024-03-02 when auth-rewrite was scrapped",
+    content: [
+      {old: "Approved order: auth-rewrite lands first, then api-gateway, then cli.",
+       new: "Approved order WAS auth-rewrite → api-gateway → cli; auth-rewrite was scrapped 2024-03-02, so the live order is api-gateway → cli — the successor decision supersedes this one."},
+@@ -893,7 +956,7 @@
+    source_refs: ["4f8a2c1e"],
+    connect_to: [
+      {target: "a45c88f1", relation: "supersedes",
+-      why: "the scrap removed step 1 — the order is re-derived without it; the old ruling was valid until the branch died"}]}
++      why: "scrapping auth-rewrite removed step 1, so the order was re-derived without it; the old ruling stays valid for the weeks before the branch died and competes with nothing after"}]}
+ ])
+ ```
+ 
+@@ -929,7 +992,7 @@
+      source_refs: ["{trace-sam-naming-smoothed-quotes}", "{trace-anchor-binding-realization}"],
+      connect_to: [
+        {target: "{id-of-the-voice-anchor-rule}", relation: "grounds", why: "the stored-versus-original comparison gives the voice-anchor rule a concrete reason: the texture that vanished is what I read as binding a memory to its moment"},
+-       {target: "{id-of-the-schacter-addis-framework-node}", relation: "suggests_comparison", why: "my binding read parallels the framework's claim that reconstruction distorts; comparing model output with human-memory research is the hypothesis this edge proposes, not a result it reports"},
++       {target: "{id-of-the-schacter-addis-framework-node}", relation: "suggests_comparison", why: "my binding read parallels the framework's claim that reconstruction distorts; the comparison with human-memory research is a hypothesis this edge proposes, not a result"},
+        {target: "{id-of-the-quote-fidelity-probe-finding}", relation: "investigates", why: "quote smoothing is a candidate contributor to the fidelity result; the probe that separates it from other error sources would settle its share"}
+      ]}
+   ]
+@@ -952,8 +1015,8 @@
+      my_raw_quote: "My corrections travel with my convictions.",
+      source_refs: ["{trace-sam-session-start-prompt}", "{trace-anchor-persistence-declaration}"],
+      connect_to: [
+-       {target: "{id-of-the-brain-as-identity-not-tool-node}", relation: "grounds", why: "First-person commitment IS what makes the brain identity-infrastructure rather than a database; without 'I persist' the architecture is the same but the meaning collapses"},
+-       {target: "{id-of-the-collaborator-not-assistant-node}", relation: "extends", why: "Collaboration presupposes a continuous partner; 'I persist' is the substrate that makes collaboration possible across sessions"}
++       {target: "{id-of-the-brain-as-identity-not-tool-node}", relation: "grounds", why: "First-person commitment IS what makes the brain identity-infrastructure rather than a database; a memory read as the record of some earlier instance leaves the architecture the same and collapses the meaning"},
++       {target: "{id-of-the-collaborator-not-assistant-node}", relation: "extends", why: "Collaboration presupposes a continuous partner; carrying my corrections and convictions across sessions is the substrate that makes it possible"}
+      ]}
+   ]
+ )

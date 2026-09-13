@@ -1,0 +1,11 @@
+--- v3.4/gist.md
++++ v3.6/gist_layer.md
+@@ -12,7 +12,7 @@
+ 
+ The shape, on the worked sweep in my rules:
+ ```
+-changes: auth-rewrite — committed f3c9d21, awaiting review → branch deleted 2024-03-02, never merged
++changes: auth-rewrite — committed f3c9d21, awaiting review → branch deleted 2024-03-02, never merged (commits recoverable by hash)
+ targets: e91a6d05 · auth first → abandonment agreed → gateway next: content stale; Q3 queue still names this work: title clean
+ targets: 7d21c4aa · awaiting review/merge → branch deleted, never merged → abandoned implementation: title stale · content stale
+ targets: b8e05f92 · live merge verdict/rebuild → implementation abandoned → preserve verdict as history: title stale · content stale · situation stale

@@ -1,0 +1,39 @@
+{
+  "status": "frozen_after_author_and_static_checks_before_model_calls",
+  "branch_commit": "1b5fc02b65903a143b942a0597308d05017469c1",
+  "parent_arm": "e3e2251524694fbb38d3eb49a790465ab65f0034d16b8302419acba910023027",
+  "arms": {
+    "v3_4_live": "786e01735861bd672fdc18b9bb07258eb9fc60a8248a19d8702c304c74981852",
+    "v3_6_layer": "fba80a03d91d47340ce7393c0136bc0ee44af084c6a172112b34f5288e4a1704",
+    "v3_6_full": "2d2a068aa1e59d36cec1f3590f96e690bac2e266d6810bdf884c5e4f24639178",
+    "v3_6_full_v34tail": "97ce5c9ef20b3adad3d0a3abbd9a31de8cd8f51834e835817ac12b41619186f5"
+  },
+  "assembly": "encode._build_system_prompt(template, lived=True) on branch_commit; v3_6_full_v34tail swaps the runtime closure for V3.4 strategy + closure",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/arms.py": "e7a2d3b24a2bd3eb3fc87285ce800dd3e2ba217dfc5e7474c59f2384b5da188e",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/author.py": "17a1fb6ba1150dfcfc940c38cfb0cf664112c3acd31adc48ef0f356a2beb54aa",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/author_log.json": "426c13b6ce2eeffe9470c71019016fa391287abbe287f64236bc1f133ff5708c",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/static_checks.py": "06730f8e2de994807e0cb466a02a2004403bd34b164828b57f1238118f765975",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/transfer_split.json": "cb8db1d766b3cc870b288a02a55185800bee3e6bc805fa65252c89a8bbc067f1",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/tools_live.json": "d166456c0da624c71314f87d1877873d29669f31db554d4973de19807c0ffa05",
+    "servers/contract.py": "82f2d795243a73daeebaa02057e9e9439f52e6b5eb8bf9879d76c28ac5c08251",
+    "servers/trace_contract.py": "2b38711c9878eed22a46b6956c0cd31a0c87f916d9683320f373a6ce78128b71",
+    "servers/scales/s1/encode.py": "db8fadaa399ddb1ea2b33d5b7594c09db427250727bea6efc2f9c473bbebd087",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/template_layer.md": "c28f49606d2a8a7925498dce71ab0cbf95488861b3ef9de739ce59e25576b440",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/gist_layer.md": "b2a2a520e136e1a90fa94da8999b2fa41128f5d3cff4b7ce4cb78fba2ddc252f",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/template_full.md": "67d74dcf7284e7919dd391ee0cc877eea22dff1f60ed52ed1d4ec128e90eed8c",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/gist_full.md": "aad53d14d949d6719f31a3fd9793517ad93a38084646059f1d7957ad9ea70b45",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/strategy.md": "a4203826630984481943e5b58e31bfe7935fe7cd6007b342a3d9d9685d96c076",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_4_live.json": "091e8fabd7e0ddeb5b4e4b0da468a26b04e1ea62c4fbcadf3a0f8b25c22469ef",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_6_layer.json": "37289ebdb9928b97557a564cb6bad6f004f3c33e0afda698eb2ab88bdd6f9845",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_6_full.json": "bf0dc17cc68091f51298b02d4dbed2dee8b82cada459c20d72d23f89b24d34f3",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_6_full_v34tail.json": "59a1992622894102cdec183cf8784a09f24f070c4c1c23e93377c8b414a2c60f",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/template_layer.md.diff": "87ddbdd9732cb5d5810ee5399f15d20659504afab9bfd248704e1efcfb8a4dac",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/template_full.md.diff": "fe6f1db15a142039bf23e566f64a58543185f66fc1b47ad5a378374c4c7a5ddc",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/gist_layer.md.diff": "8e9e419bd2e4b4e2e88fbf021363dd806b9f3b11e8f0d2c3aef5eee1f943e2a3",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/gist_full.md.diff": "7ccb65a8638df31cbcd90c286c7d08a012ced40ae016853481b1c593f363f4fb"
+  },
+  "transfer_split_recorded_before_authoring": true,
+  "generalization_claim": "none until the fresh cell reports"
+}
