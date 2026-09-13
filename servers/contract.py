@@ -247,6 +247,23 @@ def unwrap_operations(operations):
     return parsed if isinstance(parsed, list) else None
 
 
+def normalize_connect_to(value):
+    """Normalize the optional edge list shared by writes and action readers.
+
+    Null means no requested edges. JSON-encoded lists are accepted by the
+    write boundary; malformed values return None so it can report them.
+    Entry validation and target resolution remain with the write owner.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, RecursionError):
+            return None
+    return value if isinstance(value, list) else None
+
+
 # ── STRUCTURAL FIELDS ──
 # These are columns on the 'nodes' table.
 # Changing these requires schema migration.

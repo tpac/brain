@@ -181,6 +181,13 @@ def simulate_acceptance(brain, proposals, accept_rate=0.6, run_seed=42):
             larger_id = p.get('larger_id')
             smaller_id = p.get('smaller_id')
             if larger_id and smaller_id:
+                # Earlier accepted pairs may have absorbed either endpoint.
+                # Follow the node owner's lineage before applying this
+                # decision; an already-unified pair needs no further write.
+                larger_id = brain._nodes.survivor_of(larger_id) or larger_id
+                smaller_id = brain._nodes.survivor_of(smaller_id) or smaller_id
+                if larger_id == smaller_id:
+                    continue
                 result = brain.absorb(larger_id, smaller_id,
                                       archived_by='s2:community_detection',
                                       reason='simulated acceptance of community merge')

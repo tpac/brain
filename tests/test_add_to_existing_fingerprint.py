@@ -152,6 +152,15 @@ class TestMatcherRecognizesPlacement:
 
 
 class TestMatcherRecognizesCommunityWrites:
+    @pytest.mark.parametrize('connect_to', [None, 42, {'title': 'a'}, 'not JSON',
+        '[' * 1100 + ']' * 1100,
+        [{'title': ['a'], 'relation': 'community_member'}]])
+    def test_absent_or_malformed_connections_do_not_crash_outcomes(self, connect_to):
+        prop = {'type': 'new_community', 'members': ['a', 'b']}
+        actions = [{'tool': 'brain_batch', 'input': {'operations': [{
+            'op': 'remember', 'type': 'community', 'connect_to': connect_to}]}}]
+        assert match_proposals_to_actions([prop], actions) == ([], [prop])
+
     def test_creation_matches_connect_to_members_only(self):
         prop = {'type': 'new_community', 'members': ['a', 'b', 'c', 'd']}
         unrelated = {'type': 'new_community', 'members': ['x', 'y']}

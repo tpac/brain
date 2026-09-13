@@ -163,6 +163,42 @@ class TestStructuralStamp(BrainTestBase):
                 'community_is_corridor', 'community_dominant_type']
         return self.brain._meta_kv.get_fields_bulk([cid], keys).get(cid, {})
 
+    def test_dispatch_connection_shapes_complete_encoder_bookkeeping(self):
+        import json
+        from unittest.mock import patch
+        from servers.daemon_dispatch import COMMAND_TABLE
+
+        members = [self._node('Member A'), self._node('Member B')]
+        proposal = {'type': 'new_community', 'members': members}
+        entries = [{'title': mid, 'relation': 'community_member'} for mid in members]
+        for connect_to, expected_size in [(None, 0), (json.dumps(entries), 2),
+                                          ('[' * 1100 + ']' * 1100, 0)]:
+            with self.subTest(connect_to=connect_to):
+                op = {'op': 'remember', 'type': 'community',
+                      'title': 'New story %s' % type(connect_to).__name__, 'content': 'A story',
+                      'connect_to': connect_to}
+                created = []
+
+                def encode(*args):
+                    response = COMMAND_TABLE['brain_batch'].handler(self.brain, {
+                        'operations': [op], 'encoding_source': 's2:community_detection'}, [])
+                    write = response['result']['results'][0]
+                    self.assertTrue(write['ok'], response)
+                    created.append(write['result']['id'])
+                    return {'actions': 1, 'write_actions': 1, 'rounds': 1,
+                            'action_details': [{'tool': 'brain_batch',
+                                                'input': {'operations': [op]}}]}
+
+                encoder = CommunityEncoder(self.brain)
+                state = CommunityDecoder(self.brain)._read_community_state()
+                with patch.object(encoder, '_encode', side_effect=encode):
+                    result = encoder.run([proposal], state)
+                self.assertFalse(result.get('error'), result)
+                self.assertEqual(result['rejection_skipped_count'],
+                                 0 if expected_size else 1)
+                self.assertEqual(self._stamped(created[0])['community_size'],
+                                 str(expected_size))
+
     def test_stamps_newly_created_community(self):
         # Live now, absent from pre_community_ids → treated as created.
         cid = self._community()

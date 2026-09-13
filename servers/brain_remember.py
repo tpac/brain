@@ -822,6 +822,17 @@ class BrainRememberMixin:
             report['edges_migrated'] = len(migrated_edges)
             report['migrated_edges'] = migrated_edges
 
+            # Validate the automatic transfer while the original endpoint
+            # types still apply. The explicit revise below may intentionally
+            # retype the survivor; that does not undo the transferred links.
+            if expected_members is not None:
+                actual_members = {m['id'] for m in self._graph.get_members_bulk(
+                    [survivor_id]).get(survivor_id, [])}
+                missing = expected_members - actual_members
+                if missing:
+                    raise RuntimeError('community absorb lost member links: %s'
+                                       % ', '.join(sorted(missing)))
+
             # 3. access_count — additive (usage history)
             if a_access:
                 self.conn.execute(
@@ -878,13 +889,6 @@ class BrainRememberMixin:
             # 6. archive the absorbed node — SKIPPED if the override-revise failed,
             # so a failed synthesis never destroys the source.
             if not rev_failed:
-                if expected_members is not None:
-                    actual_members = {m['id'] for m in self._graph.get_members_bulk(
-                        [survivor_id]).get(survivor_id, [])}
-                    missing = expected_members - actual_members
-                    if missing:
-                        raise RuntimeError('community absorb lost member links: %s'
-                                           % ', '.join(sorted(missing)))
                 arch = self.archive_node(
                     absorbed_id, archived_by=archived_by,
                     reason=reason or 'absorbed into %s' % survivor_id[:8],
@@ -2326,34 +2330,21 @@ class BrainRememberMixin:
         if not connect_to_spec:
             return {'created': created, 'failed': failed}
 
-        # Lenient coercion: accept a JSON-stringified list. Postel's law —
-        # absorb the common "I stringified the array" slip, but surface it if
-        # the string isn't actually a list.
-        if isinstance(connect_to_spec, str):
-            try:
-                import json as _json
-                parsed = _json.loads(connect_to_spec)
-            except Exception:
-                parsed = None
-            if isinstance(parsed, list):
-                connect_to_spec = parsed
-            else:
+        from .contract import normalize_connect_to
+        entries = normalize_connect_to(connect_to_spec)
+        if entries is None:
+            if isinstance(connect_to_spec, str):
                 reason = ("connect_to must be a list (or a JSON string that "
                           "parses to one); got an unparseable str")
-                self._log_error('connect_to_invalid', TypeError(reason),
-                                'src=%s' % src_id[:8])
-                failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
-                return {'created': created, 'failed': failed}
-
-        if not isinstance(connect_to_spec, list):
-            reason = ("connect_to must be a list, got %s"
-                      % type(connect_to_spec).__name__)
+            else:
+                reason = ("connect_to must be a list, got %s"
+                          % type(connect_to_spec).__name__)
             self._log_error('connect_to_invalid', TypeError(reason),
                             'src=%s' % src_id[:8])
             failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
             return {'created': created, 'failed': failed}
 
-        for entry in connect_to_spec:
+        for entry in entries:
             title_query = entry.get('title', entry) if isinstance(entry, dict) else entry
             target_id, relation_pairs, reason = self._resolve_connect_to_entry(
                 entry, sibling_map=sibling_map, exclude_self=src_id,

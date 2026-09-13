@@ -29,7 +29,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from ...contract import VALID_BATCH_OPS, unwrap_operations
+from ...contract import VALID_BATCH_OPS, normalize_connect_to, unwrap_operations
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -422,13 +422,14 @@ def match_proposals_to_actions(sent_proposals, action_details):
         op = op_spec.get('op', '')
 
         if op == 'remember' and op_spec.get('type') == 'community':
+            connections = normalize_connect_to(op_spec.get('connect_to')) or []
             conn_targets = {
                 # connect_to.title carries the exact ID for an existing node
                 # (CONNECT_TO_ITEM_SCHEMA); proposal members already exist.
-                c.get('title') for c in op_spec.get('connect_to', [])
+                c['title'] for c in connections
                 if isinstance(c, dict)
                 and c.get('relation') == 'community_member'
-                and c.get('title')
+                and isinstance(c.get('title'), str) and c['title']
             }
             if not conn_targets:
                 continue

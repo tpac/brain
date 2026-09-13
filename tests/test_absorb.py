@@ -363,6 +363,20 @@ class TestCommunityAbsorb(BrainTestBase):
                 self.assertNotIn(member, {c['id'] for c in
                     self.brain._graph.get_connections_bulk([survivor]).get(survivor, [])})
 
+    def test_explicit_retype_preserves_transfer_then_applies_override(self):
+        survivor, absorbed, members = self.pair()
+        result = self.brain.absorb(survivor, absorbed, type='finding',
+                                   content='Synthesized finding')
+        self.assertTrue(result['ok'], result)
+        rows = self.brain._nodes.get_bulk([survivor, absorbed])
+        self.assertEqual(rows[survivor]['type'], 'finding')
+        self.assertTrue(rows[absorbed]['archived'])
+        links = self.brain._graph.get_connections_bulk(
+            [survivor], include_relations=['community_member'])[survivor]
+        self.assertEqual({c['id'] for c in links}, set(members))
+        # Retyping does not change the community reader's typed contract.
+        self.assertEqual(self.members(survivor), set())
+
     def test_encoder_merge_stamps_union_and_next_decode_has_no_old_merge(self):
         from unittest.mock import patch
         from servers.scales.s2.community_encoder import CommunityEncoder
@@ -427,8 +441,11 @@ class TestCommunityAbsorb(BrainTestBase):
             return add(source_id, target_id, relation, *args, **kw)
 
         with patch.object(self.brain._graph, 'add_relation', side_effect=drop_member):
-            with self.assertRaisesRegex(RuntimeError, 'community absorb lost member links'):
-                self.brain.absorb(survivor, absorbed, content='Combined story')
+            for overrides in ({}, {'type': 'finding'}):
+                with self.subTest(overrides=overrides):
+                    with self.assertRaisesRegex(RuntimeError, 'community absorb lost member links'):
+                        self.brain.absorb(survivor, absorbed, content='Combined story',
+                                          **overrides)
         self.assertEqual(self.members(survivor), set(members[:13]))
         self.assertEqual(self.members(absorbed), set(members[:9] + members[13:]))
         self.assertEqual(self.brain.get_node(survivor)['content'], 'Larger')
