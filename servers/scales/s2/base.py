@@ -484,6 +484,12 @@ class IntegrationUnit:
         consolidation + community encoders, so the loop logic lives in one place;
         per-unit steps (state refresh, progress traces) stay in each loop.
 
+        A batch outcome is also a completion boundary: an explicit error or
+        zero completed rounds leaves the aggregate failed, even if other
+        batches succeeded. Consumers may retain writes and telemetry, but
+        must not settle proposals or advance a scan past a failed run.
+        Returns whether this batch completed.
+
         Per-batch journal write (not post-loop): extract_review_block keys on the
         FIRST `## Review` fence, so a single post-loop write over the accumulated
         final_text would drop every batch's notes but the first. Writing per
@@ -491,6 +497,12 @@ class IntegrationUnit:
         The journal write is failure-isolated inside harvest (a journal hiccup
         never aborts the run)."""
         self._accumulate_run(total, result)
+        error = result.get('error')
+        if not error and not result.get('rounds'):
+            error = 'encoder returned no completed rounds'
+        if error:
+            message = 'batch %d: %s' % (batch_num, error)
+            total['error'] = '\n'.join(filter(None, (total.get('error'), message)))
         batch_text = result.get('final_text', '')
         if batch_text:
             total['final_text'] += '\n--- batch %d ---\n%s' % (batch_num, batch_text)
@@ -501,6 +513,7 @@ class IntegrationUnit:
                 'max_tokens truncation: round %d used %s/%s output tokens' % (
                     trunc['round'], trunc['output_tokens'], trunc['max_tokens']),
                 'batch %d — %s' % (batch_num, trunc_detail))
+        return not error
 
     def _llm_client(self):
         """This unit's Anthropic client, built once per run.
@@ -612,4 +625,3 @@ class IntegrationUnit:
                     's2_%s_journal_harvest' % self.NAME, e,
                     'harvest failed — parsing the unstripped response')
         return extract_json(raw), telemetry
-

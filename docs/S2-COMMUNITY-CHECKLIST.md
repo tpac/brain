@@ -8,6 +8,75 @@ boxes **while the work is in flight**. Current-state design truth belongs in
 Everything below was measured or read this session unless a row says otherwise.
 **Rows marked ⚠ UNVERIFIED are reasoning, not measurement — check before acting.**
 
+## September 12 quick fixes
+
+Tom authorized the decision-context and feedback repairs, with Thalamus answers
+after verification. Splits and the broader community redesign remain deferred.
+This cut is narrower than the historical phases below.
+
+- Decision targets are fetched by ID for ADD, DRIFT (including its home),
+  HEALTH, MERGE, and overlap review. They carry full narratives, bounded
+  metadata, eight newest live-member summaries, and all live member IDs.
+  Both directions of membership count. Merges carry the complete transfer set;
+  absorbed IDs resolve visibly and retired targets remain visibly archived.
+- Nearby communities stay compact and yield to decision evidence with an
+  omission notice. Oversized batches split at a **48,000-character soft input
+  budget**, including residue/messages/proposals, excluding system/tools and
+  later tool results. A single oversized proposal is preserved and logged.
+  The delta records `context_chars` for every dispatched batch.
+- `community_members` stays a creation-time orphan-recovery seed. The encoder
+  maintains meaning fields when evidence changes them; its ADD example now
+  demonstrates the semantic revision alongside the edge. The healer's role is
+  stated accurately. Legacy stored member lists are absent from both initial
+  decision evidence and subsequent S2CE inspections.
+- Community, consolidation, and healer freeze residue per run but read live
+  Thalamus feedback per batch. Producer feedback has separate message/status
+  lines, so copying it cannot refile a message with `— open` in its body.
+
+**Why the compact view existed:** commit `6f88395` introduced the 150-character,
+zero-edge/zero-metadata profile on April 16. Tom approved relevant-community
+selection and minification after a ~50K-input-token, 16-minute failed run;
+the exact render profile was an implementation choice. Applying that same
+profile to decision targets was the information gap.
+
+**Verification:** the focused final suite passed 144 tests. The broader
+selection passed 780 tests and 202 subtests; seven localhost-bind failures
+passed outside the sandbox, and the unchanged installed-runtime process-name
+test passed with process-inspection access. Additional focused passes cover
+the subsequent budget and mixed-relation-edge changes.
+
+The existing `eval/ab_community_model.py` now accepts frozen proposals, prompt
+files, and isolated answer fixtures. `eval/community_maintenance_prompt.py`
+derives the candidate from the control with exact asserted anchors. The final
+9,881-character prompt updated the new branch constraint's latest development
+in four repetitions; the four corresponding old-prompt controls did not.
+No final candidate rewrote the recovery seed. With the planned Thalamus answers
+applied equally to both arms, neither of two candidate runs requested a healer
+sweep. Residual journal noise is not fully solved: one retained unnecessary
+seed-mismatch notes; the other retired old subjects individually.
+
+**Inflation stress:** a constructed eight-DRIFT batch naming 32 large distinct
+targets was 232,155 input characters unsplit. The budgeted encoder dispatched
+all eight proposals in eight calls, peak **49,101**, total **384,012** characters.
+One indivisible proposal exceeded the soft limit and was logged. This trades
+lower peak context for repeated notes/instructions and more calls; it is not a
+hard token ceiling or a claim about normal decoder workload. Raw local reports:
+`/private/tmp/s2-community-quick-fixes-eval/` (`candidate_4/5/6/7`,
+`control_2/3/6/7`, `stress-budget-final.json`). Production-data model calls were
+explicitly authorized after automatic approval review initially rejected them.
+
+**Review follow-up — batch completion:** the shared batch fold now preserves
+execution errors across successful batches. Community and consolidation retain
+successful writes but withhold rejection fingerprints and scan cutoffs on a
+failed run; community also withholds unplaceable marking. Returned errors reach
+the coordinator's failure counter. The encoder resolves its complete config at
+construction, including overrides, before applying explicit run settings. The
+behavioral regressions exercise the real batch loops, failure in either order,
+preserved writes, and a successful retry without new graph changes. The design
+and the conservative run-level retry tradeoff live in `docs/S2-DESIGN.md`.
+Verification: 393 tests and two subtests passed, including the interaction
+resolver, journal, trace, SQL ownership, and dashboard guardrails.
+
 ---
 
 ## 0. Why this exists
@@ -575,7 +644,7 @@ for a ~90K-char prompt. **S2CE is 8,160 chars with five decision branches.**
 | Collapsing the 11 render configs into one | §2(c) — budgets differ for real reasons. |
 | Adding community metadata upkeep to the healer | `healer_contract.py:27`; different input, model tier, and failure mode. The community unit already owns these fields. |
 | Opt-in disclosure flag on `render_rich_node` | an opt-in flag is the drift we are removing. |
-| Deferring MERGE (F3) as a separate item | it resolves for free once the decision set renders properly. |
+| Treating MERGE (F3) as an evidence-only fix | Superseded by §9: complete evidence still allowed loss of live members; absorption must enforce preservation. |
 
 ---
 
@@ -604,3 +673,68 @@ logged) · `51b87c91` (community geometry / anisotropy) · `3f135bea` (communiti
 excluded from recall) · `d14bef74` (deletion beats negation) · `50f2b7b1`
 (example osmosis fails) · `04ff3d58` + `79b25bac` (MCP mechanics vs prompt
 strategy) · `1a98209e` (MCP cross-contamination, open)
+
+## 9. Community merge contract and whole-cycle verification (2026-09-13)
+
+The revised repair extends existing owners. `Brain.absorb` retains its transaction,
+rollback and provenance contract; GraphDAL's relation policy now transfers live
+ordinary-node membership when **both** merged nodes are communities. The survivor
+must contain the before-merge union before archival can succeed. Ordinary-node
+and mixed-type absorption still exclude membership; explicit `prune_edges` remains
+an intentional exception. Legacy community-as-member edges do not migrate.
+
+The evaluated MERGE prompt uses one `absorb` with narrative overrides. The encoder
+maintains meaning and latest development; the existing post-agent structural stamp
+derives size/cohesion. `community_members` remains a creation-time recovery seed.
+The zero-edge restorer and missing-field healer retain their existing boundaries.
+
+Batching preserves proposal priority/order and chooses the largest contiguous
+prefix that fits the actual render, up to the existing eight-proposal limit. The
+48,000-character budget stays soft for an oversized single proposal. Full target
+narratives, all member IDs, eight-member previews and existing field caps remain.
+`context_parts` accounts for decision evidence, nearby context, proposals and
+continuity in the actual request. On the same frozen inputs with embeddings
+available, packing reduced initial user text by 3.2% (natural workload) and 1.8%
+(size fixture); both still required three batches. These are character savings,
+not a universal token/cost bound.
+
+Six full encoder comparisons used production `61671c3` versus the revised code:
+two repetitions per arm on eight natural proposals and one per arm on eight
+constructed duplicate ADD proposals spanning communities with 4–225 members.
+Production lost two unique membership links in one accepted merge; the other
+production merge preserved them. The candidate rejected one merge and accepted
+the other through `absorb`, preserving all 15 original members; a subsequent ADD
+made the final, correctly stamped size 16. Both size runs made no graph writes.
+Natural-workload mean processed input fell 17.7%, output 19.2%, and wall time 18.5%,
+but different decisions and only two repetitions prevent a general quality/cost
+claim. All resulting writes were confined to disposable copies.
+
+Review found an additional caller-contract defect: outcome matching used the
+retired `connections[].target_id` instead of `connect_to[].title` (existing-node
+IDs) and did not recognize `absorb`. The existing rejection-table matcher now
+recognizes both. This follow-up was verified by replaying the captured actions
+and by integration tests; it landed **after** the six model runs, so their stored
+rejection counts reflect the old matcher. Three actual creations and the accepted
+merge are correctly classified in the replay. No suppression policy was widened.
+
+Unanswered historical feedback still caused obsolete seed-synchronization notes
+in both full-revision arms. A separate synthetic-only lifecycle probe supplied an
+explicit Thalamus answer through the existing resolver: the encoder advanced the
+current account, left an older historical addition's frontier unchanged, and
+closed the stale-seed concern with a `resolved` note and no new ask. The live queue
+audit confirmed that all three questions had already been answered earlier in
+this task; their answers are preserved. The frozen unanswered-history runs do
+not reproduce that current live state, and the synthetic check does not establish
+a production-wide quiet-note rate. No additional prohibition block was added.
+
+Verification: membership union/directions/rollback, final stamp and next-decode
+merge disappearance, ordinary absorption, removal/restorer boundaries, batch
+failure propagation, journaling and interaction contracts. Both required schema
+gates passed (16/16 synthetic generation samples; two real encoder-context
+synthetic clusters). The existing decoder convergence simulator now uses real
+`absorb` for accepted merges and accepts a frozen source directory; its 3-cycle
+simulation is an instrument check, not a measured encoder-quality result.
+
+Raw reports, source hashes, fixtures, matcher replay and the limitations are kept
+locally in `.claude/eval-results/s2-community-full-ab/revised/`. The full artifact
+report is `report.md`. Areas/stories, split hierarchy and S3 remain deferred.

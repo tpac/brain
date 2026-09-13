@@ -58,7 +58,8 @@ Canonical: `render_rich_node(node, FORMAT)` — callers: `brain_mcp.py:867`,
 Format configs: the node-fetch views `GET_NODES_DETAIL_FORMAT` /
 `GET_NODES_SCAN_FORMAT` picked by `node_format_for(n, rich)` — one selector
 behind MCP `get_nodes`, the `recall` tool's results and an encoder's own
-`get_nodes` results (`contract.py`); `SURFACE_ARC_FORMAT`, `SURFACE_FACT_FORMAT`,
+`get_nodes` results (`contract.py`); `SURFACE_SEED_FORMAT` (the inject's
+per-pick policy; content depth set per pick by the budget split),
 `SURFACE_BACKGROUND_FORMAT`, `HAIKU_FORMAT`, `HAIKU_FORMAT_LEAN`
 (`surface_contract.py`); `S2CE_NODE_FORMAT`, `S2CE_COMMUNITY_FORMAT`
 (`community_contract.py`); `CONSOLIDATION_NODE_FORMAT`

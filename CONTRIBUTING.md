@@ -4,8 +4,16 @@ Thanks for your interest in Entity.
 
 **Issues are the channel.** Bug reports, questions, and ideas are all welcome
 as GitHub issues. Pull requests are not being accepted right now — the
-project is developed against a private tree and published as releases, so a
-PR here has nothing to merge into. If that changes, this file will say so.
+release workflow uses a separate development tree and clean public
+exports. If that changes, this file will say so.
+
+Please describe problems and ideas rather than submitting patches or copied
+third-party code in issues. Before accepting external code, documentation,
+or other copyrightable material, the maintainer must confirm its provenance
+and arrange written contribution terms that permit both Elastic License 2.0
+and future commercial licensing. An issue, credit, or sign-off alone does
+not establish those rights. No copyright assignment or additional license
+is requested merely by reporting a bug.
 
 A good bug report includes:
 

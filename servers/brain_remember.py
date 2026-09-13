@@ -9,7 +9,7 @@ which are provided by Brain.__init__.
 from . import embedder
 from .brain_constants import TYPE_CONFIDENCE
 from .dal import VectorDAL
-from .dal_graph import ABSORB_EXCLUDED_RELATIONS
+from .dal_graph import absorb_migrates_relation
 from .clock import iso_cutoff, iso_now
 from .contract import (ALL_FIELDS, apply_swaps, connect_to_target, connect_to_why, is_swap,
                        is_swap_list, validate_swaps)
@@ -661,7 +661,8 @@ class BrainRememberMixin:
           - source_refs  → union onto survivor (INSERT OR IGNORE dedups)
           - edges        → re-point absorbed's external edges to survivor,
                            upsert-dedup, drop the absorbed<->survivor intra edge;
-                           ABSORB_EXCLUDED_RELATIONS (community_member) never migrates
+                           community membership migrates only when BOTH inputs
+                           are communities (live ordinary-node members only)
           - access_count → survivor += absorbed (usage history is additive)
           - metadata KV  → fill keys survivor LACKS from absorbed; survivor wins;
                            `_sys_` keys skipped
@@ -690,15 +691,12 @@ class BrainRememberMixin:
         if survivor_id == absorbed_id:
             return {'ok': False, 'error': 'survivor and absorbed are the same node'}
 
-        rows = {r[0]: r for r in self.conn.execute(
-            'SELECT id, locked, critical, archived, access_count '
-            'FROM nodes WHERE id IN (?, ?)',
-            (survivor_id, absorbed_id)).fetchall()}
+        rows = self._nodes.get_bulk([survivor_id, absorbed_id])
         if survivor_id not in rows:
             return {'ok': False, 'error': 'survivor not found', 'node_id': survivor_id}
         if absorbed_id not in rows:
             return {'ok': False, 'error': 'absorbed not found', 'node_id': absorbed_id}
-        if rows[survivor_id][3]:
+        if rows[survivor_id]['archived']:
             live = self._nodes.survivor_of(survivor_id)
             if live:
                 from .contract import absorbed_refusal
@@ -709,7 +707,9 @@ class BrainRememberMixin:
             return {'ok': False, 'error': 'survivor is archived',
                     'node_id': survivor_id}
 
-        a_locked, a_critical, a_archived, a_access = rows[absorbed_id][1:]
+        absorbed = rows[absorbed_id]
+        a_locked, a_critical = absorbed['locked'], absorbed['critical']
+        a_archived, a_access = absorbed['archived'], absorbed['access_count']
         if a_locked or a_critical:
             flag = 'locked' if a_locked else 'critical'
             self._log_warning(
@@ -748,10 +748,15 @@ class BrainRememberMixin:
 
             # 2. edges — re-point absorbed's external edges to survivor,
             # preserving each relation's weight + description.
-            # community_member never migrates: placement is the community
-            # unit's judged decision, not a merge side effect (see
-            # ABSORB_EXCLUDED_RELATIONS in dal_graph.py, imported at module top).
+            # The graph contract distinguishes merging stories from assigning
+            # an ordinary node to the absorbed node's former communities.
             prune = set(prune_edges or [])
+            survivor_type, absorbed_type = rows[survivor_id]['type'], absorbed['type']
+            expected_members = None
+            if ('community_member' not in prune
+                    and survivor_type == absorbed_type == 'community'):
+                members = self._graph.get_members_bulk([survivor_id, absorbed_id])
+                expected_members = {m['id'] for ms in members.values() for m in ms}
             conns = self._graph.get_connections_bulk(
                 [absorbed_id]).get(absorbed_id, [])
             # Each migration's add_relation result (edge_id + deltas) is kept —
@@ -766,7 +771,8 @@ class BrainRememberMixin:
                 for rel in c.get('relations', []):
                     relation = rel.get('relation')
                     if (not relation or relation in prune
-                            or relation in ABSORB_EXCLUDED_RELATIONS):
+                            or not absorb_migrates_relation(
+                                relation, survivor_type, absorbed_type, c['type'])):
                         continue
                     src, tgt = ((survivor_id, neighbor) if outgoing
                                 else (neighbor, survivor_id))
@@ -785,6 +791,17 @@ class BrainRememberMixin:
                     })
             report['edges_migrated'] = len(migrated_edges)
             report['migrated_edges'] = migrated_edges
+
+            # Validate the automatic transfer while the original endpoint
+            # types still apply. The explicit revise below may intentionally
+            # retype the survivor; that does not undo the transferred links.
+            if expected_members is not None:
+                actual_members = {m['id'] for m in self._graph.get_members_bulk(
+                    [survivor_id]).get(survivor_id, [])}
+                missing = expected_members - actual_members
+                if missing:
+                    raise RuntimeError('community absorb lost member links: %s'
+                                       % ', '.join(sorted(missing)))
 
             # 3. access_count — additive (usage history)
             if a_access:
@@ -2541,34 +2558,21 @@ class BrainRememberMixin:
         if not connect_to_spec:
             return {'created': created, 'failed': failed}
 
-        # Lenient coercion: accept a JSON-stringified list. Postel's law —
-        # absorb the common "I stringified the array" slip, but surface it if
-        # the string isn't actually a list.
-        if isinstance(connect_to_spec, str):
-            try:
-                import json as _json
-                parsed = _json.loads(connect_to_spec)
-            except Exception:
-                parsed = None
-            if isinstance(parsed, list):
-                connect_to_spec = parsed
-            else:
+        from .contract import normalize_connect_to
+        entries = normalize_connect_to(connect_to_spec)
+        if entries is None:
+            if isinstance(connect_to_spec, str):
                 reason = ("connect_to must be a list (or a JSON string that "
                           "parses to one); got an unparseable str")
-                self._log_error('connect_to_invalid', TypeError(reason),
-                                'src=%s' % src_id[:8])
-                failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
-                return {'created': created, 'failed': failed}
-
-        if not isinstance(connect_to_spec, list):
-            reason = ("connect_to must be a list, got %s"
-                      % type(connect_to_spec).__name__)
+            else:
+                reason = ("connect_to must be a list, got %s"
+                          % type(connect_to_spec).__name__)
             self._log_error('connect_to_invalid', TypeError(reason),
                             'src=%s' % src_id[:8])
             failed.append({'title': str(connect_to_spec)[:80], 'reason': reason})
             return {'created': created, 'failed': failed}
 
-        for entry in connect_to_spec:
+        for entry in entries:
             title_query = connect_to_target(entry) or entry
             target_id, relation_pairs, reason = self._resolve_connect_to_entry(
                 entry, sibling_map=sibling_map, exclude_self=src_id,
@@ -2998,4 +3002,3 @@ class BrainRememberMixin:
         if top_k == 1:
             return results[0] if results else None
         return results[:top_k]
-

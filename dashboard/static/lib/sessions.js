@@ -71,7 +71,11 @@ export function sessionInfo(id) {
 // session — resume it, or run two streams in it, and several session_ids share
 // one handle. Rendered side by side in the rail that reads as a duplicate row,
 // and two activity cards from different streams look like the same stream.
-// Ambiguous handles get their short hex appended; unique ones stay clean.
+// Ambiguous handles get a four-char tail of their id appended; unique ones
+// stay clean. The TAIL, not the head: Codex task ids are UUIDv7, time-ordered,
+// so every session for weeks shares the leading chars and a head suffix
+// collapses concurrent streams into one label. The last chars are random
+// under both v4 and v7.
 let _ambiguous = new Set();
 
 function _recomputeAmbiguous() {
@@ -93,7 +97,7 @@ export function sessionLabel(id) {
   const rec = _registry.get(id);
   const handle = rec && rec.handle;
   if (!handle) return id.slice(0, 8);
-  return _ambiguous.has(handle) ? handle + '·' + id.slice(0, 4) : handle;
+  return _ambiguous.has(handle) ? handle + '·' + id.slice(-4) : handle;
 }
 
 /** Everything needed to find this stream again, as a title= string.

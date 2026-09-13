@@ -23,6 +23,8 @@ To add a new field:
 import json
 import re
 
+from servers.loud_truncation import cap_text_at_boundary
+
 
 # ── BRAIN_BATCH PER-OP CONTRACT ──
 # Single source of truth for brain_batch's discriminated op schemas. Three
@@ -421,6 +423,8 @@ BATCH_OP_SPECS = {
     "absorb": {
         "required": ["survivor_id", "absorbed_id"],
         "description": ("Lossless merge: fold absorbed INTO survivor. "
+                        "Merging two communities preserves their live members; "
+                        "ordinary node merges do not inherit community placement. "
                         "Accepts revise-shape field overrides (content, "
                         "title, confidence, situation)."),
         "properties": {
@@ -451,6 +455,23 @@ def unwrap_operations(operations):
     except ValueError:
         return None
     return parsed if isinstance(parsed, list) else None
+
+
+def normalize_connect_to(value):
+    """Normalize the optional edge list shared by writes and action readers.
+
+    Null means no requested edges. JSON-encoded lists are accepted by the
+    write boundary; malformed values return None so it can report them.
+    Entry validation and target resolution remain with the write owner.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, RecursionError):
+            return None
+    return value if isinstance(value, list) else None
 
 
 # ── STRUCTURAL FIELDS ──
@@ -916,6 +937,15 @@ def _truncate(s: str, limit: int) -> str:
     return s[:max(1, limit - 1)] + '…'
 
 
+# The inject's content cut: a sentence-boundary cap whose marker points the
+# reader at the whole node. The mechanism is loud_truncation's; only the
+# marker wording is this consumer's.
+CONTENT_CUT_MARKER = '… (+%d chars: get_nodes)'
+
+# How many trace ids the Conversation line names before it counts the rest.
+SOURCE_REF_RENDER_LIMIT = 8
+
+
 # ── Corrector K/V allowlist for render_corrections heavy mode ──
 # Three keys carry meaningful correction context: the corrector's stored
 # reasoning, the operator's words, and Anchor's words. Anything else on
@@ -928,7 +958,7 @@ def render_corrections(corrections, mode='lean',
                        content_limit_balanced=150,
                        content_limit_heavy=400,
                        meta_limit_heavy=300,
-                       indent='  '):
+                       indent='  ', limit=None):
     """Render a node's `_corrections` list as formatted lines.
 
     Single rendering path — both render_rich_node and consumer-specific
@@ -951,6 +981,10 @@ def render_corrections(corrections, mode='lean',
         content_limit_heavy: char cap for content in heavy mode
         meta_limit_heavy: char cap per K/V value in heavy mode
         indent: line prefix for nested values (default '  ')
+        limit: render at most this many corrections, then one line
+               counting the rest (None = all). The inject caps here: a
+               node with seven corrections spent 2,753 chars on them
+               while its own content got 114.
 
     Returns list[str] of lines (no leading section header — caller can
     prepend 'CORRECTIONS:' or similar).
@@ -958,9 +992,11 @@ def render_corrections(corrections, mode='lean',
     if mode == 'none' or not corrections:
         return []
 
+    shown = corrections[:limit] if limit and len(corrections) > limit else corrections
+    hidden = len(corrections) - len(shown)
     lines = []
     sub_indent = indent + '   '
-    for corr in corrections:
+    for corr in shown:
         direction = corr.get('direction')
         title = (corr.get('title') or '')[:60]
         corr_id = (corr.get('id') or '')[:8]
@@ -1006,6 +1042,9 @@ def render_corrections(corrections, mode='lean',
             label = kv_key.replace('_', ' ').title()
             lines.append('%s%s: %s' % (sub_indent, label, _truncate(str(val), meta_limit_heavy)))
 
+    if hidden:
+        lines.append('%s+%d more correction%s' % (indent, hidden,
+                                                  '' if hidden == 1 else 's'))
     return lines
 
 
@@ -1210,7 +1249,8 @@ def render_edge_lines(conn, cfg=None, indent='    '):
     `cfg` merges over NODE_FORMAT_DEFAULTS like render_rich_node's, so a
     direct caller (the S2 units) and a rich-node render agree on defaults.
     edge_style='oneline' is the selection-grade surface: direction, relation
-    and title only; no description, id or age (those are injection payload).
+    and title only; no description or age, and the neighbor's id only when
+    `edge_ids` is set (the inject's seed render, so the reader can fetch it).
     """
     cfg = {**NODE_FORMAT_DEFAULTS, **(cfg or {})}
     title = (conn.get('title') or '')[:100]
@@ -1222,8 +1262,12 @@ def render_edge_lines(conn, cfg=None, indent='    '):
         r = rels[0]
         rel = r.get('relation') or 'related'
         short = title[:80]
+        # edge_ids (the inject): the neighbor's short id after the title, so
+        # the reader can fetch it. Off for the picker, whose lean render is
+        # ablation-measured without ids.
+        tail = ' (id:%s)' % (conn.get('id') or '?')[:8] if cfg.get('edge_ids') else ''
         return [indent + ('"%s" %s this' % (short, rel) if incoming
-                          else 'this %s "%s"' % (rel, short))]
+                          else 'this %s "%s"' % (rel, short)) + tail]
     lines = []
     tag_head = '[%s id:%s' % (conn.get('type', '?'), (conn.get('id') or '?')[:8])
     for r in rels:
@@ -1266,6 +1310,14 @@ def render_rich_node(node, config=None):
             parts.append("conf:%.1f" % conf)
     if node.get('locked'):
         parts.append("locked")
+    # A claim the brain has since disproven or dismissed must read as such
+    # where it is shown as knowledge — opt-in per consumer (the inject sets
+    # it), so catalog and MCP renders keep their current header.
+    if cfg.get('mark_status'):
+        _status = str((node.get('_metadata') or {}).get('evolution_status')
+                      or node.get('evolution_status') or '').strip().lower()
+        if _status in ('disproven', 'dismissed'):
+            parts.append('⚠ %s' % _status.upper())
     if cfg.get('show_encoding_source', True):
         if node.get('encoding_source'):
             parts.append("src:%s" % node['encoding_source'])
@@ -1296,13 +1348,22 @@ def render_rich_node(node, config=None):
     if content_limit != 0:
         content = node.get('content', '')
         if content_limit and content_limit > 0:
-            content = _truncate(content, content_limit)
+            # 'sentence': cut on a sentence boundary and name the remainder
+            # (the inject) — a reader acting on the text must know it ends
+            # early. Default: the bare ellipsis cut.
+            if cfg.get('content_cut') == 'sentence':
+                content = cap_text_at_boundary(content, content_limit,
+                                               marker=CONTENT_CUT_MARKER)
+            else:
+                content = _truncate(content, content_limit)
         if content:
             lines.append('  Content: %s' % content)
 
-    # Situation
+    # Situation — a top-level field (the canonical pull promotes it out of
+    # KV), so a caller that skips 'situation' must be honored here, not only
+    # in the KV loop below.
     situation = node.get('situation', '')
-    if situation:
+    if situation and 'situation' not in (cfg.get('extra_skip_keys') or ()):
         lines.append('  Situation: %s' % situation)
 
     # Metadata KV
@@ -1355,15 +1416,35 @@ def render_rich_node(node, config=None):
     # them at 150 chars loses the actual words. Cap defensively at 600.
     _VOICE_KEYS = ('their_raw_quote', 'my_raw_quote')
     _VOICE_LIMIT = 600
+    # Caller-supplied key-prefix skips (the inject drops every community_*
+    # bookkeeping field) and per-key labels (the inject renders the
+    # counterpart's quote as '<name> said:' — a label the reader reads
+    # through, not a record label to parse).
+    skip_prefixes = tuple(cfg.get('skip_key_prefixes') or ())
+    voice_labels = cfg.get('voice_labels') or {}
     if meta_limit > 0:
         for key, val in meta.items():
             if not val or key in skip_keys:
                 continue
             # _sys_ prefix = system/infrastructure fields, never shown to LLMs
-            if key.startswith('_sys_'):
+            if key.startswith('_sys_') or (skip_prefixes and key.startswith(skip_prefixes)):
                 continue
             limit = _VOICE_LIMIT if key in _VOICE_KEYS else meta_limit
-            lines.append('  %s: %s' % (key.replace('_', ' ').title(), _truncate(str(val), limit)))
+            label = voice_labels.get(key) or key.replace('_', ' ').title()
+            lines.append('  %s: %s' % (label, _truncate(str(val), limit)))
+
+    # Conversation pointer — the trace ids behind this memory, written as
+    # the call that opens them. Rendered only when the caller attached
+    # `source_refs` to the node AND asked for the line (the inject does for
+    # Haiku's picks; a bulk fetch on every canonical pull would tax every
+    # reader for a line only some of them want).
+    if cfg.get('show_source_refs'):
+        _refs = [str(r)[:8] for r in (node.get('source_refs') or []) if r]
+        if _refs:
+            _more = ('  +%d more' % (len(_refs) - SOURCE_REF_RENDER_LIMIT)
+                     if len(_refs) > SOURCE_REF_RENDER_LIMIT else '')
+            lines.append('  Conversation: get_traces(%s)%s' % (
+                json.dumps(_refs[:SOURCE_REF_RENDER_LIMIT]), _more))
 
     # Personal context
     if node.get('personal') and node.get('personal_context'):
@@ -1387,7 +1468,8 @@ def render_rich_node(node, config=None):
         node.get('_corrections', []),
         mode=cfg.get('correction_render', 'lean'),
         content_limit_heavy=max(meta_limit, 400),
-        meta_limit_heavy=meta_limit))
+        meta_limit_heavy=meta_limit,
+        limit=cfg.get('correction_limit')))
 
     # Community membership — its own line, never an edge line: community
     # edges are noise-excluded from `connections` (they carry no claim and

@@ -191,11 +191,7 @@ def hook_recall(brain, args, graph_changes):
     # already filtered, so reaching hook_recall means a real prompt.
     # See trace_contract S0 TURN CLASSIFICATION.
     ctx.last_recall_stop = ctx.stop_counter
-    # What this turn rides on, fed in by the hook (hook_common.turn_model /
-    # host_name) — stamped onto the S0 rows below and mirrored on the session.
-    # Empty leaves the known value (a session's first prompt has no transcript
-    # entry yet on Claude Code; the Stop hook fills it).
-    ctx.set_env(model=args.get('model', ''), host=args.get('host', ''))
+    _set_hook_env(ctx, args.get('model', ''), args.get('tells'))
 
     # Write the user_message S0 trace NOW, at prompt-arrival — not at Stop. This
     # is what lets presence/peek surface a stream's current prompt mid-turn
@@ -357,10 +353,12 @@ def hook_recall(brain, args, graph_changes):
         # <candidates>. The v13 <shown> prompt rule alone doesn't hold —
         # Haiku re-picked shown nodes with the element in-prompt (2026-07-27
         # capture) — so out-of-scope is now structural, in code. The seen
-        # set reuses the turns pulled above (no extra query). Haiku's
-        # agentic tools can still fetch a shown node deliberately; only
-        # ambient re-injection stops. Falls back to the plain cap when the
-        # turns pull failed (recent_messages empty → seen empty).
+        # set reuses the turns pulled above (no extra query). The same set
+        # gates Haiku's tool results and the final selection in run_surface:
+        # a node the stream already has in context this window does not
+        # render again through any door (the stream can get_nodes it). Falls
+        # back to the plain cap when the turns pull failed (recent_messages
+        # empty → seen empty).
         from .scales.s1.surface import seen_node_ids
         _seen = seen_node_ids(recent_messages)
         if _seen:
@@ -547,21 +545,35 @@ def hook_recall(brain, args, graph_changes):
 
 
 
+def _set_hook_env(ctx, model, tells):
+    """Refresh session identity only from a resolved prompt/Stop observation.
+
+    An old client's pre-resolved host is no longer an input. Unknown and
+    ambiguous observations leave the session's last known host alone.
+    """
+    from .host_contract import resolve_host
+    present = {t: True for t in tells if isinstance(t, str)} \
+        if isinstance(tells, (list, tuple)) else {}
+    host, status, _ = resolve_host(present)
+    ctx.set_env(model=model)
+    if status in ('strong', 'family'):
+        ctx.set_env(host=host)
+
+
 def post_response_common(brain, session_id, user_message, assistant_response,
-                         model='', host=''):
+                         model='', tells=None):
     """Shared post-response path: S0 traces, heartbeat, stop counter
     increment. Used by prod Stop hook and by the eval harness —
     same code, same ordering, one source of truth.
 
-    `model` / `host`: what produced this turn (trace_contract
-    S0_SESSION_STAMP_FIELDS), fed in by the Stop hook — stamped onto the
-    turn's S0 rows and mirrored as the session's latest. Empty (the eval
-    harness) leaves the known value.
+    `model` / `tells`: raw Stop observations. The daemon resolves the host;
+    only strong/family resolution updates the session's latest identity.
+    Empty (the eval harness) leaves the known value.
 
     Returns the SessionContext after increment.
     """
     ctx = brain.get_or_create_session(session_id)
-    ctx.set_env(model=model, host=host)
+    _set_hook_env(ctx, model, tells)
     # No pre-cap here: _s0_trace owns the one (loud) stored-content cap; a
     # second slice against the same constant is how the sides drift apart.
     assistant_response = assistant_response or ""
@@ -679,8 +691,7 @@ def hook_post_response_track(brain, args, graph_changes):
         _sid_short = (args.get('session_id', '') or '')[:8]
         brain._log_error(
             's0_model_unset',
-            ValueError('no model on Stop for session %s (host=%s)'
-                       % (_sid_short, args.get('host', '') or '?')),
+            ValueError('no model on Stop for session %s' % _sid_short),
             'the turn\'s S0 rows carry no model stamp')
     ctx = post_response_common(
         brain,
@@ -688,7 +699,7 @@ def hook_post_response_track(brain, args, graph_changes):
         args.get("prompt", "") or args.get("message", ""),
         args.get("last_assistant_message", "") or "",
         model=args.get("model", "") or "",
-        host=args.get("host", "") or "",
+        tells=args.get("tells"),
     )
     session_id = ctx.session_id
 
@@ -743,7 +754,7 @@ def hook_pre_edit(brain, args, graph_changes):
     Returns JSON {"decision":"approve","reason":"..."}.
     """
     filename = args.get("filename", "")
-    tool_name = args.get("tool_name", "Edit")
+    tool_name = args.get("tool_name") or ""
 
     if not filename:
         return {"json": {"decision": "approve"}}

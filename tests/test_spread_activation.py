@@ -124,39 +124,6 @@ class TestEnrichedEdgeText(unittest.TestCase):
         self.assertNotIn('family:', text)
 
 
-class TestBudgetAllocation(unittest.TestCase):
-    """Softmax budget split across activated nodes."""
-
-    def test_minimum_per_node(self):
-        from servers.scales.s1.surface_contract import (
-            _allocate_budget_softmax, _MIN_NODE_BUDGET_CHARS)
-        acts = [0.1, 0.1, 0.1, 0.1]  # low activations
-        budgets = _allocate_budget_softmax(acts, total_budget=400)
-        for b in budgets:
-            self.assertGreaterEqual(b, _MIN_NODE_BUDGET_CHARS,
-                'every node gets at least minimum budget')
-
-    def test_high_activation_gets_more(self):
-        from servers.scales.s1.surface_contract import _allocate_budget_softmax
-        # One saturated, rest low
-        acts = [1.0, 0.3, 0.3, 0.3]
-        budgets = _allocate_budget_softmax(acts, total_budget=2000)
-        self.assertGreater(budgets[0], budgets[1],
-            'saturated node should get more budget than low-activation')
-
-    def test_uniform_activation_splits_evenly(self):
-        from servers.scales.s1.surface_contract import _allocate_budget_softmax
-        acts = [0.9, 0.9, 0.9, 0.9]
-        budgets = _allocate_budget_softmax(acts, total_budget=2000)
-        # All roughly equal (softmax on equal inputs → uniform)
-        for b in budgets:
-            self.assertAlmostEqual(b, budgets[0], delta=5)
-
-    def test_empty_input(self):
-        from servers.scales.s1.surface_contract import _allocate_budget_softmax
-        self.assertEqual(_allocate_budget_softmax([], 1000), [])
-
-
 class TestFieldMaskingRemoved(unittest.TestCase):
     """Contract evolution 2026-05-17 — _mask_node_by_field_activation removed.
 

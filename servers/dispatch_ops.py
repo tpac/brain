@@ -72,7 +72,7 @@ def _handle_pre_edit(brain, args, graph_changes):
     flight) so concurrent / repeat pre_edit calls collapse there. This
     handler stays simple."""
     file = args.get("file", "")
-    tool_name = args.get("tool_name", "Edit")
+    tool_name = args.get("tool_name") or ""
     sid = caller_session(args)  # identity: per-session pre-edit surfacing
     ctx = brain.get_or_create_session(sid) if sid else None
     data = brain.pre_edit(file=file, tool_name=tool_name, ctx=ctx)

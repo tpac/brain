@@ -252,12 +252,11 @@ class TestFormatNode(BrainTestBase):
         (community_member is noise-excluded from connections). cfg
         `communities`: unset → nothing; 'title' → titles only (the encoders,
         the picker's full render); 'ref' → "title" (id) for the reader that
-        follows ids with a pull (Anchor's get_nodes / recall / inject)."""
+        follows ids with a pull (Anchor's get_nodes / recall)."""
         from servers.contract import (
             GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT, node_format_for)
         from servers.scales.s1.encode_contract import S1_NODE_CONFIG
-        from servers.scales.s1.surface_contract import (
-            SURFACE_ARC_FORMAT, HAIKU_FORMAT, HAIKU_FORMAT_LEAN, resolve_surface_format)
+        from servers.scales.s1.surface_contract import HAIKU_FORMAT, HAIKU_FORMAT_LEAN
         from servers.scales.s2.consolidation_contract import CONSOLIDATION_NODE_FORMAT
         nid = self._make_node(title='Member')
         comm = self._make_node(type='community', title='A community')
@@ -281,8 +280,7 @@ class TestFormatNode(BrainTestBase):
             self.assertNotIn(comm[:8], out)             # no id to link to
             self.assertNotIn('community_member', out)
         for cfg in (GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT,
-                    node_format_for(1, rich=True),
-                    resolve_surface_format(SURFACE_ARC_FORMAT, 1000)):
+                    node_format_for(1, rich=True)):
             out = render_rich_node(node, cfg)
             self.assertIn(ref_line, out)
             self.assertNotIn('community_member', out)

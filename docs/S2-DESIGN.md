@@ -409,11 +409,26 @@ Not all units should run on the same trigger:
 Each unit maintains its own cursor — last run timestamp or last processed node ID. Units process incrementally (new since last run), not full graph scan, with periodic full sweeps for structural units (community detection, hub analysis).
 
 **Idle-gating (2026-05-29).** The coordinator fires every ~15 min when idle, but each unit must gate its own expensive work or it re-derives the same fixed point every cycle. Two units were doing full O(graph) scans every cycle (Community: 87% zero-work; Consolidation: hardcoded `cold_start`, ~88% zero-pairs) and were gated:
-- **Community** (`community.py:_should_skip`) — skip unless a non-community node changed (or a non-noise typed edge was added) since the last decode AND ≥30 min elapsed. Last-run stamped after the run; key `s2_community_last_run_ts`.
+- **Community** (`community.py:_should_skip`) — skip unless a non-community node changed (or a non-noise typed edge was added) since the last completed pipeline AND ≥30 min elapsed. The cutoff is stamped after completion, never after an encoder failure; key `s2_community_last_run_ts`.
 - **Consolidation** (`consolidation_decoder.run`) — one cold-start covers the backlog, then incremental (`changed @ all.T`, no-miss by construction); skip when nothing changed; a similarity-threshold change forces a fresh cold-start. The cutoff is stamped by the orchestrator only after the encoder completes, so a mid-run encoder failure retries rather than skipping past. Keys `s2_consolidation_last_run_ts` / `s2_consolidation_last_threshold`.
 - **AspectIntegration** (empty-batch early-out) and **Healer** (`_has_new_traces` + `gaps==0`) were already correctly gated.
 
 Full write-up: `docs/archive/session-handoffs/S2-GATING-AND-TEST-CLEANUP-HANDOFF.md`.
+
+**Batch completion and suppression.** Community and consolidation share the
+`IntegrationUnit._fold_batch_result` boundary. Every dispatched batch contributes
+an outcome, including failed calls. An error or zero completed rounds keeps the
+aggregate `error` set even if later batches succeed. Counters, completed writes,
+and successful batches' journal notes remain available. Model prose never decides
+whether execution succeeded.
+
+The orchestrators consume that same error before settling a scan: a failed run
+does not fingerprint proposals, mark pending nodes unplaceable, or advance the
+scan cutoff. On retry the decoder sees the current graph, including writes that
+landed before failure. This conservative run-level boundary can revisit an earlier
+rejection after a partial failure; it avoids certifying unfinished work as a
+decision. The coordinator counts returned errors and exceptions as failures under
+the same persistent-failure policy.
 
 ### Shared Infrastructure
 

@@ -104,6 +104,18 @@ class TestSurfaceDefaultPairsTemplateWithLayout:
                 'template and layout must flip together'
 
 
+    def test_surface_template_pick_cap_matches_config(self):
+        """In the live xml layout the pick cap reaches Haiku only as prose
+        ("Up to N"); SURFACE['max_selected'] feeds the legacy layout's footer
+        and the eval bench's over-cap check. Nothing enforces the cap after
+        Haiku answers, so the prose and the constant must be the same number."""
+        from servers.scales.s1.surface_contract import SURFACE
+        template, _config = INTERACTION_DEFAULTS['surface']
+        assert 'Up to %d ' % SURFACE['max_selected'] in template, \
+            'surface prompt prose names a different pick cap than ' \
+            "SURFACE['max_selected']=%d" % SURFACE['max_selected']
+
+
 class TestRegistryCompleteness:
     """Every name the runtime passes to the resolver must be a registry key.
     A name outside the registry has no code default — under the override

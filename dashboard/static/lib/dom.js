@@ -84,27 +84,50 @@ export function el(tag, attrs, ...children) {
   return node;
 }
 
-/** Short relative-time helper — '3m ago', '2h ago', '5d ago'. Pairs with
- * localTime() in tooltip-style UI: show 'created 3h ago' inline with the
- * absolute timestamp in title= or as a sibling. Future = '' (we don't
- * surface future timestamps in this dashboard). */
-export function relativeTime(utcStr) {
-  if (!utcStr) return '';
+// Seconds elapsed between now and a server ISO timestamp — positive in the
+// past, negative in the future. NaN for anything unparseable.
+function _secsSince(utcStr) {
   let s = utcStr;
   if (s.length >= 19 && !s.endsWith('Z') && !s.includes('+')) s += 'Z';
   const d = new Date(s);
-  if (isNaN(d)) return '';
-  const secs = Math.max(0, (Date.now() - d.getTime()) / 1000);
-  if (secs < 60)    return Math.round(secs) + 's ago';
+  return isNaN(d) ? NaN : (Date.now() - d.getTime()) / 1000;
+}
+
+// A span's magnitude → '3s' / '2m' / '5h' / '9d' / '4mo' / '2y'. Shared by
+// relativeTime and untilTime so past and future never drift into different
+// tiers.
+function _span(secs) {
+  if (secs < 60)    return Math.round(secs) + 's';
   const mins = secs / 60;
-  if (mins < 60)    return Math.round(mins) + 'm ago';
+  if (mins < 60)    return Math.round(mins) + 'm';
   const hours = mins / 60;
-  if (hours < 24)   return Math.round(hours) + 'h ago';
+  if (hours < 24)   return Math.round(hours) + 'h';
   const days = hours / 24;
-  if (days < 30)    return Math.round(days) + 'd ago';
+  if (days < 30)    return Math.round(days) + 'd';
   const months = days / 30;
-  if (months < 12)  return Math.round(months) + 'mo ago';
-  return Math.round(days / 365) + 'y ago';
+  if (months < 12)  return Math.round(months) + 'mo';
+  return Math.round(days / 365) + 'y';
+}
+
+/** Short relative-time helper — '3m ago', '2h ago', '5d ago'. Pairs with
+ * localTime() in tooltip-style UI: show 'created 3h ago' inline with the
+ * absolute timestamp in title= or as a sibling. A future timestamp clamps to
+ * '0s ago' — use untilTime() for deadlines. */
+export function relativeTime(utcStr) {
+  if (!utcStr) return '';
+  const secs = _secsSince(utcStr);
+  if (isNaN(secs)) return '';
+  return _span(Math.max(0, secs)) + ' ago';
+}
+
+/** The FUTURE counterpart — 'in 2h', 'in 14d'; a timestamp already past reads
+ * '3h overdue'. For deadlines (a Thalamus item's due date or expiry), where
+ * relativeTime's past-only clamp would print a live deadline as '0s ago'. */
+export function untilTime(utcStr) {
+  if (!utcStr) return '';
+  const secs = _secsSince(utcStr);
+  if (isNaN(secs)) return '';
+  return secs > 0 ? _span(secs) + ' overdue' : 'in ' + _span(-secs);
 }
 
 /** Elapsed seconds → 'Nh Nm' ('Nm' under an hour, 'Ns' under a minute). For

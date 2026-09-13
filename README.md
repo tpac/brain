@@ -188,7 +188,7 @@ Working from a checkout? Codex copies a plugin's source directory wholesale, so
 never point a marketplace at the repo itself. `scripts/codex-install.sh`
 packages the tree, points your personal marketplace
 (`~/.agents/plugins/marketplace.json`) at it, installs, prepares the runtime,
-and verifies. See [setup behavior and troubleshooting](docs/CODEX-SETUP.md).
+and verifies.
 
 ## Where your memories live — and what survives
 
@@ -251,14 +251,33 @@ and daemon run.
 
 ## License
 
-Source-available, free to use:
+Entity is **source-available under [Elastic License 2.0 (ELv2)](LICENSE)**,
+not OSI open source. You can use, modify, and redistribute it, including in
+commercial applications, subject to the license's terms. There is **no revenue
+threshold**, and personal or internal company use does not require a subscription.
 
-- **Individuals** — free for any noncommercial purpose
-  ([PolyForm Noncommercial](LICENSES/PolyForm-Noncommercial-1.0.0.md))
-- **Companies** — free for internal business use
-  ([PolyForm Internal Use](LICENSES/PolyForm-Internal-Use-1.0.0.md))
-- **Shipping it in your product or service** — needs a commercial license:
-  open an issue and ask
+| Example | Licensing route |
+|---|---|
+| Use Entity personally or internally at a company of any size | Free under ELv2 |
+| Modify Entity for your team or share a fork | Permitted under ELv2; preserve notices, include the license, and mark modifications |
+| Incorporate Entity into a commercial application or distribute it with a product | Permitted if the application and distribution comply with ELv2's limitations |
+| Provide Entity to others as a hosted or managed service exposing a substantial set of its features or functionality | Requires a separate commercial agreement, even if the service is free |
 
-Details in [LICENSE](LICENSE). Every line of the code is here to read —
-that's the point.
+The hosted-service restriction is about the functionality users receive, not
+whether they see Entity's interface or whether you charge them. ELv2 also
+prohibits bypassing license-key protections and removing or obscuring licensing,
+copyright, or other notices. The full [LICENSE](LICENSE) controls; these examples
+do not add restrictions or permissions. See [Elastic's FAQ](https://www.elastic.co/licensing/elastic-license/faq)
+for examples of application integration and managed services.
+
+For a hosted-resale agreement, or inquiries about paid managed services, team
+services, and support, open a repository issue asking for a private contact
+channel. ELv2 does not require payment merely because a company is successful
+or uses Entity in a commercial product, and it does not reserve all consulting
+or support work to the maintainer.
+
+Third-party software and model weights retain their own terms. The runtime
+downloads Python, dependencies, and embedding weights during setup; Entity's
+license does not relicense them.
+
+This license does not revoke any rights previously granted for earlier copies.

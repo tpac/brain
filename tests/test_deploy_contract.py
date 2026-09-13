@@ -693,7 +693,6 @@ class TestPublicTreeExport:
                 {'plugins': [{'name': 'entity', 'version': '0.0.1'}]}),
             '.codex-plugin/plugin.json': v,
             '.mcp.json': '{}\n', 'requirements.txt': '\n',
-            'LICENSES/PolyForm-A.md': '# grant\n',
             'dashboard/server.py': '', 'dashboard/static/app.js': '',
             'dashboard/static/css/base.css': '', 'dashboard/static/index.html': '',
             'servers/brain.py': '', 'servers/scales/s2/aspects_v1.json': '{}\n',
@@ -713,6 +712,7 @@ class TestPublicTreeExport:
         }
         # tracked, under shipped directories, and named by nothing
         unnamed = [
+            'LICENSES/PolyForm-A.md',             # historical licenses are not opted in
             'tests/fixtures/session_2026.json',   # a session log as a fixture
             'tests/golden_new.json',              # a gold corpus
             'tests/bench_new.py',                 # a dev harness

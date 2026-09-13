@@ -31,18 +31,19 @@ import * as journals from '/static/tabs/journals.js';
 import * as graph    from '/static/tabs/graph.js';
 import * as explorer from '/static/tabs/explorer.js';
 import * as logs     from '/static/tabs/logs.js';
-import * as health   from '/static/tabs/health.js';
+import * as overview from '/static/tabs/overview.js';
 import * as traces   from '/static/tabs/traces.js';
 import * as streams  from '/static/tabs/streams.js';
+import * as thalamus from '/static/tabs/thalamus.js';
 
 // ── Tab registry ──────────────────────────────────────────────────────
 // `graph` is NOT a top-level tab — it lives inside Live as the left pane
 // (added by the P2.2 layout pivot). It's still a module because Live needs
 // to drive its activate/resize lifecycle.
-// Primary tabs (visible top-of-page): live, logs, s2, traces, streams.
-// Overflow tabs (in the ⋯ dropdown):  journals, explorer, health.
-const TABS = { live, s2, journals, graph, explorer, logs, health, traces, streams };
-const OVERFLOW_TABS = ['journals', 'explorer', 'health'];
+// Primary tabs (visible top-of-page): live, streams, thalamus, s2, traces, logs.
+// Overflow tabs (in the ⋯ dropdown):  journals, explorer, overview.
+const TABS = { live, s2, journals, graph, explorer, logs, overview, traces, streams, thalamus };
+const OVERFLOW_TABS = ['journals', 'explorer', 'overview'];
 let activeTab = 'live';
 
 function switchTab(name) {
@@ -188,6 +189,7 @@ window.setTraceMode          = traces.setTraceMode;
 window.loadStreams           = streams.loadStreams;
 window.onStreamsSend         = streams.onStreamsSend;
 window.onStreamsSendKey      = streams.onStreamsSendKey;
+window.loadThalamus          = thalamus.loadThalamus;
 window.loadNodeDetail        = loadNodeDetail;
 
 // ── Boot ──────────────────────────────────────────────────────────────

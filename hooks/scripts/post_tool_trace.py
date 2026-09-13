@@ -10,7 +10,25 @@ import socket
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from hook_common import run_hook, tool_target_file, strip_caller_stamp
+from hook_common import run_hook, tool_target_file, strip_caller_stamp, host_tells
+
+
+PATCH_TEXT_CAP = 16_384
+
+
+def _raw_metadata(data, tool_name, tool_input):
+    """Content-free join/probe facts plus a bounded patch; never classify tools."""
+    metadata = {"tool": tool_name, "tells": host_tells(), "payload_keys": sorted(data)}
+    for key in ('tool_use_id', 'turn_id', 'prompt_id'):
+        if key in data:
+            metadata[key] = data[key]
+    if tool_name == 'apply_patch':
+        patch = tool_input.get('command')
+        if isinstance(patch, str):
+            metadata['patch'] = patch[:PATCH_TEXT_CAP]
+            if len(patch) > PATCH_TEXT_CAP:
+                metadata['patch_truncated_chars'] = len(patch) - PATCH_TEXT_CAP
+    return metadata
 
 
 def _build_summary(tool_name, tool_input):
@@ -81,7 +99,7 @@ def main():
     # Attach to current stop's S0 chain
     chain_id = "s0-%s-%s" % (session_id[:8], stop)
 
-    msg = json.dumps({
+    packet = {
         "cmd": "trace_append",
         "args": {
             "chain_id": chain_id,
@@ -89,10 +107,23 @@ def main():
             "event_type": "delta",
             "ref_type": "tool_result",
             "summary": summary[:500],
-            "metadata": json.dumps({"tool": tool_name}),
+            "metadata": json.dumps(_raw_metadata(data, tool_name, tool_input)),
             "session_id": session_id,
         }
-    })
+    }
+    # A wire-only argument fact: the daemon classifies the tool and decides
+    # capture policy. The 200-character display cue is insufficient to see a
+    # Git invocation late in a mixed call. Never retain this as trace metadata.
+    command = tool_input.get('command')
+    if isinstance(command, str):
+        packet['args']['tool_command'] = command
+    msg = json.dumps(packet)
+    if len(msg.encode('utf-8')) > 900_000:
+        # Stay below the daemon's 1 MiB transport ceiling. Don't pretend the
+        # cropped display summary is the full command: retain a loud diagnostic.
+        packet['args'].pop('tool_command', None)
+        packet['args']['tool_command_omitted'] = True
+        msg = json.dumps(packet)
 
     # DELIBERATELY hand-rolled, NOT routed through daemon_client.send_command
     # like every other client. The reason is COST, on the hottest path in the

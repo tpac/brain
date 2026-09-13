@@ -327,6 +327,8 @@ def main():
     args = ap.parse_args()
 
     import anthropic
+    from servers.scales.dispatch import load_env
+    load_env()
     client = anthropic.Anthropic()
 
     tool, tag = load_tool_def(args.variant)

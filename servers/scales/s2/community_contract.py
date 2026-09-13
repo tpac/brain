@@ -112,6 +112,9 @@ COMMUNITY_DETECTION = {
                                     # context AND lower round-2 generation
                                     # load (10 was hitting the 180s client
                                     # timeout on batch 1 consistently).
+    # Split rich decision batches before dispatch instead of truncating away
+    # their evidence. A single oversized proposal is retained and logged.
+    'max_batch_context_chars': 48000,
     'max_actionable_per_run': 30,   # Cap per idle cycle (was 60 for Sonnet)
     # Per-type quotas — priority order: merge > new_community > add_to_existing > health > drift
     'type_quotas': {
@@ -203,7 +206,8 @@ TYPE_PRIORITY = {
 # Flat keys in node_metadata_kv — each independently queryable via SQL.
 #
 # Source of truth for membership: community_member edges.
-# Metadata is denormalized cache, rebuilt on write.
+# Numeric structural fields are derived after writes; narrative fields are
+# maintained by the community encoder. Creation-time seeds are not live lists.
 #
 # Query examples:
 #   SELECT node_id, value FROM node_metadata_kv
@@ -214,8 +218,8 @@ TYPE_PRIORITY = {
 # ═══════════════════════════════════════════════════════════════
 
 COMMUNITY_METADATA_KEYS = {
-    # ── Membership (denormalized from community_member edges) ──
-    'community_members',              # JSON list of node IDs
+    # ── Membership ──
+    'community_members',              # Creation-time orphan-recovery seed
     'community_size',                 # Integer
 
     # ── Structure (from decoder) ──
@@ -277,6 +281,9 @@ S2CE_NODE_FORMAT = {
     'correction_render': 'balanced',  # relation verb + edge desc + 150-char excerpt; NOT heavy (the per-node correction firehose that blew the context to 217K)
     'time_format': 'relative',  # "2d ago" not "2026-04-09"
     'communities': 'title',     # where a rep already sits — context for placement, no ids
+    # An inspection can fetch a community too. Its creation-time lists must
+    # not masquerade as live membership after the decision view omitted them.
+    'extra_skip_keys': ('community_members', 'community_key_decisions'),
 }
 
 # Existing communities in the context listing (the ~15 recall picks). The
@@ -290,6 +297,19 @@ S2CE_COMMUNITY_FORMAT = {
     'metadata_limit': 0,        # No metadata — content is the narrative
     'time_format': 'relative',
 }
+
+# Communities named by a proposal are decision evidence, rather than the
+# compact neighbours above. Membership is attached from live edges separately.
+S2CE_DECISION_FORMAT = {
+    'content_limit': None,
+    'edge_limit': 4,
+    'metadata_limit': 800,
+    'show_edge_total': True,
+    'correction_render': 'balanced',
+    'time_format': 'relative',
+    'extra_skip_keys': ('community_members', 'community_key_decisions'),
+}
+S2CE_MEMBER_PREVIEW = 8
 
 # Fields the encoder needs to see per representative node:
 # title          — always (what is this node)

@@ -83,10 +83,10 @@ def capture_dir(brain=None):
 
 
 def begin(brain, *, candidates_data, user_message, recent_messages,
-          recently_surfaced, retrieval_stats, frame, layout,
+          retrieval_stats, frame, layout,
           surface_instructions, interaction_stamp,
           user_content, max_tokens, variant, model, session_id,
-          shuffle_seed=None, scope=None):
+          shuffle_seed=None, scope=None, recently_surfaced=None):
     """Snapshot everything known at the Haiku call boundary.
 
     Called from _call_surface BEFORE the agentic loop runs — candidates_data

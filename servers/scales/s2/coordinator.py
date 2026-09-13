@@ -67,21 +67,28 @@ def run_s2(brain):
     results = {}
     for unit in units:
         failure_key = 's2_%s_consecutive_failures' % unit.NAME
+        failure = None
         try:
             result = unit.run()
-            results[unit.NAME] = result
+            # Units may return partial progress with an error. Keep that
+            # progress and use the same failure policy as an exception.
+            if isinstance(result, dict) and result.get('error'):
+                failure = RuntimeError(result['error'])
             # Reset failure counter on success. 'skipped' counts as neutral
             # (unit declined to run), don't reset on that.
-            if not (isinstance(result, dict) and result.get('skipped')):
+            elif not (isinstance(result, dict) and result.get('skipped')):
                 prior = int(brain.get_config(failure_key) or 0)
                 if prior > 0:
                     brain.set_config(failure_key, '0')
                     print('[s2:%s] Recovered after %d consecutive failures'
                           % (unit.NAME, prior), flush=True)
         except Exception as e:
-            results[unit.NAME] = {'error': str(e)[:200]}
-            print('[s2:%s] ERROR: %s' % (unit.NAME, e), flush=True)
-            brain._log_error('s2_%s' % unit.NAME, e, 'coordinator run')
+            failure = e
+            result = {'error': str(e) or type(e).__name__}
+        results[unit.NAME] = result
+        if failure is not None:
+            print('[s2:%s] ERROR: %s' % (unit.NAME, failure), flush=True)
+            brain._log_error('s2_%s' % unit.NAME, failure, 'coordinator run')
 
             # Persistent-failure escalation — rate-limited brain._log_error
             # suppresses repeats, hiding the fact that a unit is broken every
@@ -97,7 +104,7 @@ def run_s2(brain):
                         's2_%s_persistent_failure' % unit.NAME,
                         RuntimeError(
                             '%s has failed %d runs in a row: %s' % (
-                                unit.NAME, count, str(e)[:150])),
+                                unit.NAME, count, str(failure)[:150])),
                         'unit is consistently broken — investigate immediately')
             except Exception as persist_err:
                 # The whole point of this block is to make failures loud.

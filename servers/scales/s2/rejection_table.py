@@ -29,7 +29,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-from ...contract import VALID_BATCH_OPS, unwrap_operations
+from ...contract import VALID_BATCH_OPS, normalize_connect_to, unwrap_operations
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -408,13 +408,13 @@ def match_proposals_to_actions(sent_proposals, action_details):
     or failure — the encoder still saw and judged it).
 
     Matching rules per proposal type:
-    - new_community: remember op (type=community) whose connection target_ids
+    - new_community: remember op (type=community) whose connect_to IDs
       overlap >= 50% with the proposal's member set
     - add_to_existing: connect op (community_member) with matching (source, target)
     - drift (accept): connect op to foreign community
     - drift (reject): revise op with _sys_drift_threshold on the node
     - health_update: archive or revise (community_maturity) on the community
-    - merge_communities: archive op on smaller_id, or revise on larger_id
+    - merge_communities: absorb of the pair, archive on smaller_id, or revise on larger_id
     """
     acted_idx = set()
 
@@ -422,11 +422,14 @@ def match_proposals_to_actions(sent_proposals, action_details):
         op = op_spec.get('op', '')
 
         if op == 'remember' and op_spec.get('type') == 'community':
+            connections = normalize_connect_to(op_spec.get('connect_to')) or []
             conn_targets = {
-                c.get('target_id') for c in op_spec.get('connections', [])
+                # connect_to.title carries the exact ID for an existing node
+                # (CONNECT_TO_ITEM_SCHEMA); proposal members already exist.
+                c['title'] for c in connections
                 if isinstance(c, dict)
                 and c.get('relation') == 'community_member'
-                and c.get('target_id')
+                and isinstance(c.get('title'), str) and c['title']
             }
             if not conn_targets:
                 continue
@@ -480,6 +483,13 @@ def match_proposals_to_actions(sent_proposals, action_details):
             for i, p in enumerate(sent_proposals):
                 if (p.get('type') == 'merge_communities'
                         and p.get('larger_id') == nid):
+                    acted_idx.add(i)
+
+        elif op == 'absorb':
+            for i, p in enumerate(sent_proposals):
+                if (p.get('type') == 'merge_communities'
+                        and p.get('larger_id') == op_spec.get('survivor_id')
+                        and p.get('smaller_id') == op_spec.get('absorbed_id')):
                     acted_idx.add(i)
 
         elif op == 'archive':

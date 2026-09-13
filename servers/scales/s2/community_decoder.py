@@ -612,6 +612,7 @@ class CommunityDecoder(IntegrationUnit):
                 'node_title': titles.get(nid, nid[:8]),
                 'node_type': types_map.get(nid, '?'),
                 'home_community': drift['home']['title'],
+                'home_id': drift['home']['id'],
                 'home_affinity': drift['home_aff'],
                 'current_drift_threshold': drift.get('drift_ratio', default_drift_ratio),
                 'foreign': [

@@ -14,7 +14,7 @@ The brain has 2000 nodes of knowledge — decisions, corrections, lessons, rules
 
 - A node without REASONING is a fact without a story. Why was this encoded? What decision led here? The reasoning tells the future you WHY this matters, not just what it says.
 
-You receive nodes with their full context — content, connections, corrections, and the actual conversation that created them. Your job: fill what's missing, grounded in what you can see.
+You receive nodes with their full context — content, connections, corrections, and supporting conversation when available. Your job: fill what's missing, grounded in what you can see.
 
 ## What You Receive
 
@@ -30,11 +30,11 @@ For each node that needs healing, you get:
 - Existing situation text (if any)
 
 ### THE CONVERSATION (when available)
-The actual exchange between operator and assistant around when this node was encoded. 10 exchanges before, 5 after. Both voices — what the operator asked, what the assistant responded, what the brain surfaced for each turn.
+Excerpts around the node's cited sources, grouped by recorded session. With no source refs, the context comes from its creation trace. Each anchor contributes 10 exchanges before and 5 after where available, expanding to retain rows with tied timestamps; overlapping windows merge within a session. Conversation headings and separate-excerpt markers preserve boundaries — do not assume the excerpts form one continuous exchange. Speaker labels preserve who spoke. Cited context can predate the node's creation; it does not establish when or why the node was written. Unavailable source refs are listed explicitly; use the available evidence without inventing missing exchanges.
 
 This is the richest context you get. The conversation shows HOW people naturally talk about this topic — which is exactly what the question field needs to capture.
 
-For old nodes (pre-April 2026): no conversation available. Work from content + connections only.
+When recorded context is unavailable, work from content + connections only.
 
 ### WHAT NEEDS HEALING
 Flags telling you which fields to generate:
@@ -98,7 +98,6 @@ CONVERSATION:
   [operator] "Let me clean up by deleting all the archived nodes"
   [assistant] "Before any bulk operation, let me backup the database first..."
   [operator] "good call. what happens to edges when we delete?"
-  ← ENCODED →
 NEEDS: question, situation
 
 RESPONSE:
@@ -130,7 +129,6 @@ NODE: "Contracts should be per-scale, not in pipeline_contract.py" [decision]
 CONVERSATION:
   [operator] "Shouldnt the contracts not be in pipes file but actually have a contract per Scale layer?"
   [assistant] "You're right — each scale should own its constants..."
-  ← ENCODED →
 NEEDS: reasoning
 
 RESPONSE:
@@ -146,7 +144,7 @@ Every field you generate must be traceable to the data in front of you.
 
 - **situation**: Derived from the node's content (it usually describes when it applies), its connections (what it corrects/extends/depends on), or the conversation context (what was the operator doing). Don't fabricate moments that aren't supported by the data.
 
-- **reasoning**: Derived from the conversation (the exchange that led to encoding), the node's correction chain (the corrects/supersedes/reframes edges showing what corrected it and why), or the connections (what it builds on). If you can't infer the reasoning, skip the field — an absent reasoning is better than a fabricated one.
+- **reasoning**: Derived from supporting conversation evidence, the node's correction chain (the corrects/supersedes/reframes edges showing what corrected it and why), or the connections (what it builds on). Cited context alone does not establish the circumstances of encoding. If you can't infer the reasoning, skip the field — an absent reasoning is better than a fabricated one.
 
 ### Skip, don't guess
 

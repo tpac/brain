@@ -68,8 +68,9 @@ class ConsolidationEncoder(IntegrationUnit):
         # for suppression. journal_entry is likewise gone — residue is its own
         # journal_note rows now.
         self.trace('delta', 'consolidated',
-                   '%d actions (%d writes) in %d rounds for %d clusters, '
+                   '%s%d actions (%d writes) in %d rounds for %d clusters, '
                    '%dms, %d→%d tok' % (
+                       'FAILED: ' if result.get('error') else '',
                        actions, write_actions, rounds, len(clusters),
                        result.get('elapsed_ms', 0),
                        result.get('input_tokens', 0),
@@ -89,6 +90,7 @@ class ConsolidationEncoder(IntegrationUnit):
                        cache_read_tokens=result.get('cache_read_tokens', 0),
                        cache_creation_tokens=result.get('cache_creation_tokens', 0),
                        model=result.get('model', ''),
+                       errors=[result['error']] if result.get('error') else [],
                    ))
 
         return result
@@ -126,7 +128,7 @@ class ConsolidationEncoder(IntegrationUnit):
         client = make_client()
 
         # Residue continuity — the last few runs' review notes.
-        journal_prefix = self.journal.continuity()
+        journal_prefix = self.journal.residue()
 
         # Batch clusters
         batch_size = self.config.get('max_proposals_per_call', 10)
@@ -161,7 +163,8 @@ class ConsolidationEncoder(IntegrationUnit):
             dispatch_fn = self._make_dispatch(valid_archive_ids=valid_archive_ids)
 
             # Format this batch
-            user_content = journal_prefix + self._format_clusters(batch)
+            user_content = (journal_prefix + self.journal.messages()
+                            + self._format_clusters(batch))
 
             # Record this batch's prompt (full content — the old tmp file
             # truncated at 50KB; the dashboard reads it back by chain_id
@@ -185,15 +188,14 @@ class ConsolidationEncoder(IntegrationUnit):
                             self.chain_id(), seq_base=batch_num * 100)),
                     log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True))
 
-                # Accumulate + per-batch journal + truncation logging — shared
-                # multi-batch body (see IntegrationUnit._fold_batch_result).
-                self._fold_batch_result(total_result, result, batch_num,
-                                        's2_consolidation_truncation')
-
             except Exception as e:
                 print('[s2-consolidation] BATCH %d FAILED: %s' % (batch_num, e), flush=True)
                 self.brain._log_error(self.NAME, e,
                                       'encode batch %d' % batch_num)
+                result = {'error': str(e) or type(e).__name__}
+
+            self._fold_batch_result(total_result, result, batch_num,
+                                    's2_consolidation_truncation')
 
         total_result['elapsed_ms'] = int((time.time() - _t0) * 1000)
         return total_result

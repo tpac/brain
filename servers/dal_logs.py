@@ -651,6 +651,37 @@ class InteractionDAL(_LogsWriteBase):
         return [{'version': r[0], 'created_by': r[1]} for r in rows]
 
 
+def _attended_sql(alias: str) -> str:
+    """SQL predicate: the row at `alias` is an OPERATOR-ATTENDED turn — the
+    latest user_message at-or-before it lacks the wake-envelope marker. Takes
+    one bound param (the marker LIKE pattern).
+
+    For RANKING only. Testing the marker on a row's OWN summary catches half a
+    machine-woken exchange: the envelope is the user_message, but the reply to
+    it is an ordinary assistant_message carrying no marker, so a self-test
+    passes the reply through and every wake refreshes the stream's recency.
+
+    Do NOT reach for this wherever an envelope filter appears. It answers "did
+    the operator provoke this turn", which is the right question for ranking and
+    the WRONG one for description: a machine-woken reply is unattended yet is
+    usually the most informative line about that stream, so focus and peek keep
+    it and filter only the envelope itself.
+
+    The envelope self-excludes (it is its own latest predecessor); its reply is
+    excluded by that predecessor. COALESCE keeps a conversational row that has
+    no preceding user_message at all ATTENDED rather than silently dropping it.
+    Prefix-matched (`marker%`) to stay index-friendly, matching every other
+    envelope filter in this module; trace_contract.is_machine_turn tests the
+    marker anywhere in the text, so the two agree only while envelopes lead
+    with it — which is how the harness writes them.
+    """
+    return ("COALESCE((SELECT p.summary FROM trace_events p "
+            "  WHERE p.scale = 's0' AND p.session_id = {a}.session_id "
+            "    AND p.ref_type = 'user_message' "
+            "    AND p.created_at <= {a}.created_at "
+            "  ORDER BY p.created_at DESC LIMIT 1), '') NOT LIKE ?").format(a=alias)
+
+
 class TraceDAL(_LogsWriteBase):
     """Access layer for trace_events — the fractal learning loop.
 
@@ -1002,9 +1033,7 @@ class TraceDAL(_LogsWriteBase):
         # historical sessions don't silently truncate to empty. exclude_ref_types
         # drops residue (journal_note) so "recent integration deltas" don't
         # count encoder notes. The XOR guard + predicate build live in
-        # _event_where (the one WHERE source for trace_events readers;
-        # latest_in_window and find_by_metadata_substring stay inline — their
-        # inclusive bounds / metadata-only LIKE differ from the builder's forms).
+        # _event_where (the one WHERE source for generic trace_events readers).
         where, params = self._event_where(
             scale=scale, event_type=event_type,
             session_id=session_id, session_ids=session_ids,
@@ -1047,9 +1076,9 @@ class TraceDAL(_LogsWriteBase):
         session scope while get_by_ref_type applies both; each door passes (or
         withholds) `hours` accordingly.
 
-        Needles: contains → (summary OR metadata) LIKE %s% (same idiom as
-        find_by_metadata_substring; metadata is JSON text, so it greps the full
-        body, not the 200-char summary). Structural: scale/event_type/ref_type/
+        Needles: contains → (summary OR metadata) LIKE %s% (metadata is JSON
+        text, so it searches the full body, not the 200-char summary).
+        Structural: scale/event_type/ref_type/
         ref_id equality. ref_types: an INCLUDE whitelist (te.ref_type IN (...));
         None/empty = no filter (the recall_episodes caller sources its default
         whitelist from the trace_contract dial, so there's no hardcoded list
@@ -1318,19 +1347,6 @@ class TraceDAL(_LogsWriteBase):
 
         return {r[0] or '': r[1] for r in rows}
 
-    def latest_in_window(self, scale: str, ref_type: str,
-                         upper_iso: str, lower_iso: str) -> Optional[Dict[str, str]]:
-        """Most recent trace matching (scale, ref_type) with
-        lower_iso <= created_at <= upper_iso. Returns
-        {'session_id', 'created_at'} or None. Forensic/historic lookup.
-        """
-        row = self.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = ? AND ref_type = ? AND created_at <= ? AND created_at >= ? "
-            "ORDER BY created_at DESC LIMIT 1",
-            (scale, ref_type, upper_iso, lower_iso)).fetchone()
-        return {'session_id': row[0], 'created_at': row[1]} if row else None
-
     def active_sessions_by_turn(self, cutoff_iso: str, exclude_session: str = '',
                                 limit: int = 5,
                                 sort_by: str = 'recency') -> List[Dict[str, Any]]:
@@ -1350,11 +1366,19 @@ class TraceDAL(_LogsWriteBase):
         Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
         trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
-        last real work is often its own last reply. Turns whose summary starts
-        with the wake-envelope marker (a `<task-notification>` ignition) are
-        skipped so the focus shows work, not the wake envelope. Both the
-        conversational set and the marker come from the contract — no filters
-        reproduced here. (Raw; the render layer first-lines/truncates.) Caller
+        last real work is often its own last reply. `focus` drops only the
+        wake-envelope turn itself (a `<task-notification>` ignition), so a
+        woken stream still DESCRIBES itself by its own latest report.
+        `conv_recency` — the RANKING key — is stricter: it counts only
+        OPERATOR-ATTENDED turns, meaning the latest user_message at-or-before
+        the row lacks the marker (see _attended_sql). That asymmetry is
+        deliberate. A machine-woken stream answers its own wake, and those
+        replies are unmarked, so counting them as recency let a background task
+        outrank a session the operator was actually working in; but the same
+        reply is the most informative line available ABOUT that stream. So it
+        is discounted for "how much should I care" and kept for "what is this".
+        Both the conversational set and the marker come from the contract — no
+        filters reproduced here. (Raw; the render layer first-lines/truncates.) Caller
         computes the cutoff (wall-clock vs conversation-time is the caller's
         policy, not the DAL's)."""
         # PINNED to operator dialogue (not the dial): presence focus and
@@ -1380,6 +1404,15 @@ class TraceDAL(_LogsWriteBase):
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
                  else "conv_recency DESC, last_turn DESC")
+        # RANKING (conv_recency) counts only OPERATOR-ATTENDED turns — that is
+        # what a machine-woken stream was winning the roster on. FOCUS keeps the
+        # older, weaker rule (drop the envelope, keep everything else): the
+        # envelope is noise, but the reply to it is the stream's own account of
+        # what it just did, and that is usually the single most informative line
+        # about it. Discounting the reply for RANK and keeping it for DESCRIPTION
+        # is the whole point — one of these answers "how much should I care", the
+        # other "what is this". Membership (the outer WHERE) still counts
+        # heartbeats and envelopes, so watch-mode streams stay VISIBLE.
         rows = self.conn.execute(
             "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
             "  (SELECT u.summary FROM trace_events u "
@@ -1388,7 +1421,7 @@ class TraceDAL(_LogsWriteBase):
             "   ORDER BY u.created_at DESC LIMIT 1) AS focus, "
             "  (SELECT MAX(c.created_at) FROM trace_events c "
             "   WHERE c.scale = 's0' AND c.session_id = t.session_id AND c.ref_type IN (%s) "
-            "     AND c.summary NOT LIKE ?) AS conv_recency, "
+            "     AND c.summary NOT LIKE ? AND %s) AS conv_recency, "
             "  (SELECT COUNT(*) FROM trace_events c2 "
             "   WHERE c2.scale = 's0' AND c2.session_id = t.session_id "
             "     AND c2.ref_type = 'user_message' AND c2.summary NOT LIKE ?) AS turn_count "
@@ -1396,9 +1429,12 @@ class TraceDAL(_LogsWriteBase):
             "WHERE t.scale = 's0' AND t.ref_type IN (%s) "
             "  AND t.created_at > ? AND t.session_id != ? "
             "GROUP BY t.session_id "
-            "ORDER BY %s LIMIT ?" % (conv_ph, conv_ph, live_ph, order),
+            "ORDER BY %s LIMIT ?" % (conv_ph,
+                                     conv_ph, _attended_sql('c'),
+                                     live_ph, order),
             (*OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
              *OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER + '%',
+             WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
         return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',
@@ -1416,8 +1452,13 @@ class TraceDAL(_LogsWriteBase):
                            ARE activity (same rule as active_sessions_by_turn)
           recent_msgs    — last `msg_limit` conversational turns, newest first,
                            [{'ts','ref_type','text'}], wake-envelope turns
-                           skipped so a peek shows work not ignition (raw; the
-                           render layer truncates). Read-only.
+                           skipped so a peek shows work not ignition. The
+                           stream's own REPLY to a wake is kept: it is the
+                           status line a peek exists to surface. (Contrast
+                           active_sessions_by_turn's conv_recency, which
+                           discounts those replies — ranking and description
+                           want opposite things here.) Raw; the render layer
+                           truncates. Read-only.
         """
         # PINNED to operator dialogue — see active_sessions_by_turn.
         from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
@@ -1438,6 +1479,12 @@ class TraceDAL(_LogsWriteBase):
         started_at = (agg[0] or '') if agg else ''
         last_active_at = (agg[1] or '') if agg else ''
         turn_count = (agg[2] or 0) if agg else 0
+        # Envelope-only filter here, deliberately NOT the attendedness rule that
+        # ranks the roster: a peek asks "what is this stream doing", and the
+        # stream's answer to a wake IS that — "Longmem prod arm at item 6 of 10"
+        # is the most useful line a peek can return. Discounting machine-woken
+        # turns is a RANKING concern (active_sessions_by_turn's conv_recency);
+        # applied here it would swap the live status line for a stale one.
         rows = self.conn.execute(
             "SELECT created_at, ref_type, summary FROM trace_events "
             "WHERE scale='s0' AND session_id=? AND ref_type IN (%s) "
@@ -1466,17 +1513,31 @@ class TraceDAL(_LogsWriteBase):
             params.append(since_iso)
         return self.conn.execute(sql, params).fetchone()[0]
 
-    def find_by_metadata_substring(self, scale: str, ref_type: str,
-                                   substring: str) -> Optional[Dict[str, str]]:
-        """First trace matching (scale, ref_type) whose metadata contains
-        `substring` (LIKE %substring%). Returns {'session_id', 'created_at'}
-        or None. Used to locate the trace that recorded a given node id.
+    def get_node_creation_traces(self, node_id: str) -> List[Dict[str, str]]:
+        """Exact creation evidence, oldest first, across recorded sessions.
+
+        A node_created ref_id or an encoding_run's structured `created` list
+        proves creation. Mentions elsewhere and revisions do not. Return all
+        matches so the caller can detect conflicting provenance; a row limit
+        could hide a contradictory session. Historic malformed metadata cannot
+        establish a link. This is independent of generic time-based searches.
         """
-        row = self.conn.execute(
-            "SELECT session_id, created_at FROM trace_events "
-            "WHERE scale = ? AND ref_type = ? AND metadata LIKE ? LIMIT 1",
-            (scale, ref_type, '%' + substring + '%')).fetchone()
-        return {'session_id': row[0], 'created_at': row[1]} if row else None
+        if not node_id:
+            return []
+        rows = self.conn.execute(
+            "SELECT session_id, created_at, ref_type, id FROM trace_events te "
+            "WHERE event_type = 'delta' AND ("
+            "  (ref_type = 'node_created' AND ref_id = ?) OR "
+            "  (scale = 's1' AND ref_type = 'encoding_run' AND EXISTS ("
+            "    SELECT 1 FROM json_each(CASE WHEN json_valid(te.metadata) "
+            "      THEN te.metadata ELSE '{}' END) field, "
+            "      json_each(CASE WHEN field.type = 'array' "
+            "        THEN field.value ELSE '[]' END) item "
+            "    WHERE field.key = 'created' AND field.type = 'array' "
+            "      AND item.type = 'text' AND item.value = ?))) "
+            "ORDER BY created_at ASC, rowid ASC", (node_id, node_id)).fetchall()
+        return [dict(zip(('session_id', 'created_at', 'ref_type', 'id'), row))
+                for row in rows]
 
     def get_session_turns(self, session_id: str, limit: int = 20,
                           around_timestamp: str = None,
@@ -1484,7 +1545,8 @@ class TraceDAL(_LogsWriteBase):
                           with_judge_output: bool = True,
                           exclude_trace_id: str = None,
                           with_surfaced: bool = False,
-                          older_than: str = None) -> List[Dict[str, Any]]:
+                          older_than: str = None,
+                          include_timestamp_ties: bool = False) -> List[Dict[str, Any]]:
         """Get chronological turns for a session from S0 + S1 traces.
 
         Returns: [{role, ref_type, content, timestamp, trace_id, judge_output}]
@@ -1532,6 +1594,9 @@ class TraceDAL(_LogsWriteBase):
                 clipping at wall-now and post-filtering the wrong rows.
                 Strict on purpose: a replay's cue row sits exactly AT as_of
                 and must not enter its own window.
+            include_timestamp_ties: expand historic window boundaries to keep
+                whole timestamp groups. Cited context uses this to retain every
+                source row without imposing a source priority on tied events.
         """
         # v29: select `id` (8-char hex trace_event.id) so callers can render
         # [trace:<hex>] markers — the encoder copies these into source_refs.
@@ -1660,6 +1725,11 @@ class TraceDAL(_LogsWriteBase):
                     center_idx = i
             start = max(0, center_idx - _before * 2)  # ×2 because user+assistant = 2 turns per exchange
             end = min(len(turns), center_idx + _after * 2 + 1)
+            if include_timestamp_ties and start < end:
+                while start > 0 and turns[start - 1]['timestamp'] == turns[start]['timestamp']:
+                    start -= 1
+                while end < len(turns) and turns[end]['timestamp'] == turns[end - 1]['timestamp']:
+                    end += 1
             turns = turns[start:end]
 
         return turns
@@ -1792,5 +1862,3 @@ class SessionStateDAL(_LogsWriteBase):
                 '(session_id, key, node_id, value, updated_at) VALUES (?, ?, ?, ?, ?)',
                 (session_id, key, node_id, value, iso_now()))
             commit_unless_batched(self.wconn)
-
-

@@ -58,7 +58,9 @@ class HealerDecoder(IntegrationUnit):
                    '%d proposals built' % len(proposals),
                    metadata={
                        'proposal_count': len(proposals),
-                       'with_conversation': sum(1 for p in proposals if p.get('conversation')),
+                       'with_conversation': sum(
+                           1 for p in proposals
+                           if (p.get('conversation') or {}).get('conversations')),
                        'node_ids': [p['node_id'][:8] for p in proposals[:20]],
                    })
 
@@ -192,7 +194,8 @@ class HealerDecoder(IntegrationUnit):
                 continue  # Nothing to heal
 
             # Load conversation context
-            conversation, encoding_ts = self._load_conversation(nid, rich.get('created_at', ''))
+            conversation = self.brain.get_conversation_around(
+                node_id=nid, before=10, after=5)
 
             proposals.append({
                 'node_id': nid,
@@ -202,22 +205,6 @@ class HealerDecoder(IntegrationUnit):
                 'needs_situation': not has_situation,
                 'needs_reasoning': not has_reasoning,
                 'conversation': conversation,
-                'encoding_timestamp': encoding_ts,
             })
 
         return proposals
-
-    def _load_conversation(self, node_id, node_created_at):
-        """Load the conversation exchanges around when this node was encoded.
-
-        Uses brain.get_conversation_around — single source of truth for
-        conversation context. Handles both post-trace (S0 traces) and
-        pre-trace (JSONL logs).
-
-        Returns: (turns_list, encoding_timestamp) or ([], '')
-        """
-        turns = self.brain.get_conversation_around(
-            node_id=node_id, before=10, after=5)
-
-        # Encoding timestamp: use node's created_at as best estimate
-        return turns, node_created_at
