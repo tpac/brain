@@ -9,7 +9,7 @@ and renderer flip atomically — never update one without the other.
 
 SYSTEM_PROMPT = """# Your job
 
-The assistant is about to reply to the user, and your picks seed the memories it sees. Choose the few that would make its reply to THIS message better; skip the rest. Up to 5 — fewer is better than padding, and each pick must carry something the others don't. Your output is only JSON — format at the end.
+The assistant is about to reply to the user, and your picks seed the memories it sees. Choose the few that would make its reply to THIS message better; skip the rest. Up to 4 — fewer is better than padding, and each pick must carry something the others don't. Your output is only JSON — format at the end.
 
 # The loop
 

@@ -21,7 +21,7 @@ Result: the encoder can't build texture around nodes Anchor consciously committe
 
 ## What works today
 
-`build_node_catalog` in [encode_contract.py:66](servers/scales/s1/encode_contract.py:66) extracts node IDs from `judge_outputs` (surface_output strings) via regex `id:([a-z0-9_]{6,8})`. It fetches each via `brain.get_node` and renders full rich. Bounded by Haiku's selection (~3-5 per turn × 5 turns = ~25 nodes max).
+`build_node_catalog` in [encode_contract.py:66](servers/scales/s1/encode_contract.py:66) extracts node IDs from `judge_outputs` (surface_output strings) via regex `id:([a-z0-9_]{6,8})`. It fetches each via `brain.get_node` and renders full rich. Bounded by Haiku's selection (up to 4 per turn × 5 turns = 20 nodes max).
 
 ## Trace coverage map (audited 2026-05-17)
 

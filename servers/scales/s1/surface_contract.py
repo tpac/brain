@@ -225,7 +225,11 @@ SURFACE = {
     'max_candidates': 30,           # 2026-05-01: was 20. FTS5 adds up to 5 more = 35 max total.
                                     # Bumped to give Haiku more axis-of-context room while
                                     # multi-axis candidate generation is being designed.
-    'max_selected': 5,              # Haiku picks at most this many (was 8 — reduced for 10K hook cap)
+    # Haiku picks at most this many. Sized with SURFACE_INJECT_BUDGET so each
+    # pick's share holds a typical node whole: the picker, which has read the
+    # message, decides what to leave out — not the renderer's arithmetic.
+    # The system prompt states the same number in prose (pinned by test).
+    'max_selected': 4,
     # Conversation caps for the selector's <conversation> block. The current
     # message is the moment and arrives whole up to 8,000 (the S0 store keeps
     # 8,000). The assistant's message right before it is the single richest
@@ -736,7 +740,10 @@ Candidates:
 # it 0 times in 36 blocks.
 
 # Soft target for the whole inject; the hard exit cap is _MAX_INJECT_CHARS.
-SURFACE_INJECT_BUDGET = 7000
+# Split across SURFACE['max_selected'] picks it gives each ~2,000 — about
+# 1,300-1,600 of content after the block's skeleton — so nodes of typical
+# length render whole and only the long ones meet a sentence-boundary cut.
+SURFACE_INJECT_BUDGET = 8000
 
 # Hard byte cap on the inject. Claude Code spills additionalContext to a
 # file above ~10k chars, and Anchor doesn't read that file path back. Cap
@@ -845,7 +852,7 @@ def seed_render_cfg(mode, scope=None, content_limit=None):
     return cfg
 
 # ═══════════════════════════════════════════════════════════════
-# PICKER RENDER — what Haiku reads when selecting 3-5 from 25
+# PICKER RENDER — what Haiku reads when selecting a few from 25
 # ═══════════════════════════════════════════════════════════════
 
 # Distinct from the SURFACE_*_FORMAT constants above: HAIKU_FORMAT is
@@ -862,7 +869,7 @@ HAIKU_FORMAT = {
 }
 
 # Selection-grade lean render (Area 2, 2026-06-12). The selector's job is
-# "pick 3-5 relevant ids", not "read the node" — injection still renders
+# "pick the few relevant ids", not "read the node" — injection still renders
 # the SELECTED nodes at full richness, so no information leaves the
 # pipeline; it's relocated to the stage that uses it. Recon numbers
 # (eval/oracle_audit/ab_render_recon.py, 150 candidates): full render
