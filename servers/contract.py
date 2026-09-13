@@ -496,7 +496,13 @@ STRUCTURAL_FIELDS = {
                                    "(`content_edits` is the alias of the swap list) — a full "
                                    "rewrite must re-author everything the node holds, and "
                                    "dropped details are silent losses.")},
+    # encoder_summary=False: the field stays on the MCP write surface (Anchor
+    # sets it by hand) but is not advertised to the encoder in its field
+    # summary. No worked example exercises these, and an advertised field with
+    # no carrier is written as a constant — confidence 0.7 on every node in
+    # the V3.5 cell — so the encoder is not offered them at all.
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0,
+                   "encoder_summary": False,
                    "description": ("0.0-1.0. Set below 1.0 when the claim is hedged, contested, "
                                    "or inferred — recall exposes it and filters select on it. "
                                    "Don't fabricate precision.")},
@@ -520,9 +526,10 @@ STRUCTURAL_FIELDS = {
     # write boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str", "agent_writable": False},
     "personal_context": {"store": "nodes", "type": "str", "agent_writable": False},
-    "evolution_status":  {"store": "nodes", "type": "str", "bare_only": True,
+    "evolution_status":  {"store": "nodes", "type": "str", "bare_only": True, "encoder_summary": False,
                           "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."},
-    "source_turn_id":   {"store": "nodes", "type": "str", "bare_only": True, "description": "message_stream ID that produced this node (episode linkage)"},
+    "source_turn_id":   {"store": "nodes", "type": "str", "bare_only": True, "encoder_summary": False,
+                         "description": "message_stream ID that produced this node (episode linkage)"},
     # system_stamped: excluded from the agent-facing schemas — MCP writes
     # default to 'anchor' at the write boundary; scale agents get theirs
     # force-stamped by apply_encoder_attribution. Never agent-authored
@@ -593,9 +600,12 @@ PROMOTED_FIELDS = {
         "bare_only": True,
         "description": ("When the remembered thing HAPPENED — ISO 8601, "
                         "distinct from created_at (when it was written). "
-                        "Resolve relative dates to absolute; leave absent "
-                        "rather than guess. Read by the temporal lane at "
-                        "recall."),
+                        "Resolve relative and partial dates against the "
+                        "conversation's date: a bare month, weekday or season "
+                        "is the most recent one that fits, with the day marked "
+                        "approximate in content. Leave it absent only when no "
+                        "date can be established. Read by the temporal lane "
+                        "at recall."),
     },
     "reasoning": {
         "store": "metadata_kv",
@@ -642,6 +652,7 @@ PROMOTED_FIELDS = {
     "source_context": {
         "store": "metadata_kv",
         "type": "str",
+        "encoder_summary": False,
         "description": "Session/context when this was encoded.",
     },
 }
@@ -1535,10 +1546,22 @@ def render_skinny_node(node, extra_value_limit=120):
         (node.get('id') or '')[:8], ('  ' + extra) if extra else '')
 
 
+def encoder_summary_fields():
+    """The writable fields the ENCODER is offered — get_writable_fields minus
+    the ones marked encoder_summary=False (kept on the MCP write surface for
+    Anchor's own hand; hidden from the encoder because nothing teaches them
+    and an advertised field with no carrier is written as a constant)."""
+    return {k: v for k, v in get_writable_fields().items()
+            if v.get("encoder_summary", True)}
+
+
 def generate_field_summary():
-    """Generate a human-readable field summary for the encoding agent prompt."""
+    """Generate a human-readable field summary for the encoding agent prompt.
+    This is the encoder's field surface; the MCP schemas read
+    get_writable_fields directly, so a field can be writable by hand and
+    still absent here (encoder_summary_fields)."""
     lines = []
-    for name, spec in get_writable_fields().items():
+    for name, spec in encoder_summary_fields().items():
         parts = [name]
         parts.append("(%s)" % spec.get("type", "any"))
         if spec.get("required"):

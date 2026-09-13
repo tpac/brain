@@ -231,3 +231,21 @@ if __name__ == '__main__':
                 print('  FAIL  %s — %s' % (name, e))
     print('\n%s' % ('ALL PASS' if not fails else '%d FAILED' % fails))
     sys.exit(1 if fails else 0)
+
+
+def test_encoder_summary_hides_fields_kept_on_the_mcp_surface():
+    """encoder_summary=False is an audience split, not a retirement: the field
+    stays writable and declared on the MCP remember schema (Anchor's hand) and
+    is absent from the encoder's field summary — an advertised field with no
+    worked carrier was written as a constant (confidence 0.7 on every node)."""
+    from servers.contract import ALL_FIELDS, encoder_summary_fields
+    hidden = {k for k, v in ALL_FIELDS.items() if v.get('encoder_summary') is False}
+    assert hidden, 'no field is marked encoder_summary=False — did the flag move?'
+    summary_names = {ln.split()[0] for ln in generate_field_summary().split('\n') if '  (' in ln}
+    writable = get_writable_fields()
+    remember_props = TOOLS['remember']['inputSchema']['properties']
+    for f in hidden:
+        assert f in writable, '%s hidden from the encoder must stay writable by hand' % f
+        assert f in remember_props, '%s hidden from the encoder must stay on the MCP remember schema' % f
+        assert f not in summary_names, '%s is marked encoder_summary=False but the field summary lists it' % f
+    assert set(encoder_summary_fields()) == set(writable) - hidden
