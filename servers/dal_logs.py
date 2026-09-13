@@ -1329,6 +1329,33 @@ class TraceDAL(_LogsWriteBase):
 
         return [self._row_to_event(r) for r in rows]
 
+    def journal_page(self, *, scale, session_id='', unit='', after=None,
+                     limit):
+        """Read committed journal events in append order, with a resume cursor.
+
+        Initial reads select the newest bounded history; incremental reads
+        drain oldest-first so a limit never skips intervening resolutions.
+        rowid is an internal cursor, not a trace identity: trace IDs are random
+        and an append_batch gives every row the same timestamp. Cursors live
+        only for an active encoder invocation, never across DB maintenance.
+        """
+        where, params = self._event_where(
+            scale=scale, session_id=session_id, chain_suffix=unit,
+            ref_type='journal_note', hours=None)
+        if after is not None:
+            where += ' AND te.rowid > ?'
+            params.append(after)
+        order = 'DESC' if after is None else 'ASC'
+        rows = self.conn.execute(
+            'SELECT %s, te.rowid FROM trace_events te WHERE %s '
+            'ORDER BY te.rowid %s LIMIT ?' % (self._CANON_COLS_TE, where, order),
+            params + [limit + 1]).fetchall()
+        events = [dict(self._row_to_event(r[:-1]), journal_cursor=r[-1])
+                  for r in rows[:limit]]
+        return {'events': events, 'truncated': len(rows) > limit,
+                'cursor': max((e['journal_cursor'] for e in events),
+                              default=after or 0)}
+
     def count_by(self, field: str, scale: str = '', hours: int = 24) -> Dict[str, int]:
         """Count events grouped by a field.
 

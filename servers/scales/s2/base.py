@@ -549,7 +549,7 @@ class IntegrationUnit:
                 extract_json — a `]`/`}` inside a fence after the payload
                 would corrupt its rfind-based scan). The single wiring point
                 for single-shot units (healer, aspect); continuity is the
-                caller's to prepend (once per run, not per batch — see
+                caller's to prepare before each request (see
                 scales/journal.py placement rules). Decoration is
                 deterministic, so the 1h system-prompt cache stays byte-stable.
 

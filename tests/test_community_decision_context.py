@@ -144,6 +144,9 @@ class TestCommunityDecisionContext(BrainTestBase):
 
     def test_second_batch_reads_new_message_but_not_same_run_residue(self):
         source = 's2:community_detection'
+        self.brain.write_journal_notes(
+            final_text='## Review\n```\nopen · deployment · old pending claim\n```',
+            chain_id='s2-previous-community_detection', scale='s2')
         thalamus.file(self.brain, source, 'old report', needs_answer=True,
                       dedup_key='maintenance')
         seen = []
@@ -151,6 +154,7 @@ class TestCommunityDecisionContext(BrainTestBase):
         def run(**kwargs):
             seen.append(kwargs['user_content'])
             review = ('ask · maintenance · updated after first batch\n'
+                      'resolved · deployment · verified deployed\n'
                       'open · fresh-residue · first batch private note') if len(seen) == 1 else ''
             return {'actions': 0, 'write_actions': 0, 'rounds': 1,
                     'final_text': '## Review\n```\n%s\n```' % review}
@@ -166,6 +170,9 @@ class TestCommunityDecisionContext(BrainTestBase):
         self.assertIn('updated after first batch', seen[1])
         self.assertNotIn('old report', seen[1])
         self.assertNotIn('first batch private note', seen[1])
+        self.assertIn('old pending claim', seen[0])
+        self.assertNotIn('old pending claim', seen[1])
+        self.assertIn('resolved · deployment · verified deployed', seen[1])
 
     def test_packing_keeps_shared_target_together_without_reordering(self):
         targets = [self.node('Target %d' % i, 'community',

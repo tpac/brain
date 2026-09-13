@@ -978,6 +978,14 @@ def journal_subject_refs(subject):
 JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
 JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the hand-it-up nudge
 
+# Working continuity, shared by every modern encoder. Storage and hotspot
+# history are unaffected. Limits bound context and per-request catch-up work.
+JOURNAL_VIEW_MAX_CHARS = 8000
+JOURNAL_VIEW_HISTORY_LIMIT = 200
+JOURNAL_VIEW_PAGE_SIZE = 200
+JOURNAL_VIEW_MAX_PAGES = 10
+JOURNAL_VIEW_VERSION = 1
+
 # Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
 # tokens): the block means the same dropped into any host prompt or standing
 # alone, so a host-prompt edit can't silently shift the journal, and the block
@@ -1106,7 +1114,8 @@ def render_prompt_closure():
     )
 
 
-def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
+def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES', *,
+                                annotate_tag=True):
     """Render journal_notes() output into a prompt prefix — the READ side of
     the journal (residue continuity). Shared single source so every encoder
     (S2 units now, S1E later) feeds continuity the same way.
@@ -1131,10 +1140,15 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
         runs = n.get('open_runs') or 0
         if runs:
             since = (n.get('first_seen') or '')[5:10]
-            line = '- %s ×%d%s · %s · %s' % (
-                tag or 'open', runs,
-                (' since %s' % since) if since else '',
-                n.get('subject', ''), n.get('note', ''))
+            persistence = '×%d%s' % (runs, (' since %s' % since) if since else '')
+            if annotate_tag:
+                line = '- %s %s · %s · %s' % (
+                    tag or 'open', persistence,
+                    n.get('subject', ''), n.get('note', ''))
+            else:
+                # Keep the copyable lifecycle tag intact. Persistence is
+                # read-side context, never a new encoder-authored tag.
+                line += '\n  Persistence: %s' % persistence
         if n.get('undelivered'):
             # The line was addressed to the people working and the door
             # refused it — the reason is what the encoder reads next run.
@@ -1153,6 +1167,61 @@ def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES'):
                    's': n.get('subject', '')})
         lines.append(line)
     return '\n'.join(lines) + '\n\n'
+
+
+def render_journal_view(view):
+    """Bound working continuity by whole rows, with explicit omissions.
+
+    Lifecycle state precedes ordinary observations. The trace history and
+    selected state stay intact when a row cannot fit in the prompt.
+    Returns text and telemetry shared by every encoder binding.
+    """
+    notes = view.get('notes', [])
+    ordered = sorted(notes, key=lambda n: journal_key(n['tag'])
+                     not in JOURNAL_LIFECYCLE_TAGS)
+    coverage = []
+    if view.get('history_truncated'):
+        coverage.append('Older journal history beyond the newest %d events '
+                        'is outside this view.' % JOURNAL_VIEW_HISTORY_LIMIT)
+    if view.get('changes_pending'):
+        coverage.append('Journal updates remain unread; this view is incomplete.')
+    if view.get('stale'):
+        coverage.append('Latest journal read failed; showing last known continuity.')
+    if view.get('selection_failed'):
+        coverage.append('Initial journal selection unavailable; private notes '
+                        'resume next run.')
+    if view.get('render_failed'):
+        coverage.append('Journal rendering failed; private notes omitted.')
+
+    def notice(omitted):
+        parts = list(coverage)
+        if omitted:
+            parts.append('%d journal entries omitted from context; retained '
+                         'in trace history.' % omitted)
+        return ('\n'.join(parts) + '\n\n') if parts else ''
+
+    text, rendered = '', 0
+    # Reserve the largest omission notice before selecting complete rows.
+    reserve = len(notice(len(notes)))
+    for note in ordered:
+        block = render_journal_notes_prefix([note], annotate_tag=False)
+        candidate = (text.rstrip('\n') + '\n' + block.split('\n', 1)[1]
+                     if text else block)
+        if len(candidate) + reserve <= JOURNAL_VIEW_MAX_CHARS:
+            text = candidate
+            rendered += 1
+    omitted = len(notes) - rendered
+    text += notice(omitted)
+    return text, {
+        'journal_view_version': JOURNAL_VIEW_VERSION,
+        'selected_rows': len(notes), 'rendered_rows': rendered,
+        'omitted_rows': omitted, 'residue_chars': len(text),
+        'history_truncated': bool(view.get('history_truncated')),
+        'changes_pending': bool(view.get('changes_pending')),
+        'stale': bool(view.get('stale')),
+        'selection_failed': bool(view.get('selection_failed')),
+        'render_failed': bool(view.get('render_failed')),
+    }
 
 
 # ── Producer view: what the encoder told or asked, and how it ended ──

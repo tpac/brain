@@ -71,7 +71,7 @@ class AspectEncoder(IntegrationUnit):
             return {'classified': 0, 'rejected': 0, 'errors': [], 'journal': ''}
 
         aspects = self.brain.aspects.all()   # {name: Aspect} — registry view
-        user_content = self.journal.continuity() + self._format_prompt(
+        user_content = self.journal.continuity(chain_id=self.chain_id()) + self._format_prompt(
             aspects, proposals)
         result, telemetry = self._call_llm('s2_aspects', user_content,
                                            journal=True)

@@ -9,6 +9,7 @@ A deliberate journal-exempt call would edit this test — which is the point:
 exemption becomes a reviewed decision, not a default.
 """
 import inspect
+import ast
 import os
 import unittest
 
@@ -67,6 +68,42 @@ def _top_level_args(args):
 
 
 class TestJournalBindingGuardrail(unittest.TestCase):
+
+    def test_every_encoder_prepares_scoped_continuity(self):
+        """Refresh policy belongs to the binding, never a caller's frozen text.
+
+        Discover the real S2 LLM callers; a new encoder cannot quietly bypass
+        the preparation contract. Scribe has its standalone encode entry.
+        """
+        sources = [(name, src) for name, src in _s2_sources()
+                   if name != 'base.py' and any(
+                       'run_llm_loop(' in line or CALL_TOKEN in line
+                       for line in _code_lines(src))]
+        from servers.scales.s1 import encode
+        sources.append(('s1/encode.py', inspect.getsource(encode)))
+        for name, src in sources:
+            with self.subTest(encoder=name):
+                tree = ast.parse(src)
+                calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                         and isinstance(n.func, ast.Attribute)]
+                preparations = [n for n in calls if n.func.attr == 'continuity']
+                self.assertTrue(preparations, name + ' omits journal continuity')
+                for call in preparations:
+                    self.assertIn('chain_id', [kw.arg for kw in call.keywords])
+                for call in calls:
+                    if isinstance(call.func.value, ast.Attribute):
+                        self.assertFalse(call.func.value.attr == 'journal'
+                                         and call.func.attr in ('residue', 'messages'),
+                                         name + ' bypasses shared preparation')
+                # Multiple independent batches require preparation INSIDE
+                # their loop. Aspect and Scribe have one request per run.
+                if name in ('community_encoder.py', 'consolidation_encoder.py',
+                            'healer_encoder.py'):
+                    loops = [n for n in ast.walk(tree)
+                             if isinstance(n, (ast.For, ast.While))]
+                    self.assertTrue(any(call in list(ast.walk(loop))
+                                        for call in preparations for loop in loops),
+                                    name + ' freezes continuity outside the batch loop')
 
     def test_every_call_llm_site_binds_journal(self):
         """A `._call_llm(...)` in an S2 module without a top-level
