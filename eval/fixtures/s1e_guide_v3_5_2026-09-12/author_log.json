@@ -1,0 +1,116 @@
+[
+ {
+  "label": "X1 cross-redundancy in the five-surfaces sentence, tied to the revise walk",
+  "old_chars": 160,
+  "new_chars": 400,
+  "delta": 240
+ },
+ {
+  "label": "X2 detail-and-meaning generative half",
+  "old_chars": 120,
+  "new_chars": 391,
+  "delta": 271
+ },
+ {
+  "label": "X3 expansive counterweight in the traps sentence",
+  "old_chars": 148,
+  "new_chars": 317,
+  "delta": 169
+ },
+ {
+  "label": "X4 temporal authority in the Nadia reading",
+  "old_chars": 97,
+  "new_chars": 179,
+  "delta": 82
+ },
+ {
+  "label": "X6 `thought` named in the gate-region sentence",
+  "old_chars": 76,
+  "new_chars": 100,
+  "delta": 24
+ },
+ {
+  "label": "X7 encoded=\"true\" turn depicted in the sample",
+  "old_chars": 42,
+  "new_chars": 436,
+  "delta": 394
+ },
+ {
+  "label": "W6a yoga excerpt depicts the old count in Situation and an edge why",
+  "old_chars": 176,
+  "new_chars": 444,
+  "delta": 268
+ },
+ {
+  "label": "W6a op comment names the trigger and the edge",
+  "old_chars": 398,
+  "new_chars": 537,
+  "delta": 139
+ },
+ {
+  "label": "W6a op swaps the edge why that carried the old count",
+  "old_chars": 165,
+  "new_chars": 465,
+  "delta": 300
+ },
+ {
+  "label": "W6a ladder sentence names the trigger and the edge",
+  "old_chars": 177,
+  "new_chars": 242,
+  "delta": 65
+ },
+ {
+  "label": "W6c sweep title conforms to E17",
+  "old_chars": 111,
+  "new_chars": 88,
+  "delta": -23
+ },
+ {
+  "label": "W7 evidence sentence: confirmation and a later mention",
+  "old_chars": 155,
+  "new_chars": 186,
+  "delta": 31
+ },
+ {
+  "label": "W7 traps sentence: a passing mention",
+  "old_chars": 66,
+  "new_chars": 85,
+  "delta": 19
+ },
+ {
+  "label": "W8 my-side quote clause widened to the knowledge-carrying sentence",
+  "old_chars": 120,
+  "new_chars": 281,
+  "delta": 161
+ },
+ {
+  "label": "W9 continuity why 1",
+  "old_chars": 177,
+  "new_chars": 214,
+  "delta": 37
+ },
+ {
+  "label": "W9 continuity why 2",
+  "old_chars": 133,
+  "new_chars": 150,
+  "delta": 17
+ },
+ {
+  "label": "W10 restated fact across windows in correction form 4",
+  "old_chars": 137,
+  "new_chars": 377,
+  "delta": 240
+ },
+ {
+  "label": "X5 `thought` in the gist `new` roll-call",
+  "old_chars": 113,
+  "new_chars": 196,
+  "delta": 83
+ },
+ {
+  "label": "W6b gist targets roll-call: quotes, event_time, type",
+  "old_chars": 151,
+  "new_chars": 259,
+  "delta": 108
+ }
+]

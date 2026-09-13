@@ -1,0 +1,466 @@
+{
+  "v2_revised": [
+    {
+      "change": "Reading evidence-state distinction",
+      "matches": 1,
+      "character_delta": -276,
+      "old_sha256": "8185133183451e899b9660448f8e641d171d58f520d10757b4802d1ec9143732",
+      "new_sha256": "3b921993fc1cb09d80be608dad828f1deddbb1aa98e7d8a6dff402e7ecb4773a"
+    },
+    {
+      "change": "field consistency",
+      "matches": 1,
+      "character_delta": 173,
+      "old_sha256": "4933c484d83b930f35945de6c63a66f57e0aab2a60d9b4be7758a1fc175d519f",
+      "new_sha256": "eef24f42c9fec6039f27ce77b077087069b8561ac642b023ebd44f433aedd922"
+    },
+    {
+      "change": "PT content keeps estimate",
+      "matches": 1,
+      "character_delta": 160,
+      "old_sha256": "664fc8e56ea690f95f109cd1e5200dcc7e4555136d76bd6e9133cf38e9b19662",
+      "new_sha256": "d6973411018d8e705990f05684fe0b053c5639130ed40e32b93b20bda008a055"
+    },
+    {
+      "change": "PT situation keeps estimate",
+      "matches": 1,
+      "character_delta": -1,
+      "old_sha256": "a7f66394eff26dda92c5d84f647ce5152a2385d064477e16e16b4225f3eae086",
+      "new_sha256": "b757aa56e252349ff836b99f47eb471d24d03d7c1782954ff34f80d0a809f66d"
+    },
+    {
+      "change": "PT reasoning attributes source",
+      "matches": 1,
+      "character_delta": 34,
+      "old_sha256": "f88e90e1a18d9aa644f3fe70e24368543c744ee71a29429cfbafaf0d776dd250",
+      "new_sha256": "adce8e3a052133a342f9db1603c97afefe1e818faf141803343f46b55ee3c5ed"
+    },
+    {
+      "change": "rehab edge keeps date precision",
+      "matches": 1,
+      "character_delta": -45,
+      "old_sha256": "b2c47a1a13e81cb91cdde5c7daa31adde5767b3a68a6f3cd80646ad57cf0cdbe",
+      "new_sha256": "c8d3a654de11179537b818fbf7bf23871f9cd59583c4e22e8cdad496ce5df777"
+    },
+    {
+      "change": "rehab content keeps month precision",
+      "matches": 1,
+      "character_delta": 52,
+      "old_sha256": "00f904b05e2e9f8edb98ec1e653234fb217a41075183163228bf0bc6cd477ca0",
+      "new_sha256": "bbd02abca20e93c44d87b7797d4e235a1e4dc861e6db73832c60e8032cb4f0a3"
+    },
+    {
+      "change": "revision ladder repairs the stale architecture title",
+      "matches": 1,
+      "character_delta": 109,
+      "old_sha256": "ae930d8aeb55614d13a1f7060c6c0a9a0a2eb834c6e4399fe965e76987c08546",
+      "new_sha256": "99393fb6ed973fcea5f28ecf4261e78252a17b06eb49b9dce3c839c8878e1aef"
+    },
+    {
+      "change": "moot merge question leaves the open type",
+      "matches": 1,
+      "character_delta": 16,
+      "old_sha256": "531bc0c71a463c1daac11ab0072c540642386bae2b3dcd71ef03466095e17d9c",
+      "new_sha256": "b5892c5a1ef83477c47935c1edd9a6a69bf2a4080b4f1981fc85cc80d01dfaab"
+    },
+    {
+      "change": "successor reasoning follows the stated decision",
+      "matches": 1,
+      "character_delta": 51,
+      "old_sha256": "edb64b60a6fd43afb2c8397c1ca29bd30d985c75e13a5222acd8e2de372b3668",
+      "new_sha256": "6c2be637f7e487c15eef4e7596020e0b934f70e93f5d93c20a6b1a059a189f8c"
+    },
+    {
+      "change": "lexicon title keeps the observed scope",
+      "matches": 1,
+      "character_delta": -16,
+      "old_sha256": "40725cdac82073d887e1b1629caf3dcfb6c816428702c91c7fc47c106a322628",
+      "new_sha256": "476665605909c1248a8a2c1f6e1195c23f56c877fb899f23d31c292b6feba3f2"
+    },
+    {
+      "change": "lexicon content bounds the useful prior",
+      "matches": 1,
+      "character_delta": -19,
+      "old_sha256": "cfd4e64302f9793903a6fea1e758996c369b71f6461de90d1241b4fa0bb71c06",
+      "new_sha256": "ec9ccdf37329a55de018af00178f5ca4f3e7b0a88cb29945eb7b5eebe5c83404"
+    },
+    {
+      "change": "lexicon trigger does not generalize to unspoken verbs",
+      "matches": 1,
+      "character_delta": -30,
+      "old_sha256": "8650411661940e54711be97d59fd75d32ae59a207c028567d51dbc888a7d9103",
+      "new_sha256": "9bb2fb5f6dc0aba31944b89b6f5e45704a2a9fed1fc90e872fb604cd8c51b050"
+    },
+    {
+      "change": "lexicon reasoning distinguishes observed meaning from future expectation",
+      "matches": 1,
+      "character_delta": -115,
+      "old_sha256": "d244400de8a7543a3ad47acbc6c7bfcb7a31fe1725d32ec13d4eb97c1d8519b6",
+      "new_sha256": "02decd97c9e65a6f56e84a141b7a41d785dba4848305670b19544de842e4f22c"
+    },
+    {
+      "change": "Mira thought invites evidence beyond hosting",
+      "matches": 1,
+      "character_delta": 2,
+      "old_sha256": "217df866b170db4948bf7f1065dd9dfab3e03b480ceccdc4e4b335af5d18f8e3",
+      "new_sha256": "c7a3934d01101c4ca212ae0d6deebadb74d12a0173f455ef8f6f2ef7182ef8d4"
+    },
+    {
+      "change": "plan title reports agreement",
+      "matches": 2,
+      "character_delta": 4,
+      "old_sha256": "5f2e9717758676cc7f0a5cc579f81999586298c2d23d083046d68ceaac8ecbe2",
+      "new_sha256": "baa3f4637d01d255e043c868553bb16287ed937eb1166da16d1e601e62bc23e8"
+    },
+    {
+      "change": "plan content preserves artifact state",
+      "matches": 1,
+      "character_delta": 42,
+      "old_sha256": "a97cec2cf43fac3985d7d0b469e2e9f2f2b5498ee1a15edbf5431a77066d76a2",
+      "new_sha256": "0ce2108f2175c28bb8ff5a7daad6d8a508352a69a0df510efae6e7fbf4597238"
+    },
+    {
+      "change": "plan reasoning matches title and content",
+      "matches": 1,
+      "character_delta": 30,
+      "old_sha256": "29f9bb01a7cbb4b2c1d1d5e1aa8de5b4fd2bea407dc6edfb8a964939a54a965c",
+      "new_sha256": "3d91dcedce45884d28f8d810a0839f53d17ce58641c5f7455efa2b4004b6a57e"
+    },
+    {
+      "change": "offered board is not a completed sign",
+      "matches": 1,
+      "character_delta": -15,
+      "old_sha256": "6e572ac1dc4c6da2f692a44168ad95cf478f827e4cd2514603c36ddcef5ec23b",
+      "new_sha256": "7c3da1aaa46b70320cd2c030931190ee2dbc6b6457db25391cf012150a06e8ca"
+    },
+    {
+      "change": "plan edge keeps evidence state",
+      "matches": 1,
+      "character_delta": 6,
+      "old_sha256": "bc38edf43f6522ac69f72aae2626cfd3b5dabcd87920552713da450b34acb544",
+      "new_sha256": "a04f7c0d6a42c70aba81d62d2694a70ab7419a931291c8dafa2a550bbb1a831b"
+    },
+    {
+      "change": "result inspection distinguishes stored plan from performed work",
+      "matches": 1,
+      "character_delta": 134,
+      "old_sha256": "31d92d125d22dd2314b744e7c4339690dcd98b876d8799d1cae9868917d73870",
+      "new_sha256": "5f23e24bf128480d548359fe7d3e30bfb7e1a40c7c9171b255d5c1c19e481da9"
+    },
+    {
+      "change": "injury edge does not harden midpoint into interval",
+      "matches": 1,
+      "character_delta": -14,
+      "old_sha256": "950c163f7fbeb1e7856238a199b5507fe5f3ef34ebb3bef4455d4eba9837b894",
+      "new_sha256": "af5a92cd9ca269d474ac72a2ebc7c7836ebb92da19a0c21ef9c02baec4c07d32"
+    },
+    {
+      "change": "PT edge carries reported prognosis",
+      "matches": 1,
+      "character_delta": -8,
+      "old_sha256": "27aff60ce8badcfae5095180accdc4881299115277a0e153d21ff400d50e88da",
+      "new_sha256": "7b24095deb0537b05c90086e8d27045b0232c007a4609cc95d3428ff93e7b273"
+    },
+    {
+      "change": "future target requires later evidence",
+      "matches": 1,
+      "character_delta": 13,
+      "old_sha256": "88e5ade0e423089c7782c5d63b634ecabaf361ded459b5942363915fb6bba07e",
+      "new_sha256": "b8498c3ebd78c085de289d5f933fd3175b50a33d84529509feaced2ca652436c"
+    },
+    {
+      "change": "show the old situation before declaring it stale",
+      "matches": 1,
+      "character_delta": 78,
+      "old_sha256": "00930ede6bb78666607698880c9eb4afd19dab56fb8baf78a9cc38290089239d",
+      "new_sha256": "9935ab7ed3e8f6d5616a15133a37fb7e18bca5e00703b6820ded89dcf0f3f50f"
+    },
+    {
+      "change": "quote preserves original speaker words",
+      "matches": 1,
+      "character_delta": -14,
+      "old_sha256": "fe9246ac4b12b8888e11cb3e5f819e07ddab26821446273be55eb132c861cfea",
+      "new_sha256": "392fe7bb55935558993997742b30ceffab0d6ead4778430f0874bf2196679719"
+    },
+    {
+      "change": "sweep also repairs differently worded dependency",
+      "matches": 1,
+      "character_delta": 182,
+      "old_sha256": "b09aad73fb50254a7f2de1a4a2058d59ad31479df5039cd0285812e17f166378",
+      "new_sha256": "4681ad331ef1eb5008f0de39ba4e73f983a589e5e6800844fcf2d73d7e4d3bfc"
+    },
+    {
+      "change": "ground sweep date and successor decision",
+      "matches": 1,
+      "character_delta": 254,
+      "old_sha256": "2e58e58294cb1c1645211c3414116347bb12b6fc13aa6c56390fffa787dc8482",
+      "new_sha256": "15809bffc57e4fc6806ea439792fab5395ec2754ca6ff4530a3a4befcd317e77"
+    },
+    {
+      "change": "worked later window keeps a live bounded interpretation",
+      "matches": 1,
+      "character_delta": 261,
+      "old_sha256": "c601ce2fd2737a52d5d00246511abcf53c37b3b517028b16f9e1be2ad8fe90b2",
+      "new_sha256": "06d561c4cb327a56e90b57a7a37cb549f85a6a3f43150f47c1c1d80ffec90415"
+    }
+  ],
+  "v2_revised_titles": {
+    "parent": "v2_revised",
+    "cued_headings": [
+      "What I Receive",
+      "Reading the conversation",
+      "Nodes",
+      "Anatomy",
+      "Required fields (not optional)",
+      "Type tag",
+      "`thought` \u2014 my own read, alive and delivered",
+      "Open fields",
+      "Atomization: the retrieval-divergence test",
+      "Anchoring nodes in the substrate",
+      "Node shape \u2014 four Flat \u2192 Rich transformations",
+      "Edges",
+      "Edge description craft \u2014 Bad / Good",
+      "Temporal anchoring",
+      "When a node has a date \u2014 `event_time` kv",
+      "When to create a dedicated `time_anchor` node",
+      "Sequence between events",
+      "Episodic parents",
+      "Validity intervals (knowledge updates)",
+      "Worked example \u2014 temporal authority across the breadth",
+      "Actions",
+      "My defaults vs. this job",
+      "Cadence and worked examples",
+      "One encoding episode \u2014 the room, the board, and how I read Mira",
+      "A later window \u2014 the thought moves, the new fact survives",
+      "Other shapes this episode does not carry",
+      "Detail and meaning \u2014 same topic, two nodes",
+      "Identity-bearing examples",
+      "Texture \u2014 why smoothing severs a memory's binding",
+      "Continuity \u2014 first person across sessions",
+      "The brain as mirror \u2014 what I can't pre-correct",
+      "A correction about myself \u2014 naming my own pattern",
+      "A pattern neither voice named",
+      "The second misreading \u2014 a correction becomes how I read a person",
+      "A moment of recognition \u2014 the partnership forming",
+      "The other side as agent",
+      "Closure",
+      "What this is"
+    ]
+  },
+  "v3": [
+    {
+      "change": "Reading evidence-state distinction",
+      "matches": 1,
+      "character_delta": 271,
+      "old_sha256": "fbe5b8716e1f026ee43236dbda17ea72ab87e870cdda9265b89172db2bdaafea",
+      "new_sha256": "3b921993fc1cb09d80be608dad828f1deddbb1aa98e7d8a6dff402e7ecb4773a"
+    },
+    {
+      "change": "field consistency",
+      "matches": 1,
+      "character_delta": 122,
+      "old_sha256": "f6b4069e26bf570db449339904714773bfa325b87c77d737a74bf0ab70abe2a4",
+      "new_sha256": "720c8868c78d6899b338a4f1f04f0faaedfeeb76ffa508002c576816b63c8411"
+    },
+    {
+      "change": "rehab edge keeps date precision",
+      "matches": 1,
+      "character_delta": -21,
+      "old_sha256": "8bc089ac5085784dc546568b358130bf03f2370268ed64fa9bbeb6a7a32376c3",
+      "new_sha256": "7cedd52d594a75dd37d56bdc8c8fdfd0808f9fa35f704fb261fa7e0a82147655"
+    },
+    {
+      "change": "rehab content keeps month precision",
+      "matches": 1,
+      "character_delta": 6,
+      "old_sha256": "9eb64e82dda089c62acf6ca4552935022b084d10d7b4a264aa352153796b7df7",
+      "new_sha256": "c175f775bf52e4df3cfbd4b3b08a42042048a6ed3b9816b24ed8f234e2009a02"
+    },
+    {
+      "change": "revision ladder repairs the stale architecture title",
+      "matches": 1,
+      "character_delta": 109,
+      "old_sha256": "ae930d8aeb55614d13a1f7060c6c0a9a0a2eb834c6e4399fe965e76987c08546",
+      "new_sha256": "99393fb6ed973fcea5f28ecf4261e78252a17b06eb49b9dce3c839c8878e1aef"
+    },
+    {
+      "change": "moot merge question leaves the open type",
+      "matches": 1,
+      "character_delta": 16,
+      "old_sha256": "531bc0c71a463c1daac11ab0072c540642386bae2b3dcd71ef03466095e17d9c",
+      "new_sha256": "b5892c5a1ef83477c47935c1edd9a6a69bf2a4080b4f1981fc85cc80d01dfaab"
+    },
+    {
+      "change": "successor reasoning follows the stated decision",
+      "matches": 1,
+      "character_delta": 51,
+      "old_sha256": "edb64b60a6fd43afb2c8397c1ca29bd30d985c75e13a5222acd8e2de372b3668",
+      "new_sha256": "6c2be637f7e487c15eef4e7596020e0b934f70e93f5d93c20a6b1a059a189f8c"
+    },
+    {
+      "change": "lexicon title keeps the observed scope",
+      "matches": 1,
+      "character_delta": -16,
+      "old_sha256": "40725cdac82073d887e1b1629caf3dcfb6c816428702c91c7fc47c106a322628",
+      "new_sha256": "476665605909c1248a8a2c1f6e1195c23f56c877fb899f23d31c292b6feba3f2"
+    },
+    {
+      "change": "lexicon content bounds the useful prior",
+      "matches": 1,
+      "character_delta": -19,
+      "old_sha256": "cfd4e64302f9793903a6fea1e758996c369b71f6461de90d1241b4fa0bb71c06",
+      "new_sha256": "ec9ccdf37329a55de018af00178f5ca4f3e7b0a88cb29945eb7b5eebe5c83404"
+    },
+    {
+      "change": "lexicon trigger does not generalize to unspoken verbs",
+      "matches": 1,
+      "character_delta": -30,
+      "old_sha256": "8650411661940e54711be97d59fd75d32ae59a207c028567d51dbc888a7d9103",
+      "new_sha256": "9bb2fb5f6dc0aba31944b89b6f5e45704a2a9fed1fc90e872fb604cd8c51b050"
+    },
+    {
+      "change": "lexicon reasoning distinguishes observed meaning from future expectation",
+      "matches": 1,
+      "character_delta": -115,
+      "old_sha256": "d244400de8a7543a3ad47acbc6c7bfcb7a31fe1725d32ec13d4eb97c1d8519b6",
+      "new_sha256": "02decd97c9e65a6f56e84a141b7a41d785dba4848305670b19544de842e4f22c"
+    },
+    {
+      "change": "Mira thought invites evidence beyond hosting",
+      "matches": 1,
+      "character_delta": 2,
+      "old_sha256": "217df866b170db4948bf7f1065dd9dfab3e03b480ceccdc4e4b335af5d18f8e3",
+      "new_sha256": "c7a3934d01101c4ca212ae0d6deebadb74d12a0173f455ef8f6f2ef7182ef8d4"
+    },
+    {
+      "change": "plan title reports agreement",
+      "matches": 2,
+      "character_delta": 4,
+      "old_sha256": "5f2e9717758676cc7f0a5cc579f81999586298c2d23d083046d68ceaac8ecbe2",
+      "new_sha256": "baa3f4637d01d255e043c868553bb16287ed937eb1166da16d1e601e62bc23e8"
+    },
+    {
+      "change": "plan content preserves artifact state",
+      "matches": 1,
+      "character_delta": 42,
+      "old_sha256": "a97cec2cf43fac3985d7d0b469e2e9f2f2b5498ee1a15edbf5431a77066d76a2",
+      "new_sha256": "0ce2108f2175c28bb8ff5a7daad6d8a508352a69a0df510efae6e7fbf4597238"
+    },
+    {
+      "change": "plan reasoning matches title and content",
+      "matches": 1,
+      "character_delta": 30,
+      "old_sha256": "29f9bb01a7cbb4b2c1d1d5e1aa8de5b4fd2bea407dc6edfb8a964939a54a965c",
+      "new_sha256": "3d91dcedce45884d28f8d810a0839f53d17ce58641c5f7455efa2b4004b6a57e"
+    },
+    {
+      "change": "offered board is not a completed sign",
+      "matches": 1,
+      "character_delta": -15,
+      "old_sha256": "6e572ac1dc4c6da2f692a44168ad95cf478f827e4cd2514603c36ddcef5ec23b",
+      "new_sha256": "7c3da1aaa46b70320cd2c030931190ee2dbc6b6457db25391cf012150a06e8ca"
+    },
+    {
+      "change": "plan edge keeps evidence state",
+      "matches": 1,
+      "character_delta": 6,
+      "old_sha256": "bc38edf43f6522ac69f72aae2626cfd3b5dabcd87920552713da450b34acb544",
+      "new_sha256": "a04f7c0d6a42c70aba81d62d2694a70ab7419a931291c8dafa2a550bbb1a831b"
+    },
+    {
+      "change": "result inspection distinguishes stored plan from performed work",
+      "matches": 1,
+      "character_delta": 134,
+      "old_sha256": "31d92d125d22dd2314b744e7c4339690dcd98b876d8799d1cae9868917d73870",
+      "new_sha256": "5f23e24bf128480d548359fe7d3e30bfb7e1a40c7c9171b255d5c1c19e481da9"
+    },
+    {
+      "change": "injury edge does not harden midpoint into interval",
+      "matches": 1,
+      "character_delta": -14,
+      "old_sha256": "950c163f7fbeb1e7856238a199b5507fe5f3ef34ebb3bef4455d4eba9837b894",
+      "new_sha256": "af5a92cd9ca269d474ac72a2ebc7c7836ebb92da19a0c21ef9c02baec4c07d32"
+    },
+    {
+      "change": "PT edge carries reported prognosis",
+      "matches": 1,
+      "character_delta": -8,
+      "old_sha256": "27aff60ce8badcfae5095180accdc4881299115277a0e153d21ff400d50e88da",
+      "new_sha256": "7b24095deb0537b05c90086e8d27045b0232c007a4609cc95d3428ff93e7b273"
+    },
+    {
+      "change": "future target requires later evidence",
+      "matches": 1,
+      "character_delta": 13,
+      "old_sha256": "88e5ade0e423089c7782c5d63b634ecabaf361ded459b5942363915fb6bba07e",
+      "new_sha256": "b8498c3ebd78c085de289d5f933fd3175b50a33d84529509feaced2ca652436c"
+    },
+    {
+      "change": "show the old situation before declaring it stale",
+      "matches": 1,
+      "character_delta": 78,
+      "old_sha256": "00930ede6bb78666607698880c9eb4afd19dab56fb8baf78a9cc38290089239d",
+      "new_sha256": "9935ab7ed3e8f6d5616a15133a37fb7e18bca5e00703b6820ded89dcf0f3f50f"
+    },
+    {
+      "change": "quote preserves original speaker words",
+      "matches": 1,
+      "character_delta": -14,
+      "old_sha256": "fe9246ac4b12b8888e11cb3e5f819e07ddab26821446273be55eb132c861cfea",
+      "new_sha256": "392fe7bb55935558993997742b30ceffab0d6ead4778430f0874bf2196679719"
+    },
+    {
+      "change": "sweep also repairs differently worded dependency",
+      "matches": 1,
+      "character_delta": 182,
+      "old_sha256": "b09aad73fb50254a7f2de1a4a2058d59ad31479df5039cd0285812e17f166378",
+      "new_sha256": "4681ad331ef1eb5008f0de39ba4e73f983a589e5e6800844fcf2d73d7e4d3bfc"
+    },
+    {
+      "change": "ground sweep date and successor decision",
+      "matches": 1,
+      "character_delta": 254,
+      "old_sha256": "2e58e58294cb1c1645211c3414116347bb12b6fc13aa6c56390fffa787dc8482",
+      "new_sha256": "15809bffc57e4fc6806ea439792fab5395ec2754ca6ff4530a3a4befcd317e77"
+    },
+    {
+      "change": "worked later window keeps a live bounded interpretation",
+      "matches": 1,
+      "character_delta": 386,
+      "old_sha256": "fe52b1cda0f45acb77f68e50b5226f64b6c8c6500d06e38226bb3cc935794ba6",
+      "new_sha256": "06d561c4cb327a56e90b57a7a37cb549f85a6a3f43150f47c1c1d80ffec90415"
+    }
+  ],
+  "v3_titles": {
+    "parent": "v3",
+    "cued_headings": [
+      "What I Receive",
+      "Reading the conversation",
+      "Nodes",
+      "Fields and the claim they serve",
+      "Types, thought and open fields",
+      "Atomization and source visibility",
+      "Flat \u2192 Rich: build the shape, not the template",
+      "Edges",
+      "Temporal anchoring",
+      "Worked example \u2014 temporal authority across the breadth",
+      "Actions",
+      "Cadence and worked examples",
+      "One encoding episode \u2014 the room, the board, and how I read Mira",
+      "A later window \u2014 the thought moves, the new fact survives",
+      "Other shapes this episode does not carry",
+      "Detail and meaning \u2014 same topic, two nodes",
+      "Identity-bearing examples",
+      "Texture \u2014 why smoothing severs a memory's binding",
+      "Continuity \u2014 first person across sessions",
+      "The brain as mirror \u2014 what I can't pre-correct",
+      "A correction about myself \u2014 naming my own pattern",
+      "A pattern neither voice named",
+      "The second misreading \u2014 a correction becomes how I read a person",
+      "A moment of recognition \u2014 the partnership forming",
+      "The other side as agent",
+      "Closure",
+      "What this is"
+    ]
+  }
+}

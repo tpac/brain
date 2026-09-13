@@ -1,0 +1,43 @@
+{
+  "status": "frozen_after_author_and_static_checks_before_model_calls",
+  "parent_arm": "e3e2251524694fbb38d3eb49a790465ab65f0034d16b8302419acba910023027",
+  "candidate_arm": "746fed199eb0e0aa225c3dd73de0f7cf9fc922bb39040adfac40328dd39d084a",
+  "tools_choice": "live (parent tools_live.json)",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/arms.py": "5a8f205327925a3df2ade7ca17300c48c53e0312c9d04e874b936d32b8e2e408",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/author.py": "03fe20a6f3f743388f1412da9b65ad918e337aecf8ed7a7a0e317ccfa14ce19d",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/author_log.json": "92c58c369c0c81bde08f5d50f7915547217863c60b06710b3c22ed77caae0588",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/static_checks.py": "99173a361b9981fa604a33dd9ec4645b78b9daef7035568ec75033b7a74b0516",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/transfer_split.json": "c79552d1638cbc3ade0e4a316da631b8a397a30ff9458caa32aac134e46583ce",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/v3_5_titles.json": "37cd1e4e289fc664851d38a21d80229854aac974dcdfddf88898114f0d8391c6",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/CHALLENGES.md": "1e29fe7089f1795535e727bf272e25adeba63f913809f56e602a0a555e996e13",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/READ-AUDIT-V3-4.md": "cb0f8da4ae34e37259c82dad9a82d40d02adc37656e00977611dadd636056f1c",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/ANALYSIS.md": "96d05dd1776189d2b602849dd280b8d754a6dabf4ee6ac4269a50d5355136a1d",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/template.md": "e01c46529041bb21d7fe3d2a6a730c7544f04a4267ed2a77f2fab2a788e801ba",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/gist.md": "aba2e7cb01c95a0e342cb339535e27223b751634385108ba3a35426777fec606",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/strategy.md": "a4203826630984481943e5b58e31bfe7935fe7cd6007b342a3d9d9685d96c076",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/template.md.diff": "622599c8746f639eb53cd0303b8b8414b1f8b9dd0e54c5e28317b5ed06918367",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/gist.md.diff": "c67eddf0de4e9b194d2b03dd7db4ffabf4f9d97b4f79d324317d904b70e69560",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/strategy.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "eval/fixtures/s1e_guide_v3_5_2026-09-12/closure.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "eval-only prompt candidate; template + gist changed; strategy, closure and tools are the frozen V3.4 parts",
+  "development_sources_already_seen": [
+    "creative_design",
+    "eace081b",
+    "b6019101",
+    "2133c1b5",
+    "80ec1f4f",
+    "2ebe6c92",
+    "conv_005_emotions",
+    "69fee5aa",
+    "f685340e",
+    "2b8f3739",
+    "eac54adc",
+    "gpt4_1d4ab0c9",
+    "conv_002_debugging"
+  ],
+  "transfer_split_recorded_before_authoring": true,
+  "generalization_claim": "none until the fresh transfer cell reports"
+}

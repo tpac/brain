@@ -1,0 +1,1065 @@
+[
+  {
+    "name": "remember_batch",
+    "description": "Create multiple nodes in one call. Each node uses the same fields as remember(), plus an optional per-node `connect_to` for typed edges to siblings (in the same batch) and catalog nodes.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "nodes"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "description": "Array of node specs \u2014 same fields as remember(), plus optional per-node connect_to.",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "title",
+              "content"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Node type (decision, lesson, mechanism, correction, moment, open, ... \u2014 open vocabulary, use what fits)."
+              },
+              "title": {
+                "type": "string",
+                "description": "Specific and scannable \u2014 the title is itself an embedded recall vector; specificity is findability."
+              },
+              "content": {
+                "type": "string",
+                "description": "Rich content \u2014 reasoning, tradeoffs, specifics. On revise: its new value, or `{old, new}` swaps into what is stored (`content_edits` is the alias of the swap list) \u2014 a full rewrite must re-author everything the node holds, and dropped details are silent losses."
+              },
+              "confidence": {
+                "type": "number",
+                "description": "0.0-1.0. Set below 1.0 when the claim is hedged, contested, or inferred \u2014 recall exposes it and filters select on it. Don't fabricate precision.",
+                "default": 1.0
+              },
+              "locked": {
+                "type": "boolean",
+                "description": "Protect from casual revision. Belongs to the interactive session: a write from any automated source (encoder, S2, hooks) has its locked:true demoted at the write boundary. Locking is a rare act.",
+                "default": false
+              },
+              "emotion": {
+                "type": "number",
+                "description": "Emotional charge of the moment \u2014 signed; recall reads the magnitude. Pair with emotion_label."
+              },
+              "emotion_label": {
+                "type": "string",
+                "description": "Name of the felt register ('satisfaction', 'frustration', ...).",
+                "default": "neutral"
+              },
+              "evolution_status": {
+                "type": "string",
+                "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."
+              },
+              "source_turn_id": {
+                "type": "string",
+                "description": "message_stream ID that produced this node (episode linkage)"
+              },
+              "situation": {
+                "type": "string",
+                "description": "When is this knowledge relevant? One sentence. Stored in node_metadata_kv (canonical); a derived _situation embedding row in node_enrichments provides recall scoring. Enrichment text column is deprecated for _situation \u2014 kv is the single source of truth."
+              },
+              "question": {
+                "type": "string",
+                "description": "The question this node answers, as the other side would ask it \u2014 gets its own recall embedding, bridging how it's stored and how it's asked for. Skip when the title already asks it."
+              },
+              "event_time": {
+                "type": "string",
+                "description": "When the remembered thing HAPPENED \u2014 ISO 8601, distinct from created_at (when it was written). Resolve relative dates to absolute; leave absent rather than guess. Read by the temporal lane at recall."
+              },
+              "reasoning": {
+                "type": "string",
+                "description": "What this claim rests on \u2014 how it was established (measured, reported, inferred), how strongly, and what would change it. Written for a reader who has never seen this prompt. NOT revise()'s `reason` param \u2014 that is the audit note for a revision, recorded in trace events and never stored on the node."
+              },
+              "thought": {
+                "type": "string",
+                "description": "My own read on the memory \u2014 a hunch, a connection, a take the content doesn't carry. Delivered: rendered beside the node at recall and in encoder catalogs. A living field \u2014 update it when a re-read moves it; most nodes carry none, and empty is correct."
+              },
+              "their_raw_quote": {
+                "type": "string",
+                "description": "Their exact words \u2014 my counterpart's, verbatim."
+              },
+              "my_raw_quote": {
+                "type": "string",
+                "description": "My own exact words \u2014 reflections, realizations, insights."
+              },
+              "correction_pattern": {
+                "type": "string",
+                "description": "Behavioral pattern behind the correction."
+              },
+              "source_context": {
+                "type": "string",
+                "description": "Session/context when this was encoded."
+              },
+              "source_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Trace event ids anchoring this node to its originating moments. Each id is an 8-char hex string copied verbatim from the trace markers in your input \u2014 the `trace=\"<hex>\"` attribute on timeline turns, or `[trace:<hex>]` markers in conversation renders. Sparse by design: pick 1-3 load-bearing turns per node \u2014 the turn(s) whose content is what made this node encodeable. Adjacent context is what graph traversal is for; source_refs are for the moments that GENERATED this node. Leave empty when the node is a multi-session abstraction with no single anchor (pure-synthesis pattern). When content would just rewrite what the source already says clearly, point to the source instead of restating it (the pure-reference pattern). See EPISODIC-REFERENCES.md \u00a77.4 for the full judgment rule."
+              },
+              "connect_to": {
+                "type": "array",
+                "description": "Per-node typed edges from THIS node to siblings (created in the same batch) or catalog nodes. Sibling-aware (NEW wins on title collision), order-agnostic, fail-soft. USE THIS for any edge involving a new node \u2014 never use a separate `connect` op for new-node edges (`connect` requires ids that don't exist until round 1 finishes, forcing a needless second LLM round). DON'T DOUBLE-EMIT: an edge already in connect_to must NOT also appear as a separate connect op for the same pair. DON'T fake-revise: if the catalog has the title, use `revise` on its id \u2014 duplicate-title `remember` + connect_to would resolve to the new sibling (NEW wins) and leave the catalog version stale.",
+                "items": {
+                  "$ref": "#/$defs/connect_to_item"
+                }
+              }
+            }
+          }
+        },
+        "connect_to": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/connect_to_item"
+          },
+          "description": "Batch-level: applies the same edge from EVERY created node to one catalog target. Siblings excluded. For per-node edges, use node-level connect_to."
+        }
+      },
+      "$defs": {
+        "connect_to_item": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "target"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            }
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "The other node: for an EXISTING node, its exact 8-char hex id copied verbatim from any visible id: surface (a hex-shaped value is always treated as an id \u2014 never matched as a title \u2014 and on a miss dropped loudly). On remember only, a node created in this same batch may be named by its exact title (siblings resolve before catalog matches, any declaration order; NEW wins on title collision \u2014 to update an existing catalog node use `revise` on its id, not a duplicate-title remember). On revise the target must be an id. Unresolved targets are logged and skipped, never failing the batch."
+            },
+            "title": {
+              "type": "string",
+              "description": "Deprecated alias of `target`."
+            },
+            "relation": {
+              "type": "string",
+              "description": "Edge relation, open text \u2014 e.g. refines, grounds, corrects, depends_on, supersedes, triggers, implements, anchored_to, during. Invent a specific verb when none fits better. NEVER `related`/`related_to`/empty \u2014 generic relations pollute the activation kernel and match no query."
+            },
+            "why": {
+              "type": "string",
+              "description": "What the edge MEANS \u2014 the insight living between the two nodes, not a summary of either. Embedded for query matching; >=30 chars, or drop the edge.\nBAD: \"example of the principle\" \u2014 generic gloss, no insight about which example or why.\nGOOD: \"the assumption treated concurrent access as a thread-safety question; the correction reframes it as wal-index contention \u2014 different failure mode, different fix\"."
+            },
+            "relations": {
+              "type": "array",
+              "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "relation",
+                  "why"
+                ],
+                "properties": {
+                  "relation": {
+                    "type": "string"
+                  },
+                  "why": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "connect_batch",
+    "description": "Create or update multiple edges in one call. Same idempotent-upsert + field-preservation contract as `connect` \u2014 specified fields update on existing rows, unspecified preserve. Each connection entry MUST provide a specific `description` (\u226530 chars naming the insight between the two nodes); bare edges with empty descriptions are recall dead weight.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "connections"
+      ],
+      "properties": {
+        "connections": {
+          "type": "array",
+          "description": "Array of connections to create",
+          "items": {
+            "type": "object",
+            "required": [
+              "source_id",
+              "target_id",
+              "relation"
+            ],
+            "properties": {
+              "source_id": {
+                "type": "string"
+              },
+              "target_id": {
+                "type": "string"
+              },
+              "relation": {
+                "type": "string",
+                "description": "Open-text verb \u2014 specific, never `related`/`related_to`"
+              },
+              "description": {
+                "type": "string",
+                "description": "What the edge MEANS \u2014 embedded for recall. Target \u226530 chars. Don't restate node titles. See connect_to.why for BAD/GOOD examples."
+              },
+              "weight": {
+                "type": "number",
+                "default": 0.5
+              },
+              "encoding_source": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "encoding_source": {
+          "type": "string",
+          "description": "Default provenance tag applied to all connections lacking their own."
+        },
+        "chain_id": {
+          "type": "string",
+          "description": "Trace chain id for cross-event correlation (optional)."
+        },
+        "session_id": {
+          "type": "string",
+          "description": "Session id for activity tracking (optional)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Optional batch-level reason recorded in trace events."
+        }
+      }
+    }
+  },
+  {
+    "name": "brain_batch",
+    "description": "Execute multiple brain operations in one call \u2014 the default tool for MIXED batches (remember + revise + connect + archive in any combination), packed into ONE LLM round. For a pure single-type batch use `remember_batch` / `revise_batch` / `connect_batch`; the moment you mix, use brain_batch. Operations run sequentially in one transaction. Per-op required fields and meanings are declared in the schema \u2014 emit only the six declared ops: semantic decisions like 'consolidate'/'keep'/'skip' are expressed through which real op you emit, and relation verbs (`similar_to`, `corrects`, `supersedes`, ...) are values for `connect`'s relation field, never op names.\n\nremember + edges: `connect_to` targets resolve in two scopes \u2014 SIBLINGS (other remember ops in this same batch, order-agnostic; resolution runs after all siblings are created) and CATALOG (existing nodes by title). NEW wins on title collision: a sibling whose title matches a catalog node resolves to the sibling \u2014 if you actually meant the catalog node, `revise` it instead of duplicate-title remember. NEVER use a `connect` op for an edge involving a new node (its id doesn't exist until this round finishes) \u2014 that is what connect_to is for. Don't double-emit: an edge already in connect_to must NOT also appear as a separate connect op for the same pair. For one pair carrying multiple distinct relationships, use `relations: [{relation, why}, ...]` in place of `relation`+`why`.\n\nrevise + edges: `connect_to` on a revise changes the edge that node already has to `target` (its why or relation, value or swap) \u2014 the way to repair a stale edge description; `connect` is for new edges between nodes you are neither creating nor revising.\n\nconnect: both ids must already exist in the brain. Idempotent upsert \u2014 specified fields update existing rows, unspecified preserve; weight does NOT auto-strengthen on repeat.\n\nabsorb IS the real merge \u2014 it folds `absorbed_id` INTO `survivor_id`: edges, source_refs, access_count, and metadata transfer automatically and the absorbed is archived. BUT the survivor KEEPS ITS OWN content \u2014 the absorbed node's content is lost unless you pass a `content` override that folds it in (with an `(id:)` ref). Lossless ONLY when the survivor already states the absorbed claim, or you write the merged content. The absorbed must be archivable (locked/critical refused); the survivor MAY be locked \u2014 you absorb INTO the canonical node.\n\nEvery edge `why`/`description` must be specific (>=30 chars, naming the insight between the two nodes) \u2014 generic 'related'/'connected'/'example of' pollutes the activation kernel and never matches queries about the relationship.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "operations"
+      ],
+      "properties": {
+        "operations": {
+          "type": "array",
+          "description": "Array of operations. Each object has an 'op' field plus that op's fields \u2014 per-op required fields and shapes are declared in the items schema (one branch per op).",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "remember"
+                  },
+                  "type": {
+                    "type": "string",
+                    "description": "Node type"
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Specific, scannable title"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Rich content"
+                  },
+                  "connect_to": {
+                    "type": "array",
+                    "description": "Typed edges to siblings/catalog \u2014 see tool description",
+                    "items": {
+                      "$ref": "#/$defs/connect_to_item"
+                    }
+                  }
+                },
+                "required": [
+                  "op",
+                  "type",
+                  "title",
+                  "content"
+                ],
+                "description": "Create a node. Accepts all remember() fields (situation, reasoning, quotes, ...)."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "revise"
+                  },
+                  "node_id": {
+                    "type": "string",
+                    "description": "Node to revise"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Audit note for this revision \u2014 recorded in trace events, NOT stored on the node. Distinct from the node FIELD `reasoning`, which a revise op updates like any other field."
+                  },
+                  "content": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/swap"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/swap"
+                        }
+                      }
+                    ],
+                    "description": "New content, or swaps into the stored content"
+                  },
+                  "connect_to": {
+                    "type": "array",
+                    "description": "This node's edges to change or add \u2014 an entry per target; see the item shape",
+                    "items": {
+                      "$ref": "#/$defs/revise_connect_to_item"
+                    }
+                  },
+                  "content_edits": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    },
+                    "description": "Deprecated alias of `content: [{old, new}, ...]`; passing both is an error."
+                  }
+                },
+                "required": [
+                  "op",
+                  "node_id",
+                  "reason"
+                ],
+                "description": "Update an existing node. Any other key is a field (content, title, situation, question, reasoning, ...). On revise a field takes its NEW VALUE (the whole field replaced) or a swap `{old, new}` \u2014 a list of swaps for several spots \u2014 that changes only what is stale; `old` is copied VERBATIM from the node as shown and must occur exactly once, or the op fails loudly with the count and nothing is written. Fields not named are untouched. Edges ride as `connect_to` exactly as on remember: on revise an entry changes the edge this node already has to that `target` (its `why`, or its `relation` \u2014 value or swap), or creates it if there is none. Non-text fields (confidence, type, event_time, ...) take bare values. `content_edits` is the alias of `content: [swaps]`."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "connect"
+                  },
+                  "source_id": {
+                    "type": "string",
+                    "description": "Actor node id (must already exist)"
+                  },
+                  "target_id": {
+                    "type": "string",
+                    "description": "Acted-upon node id (must already exist)"
+                  },
+                  "relation": {
+                    "type": "string",
+                    "description": "Open-text verb"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "What the edge MEANS (>=30 chars)"
+                  },
+                  "weight": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "op",
+                  "source_id",
+                  "target_id"
+                ],
+                "description": "Create/update an edge between two EXISTING catalog nodes."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "disconnect"
+                  },
+                  "source_id": {
+                    "type": "string",
+                    "description": "Edge source id"
+                  },
+                  "target_id": {
+                    "type": "string",
+                    "description": "Edge target id"
+                  },
+                  "relation": {
+                    "type": "string",
+                    "description": "Relation to archive"
+                  }
+                },
+                "required": [
+                  "op",
+                  "source_id",
+                  "target_id",
+                  "relation"
+                ],
+                "description": "Soft-archive one relation on an edge; other relations on the same edge survive."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "archive"
+                  },
+                  "node_id": {
+                    "type": "string",
+                    "description": "Node to soft-archive"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why (audit note)"
+                  },
+                  "survivor_id": {
+                    "type": "string",
+                    "description": "ONLY when a live node REPLACES this one (supersession): its id. Records the redirect lineage (absorbed_into edge) recall walks to the successor. Omit for plain retirement; for merging content use absorb instead."
+                  }
+                },
+                "required": [
+                  "op",
+                  "node_id"
+                ],
+                "description": "Soft-archive a node."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "op": {
+                    "const": "absorb"
+                  },
+                  "survivor_id": {
+                    "type": "string",
+                    "description": "Node that remains (may be locked)"
+                  },
+                  "absorbed_id": {
+                    "type": "string",
+                    "description": "Node folded in + archived (must be archivable)"
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "Merged content override \u2014 REQUIRED for losslessness unless survivor already states the absorbed claim"
+                  }
+                },
+                "required": [
+                  "op",
+                  "survivor_id",
+                  "absorbed_id"
+                ],
+                "description": "Lossless merge: fold absorbed INTO survivor. Accepts revise-shape field overrides (content, title, confidence, situation)."
+              }
+            ]
+          }
+        }
+      },
+      "$defs": {
+        "connect_to_item": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "target"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            }
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "The other node: for an EXISTING node, its exact 8-char hex id copied verbatim from any visible id: surface (a hex-shaped value is always treated as an id \u2014 never matched as a title \u2014 and on a miss dropped loudly). On remember only, a node created in this same batch may be named by its exact title (siblings resolve before catalog matches, any declaration order; NEW wins on title collision \u2014 to update an existing catalog node use `revise` on its id, not a duplicate-title remember). On revise the target must be an id. Unresolved targets are logged and skipped, never failing the batch."
+            },
+            "title": {
+              "type": "string",
+              "description": "Deprecated alias of `target`."
+            },
+            "relation": {
+              "type": "string",
+              "description": "Edge relation, open text \u2014 e.g. refines, grounds, corrects, depends_on, supersedes, triggers, implements, anchored_to, during. Invent a specific verb when none fits better. NEVER `related`/`related_to`/empty \u2014 generic relations pollute the activation kernel and match no query."
+            },
+            "why": {
+              "type": "string",
+              "description": "What the edge MEANS \u2014 the insight living between the two nodes, not a summary of either. Embedded for query matching; >=30 chars, or drop the edge.\nBAD: \"example of the principle\" \u2014 generic gloss, no insight about which example or why.\nGOOD: \"the assumption treated concurrent access as a thread-safety question; the correction reframes it as wal-index contention \u2014 different failure mode, different fix\"."
+            },
+            "relations": {
+              "type": "array",
+              "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "relation",
+                  "why"
+                ],
+                "properties": {
+                  "relation": {
+                    "type": "string"
+                  },
+                  "why": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "revise_connect_to_item": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "target"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            }
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "The other node's exact 8-char hex id \u2014 an existing node; sibling titles are not valid on revise."
+            },
+            "title": {
+              "type": "string",
+              "description": "Deprecated alias of `target`."
+            },
+            "relation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/swap"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/swap"
+                  }
+                }
+              ],
+              "description": "Edge relation, open text \u2014 e.g. refines, grounds, corrects, depends_on, supersedes, triggers, implements, anchored_to, during. Invent a specific verb when none fits better. NEVER `related`/`related_to`/empty \u2014 generic relations pollute the activation kernel and match no query. On revise a bare relation identifies the edge row (required when the pair carries more than one relation); a swap {old, new} renames it in place \u2014 weight and history survive. Also the relation to create when the pair has no edge yet."
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/swap"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/swap"
+                  }
+                }
+              ],
+              "description": "What the edge MEANS \u2014 the insight living between the two nodes, not a summary of either. Embedded for query matching; >=30 chars, or drop the edge.\nBAD: \"example of the principle\" \u2014 generic gloss, no insight about which example or why.\nGOOD: \"the assumption treated concurrent access as a thread-safety question; the correction reframes it as wal-index contention \u2014 different failure mode, different fix\". On revise a bare string replaces the description and a swap {old, new} patches it; required, bare, when the edge is being created."
+            },
+            "relations": {
+              "type": "array",
+              "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "relation",
+                  "why"
+                ],
+                "properties": {
+                  "relation": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/swap"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/swap"
+                        }
+                      }
+                    ]
+                  },
+                  "why": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/swap"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/swap"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "swap": {
+          "type": "object",
+          "required": [
+            "old",
+            "new"
+          ],
+          "properties": {
+            "old": {
+              "type": "string",
+              "description": "Exact, unique span of the current value"
+            },
+            "new": {
+              "type": "string",
+              "description": "Replacement text"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "revise_batch",
+    "description": "Revise multiple brain nodes in one call \u2014 one call, many revisions, instead of one call per node. On revise a field takes its NEW VALUE (the whole field replaced) or a swap `{old, new}` \u2014 a list of swaps for several spots \u2014 that changes only what is stale; `old` is copied VERBATIM from the node as shown and must occur exactly once, or the op fails loudly with the count and nothing is written. Fields not named are untouched. Edges ride as `connect_to` exactly as on remember: on revise an entry changes the edge this node already has to that `target` (its `why`, or its `relation` \u2014 value or swap), or creates it if there is none. Non-text fields take bare values; `content_edits` is the deprecated alias of `content: [swaps]`. Immutable fields ({id, created_at, locked}) skipped with warning. Each row emits its own trace event for revision history (queryable via `query_traces` with ref_type='node_revised').",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "revisions"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "description": "List of revisions. Each must have node_id and reason, plus any fields to update \u2014 same field semantics as `revise`.",
+          "items": {
+            "type": "object",
+            "required": [
+              "node_id",
+              "reason"
+            ],
+            "properties": {
+              "node_id": {
+                "type": "string",
+                "description": "Full node ID to revise"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Why this revision \u2014 audit note recorded in the trace event, NOT stored on the node. Required. Distinct from the node FIELD `reasoning` (why the node was encoded); to update that field, pass `reasoning` as well."
+              },
+              "content_edits": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/swap"
+                },
+                "description": "Deprecated alias of `content: [{old, new}, ...]`; passing both is an error."
+              },
+              "connect_to": {
+                "type": "array",
+                "description": "This node's edges to change or add \u2014 an entry per target; see the item shape",
+                "items": {
+                  "$ref": "#/$defs/revise_connect_to_item"
+                }
+              },
+              "type": {
+                "type": "string",
+                "description": "Node type (decision, lesson, mechanism, correction, moment, open, ... \u2014 open vocabulary, use what fits)."
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "Specific and scannable \u2014 the title is itself an embedded recall vector; specificity is findability."
+              },
+              "content": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "Rich content \u2014 reasoning, tradeoffs, specifics. On revise: its new value, or `{old, new}` swaps into what is stored (`content_edits` is the alias of the swap list) \u2014 a full rewrite must re-author everything the node holds, and dropped details are silent losses."
+              },
+              "confidence": {
+                "type": "number",
+                "description": "0.0-1.0. Set below 1.0 when the claim is hedged, contested, or inferred \u2014 recall exposes it and filters select on it. Don't fabricate precision."
+              },
+              "locked": {
+                "type": "boolean",
+                "description": "Protect from casual revision. Belongs to the interactive session: a write from any automated source (encoder, S2, hooks) has its locked:true demoted at the write boundary. Locking is a rare act."
+              },
+              "emotion": {
+                "type": "number",
+                "description": "Emotional charge of the moment \u2014 signed; recall reads the magnitude. Pair with emotion_label."
+              },
+              "emotion_label": {
+                "type": "string",
+                "description": "Name of the felt register ('satisfaction', 'frustration', ...)."
+              },
+              "evolution_status": {
+                "type": "string",
+                "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."
+              },
+              "source_turn_id": {
+                "type": "string",
+                "description": "message_stream ID that produced this node (episode linkage)"
+              },
+              "situation": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "When is this knowledge relevant? One sentence. Stored in node_metadata_kv (canonical); a derived _situation embedding row in node_enrichments provides recall scoring. Enrichment text column is deprecated for _situation \u2014 kv is the single source of truth."
+              },
+              "question": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "The question this node answers, as the other side would ask it \u2014 gets its own recall embedding, bridging how it's stored and how it's asked for. Skip when the title already asks it."
+              },
+              "event_time": {
+                "type": "string",
+                "description": "When the remembered thing HAPPENED \u2014 ISO 8601, distinct from created_at (when it was written). Resolve relative dates to absolute; leave absent rather than guess. Read by the temporal lane at recall."
+              },
+              "reasoning": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "What this claim rests on \u2014 how it was established (measured, reported, inferred), how strongly, and what would change it. Written for a reader who has never seen this prompt. NOT revise()'s `reason` param \u2014 that is the audit note for a revision, recorded in trace events and never stored on the node."
+              },
+              "thought": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "My own read on the memory \u2014 a hunch, a connection, a take the content doesn't carry. Delivered: rendered beside the node at recall and in encoder catalogs. A living field \u2014 update it when a re-read moves it; most nodes carry none, and empty is correct."
+              },
+              "their_raw_quote": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "Their exact words \u2014 my counterpart's, verbatim."
+              },
+              "my_raw_quote": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "My own exact words \u2014 reflections, realizations, insights."
+              },
+              "correction_pattern": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "Behavioral pattern behind the correction."
+              },
+              "source_context": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/swap"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/swap"
+                    }
+                  }
+                ],
+                "description": "Session/context when this was encoded."
+              },
+              "source_refs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "REPLACE semantics: passing this REPLACES the node's existing refs (atomic delete+insert). Omit the field entirely to preserve current refs; pass [] only to deliberately clear them \u2014 an empty list is a wipe, not a no-op. Ids are 8-char hex trace ids, same form as on remember."
+              }
+            }
+          }
+        }
+      },
+      "$defs": {
+        "revise_connect_to_item": {
+          "type": "object",
+          "anyOf": [
+            {
+              "required": [
+                "target"
+              ]
+            },
+            {
+              "required": [
+                "title"
+              ]
+            }
+          ],
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "The other node's exact 8-char hex id \u2014 an existing node; sibling titles are not valid on revise."
+            },
+            "title": {
+              "type": "string",
+              "description": "Deprecated alias of `target`."
+            },
+            "relation": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/swap"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/swap"
+                  }
+                }
+              ],
+              "description": "Edge relation, open text \u2014 e.g. refines, grounds, corrects, depends_on, supersedes, triggers, implements, anchored_to, during. Invent a specific verb when none fits better. NEVER `related`/`related_to`/empty \u2014 generic relations pollute the activation kernel and match no query. On revise a bare relation identifies the edge row (required when the pair carries more than one relation); a swap {old, new} renames it in place \u2014 weight and history survive. Also the relation to create when the pair has no edge yet."
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/swap"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/swap"
+                  }
+                }
+              ],
+              "description": "What the edge MEANS \u2014 the insight living between the two nodes, not a summary of either. Embedded for query matching; >=30 chars, or drop the edge.\nBAD: \"example of the principle\" \u2014 generic gloss, no insight about which example or why.\nGOOD: \"the assumption treated concurrent access as a thread-safety question; the correction reframes it as wal-index contention \u2014 different failure mode, different fix\". On revise a bare string replaces the description and a swap {old, new} patches it; required, bare, when the edge is being created."
+            },
+            "relations": {
+              "type": "array",
+              "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+              "items": {
+                "type": "object",
+                "required": [
+                  "relation",
+                  "why"
+                ],
+                "properties": {
+                  "relation": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/swap"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/swap"
+                        }
+                      }
+                    ]
+                  },
+                  "why": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/swap"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/$defs/swap"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "swap": {
+          "type": "object",
+          "required": [
+            "old",
+            "new"
+          ],
+          "properties": {
+            "old": {
+              "type": "string",
+              "description": "Exact, unique span of the current value"
+            },
+            "new": {
+              "type": "string",
+              "description": "Replacement text"
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "get_nodes",
+    "description": "Get multiple nodes by ID in one call. Two views, picked by count: up to 10 ids render in DETAIL \u2014 whole content, the top 8 edges with the total (\"Edges (8 of 12)\"), corrections at balanced depth, the node's communities as \"title\" (id) \u2014 for nodes you will act on; more than 10 render in SCAN \u2014 800 chars of content, 5 edges \u2014 for judging fit across many. rich=true lifts DETAIL to every edge and the full correction K/V (reasoning, raw quotes). A recall renders its results through the same two views, so a recall and a pull of one node read the same.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "node_ids"
+      ],
+      "properties": {
+        "node_ids": {
+          "type": "array",
+          "description": "Array of node IDs to fetch",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rich": {
+          "type": "boolean",
+          "description": "Default false \u2192 bounded, batch-size-aware view. true \u2192 complete view (all edges + heavy correction K/V) for every node. Use sparingly on large batches \u2014 it is the firehose.",
+          "default": false
+        }
+      }
+    }
+  },
+  {
+    "name": "recall_batch",
+    "description": "Run multiple recall queries in one call. Returns results for each query.",
+    "input_schema": {
+      "type": "object",
+      "required": [
+        "queries"
+      ],
+      "properties": {
+        "queries": {
+          "type": "array",
+          "description": "Array of search queries",
+          "items": {
+            "type": "string"
+          }
+        },
+        "filter": {
+          "type": "object",
+          "description": "Dict filter applied to all queries. Same format as recall filter."
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Max results per query (default 5)",
+          "default": 5
+        }
+      }
+    }
+  }
+]

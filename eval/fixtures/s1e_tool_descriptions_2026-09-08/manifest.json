@@ -1,0 +1,14 @@
+{
+  "candidate": "brain_tools_generic_v1_2026-09-08",
+  "status": "authored_for_review",
+  "baseline_tools_sha256": "0481113df84d107888b657679c3ded2296852b26266192dca6802e458dc8c93f",
+  "files": {
+    "tools.api.json": "d9337636e90e839991f56ad827b0967625997fba184f06300bc45a94634417a9",
+    "tools.mcp.json": "1aff326c59fdca565c131096c68790defff599c1c776aa91da061558ffe2b8e4",
+    "brain_batch.mcp.json": "977f9fef77bbf373172a4c83bdb2d996ee1d98266de9ea92b8c247ce3740a0bf",
+    "description_edits.json": "8570614fd457c4f7927fddbc94b5a9dd224f809ed631b1ccab9f95618854d8d8",
+    "offline_review.json": "c90b9bbba70f00ee08f011c7acf0356a9994ac31dbe8372f73d477bcbdc1033e",
+    "descriptions.md": "f686679174d412795da7240d6e4714c98804173d06886e82ec30d3af6148076b",
+    "candidate.py": "214db88eb44c5fdcb78f14524c4388697386d810d86daf390d6d81b6c2f54024"
+  }
+}

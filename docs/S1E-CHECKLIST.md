@@ -1,5 +1,31 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
+## Current pickup — September 11: V3.3 authoring and broad evaluation
+
+**Pickup as of 2026-09-13:** read [HANDOFF-S1E-V3-5-2026-09-13.md](HANDOFF-S1E-V3-5-2026-09-13.md) first — where every
+V3.x artifact lives, the state of the evidence, the standing defect classes with carriers tried, and the rules.
+
+Read [the V3.3 handoff](HANDOFF-S1E-V3-3-2026-09-11.md) and its
+[working set](S1E-V3-3-WORKING-SET-2026-09-11.md) before acting. Production
+versus V3.2 is complete, with mixed strengths; V3.3 is not yet authored.
+Tom asks the successor to weave many shapes into coherent examples, use and
+improve these challenges and the example probes, then evaluate deeply and
+widely while preserving prior gains. Compression serves focus, not a token
+target. **V3.3 was authored, reviewed and frozen on 2026-09-11** —
+[authoring review](S1E-V3-3-AUTHORING-REVIEW-2026-09-11.md), fixture
+`eval/fixtures/s1e_guide_v3_3_2026-09-11/` — and its sanity and transfer
+cells are complete: [results](S1E-V3-3-RESULTS-2026-09-11.md) (126 transfer
+encodes on untouched material, 18 blind packs, a downstream answer test).
+**V3.4 (2026-09-12)** — one more weave on live tool schemas, measured on fresh
+corpora with a regression set: [authoring](S1E-V3-4-AUTHORING-2026-09-12.md),
+[results](S1E-V3-4-RESULTS-2026-09-12.md). **V3.5 (2026-09-12, later)** — the overlay's
+seven edits without its ownership line, the three cross-arm defect classes woven at their
+carriers, two ledger repairs; four cells pinned with zero model calls, analysis instruments
+built first: [authoring](S1E-V3-5-AUTHORING-2026-09-12.md),
+`eval/fixtures/s1e_guide_v3_5_2026-09-12/ANALYSIS.md`; **run and measured — not adopted**:
+[results](S1E-V3-5-RESULTS-2026-09-12.md). V3.4 remains the candidate. The older
+walk/measurement heads below are historical. Nothing is merged or deployed.
+
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
 ## Measurement arc CLOSED 2026-09-03 — position is the lever, the revise shape is the next change ◀ HEAD
@@ -380,6 +406,11 @@ as a section; the Allen full-cut.
 
 ## How we use it
 
+Current release objective and evidence: [S1E release regression map](S1E-RELEASE-REGRESSION-MAP-2026-09-11.md).
+Before another narrow probe or revision, retain the whole capability set and
+apply Tom's quote-aware fidelity calibration there. The historical walk state
+above is not the status of the completed V3.2 sanity.
+
 1. **Walk the prompt section-by-section.** Per section: which boxes apply,
    current status — `HOLDS` / `VIOLATES` / `ABSENT` / `DELEGATED(where)` /
    `OPEN-BY-DESIGN` — and the shape we want.
@@ -446,6 +477,19 @@ as a section; the Allen full-cut.
   `tests/test_teaching_vocabulary_sync.py`.
 
 ## A. Example laws (under T1)
+
+Current application: [Semantic fidelity](challenges/semantic-fidelity.md)
+checks claim strength, agreement, plans, unused ideas, trial scope and actual
+repair, in both directions: no overstatement and no unnecessary weakening.
+Its V3.2 carrier map is author-reviewed; nine V3.2 encodes and the nine-run
+production comparison are complete. V3.3 (2026-09-11) added two evidence
+shapes to the challenge — a choice folded into an existing node keeps its
+order and reason; a read that later evidence supports firms up with the case
+it does not cover named — and the receiver's view; its worked carriers are
+the Mira episode's second window and the Inez coda (a thought-only
+narrowing). The blind cold reader recovered the shapes from the fenced
+blocks alone; the independent review's seventeen findings are dispositioned
+in the authoring review.
 
 - **A1. Every behavioral ask gets a worked example; instruction-only = dead.**
   `thought` 0/120 nodes, `emotional_context` 0 brain-wide, event_time ~0% for
@@ -1093,6 +1137,8 @@ teaching surface. Columns: what it teaches now / spare capacity / risks.
 | Sweep example (BAD hub-only + 4-patch GOOD batch) | Actions/Speed seam | Event→multi-node propagation (R16, real ledger case); falsified-referent law (verdict node); edge-line id targeting + supersedes-over-remint; grounded source_refs copied from a trace= attr (R7 + three-connections); restraint clause (patch only what the event falsified); lookup question on the decision node (9b) | UPDATE-append counter-clause landed in the content_edits paragraph instead (stop-8 addendum) | Dev-domain skin nearer our corpus (A7) — accepted risk, package eval is backstop; +5.5K chars, first asset to push draft over v37 |
 | Lexicon example (second misreading → interpretation) | §7.6, after A2 | The commissioned upgrade move (4bb5b1e8 §2): second occurrence visible via catalog = the signal; person-lexicon entry with trigger-register situation firing at the utterance; twin-incident trap shown (A2 law); emergent `interpretation` type demonstrates T5 open taxonomy; abstracts edge by copied id; question = the future moment's phrasing | voice anchor on the interpretation (defining quote rides the grounding event instead — detail/meaning split, decide at Stop 10 zone pass) | Probe N: full transfer on a fresh surface (retire/starter) — upgrade minted, trap avoided, honest sweep:none, self-directed thought about the reflex-vs-record gap. §7.6.A2 deliberately UNCHANGED: forcing `corrects` there would violate edge honesty (no prior-belief node exists in its scene); R8 satisfied by the canonical since 9a |
 | §7.6 A6/A7/A4/A2/A3/A8 | §7.6 | Identity/hot-register encoding; anchor-voice depth; locked + trigger usage; correction at register; agent-as-other-side (A8); source_refs shape (placeholders) | **A voice-disagreement example — me holding my ground with evidence and encoding the contradiction as signal (new D3): none of the six shows it; every §7.6 example is me being corrected or seeing, never me disagreeing** | Big real estate; locked generosity needs its disclaimer kept; placeholder discipline must survive edits (A5) |
+| Mira episode, two windows (V3.3) | Cadence and worked examples | W1: first-disclosure fact; multi-surface state change with swaps, bare values and a `partially_resolves` closure edge; an open narrowed; edge-only fetch and read; my rejected proposal beside adopted checks; conditional leaning with an unused alternative; recurring correction → scoped interpretation with hedged thought and selective refs; post-write overstatement caught and repaired; `sweep:`; Arc as movement. W2: an ordering decision with its reason folded into the existing plan (title swap, content swap, bare situation/reasoning) with the Bad detail-only fold shown; a relative date resolved against the conversation date; the interpretation firming up across title/content/situation/reasoning/thought with a competing reading kept; its stale edge why repaired through `connect_to` on the revise; two facts with different retrieval intents (`grounds` / `qualifies`); `fetch: none`; receiver's-view inspection | A firm-at-mint interpretation (only the lexicon entry and identity examples carry that register); failure handling; archive/absorb/disconnect | Highest-attention asset — every default it models transfers (A4): the five-field interpretation revise could read as churn (the targets line keeps `question clean`); the receiver's view narrated in the close and the strategy could become a ritual paragraph (eval-watch) |
+| Inez coda (V3.3) | Identity-bearing examples | A new fact beside a thought-only revise that NARROWS a pattern's competing readings while content and scope stand — the counterweight to the Mira window's firming-up; `explains` as the edge from the practical reading to the pattern | — | Uses a returned id (`d3e17a4b`) so the revise targets an id, not a placeholder |
 | v-next.4 sweep example (BAD hub-only + full sweep) | candidate | Sweep discipline (D11); content_edits patch form; labeled BAD contrast (T1 ✓); first-person falsifying evidence (D3/D12); supersedes lineage; edge-visible neighbor walk | Fix the wrong error name (`connect_to_bad_id`) in the adjacent prose while landing it; differentiation beat | ~100 added lines (D2); territory overlap with ghi789 (above) |
 | MCP description examples (brain_batch, connect_to, absorb) | MCP | connect_to resolution scopes; sibling-vs-catalog forms; forward-reference example; empty-why anti-pattern; vocabulary + never-generic ban | Correct error-name semantics live here too (mechanics = MCP home, C2); absorb's content-destructive warning held — keep | Shared across ALL callers (C3) — no encoder-specific teaching; changes need the 8-step MCP eval gate |
 
@@ -1157,6 +1203,27 @@ no example added):
 Rationale attachment: the every-surface sentence now names six surfaces with one
 consequence clause, and "Edges ride the same revise" attaches a second to the
 edge description — the surface that measured 0/24.
+
+**V3.3 (2026-09-11) — recounted over the frozen template** (`static_checks.py`
+census; JSON and pseudo-JSON revises alike):
+
+| op | node | fields |
+|---|---|---|
+| Mira W1 | `a6b0139d` | title (swap), content (swaps incl. a deletion), situation, reasoning, `connect_to` create (`partially_resolves`) |
+| Mira W1 | `82c41f0b` | title, content, situation, question, reasoning (restructure) |
+| Mira W1 repair | `49d28ce0` | situation only |
+| Mira W2 | `49d28ce0` | title (swap), content (swap), situation, reasoning |
+| Mira W2 | `93bf027e` | title (swap), content (swap), situation, reasoning, thought, `connect_to` why swap |
+| Inez coda | `d3e17a4b` | thought only |
+| Aisha | `7c1a4d93` | type, title, content, situation, reasoning, event_time |
+| ladder / sweep | 8 ops | unchanged from the 2026-09-04 recount |
+
+Edge description repaired via `connect_to` on revise: **2** (was 1). Thought:
+**2** ops, one thought-only (was 1, thought-only). Title: swaps on a plan and
+an interpretation join the ladder's three. Situation: bare on every W2 op —
+the rendered old situations are restructured, not patched; a situation swap
+remains a deliberate zero. `confidence` and `source_refs` on revise: still
+deliberate zeros.
 
 **Rationale-attachment count** (A10.3) — where consequence clauses attach:
 

@@ -1,0 +1,28 @@
+{
+  "status": "passed",
+  "scope": "Offline structural and recorded-call compatibility; no behavioral eval.",
+  "tools": 6,
+  "description_entries": 117,
+  "changed_entries": 73,
+  "description_chars_before": 20781,
+  "description_chars_after": 15953,
+  "serialized_chars_before": 31683,
+  "serialized_chars_after": 26831,
+  "saved_calls_checked": 19,
+  "existing_schema_invalid_calls": [
+    {
+      "path": "eval/results/s1e_guide_sanity_2026-09-08/v2_frozen/repeat3/window3/calls.json",
+      "tool": "brain_batch",
+      "errors": [
+        [
+          [
+            "operations",
+            5
+          ],
+          "oneOf"
+        ]
+      ]
+    }
+  ],
+  "non_description_contract_sha256": "92f8fbd9cc0a8586e958719ce0ad9428dd3ea0995730a38586deb14c2eea2fc6"
+}

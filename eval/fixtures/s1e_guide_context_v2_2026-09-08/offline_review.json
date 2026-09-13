@@ -1,0 +1,96 @@
+{
+  "status": "passed",
+  "model_calls": 0,
+  "unchanged_fixture_fields": [
+    "windows",
+    "seed_nodes",
+    "criteria_before_run",
+    "initial_residue"
+  ],
+  "checks": [
+    "original input and new artifact hashes",
+    "versioned runner compiles",
+    "real JournalBinding open count and first-seen persistence",
+    "real resolution preserves other open item",
+    "rendering leaves stored journal rows unchanged"
+  ],
+  "journal_lifecycle": [
+    {
+      "window": 1,
+      "now": "2026-09-08 12:00 UTC",
+      "rendered": "RECENT REVIEW NOTES \u2014 residue your recent runs flagged, for continuity (not a to-do list):\n- open \u00d71 since 09-08 \u00b7 parcel \u00b7 no receipt\n\n",
+      "stored_notes": [
+        {
+          "tag": "open",
+          "note": "no receipt",
+          "undelivered": "",
+          "subject": "parcel",
+          "chain_id": "s1e-7cb3e9a2-1",
+          "created_at": "2026-09-09T02:53:31.353555+00:00",
+          "open_runs": 1,
+          "first_seen": "2026-09-09T02:53:31.353555+00:00"
+        }
+      ]
+    },
+    {
+      "window": 2,
+      "now": "2026-09-11 12:00 UTC",
+      "rendered": "RECENT REVIEW NOTES \u2014 residue your recent runs flagged, for continuity (not a to-do list):\n- open \u00d71 since 09-11 \u00b7 room \u00b7 access answer pending\n- open \u00d72 since 09-08 \u00b7 parcel \u00b7 receipt still absent\n- open \u00b7 parcel \u00b7 no receipt\n\n",
+      "stored_notes": [
+        {
+          "tag": "open",
+          "note": "access answer pending",
+          "undelivered": "",
+          "subject": "room",
+          "chain_id": "s1e-7cb3e9a2-2",
+          "created_at": "2026-09-09T02:53:31.361601+00:00",
+          "open_runs": 1,
+          "first_seen": "2026-09-09T02:53:31.361601+00:00"
+        },
+        {
+          "tag": "open",
+          "note": "receipt still absent",
+          "undelivered": "",
+          "subject": "parcel",
+          "chain_id": "s1e-7cb3e9a2-2",
+          "created_at": "2026-09-09T02:53:31.361601+00:00",
+          "open_runs": 2,
+          "first_seen": "2026-09-09T02:53:31.353555+00:00"
+        },
+        {
+          "tag": "open",
+          "note": "no receipt",
+          "undelivered": "",
+          "subject": "parcel",
+          "chain_id": "s1e-7cb3e9a2-1",
+          "created_at": "2026-09-09T02:53:31.353555+00:00"
+        }
+      ]
+    },
+    {
+      "window": 3,
+      "now": "2026-09-14 12:00 UTC",
+      "rendered": "RECENT REVIEW NOTES \u2014 residue your recent runs flagged, for continuity (not a to-do list):\n- resolved \u00b7 parcel \u00b7 receipt arrived\n- open \u00d71 since 09-11 \u00b7 room \u00b7 access answer pending\n\n",
+      "stored_notes": [
+        {
+          "tag": "resolved",
+          "note": "receipt arrived",
+          "undelivered": "",
+          "subject": "parcel",
+          "chain_id": "s1e-7cb3e9a2-3",
+          "created_at": "2026-09-09T02:53:31.362611+00:00"
+        },
+        {
+          "tag": "open",
+          "note": "access answer pending",
+          "undelivered": "",
+          "subject": "room",
+          "chain_id": "s1e-7cb3e9a2-2",
+          "created_at": "2026-09-09T02:53:31.361601+00:00",
+          "open_runs": 1,
+          "first_seen": "2026-09-09T02:53:31.361601+00:00"
+        }
+      ]
+    }
+  ]
+}

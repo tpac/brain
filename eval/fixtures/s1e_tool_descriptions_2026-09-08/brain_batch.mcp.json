@@ -1,0 +1,393 @@
+{
+  "name": "brain_batch",
+  "description": "Apply remember, revise, connect, disconnect, archive and absorb operations in one batch. Operations run in list order within a transaction; edges from new nodes are resolved after sibling creation. Returns per-operation results and separate connect_to failures. A successful batch response can contain rejected operations; use the returned outcomes to determine which changes took effect. Operation names select actions; relationship verbs belong in relation fields.\n\nFor edges involving new nodes, use connect_to on remember with existing node IDs or exact sibling titles. New siblings take precedence on title collisions; a duplicate-title remember creates another node rather than revising the existing one. Do not also emit the same edge as a connect operation. connect_to on revise updates or adds this node's edges to existing IDs. Separate connect operations require two existing IDs and upsert the named relationship. Multiple relationships for a pair can use relations: [{relation, why}, ...].\n\nabsorb folds absorbed_id into survivor_id and archives the absorbed node. Edges, source_refs, access counts and metadata transfer, but the survivor keeps its own content unless a content override is supplied. Include any needed absorbed content in that full replacement; content_edits is not supported on absorb. The absorbed node must be archivable; the survivor may be locked. A failed absorb does not commit a partial merge.",
+  "inputSchema": {
+    "type": "object",
+    "required": [
+      "operations"
+    ],
+    "properties": {
+      "operations": {
+        "type": "array",
+        "description": "Array of operations. Each object has an 'op' field plus that op's fields — per-op required fields and shapes are declared in the items schema (one branch per op).",
+        "items": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "remember"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Node type"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Specific, scannable title"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Memory content. In a revision, a complete value replaces the stored text; swaps change selected spans."
+                },
+                "connect_to": {
+                  "type": "array",
+                  "description": "Typed edges to siblings/catalog — see tool description",
+                  "items": {
+                    "$ref": "#/$defs/connect_to_item"
+                  }
+                }
+              },
+              "required": [
+                "op",
+                "type",
+                "title",
+                "content"
+              ],
+              "description": "Create a node with type, title and content. Also accepts the remember fields, including situation, reasoning, question, thought, event_time, their_raw_quote, my_raw_quote and source_refs. connect_to can address existing IDs or new sibling titles."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "revise"
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "Node to revise"
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Required audit note explaining this revision; recorded in history, not stored on the node. Supply reasoning separately to change the node's evidence statement."
+                },
+                "content": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/$defs/swap"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/swap"
+                      }
+                    }
+                  ],
+                  "description": "New content, or swaps into the stored content"
+                },
+                "connect_to": {
+                  "type": "array",
+                  "description": "This node's edges to change or add — an entry per target; see the item shape",
+                  "items": {
+                    "$ref": "#/$defs/revise_connect_to_item"
+                  }
+                },
+                "content_edits": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/swap"
+                  },
+                  "description": "Deprecated alias of `content: [{old, new}, ...]`; passing both is an error."
+                }
+              },
+              "required": [
+                "op",
+                "node_id",
+                "reason"
+              ],
+              "description": "Update an existing node by ID. Omitted fields keep their current values. A writable text field accepts its complete new value, a swap {old, new}, or a list of swaps applied in order. Each old span must match exactly once; a missing or ambiguous match rejects the revision. Full replacement discards text omitted from the new value. Other fields take bare values. reason is the required audit note; reasoning is a separate stored field. Immutable id, created_at and locked are skipped with warnings. connect_to can update existing edges or add edges to existing nodes. source_refs replaces the reference list when supplied; omission preserves it, and [] clears it. Results report changes, warnings and failures."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "connect"
+                },
+                "source_id": {
+                  "type": "string",
+                  "description": "Actor node id (must already exist)"
+                },
+                "target_id": {
+                  "type": "string",
+                  "description": "Acted-upon node id (must already exist)"
+                },
+                "relation": {
+                  "type": "string",
+                  "description": "Open-text verb"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Meaning of this particular relationship, used in retrieval. At least 30 characters explaining how these nodes connect, beyond restating their titles. Example: \"The revised estimate accounts for the delay missing from the original schedule.\""
+                },
+                "weight": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "op",
+                "source_id",
+                "target_id"
+              ],
+              "description": "Create/update an edge between two EXISTING catalog nodes."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "disconnect"
+                },
+                "source_id": {
+                  "type": "string",
+                  "description": "Edge source id"
+                },
+                "target_id": {
+                  "type": "string",
+                  "description": "Edge target id"
+                },
+                "relation": {
+                  "type": "string",
+                  "description": "Relation to archive"
+                }
+              },
+              "required": [
+                "op",
+                "source_id",
+                "target_id",
+                "relation"
+              ],
+              "description": "Soft-archive one relation on an edge; other relations on the same edge survive."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "archive"
+                },
+                "node_id": {
+                  "type": "string",
+                  "description": "Node to soft-archive"
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why (audit note)"
+                },
+                "survivor_id": {
+                  "type": "string",
+                  "description": "ONLY when a live node REPLACES this one (supersession): its id. Records the redirect lineage (absorbed_into edge) recall walks to the successor. Omit for plain retirement; for merging content use absorb instead."
+                }
+              },
+              "required": [
+                "op",
+                "node_id"
+              ],
+              "description": "Soft-archive a node."
+            },
+            {
+              "type": "object",
+              "properties": {
+                "op": {
+                  "const": "absorb"
+                },
+                "survivor_id": {
+                  "type": "string",
+                  "description": "Node that remains (may be locked)"
+                },
+                "absorbed_id": {
+                  "type": "string",
+                  "description": "Node folded in + archived (must be archivable)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Complete survivor content after merging. Required to preserve any absorbed claim not already stated by the survivor; omitted content keeps only the survivor text."
+                }
+              },
+              "required": [
+                "op",
+                "survivor_id",
+                "absorbed_id"
+              ],
+              "description": "Merge absorbed_id into survivor_id, then archive the absorbed node. Accepts complete field overrides; see the tool description for content preservation."
+            }
+          ]
+        }
+      }
+    },
+    "$defs": {
+      "connect_to_item": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "target"
+            ]
+          },
+          {
+            "required": [
+              "title"
+            ]
+          }
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Existing node: its exact 8-character hex ID from a returned record or supplied context. For remember only, another node created in this batch can be named by its exact title, in any declaration order. New siblings take precedence over title matches; creating a duplicate title does not update the existing node. Hex-shaped values are treated as IDs. Unresolved edge targets are reported and skipped without failing node creation. On revise, only existing node IDs are accepted."
+          },
+          "title": {
+            "type": "string",
+            "description": "Deprecated alias of `target`."
+          },
+          "relation": {
+            "type": "string",
+            "description": "Specific relationship verb, such as supports, corrects, depends_on or implements. Use a specific verb rather than related/related_to or an empty value."
+          },
+          "why": {
+            "type": "string",
+            "description": "Meaning of this particular relationship, used in retrieval. At least 30 characters explaining how these nodes connect, beyond restating their titles. Example: \"The revised estimate accounts for the delay missing from the original schedule.\""
+          },
+          "relations": {
+            "type": "array",
+            "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+            "items": {
+              "type": "object",
+              "required": [
+                "relation",
+                "why"
+              ],
+              "properties": {
+                "relation": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "revise_connect_to_item": {
+        "type": "object",
+        "anyOf": [
+          {
+            "required": [
+              "target"
+            ]
+          },
+          {
+            "required": [
+              "title"
+            ]
+          }
+        ],
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "Exact 8-character hex ID of an existing node. Sibling titles are not accepted on revise."
+          },
+          "title": {
+            "type": "string",
+            "description": "Deprecated alias of `target`."
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/swap"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/swap"
+                }
+              }
+            ],
+            "description": "Specific relationship verb, such as supports, corrects, depends_on or implements. Use a specific verb rather than related/related_to or an empty value. A bare value identifies the relationship; required when the pair has multiple relationships. A swap {old, new} renames it while preserving weight and history. If no edge exists, the bare value names the new relation."
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/$defs/swap"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/swap"
+                }
+              }
+            ],
+            "description": "Meaning of this particular relationship, used in retrieval. At least 30 characters explaining how these nodes connect, beyond restating their titles. Example: \"The revised estimate accounts for the delay missing from the original schedule.\" A bare value replaces the description; a swap {old, new} patches it. A new edge requires a complete description."
+          },
+          "relations": {
+            "type": "array",
+            "description": "Alternative to relation+why when the same pair carries multiple distinct relationships. Each item is {relation, why}.",
+            "items": {
+              "type": "object",
+              "required": [
+                "relation",
+                "why"
+              ],
+              "properties": {
+                "relation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/$defs/swap"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/swap"
+                      }
+                    }
+                  ]
+                },
+                "why": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "$ref": "#/$defs/swap"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/swap"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "swap": {
+        "type": "object",
+        "required": [
+          "old",
+          "new"
+        ],
+        "properties": {
+          "old": {
+            "type": "string",
+            "description": "Exact, unique span of the current value"
+          },
+          "new": {
+            "type": "string",
+            "description": "Replacement text"
+          }
+        }
+      }
+    }
+  }
+}

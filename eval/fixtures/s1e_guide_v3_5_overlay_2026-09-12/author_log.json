@@ -1,0 +1,50 @@
+[
+ {
+  "label": "A1 ownership line opens Actions",
+  "old_chars": 73,
+  "new_chars": 131,
+  "delta": 58
+ },
+ {
+  "label": "X1 cross-redundancy in the five-surfaces sentence",
+  "old_chars": 160,
+  "new_chars": 355,
+  "delta": 195
+ },
+ {
+  "label": "X2 detail-and-meaning generative half",
+  "old_chars": 120,
+  "new_chars": 391,
+  "delta": 271
+ },
+ {
+  "label": "X3 expansive counterweight in the traps sentence",
+  "old_chars": 148,
+  "new_chars": 317,
+  "delta": 169
+ },
+ {
+  "label": "X4 temporal authority in the Nadia reading",
+  "old_chars": 97,
+  "new_chars": 179,
+  "delta": 82
+ },
+ {
+  "label": "X6 `thought` named in the gate-region sentence",
+  "old_chars": 76,
+  "new_chars": 100,
+  "delta": 24
+ },
+ {
+  "label": "X7 encoded=\"true\" turn depicted in the sample",
+  "old_chars": 42,
+  "new_chars": 436,
+  "delta": 394
+ },
+ {
+  "label": "X5 `thought` in the gist `new` roll-call",
+  "old_chars": 113,
+  "new_chars": 196,
+  "delta": 83
+ }
+]

@@ -1,0 +1,101 @@
+{
+  "format_version": 1,
+  "status": "frozen_for_review",
+  "git_head": "9a1727f8a18082e5f8371498c4b4a8993d0e6de1",
+  "gist": "eval/candidate_prompts/s1e_gist_guide_v2_2026-09-08.md",
+  "tools": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/tools.json",
+  "shared_suffix_sha256": "4ab165a7a7568af8a2a834058a206dbd17df4e326bc924a13f128ea650d74a13",
+  "assembly_adapter_sha256": "3b1801d09c01ffb17a1d1a1f1f234404639b4119c005b6c8e79a4cfe667031bb",
+  "settings": {
+    "model": "claude-sonnet-4-6",
+    "effort": "medium",
+    "max_tokens": 12288,
+    "max_rounds": 5,
+    "lists_preamble": true,
+    "lived": true
+  },
+  "arms": {
+    "v2_frozen": {
+      "template": "eval/candidate_prompts/s1e_guide_v2_2026-09-08.md",
+      "template_chars": 119926,
+      "strategy": null,
+      "strategy_chars": 0,
+      "system": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_frozen.system.md",
+      "system_chars": 126694,
+      "arm_sha256": "d06ee141161bf6ec7e00f109c6ed47175ece8de751027f0dadadc3edd79448e0"
+    },
+    "v2_revised": {
+      "template": "eval/candidate_prompts/s1e_guide_v2_revised_2026-09-08.md",
+      "template_chars": 120974,
+      "strategy": null,
+      "strategy_chars": 0,
+      "system": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_revised.system.md",
+      "system_chars": 127742,
+      "arm_sha256": "9c54da23e1d9ad4c8eefa738b26e9625b1eec4625c3f23e3334d6aabdaad6f8a"
+    },
+    "v3": {
+      "template": "eval/candidate_prompts/s1e_guide_v3_2026-09-08.md",
+      "template_chars": 85343,
+      "strategy": null,
+      "strategy_chars": 0,
+      "system": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v3.system.md",
+      "system_chars": 92111,
+      "arm_sha256": "58352b4c700cb6328dac32d573403dacfb28ca995123c281cc2a61a7e74d6887"
+    },
+    "v2_revised_titles": {
+      "template": "eval/candidate_prompts/s1e_guide_v2_revised_enhanced_titles_2026-09-08.md",
+      "template_chars": 123815,
+      "strategy": "eval/candidate_prompts/s1e_guide_navigation_strategy_2026-09-08.md",
+      "strategy_chars": 737,
+      "system": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_revised_titles.system.md",
+      "system_chars": 131321,
+      "arm_sha256": "98b2a085831c7d05a40599c9e694451ffe1faf2faac9a2368f0379fa8559f636"
+    },
+    "v3_titles": {
+      "template": "eval/candidate_prompts/s1e_guide_v3_enhanced_titles_2026-09-08.md",
+      "template_chars": 87385,
+      "strategy": "eval/candidate_prompts/s1e_guide_navigation_strategy_2026-09-08.md",
+      "strategy_chars": 737,
+      "system": "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v3_titles.system.md",
+      "system_chars": 94891,
+      "arm_sha256": "d3cb6b011fa285b96d1fc569def31bf455012391e7c3a60f1077f9f9d6c06152"
+    }
+  },
+  "files": {
+    "eval/candidate_prompts/s1e_guide_v2_2026-09-08.md": "4637785918cab686ec9abd29096def0691fb9aaf443b63d893736c4883551edb",
+    "eval/candidate_prompts/s1e_guide_v2_compact_shapes_2026-09-08.md": "ac1417f95e85de0f8af15542bccfe327dbc9122aa6c9a81de7b6334a664c7448",
+    "eval/candidate_prompts/s1e_guide_v2_revised_2026-09-08.md": "a07ef2496070e181410d4bade081e27092e53076d547fee92801ef371c7402e2",
+    "eval/candidate_prompts/s1e_guide_v3_2026-09-08.md": "1192224d2faf3b97f552325e90741748a3645e95a090300ba34d89ca0b0c3cf9",
+    "eval/candidate_prompts/s1e_guide_v2_revised_enhanced_titles_2026-09-08.md": "ab079f9ebb5a1da7b22852738477321dc766f48a4cdd8fed114a851eed6b47ef",
+    "eval/candidate_prompts/s1e_guide_v3_enhanced_titles_2026-09-08.md": "80247e0c8b6435d4517ba152eff0efa6c66ebf7da3a7e5d9dc89d6fd04473642",
+    "eval/candidate_prompts/s1e_guide_navigation_strategy_2026-09-08.md": "1c4931a8d76b195017d356d703af01f039297e620d1061bee951553975a89b8c",
+    "eval/candidate_prompts/s1e_gist_guide_v2_2026-09-08.md": "54cf9c77132ce3eac680f9703f71a612293b26117c6886048ba9f001634b3063",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/author_arms.py": "8a991028c673e0f0c3653cf2c7fffe94f40cbb5a818f431b8c5866114b16c347",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/later_window.md": "da3e22a1f5a7823df9bc32d2bd339955edb5b10d9d5709961e983bb5cc61c04d",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/authoring_audit.json": "4c95db5dcf82a0e4b558660413bc8262e66305dacfede64219be03509ed8718f",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/semantic_review.md": "8dffa9fe3eeb69eafc33c2348cef28ffc4d1dc18ae381fc1fffe7c0c3b8ab8f3",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen_arms.py": "3b1801d09c01ffb17a1d1a1f1f234404639b4119c005b6c8e79a4cfe667031bb",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/review_and_freeze.py": "78b0e3e6bb248ccf5e0e79c3339d0bb7fb37a609ca1c95d9a0c77c2d954123eb",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/v2_revised.diff": "cc599915e7b3fdf8f9499843260d8519e72250dcad2cb3d578921ed75e788a4c",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/v3.diff": "117769ec4e7db483db1fae0f483f563a4fc7b96d9dca0e3694ff559b05a9a2b2",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/v2_revised_titles.diff": "e79d7fda23479af99e742e978c91f8a937af54efe94e8fca9f969a1d7baa2eb2",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/v3_titles.diff": "421b9d4ee46ae815f403c969452060e224d68ae42cd90133f98ab1ea4995ddaa",
+    "servers/scales/s1/encode.py": "fe8b2a26eb8df231ca8e71f977ba5b1928ae31c526e7a4d8a511864564e656e6",
+    "servers/scales/s1/encode_contract.py": "99a6ead653fdd8108f2912997c694d97630cb006e0fb0be3fec9963f08770841",
+    "servers/scales/s1/encoding_prompt.py": "f55021a8572499b363b666984d938092ff04b8d182059a8673cdb82f87f506d9",
+    "servers/scales/runner.py": "64c3cdd769a31693a563ed0a628a2c0cc6e6b45107b8b23b7d11c7fb48a125a0",
+    "servers/scales/journal.py": "6100815a2e788821747aa89c129f3e42cb5ac08cff9ec19be0b79b229ce7180a",
+    "servers/trace_contract.py": "56674f1ce8f6fdd02a17543ee510c2b5fef9c440e2dac2df88dc973ece0ef76d",
+    "servers/contract.py": "da42577ae1dba11ba73f19de31b70771c4d09c91c85a4c22eb49465c5d5fcf54",
+    "servers/brain_mcp.py": "4cc23d0f03d9f51cc23ccf869efbde74abc8b656f98a45b02c62e1f1515d81dc",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/tools.json": "1a9bab032b30d9411f4368175eb6d71434113804db7e34a27e160878d38b1d03",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/offline_review.json": "a5c32d04ccdebf6ef46088e678a40e8668ffc9fd1a4b8763e001ed79c0453b72",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_frozen.system.md": "86fa0cb9756a85c2eb63e23d5c68c3c2b4c208bcb8c2ba589c32875b902dfae4",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_revised.system.md": "aaf17892f56a1582025d47cbc553a8c02980918245bff9206966e02176835538",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v3.system.md": "cb58de20d006b24d36e66f6b029e5fa1a9a12659e51b64bf4450ec2b8efc9590",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v2_revised_titles.system.md": "a184f4461b01c9408d5f55201a05992e6b9b0e4dc642c0237565af46a266a809",
+    "eval/fixtures/s1e_guide_freeze_2026-09-08/frozen/v3_titles.system.md": "3a3b88b0f3cd69a7d8c652c19808b77d83ee53d71b45ee8b5218e6f23db8f165"
+  },
+  "eval_status": "not run; authoring review only",
+  "cache_rule": "Include arm_sha256, not only template fingerprint; no corpus runner is wired by this freeze."
+}

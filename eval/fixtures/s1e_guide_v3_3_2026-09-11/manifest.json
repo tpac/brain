@@ -1,0 +1,30 @@
+{
+  "status": "frozen_after_author_static_checks_cold_reader_and_independent_review_before_model_calls",
+  "parent_arm": "15a9770ef2b21aa4939b127e3dcb51792c861ca0850130d0e03dfe7135821031",
+  "candidate_arm": "7c5730206c7c61891b4a2da56ed0dfefa3bbb27bdce47ad500844c80c81a116d",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/arms.py": "26114d1d301b2d5ec94ce897b00936af3fbf5dcff58f38880ae2e5ba9c191e5b",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/author.py": "93250f861359af87835d688a6820d5fb91efe350c1f53834ea0407e23da27e71",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/second_window.md": "9d4ad56cfc0af486b093f6336ee0d3c1c8337bc3b861731384347c0fa40eda82",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/static_checks.py": "d9276a322f4e74c875c3af72b81c1d8027075651e972939d510f42439b33a0e4",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/transfer_split.json": "f985b2b752f4ac8e45b6ca01c715b43a738f6efefa277fd4664915faae854ff3",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/v3_3_titles.json": "da34c7e7b5a5f7f30811c133e5e2154c6ac21f6e3b75b72d2e2db4755f7706ae",
+    "docs/S1E-V3-3-AUTHORING-REVIEW-2026-09-11.md": "7cb2814f01025540835fbcf1f7fd2108f5f4d52c66dc531dffaa02d1f152faac",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/CHALLENGES.md": "9e9e4bf571524bb69ef37fd6a271c5a13f6bc5337dbe717befc6fed82e095323",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/template.md": "0d4cb25276e4c8173f3470f454cf34279850a0f0cd0dfccd8965d10c7df58fd5",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/gist.md": "78ead6c89de1f9d703630fa86380a0bfb84d587262da297dedc4bf0b10133fc4",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/strategy.md": "48e43065a4a3e8e606faa4f97806241b87a007d258ce8e8c5f938c529064c1fb",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/template.md.diff": "6dbaffaee257117e3316eb137b672611fafa53291846d57b349e354850625400",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/gist.md.diff": "860589f73b8da285c68fceed2dcf5a4a176b3fadad46a6ec105585de54fe7aa1",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/strategy.md.diff": "853f8d880ceb8a06d8acf8a24ab6ca87b66746d02f193dfc101e5101d2f34b80",
+    "eval/fixtures/s1e_guide_v3_3_2026-09-11/closure.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "eval-only prompt candidate; no runtime, tools, catalog rendering or model-setting changes",
+  "development_sources_already_seen": [
+    "creative_design",
+    "longmem_unseen (gpt4_f49edff3)"
+  ],
+  "transfer_split_recorded_before_authoring": true,
+  "generalization_claim": "none until the transfer cell reports"
+}

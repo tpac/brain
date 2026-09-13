@@ -1,0 +1,130 @@
+{
+ "recorded_at": "2026-09-12T22:02:03+00:00",
+ "recorded_before": "any V3.5 authoring; no item content, question or answer read \u2014 ids, session counts and dates only",
+ "rule": "LongMemEval oracle items ordered by sha256('s1e-v33-transfer:'+question_id) within question_type (the V3.3 rule, unchanged); feasible = 2-4 haystack sessions, <=8 user/assistant pairs per session, <=24 pairs total; excluded: every id in the V3.3 split (inspected, primary, reserve, rejected_exposed) and the V3.4 split (fresh_primary, development_now); zero files mentioning the id under eval/, docs/, ~/AgentsContext/{eval-corpus,s1e-field-coverage-gold,brain} \u2014 excluding the oracle file, .db/.onnx/.bin/.safetensors binaries and the kept-brain directories final_brain/, fastembed_cache/, seed_baseline/ (binary embedding caches; the V3.3/V3.4 scans predate them). Selected by id only.",
+ "fresh_primary": {
+  "knowledge-update": [
+   "affe2881",
+   "07741c45"
+  ],
+  "multi-session": [
+   "gpt4_e05b82a6"
+  ],
+  "temporal-reasoning": [
+   "gpt4_68e94288",
+   "gpt4_0b2f1d21"
+  ]
+ },
+ "fresh_primary_shapes": {
+  "affe2881": {
+   "sessions": 2,
+   "pairs": [
+    6,
+    6
+   ],
+   "dates": [
+    "2023/05/25",
+    "2023/05/29"
+   ]
+  },
+  "07741c45": {
+   "sessions": 2,
+   "pairs": [
+    6,
+    6
+   ],
+   "dates": [
+    "2023/05/20",
+    "2023/05/26"
+   ]
+  },
+  "gpt4_e05b82a6": {
+   "sessions": 4,
+   "pairs": [
+    6,
+    5,
+    6,
+    6
+   ],
+   "dates": [
+    "2023/11/04",
+    "2023/11/04",
+    "2023/11/04",
+    "2023/11/04"
+   ]
+  },
+  "gpt4_68e94288": {
+   "sessions": 2,
+   "pairs": [
+    5,
+    6
+   ],
+   "dates": [
+    "2023/03/10",
+    "2023/03/15"
+   ]
+  },
+  "gpt4_0b2f1d21": {
+   "sessions": 2,
+   "pairs": [
+    6,
+    6
+   ],
+   "dates": [
+    "2023/05/22",
+    "2023/05/22"
+   ]
+  }
+ },
+ "fresh_synthetic": {
+  "conv_003_philosophy": "repository synthetic, category philosophy; the only files naming it are its own corpus file and the V3.4 split (as a reserve); content never used in an encoder eval and unread before authoring; windows 2/2/1 pairs on a fixed clock"
+ },
+ "reserve_in_order": {
+  "knowledge-update": [
+   "7e974930",
+   "0e4e4c46"
+  ],
+  "multi-session": [
+   "ef9cf60a",
+   "gpt4_2f91af09",
+   "88432d0a",
+   "e56a43b9"
+  ],
+  "temporal-reasoning": [
+   "4dfccbf7",
+   "gpt4_4cd9eba1",
+   "gpt4_e414231f"
+  ]
+ },
+ "rejected_exposed": {
+  "c6853660": 56,
+  "71315a70": 42,
+  "60bf93ed_abs": 5,
+  "gpt4_65aabe59": 98
+ },
+ "development_now": [
+  "eace081b",
+  "b6019101",
+  "2133c1b5",
+  "80ec1f4f",
+  "2ebe6c92",
+  "conv_005_emotions",
+  "creative_design",
+  "69fee5aa",
+  "f685340e",
+  "2b8f3739",
+  "eac54adc",
+  "gpt4_1d4ab0c9",
+  "conv_002_debugging"
+ ],
+ "arms_on_fresh": [
+  "production_deployed",
+  "v3_4_titles",
+  "v3_5_titles"
+ ],
+ "arms_on_development": [
+  "v3_5_titles (compared with the saved production / V3.3-live / V3.4 brains on the V3.4 fresh six, and the saved production / V3.2 / V3.3 / V3.4 brains on the V3.3 six)"
+ ],
+ "windows": "one window per haystack session on the session's own clock; synthetic 2/2/1 pairs on a fixed clock; three independent repeats per arm, sequential windows inside a repeat",
+ "overfitting_guard": "the twelve inspected corpora are regression data; the weaves were authored against shape classes named in READ-AUDIT-V3-4.md before this record was written; an independent reader may compare the author.py replacements with the development sources for literal borrowing or a reskinned sequence"
+}

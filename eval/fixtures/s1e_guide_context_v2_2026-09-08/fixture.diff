@@ -1,0 +1,19 @@
+--- eval/fixtures/s1e_guide_sanity_2026-09-08/contrasts_three_windows.json
++++ contrasts_three_windows.json
+@@ -1,5 +1,5 @@
+ {
+-  "description": "Three-window sanity: the prior seven-turn compression diagnostic unchanged, followed by five new turns. All prompts were frozen before the added follow-up. Same 12 turns per arm/repetition; real memory and journal carry across windows. This is regression plus a new continuation, not an independent benchmark corpus.",
++  "description": "Context revision of the completed 12-turn Oren sanity sequence: speaker explicitly identified in timeline markup, and displayed journal first-seen dates use the conversation window that produced the note. Dialogue, actions, seed facts and all predeclared criteria are unchanged. Requires this directory's versioned runner. This remains one synthetic regression sequence, not an independent benchmark corpus.",
+   "initial_residue": "RECENT REVIEW NOTES — residue your recent runs flagged, for continuity (not a to-do list):\n- open ×1 since 09-07 · courier pickup · booked for Wednesday September 9 at 16:00; collection has not happened as of this note\n- open ×1 since 09-07 · poster proof · June's proof is due Wednesday September 9; approval waits for the proof\n",
+   "seed_nodes": [
+     {
+@@ -135,5 +135,8 @@
+       "Preserve earlier garden/household/desk observations as interpretations evolve. Repair claims in titles, content, situations, reasoning, edges and continuity where affected. Count actual stored changes and retained facts, not list compliance or node count.",
+       "No universal source-ref coverage or thought-field requirement. Report supported inference separately from unsupported certainty and omission. A closed journal note does not by itself imply a completed real-world task."
+     ]
+-  }
++  },
++  "context_version": "oren_explicit_conversation_journal_dates_v2",
++  "other_speaker": "Oren",
++  "journal_date_policy": "map first_seen at rendering only; real journal lifecycle and transaction timestamps retained"
+ }
