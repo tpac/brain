@@ -1,13 +1,12 @@
-"""Descriptive census, readable whole-memory packets and a cross-arm table for the V3.3 cells.
+"""Descriptive census, readable whole-memory packets and a cross-arm table for the V3.6 cell.
 
 Reuses the shared field/edge/quote logic of the V3.1 census; differs in keying
 on each sequence's LAST window (transfer items have two or three) and in
-gathering the three arms from their own result folders. No model calls; counts
+gathering the arms from their own result folders. No model calls; counts
 describe outputs and never stand for quality — the author's source-based
 review reads the packets.
 
-    ./dev python3 eval/fixtures/s1e_guide_v3_3_2026-09-11/analyze.py --cell sanity
-    ./dev python3 eval/fixtures/s1e_guide_v3_3_2026-09-11/analyze.py --cell transfer
+    ./dev python3 eval/fixtures/s1e_guide_v3_6_2026-09-13/analyze.py --cell refine
 """
 import argparse
 from collections import Counter, defaultdict
@@ -23,21 +22,23 @@ census = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(census)
 FIELDS, TEXT_FIELDS, field, words, get_edges, authored_fields, summary = (
     census.FIELDS, census.TEXT_FIELDS, census.field, census.words, census.get_edges, census.authored_fields, census.summary)
-SANITY = ROOT / 'eval/results/s1e_v35_sanity_2026-09-12'
-S34 = ROOT / 'eval/results/s1e_v34_sanity_2026-09-12'
-TRANSFER = ROOT / 'eval/results/s1e_v35_transfer_2026-09-12'
+REFINE = ROOT / 'eval/results/s1e_v36_refine_2026-09-13'
+REGRESSION = ROOT / 'eval/results/s1e_v36_regression_v34_2026-09-13'
 T34 = ROOT / 'eval/results/s1e_v34_transfer_2026-09-12'
-REGRESSION = ROOT / 'eval/results/s1e_v35_regression_v34_2026-09-12'
-REG33 = ROOT / 'eval/results/s1e_v35_regression_v33_2026-09-12'
-R34V = ROOT / 'eval/results/s1e_v34_regression_2026-09-12'
-T33 = ROOT / 'eval/results/s1e_v33_transfer_2026-09-11'
+R35 = ROOT / 'eval/results/s1e_v35_regression_v34_2026-09-12'
+ARMS = ('v3_4_titles', 'v3_4_live', 'v3_6_layer', 'v3_6_full', 'v3_6_full_v34tail')
+
+
+def _pinned_arms(out):
+    """The arms a cell ran, from its manifest — the regression's rung is named after the refine cell is read."""
+    return list(json.loads((out / 'manifest.json').read_text())['arms']) if (out / 'manifest.json').exists() else []
+
+
 CELLS = {
-    'sanity': {'out': SANITY, 'fixtures': SANITY, 'arms': [('v3_5_titles', SANITY), ('v3_4_titles', S34),
-                                       ('v3_3_titles', ROOT / 'eval/results/s1e_v33_sanity_2026-09-11'),
-                                       ('production_deployed', ROOT / 'eval/results/s1e_production_comparison_2026-09-11')]},
-    'transfer': {'out': TRANSFER, 'fixtures': TRANSFER, 'arms': [(a, TRANSFER) for a in ('production_deployed', 'v3_4_titles', 'v3_5_titles')]},
-    'regression_v34': {'out': REGRESSION, 'fixtures': REGRESSION, 'arms': [('v3_5_titles', REGRESSION)] + [(a, T34) for a in ('production_deployed', 'v3_3_live_tools', 'v3_4_titles')]},
-    'regression_v33': {'out': REG33, 'fixtures': REG33, 'arms': [('v3_5_titles', REG33), ('v3_4_titles', R34V)] + [(a, T33) for a in ('production_deployed', 'v3_2_titles', 'v3_3_titles')]},
+    'refine': {'out': REFINE, 'fixtures': REFINE, 'arms': [(a, REFINE) for a in ARMS]},
+    # the shipping rung(s) beside the saved brains on the same six corpora: production / V3.3-live / V3.4 from the V3.4 cell, V3.5 from its regression cell
+    'regression_v34': {'out': REGRESSION, 'fixtures': REGRESSION, 'arms': [(a, REGRESSION) for a in _pinned_arms(REGRESSION)]
+                       + [(a, T34) for a in ('production_deployed', 'v3_3_live_tools', 'v3_4_titles')] + [('v3_5_titles', R35)]},
 }
 ARC_RE = re.compile(r'## Arc\s*\n```[^\n]*\n(.*?)\n```', re.S)
 

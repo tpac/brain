@@ -1,13 +1,13 @@
-"""Build blind paired-review packs: one source conversation, three final memories, arms shuffled.
+"""Build blind paired-review packs: one source conversation, the arms' final memories, shuffled.
 
-A reviewer reads the source and memories A/B/C without knowing which arm
+A reviewer reads the source and memories A/B/C/… without knowing which arm
 produced which; the key is sealed in key.json and opened only when the
 verdicts are in. Packs are built from the packets analyze.py wrote, so run
 that first. Every pack carries the same rubric so verdicts line up across
-corpora and repeats.
+corpora and repeats. An arm that did not run on a corpus (the tail arm's
+subsample) is simply absent from that pack.
 
-    ./dev python3 eval/fixtures/s1e_guide_v3_3_2026-09-11/blind_pack.py --cell sanity
-    ./dev python3 eval/fixtures/s1e_guide_v3_3_2026-09-11/blind_pack.py --cell transfer
+    ./dev python3 eval/fixtures/s1e_guide_v3_6_2026-09-13/blind_pack.py --cell refine
 """
 import argparse
 import hashlib
@@ -19,14 +19,11 @@ import re
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 CELLS = {
-    'sanity': {'out': ROOT / 'eval/results/s1e_v35_sanity_2026-09-12', 'arms': ['production_deployed', 'v3_4_titles', 'v3_5_titles']},
-    'transfer': {'out': ROOT / 'eval/results/s1e_v35_transfer_2026-09-12', 'arms': ['production_deployed', 'v3_4_titles', 'v3_5_titles']},
-    'regression_v34': {'out': ROOT / 'eval/results/s1e_v35_regression_v34_2026-09-12', 'arms': ['production_deployed', 'v3_4_titles', 'v3_5_titles']},
-    'regression_v33': {'out': ROOT / 'eval/results/s1e_v35_regression_v33_2026-09-12', 'arms': ['production_deployed', 'v3_4_titles', 'v3_5_titles']},
+    'refine': {'out': ROOT / 'eval/results/s1e_v36_refine_2026-09-13', 'arms': ['v3_4_titles', 'v3_4_live', 'v3_6_layer', 'v3_6_full', 'v3_6_full_v34tail']},
 }
 RUBRIC = '''# How to review
 
-You see one source conversation (every window the encoder saw, in order) and three final memories (A, B, C) produced by three different encoder configurations from that same source, each in its own isolated memory store. You do not know which configuration is which. Judge the memories, not the encoder's prose. Quote the memory text for every claim you make; cite node ids.
+You see one source conversation (every window the encoder saw, in order) and several final memories (A, B, C, …) produced by different encoder configurations from that same source, each in its own isolated memory store. You do not know which configuration is which. Judge the memories, not the encoder's prose. Quote the memory text for every claim you make; cite node ids.
 
 Dimensions, each judged separately (no total score):
 1. Facts and concrete detail — names, numbers, dates, objects, exact phrases; first disclosures; later corrections. What did each memory keep, drop, or get wrong?
@@ -40,7 +37,7 @@ Dimensions, each judged separately (no total score):
 
 Then answer the corpus-specific probes listed in the pack.
 
-Output: for each of the eight dimensions, one paragraph per memory (A, B, C) with quoted evidence, then a one-line comparative verdict for that dimension naming the best and worst memory or "no material difference". Finish with a table: dimension × A/B/C with a short label (strong / adequate / weak) and the single most consequential defect per memory. Do not guess which configuration is which. Do not reward length, node count, or field count.
+Output: for each of the eight dimensions, one paragraph per memory with quoted evidence, then a one-line comparative verdict for that dimension naming the best and worst memory or "no material difference". Finish with a table: dimension × memory with a short label (strong / adequate / weak) and the single most consequential defect per memory. Do not guess which configuration is which. Do not reward length, node count, or field count.
 '''
 PROBES = {
     'creative_design': [
@@ -99,14 +96,14 @@ def build(cell):
     packets = out / 'whole_memory_review'
     dest = out / 'blind_review'; dest.mkdir(exist_ok=True)
     key = {}
-    corpora = sorted(read(out / 'manifest.json')['corpora']) if cell in ('transfer', 'regression') else ['creative_design']
+    corpora = sorted(read(out / 'manifest.json')['corpora'])
     for corpus in sorted(corpora):
         fixture = read(out / (corpus + '.json'))
         for repeat in range(1, 4):
-            arms = list(conf['arms'])
-            seed = int(hashlib.sha256(f'v34:{cell}:{corpus}:{repeat}'.encode()).hexdigest()[:8], 16)
+            arms = [a for a in conf['arms'] if (packets / f'{a}_repeat{repeat}_{corpus}.md').exists()]
+            seed = int(hashlib.sha256(f'v36:{cell}:{corpus}:{repeat}'.encode()).hexdigest()[:8], 16)
             random.Random(seed).shuffle(arms)
-            labels = dict(zip('ABC', arms))
+            labels = dict(zip('ABCDE', arms))
             key[f'{corpus}_repeat{repeat}'] = labels
             parts = [RUBRIC, '# Corpus-specific probes', '']
             probes = PROBES.get(corpus) or PROBES['lm_default']
@@ -115,7 +112,7 @@ def build(cell):
                 g = fixture['prior_gold']
                 parts += ['', '# GOLD (for probe 3 only; the memories never saw this)', f"Question ({g.get('question_date')}): {g['question']}", f"Reference answer: {g['answer']}"]
             parts += ['', '# SOURCE CONVERSATION', '', source_text(fixture)]
-            for label in 'ABC':
+            for label in labels:
                 arm = labels[label]
                 packet = packets / f'{arm}_repeat{repeat}_{corpus}.md'
                 body = memory_text(packet)

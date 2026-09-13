@@ -8,7 +8,7 @@ Sonnet 4.6 to answer from those memories alone, and judges the answer against
 the gold. It also records whether any retrieved node carries the gold string,
 so retrieval reach and answer synthesis can be read apart.
 
-    ./dev python3 eval/fixtures/s1e_guide_v3_3_2026-09-11/downstream.py --run
+    ./dev python3 eval/fixtures/s1e_guide_v3_6_2026-09-13/downstream.py --run --cell refine
 """
 import argparse
 import json
@@ -18,8 +18,8 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
-CELLS = {'transfer': ROOT / 'eval/results/s1e_v35_transfer_2026-09-12', 'regression_v34': ROOT / 'eval/results/s1e_v35_regression_v34_2026-09-12', 'regression_v33': ROOT / 'eval/results/s1e_v35_regression_v33_2026-09-12'}
-OUT = CELLS['transfer']
+CELLS = {'refine': ROOT / 'eval/results/s1e_v36_refine_2026-09-13', 'regression_v34': ROOT / 'eval/results/s1e_v36_regression_v34_2026-09-13'}
+OUT = CELLS['refine']
 DOWN = OUT / 'downstream'
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 MODEL = 'claude-sonnet-4-6'
@@ -107,6 +107,8 @@ def run():
                 path = DOWN / f'{arm}_repeat{repeat}_{corpus}.json'
                 if path.exists():
                     rows.append(json.loads(path.read_text())); continue
+                if not (OUT / arm / f'repeat{repeat}' / corpus / 'final_brain').exists():
+                    continue  # the arm did not run on this corpus (the tail arm's subsample)
                 row = one(client, arm, repeat, corpus, fixture)
                 path.write_text(json.dumps(row, indent=2, ensure_ascii=False) + '\n')
                 rows.append(row)
@@ -126,7 +128,7 @@ def run():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--run', action='store_true')
-    parser.add_argument('--cell', choices=list(CELLS), default='transfer')
+    parser.add_argument('--cell', choices=list(CELLS), default='refine')
     args = parser.parse_args()
     OUT = CELLS[args.cell]; DOWN = OUT / 'downstream'
     if args.run:
