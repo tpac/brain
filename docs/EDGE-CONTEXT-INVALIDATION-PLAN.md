@@ -7,7 +7,7 @@ started**. Backlog untouched.
 | | |
 |---|---|
 | branch | `claude/episodic-role-errors-branches-9915a8` |
-| head at handoff | `80fe7a2` (5 ahead of main, 1 behind — merge main first) |
+| address | the **branch**, not a head hash — hashes rot. `git log --oneline main..HEAD` for the arc; merge main first (it was 1 ahead of the branch point at handoff) |
 | reverted attempt | `330e3c8`, reverted by `80fe7a2` — read it for what was tried |
 | unrelated, keep | `9b9da13` (haiku_id_outside_candidates → warning) |
 | deployed? | **no.** Daemon runs `/Users/tpac/brain` (main). Nothing here is live. |
