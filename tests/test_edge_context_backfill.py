@@ -145,5 +145,94 @@ class TestDeadHandlerTrip(BrainTestBase):
                          'a healthy handler must not false-trip the dead-handler alarm')
 
 
+class TestEdgeContextStaleness(BrainTestBase):
+    """A PRESENT edge_context row whose edges have moved on must read as missing.
+
+    edge_context is the only group whose source is the GRAPH rather than
+    node_metadata_kv. kv-sourced groups need no staleness predicate — revise()
+    DELETES their rows when a source field changes, so they re-enter
+    find_missing as genuinely absent. An edge write cannot delete a row it does
+    not know about, so without this the vector stays frozen at whatever edges
+    the node had when it was last embedded, and the coverage sweep never
+    revisits it: a stale row is not a missing one.
+    """
+    needs_embedder = False
+
+    OLD = '2020-01-01T00:00:00+00:00'
+
+    def _node(self, title):
+        return self.brain.remember(type='fact', title=title, content='c')['id']
+
+    def _edge(self, src, tgt, relation, description):
+        self.brain._graph.add_relation(src, tgt, relation, description=description)
+        self.brain.conn.commit()
+
+    def _store_vector(self, node_id, created_at=None):
+        """Give the node a present edge_context row, optionally backdated."""
+        VectorDAL(self.brain.conn).store(node_id, 'edge_context', 'text', b'\x00\x01')
+        if created_at:
+            self.brain.conn.execute(
+                "UPDATE node_enrichments SET created_at = ? "
+                "WHERE node_id = ? AND vector_type = 'edge_context'",
+                (created_at, node_id))
+        self.brain.conn.commit()
+
+    def _missing(self):
+        return {r['id'] for r in VectorDAL(self.brain.conn).find_missing(
+            'edge_context', limit=50, require_described_edge=True)}
+
+    def test_edge_newer_than_vector_reads_as_missing(self):
+        a, b = self._node('A'), self._node('B')
+        self._edge(a, b, 'extends', 'a sufficiently long edge description')
+        self._store_vector(a, created_at=self.OLD)   # embedded before the edge
+        self._store_vector(b)                        # embedded after — current
+
+        missing = self._missing()
+        self.assertIn(a, missing,
+                      'a vector older than one of its edges must read as missing')
+        self.assertNotIn(b, missing,
+                         'a vector newer than every edge must stay present')
+
+        # Proof this test can fail: the staleness predicate is gated on
+        # require_described_edge, and with it off `a` has a present row like
+        # any other. If the predicate were absent, the assertIn above would be
+        # asserting the same state this asserts the negative of.
+        without = {r['id'] for r in VectorDAL(self.brain.conn).find_missing(
+            'edge_context', limit=50)}
+        self.assertNotIn(a, without,
+                         'without the predicate a present row reads present — '
+                         'so the assertion above is discriminating, not vacuous')
+
+    def test_re_embedding_clears_it(self):
+        """The predicate must self-clear, or the sweep repairs forever."""
+        a, b = self._node('A'), self._node('B')
+        self._edge(a, b, 'extends', 'a sufficiently long edge description')
+        self._store_vector(a, created_at=self.OLD)
+        self.assertIn(a, self._missing(), 'precondition: a starts stale')
+
+        self._store_vector(a)   # re-embed stamps a fresh created_at
+        self.assertNotIn(a, self._missing(),
+                         're-embedding must clear staleness — else the coverage '
+                         'sweep repairs the same node every interval forever')
+
+    def test_staleness_mirrors_the_producer_eligibility_filter(self):
+        """Only edges that FEED the text may mark it stale — else a node is
+        called stale, re-embeds to identical text, and stays stale."""
+        # Noise relation: excluded from the text, so it cannot cause staleness.
+        c, d = self._node('C'), self._node('D')
+        self._edge(c, d, 'community_member', 'a sufficiently long edge description')
+        self._store_vector(c, created_at=self.OLD)
+        # Too-short description: below min length, also excluded.
+        s, t = self._node('S'), self._node('T')
+        self._edge(s, t, 'extends', 'tiny')
+        self._store_vector(s, created_at=self.OLD)
+
+        missing = self._missing()
+        self.assertNotIn(c, missing,
+                         'a community_member edge contributes no text — cannot stale')
+        self.assertNotIn(s, missing,
+                         'a below-min-length description contributes no text — cannot stale')
+
+
 if __name__ == '__main__':
     unittest.main()

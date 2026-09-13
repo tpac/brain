@@ -1182,8 +1182,36 @@ class GraphDAL:
                     'WHERE edge_id = ? AND relation = ?', (edge_id, relation))
                 commit_unless_batched(self.conn)
             self._enqueue_edge_embed(edge_id, 'add_relation')
+            self._enqueue_endpoint_embed(source_id, target_id, 'add_relation')
 
         return result
+
+    @staticmethod
+    def _enqueue_endpoint_embed(source_id, target_id, origin):
+        """Enqueue an edge's endpoint NODES — their edge_context is now stale.
+
+        edge_context summarises a node's OWN edge descriptions, so writing an
+        edge invalidates both endpoints' vectors while changing neither node.
+        No node-write path fires, and the node was embedded before this edge
+        existed, so without this the vector stays frozen at whatever edges the
+        node had when it was last written. The coverage sweep is not a backstop
+        here on its own: a stale row is not a missing one.
+
+        `_queue` is a set, so a node collecting N edges in one encoding run
+        collapses to a single re-embed per drain rather than N.
+        """
+        try:
+            from . import embed_queue
+            for _nid in (source_id, target_id):
+                if _nid:
+                    embed_queue.enqueue(_nid)
+        except Exception as _eq_err:
+            try:
+                import sys as _sys
+                print('[GraphDAL.%s] enqueue endpoint failed: %s'
+                      % (origin, _eq_err), file=_sys.stderr)
+            except Exception:
+                pass
 
     @staticmethod
     def _enqueue_edge_embed(edge_id, origin):
