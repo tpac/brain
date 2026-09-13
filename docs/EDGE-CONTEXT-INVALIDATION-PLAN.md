@@ -132,7 +132,7 @@ path owns source and artifact together.
 ## Verify before trusting anything above
 
 ```bash
-git -C . log --oneline main..HEAD          # expect 80fe7a2 on top
+git -C . log --oneline main..HEAD          # the arc; 80fe7a2 is the revert, not the top
 git -C . show 330e3c8 --stat               # the reverted attempt
 grep -n "_graph.add_relation(\|graph_dal.add_relation(" servers/brain_remember.py
 ./dev python3 -m pytest tests/ -k "dal or vector or embed or recall or laf or graph" -q
