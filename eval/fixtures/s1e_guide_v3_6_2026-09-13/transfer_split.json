@@ -1,0 +1,58 @@
+{
+ "recorded_at": "2026-09-13T19:55:31+00:00",
+ "recorded_before": "any V3.6 authoring; no item content, question or answer read — ids taken from the V3.5 split's reserve_in_order, in that order",
+ "rule": "the V3.5 rule unchanged: next feasible LongMemEval reserve items in the recorded sha256 order within question_type; two per type. Mention scan under eval/, docs/, ~/AgentsContext/{eval-corpus,s1e-field-coverage-gold,brain} excluding the oracle file, .db/.onnx/.bin binaries and the kept-brain caches: each id appears only in the V3.5 split record, the V3.5 handoff, and this session's own payload captures — id-only listings, no item content.",
+ "fresh_primary": {
+  "knowledge-update": [
+   "7e974930",
+   "0e4e4c46"
+  ],
+  "multi-session": [
+   "ef9cf60a",
+   "gpt4_2f91af09"
+  ],
+  "temporal-reasoning": [
+   "4dfccbf7",
+   "gpt4_4cd9eba1"
+  ]
+ },
+ "strategy_subsample": {
+  "knowledge-update": [
+   "7e974930"
+  ],
+  "multi-session": [
+   "ef9cf60a"
+  ],
+  "temporal-reasoning": [
+   "4dfccbf7"
+  ],
+  "note": "the fourth arm (full candidate with V3.4's strategy + closure tail) runs on these three only — Tom's 'test with and without on a small sample'"
+ },
+ "reserve_in_order": {
+  "knowledge-update": [],
+  "multi-session": [
+   "88432d0a",
+   "e56a43b9"
+  ],
+  "temporal-reasoning": [
+   "gpt4_e414231f"
+  ]
+ },
+ "development_regression": [
+  "69fee5aa",
+  "f685340e",
+  "2b8f3739",
+  "eac54adc",
+  "gpt4_1d4ab0c9",
+  "conv_002_debugging"
+ ],
+ "arms": {
+  "v3_4_titles": "frozen V3.4 arm as measured (its own tail) — baseline",
+  "v3_6_layer": "V3.4 template + text pass, assembled through encode._build_system_prompt on the reconciled branch (contract event_time reword, encoder_summary hiding); no strategy section, runtime closure",
+  "v3_6_full": "v3_6_layer + gist fact-first procedure + thin Q&A worked window + thought/question position",
+  "v3_6_full_v34tail": "v3_6_full with V3.4's strategy + closure appended, strategy_subsample only"
+ },
+ "branch": "claude/sweet-lichterman-ba9854 at the reconcile merge 9a77e73 (level with main)",
+ "windows": "one window per haystack session on the session's own clock; three independent repeats per arm, sequential windows inside a repeat",
+ "no_prompt_edits_after_outputs": true
+}

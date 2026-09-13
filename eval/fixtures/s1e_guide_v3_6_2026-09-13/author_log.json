@@ -1,0 +1,80 @@
+[
+ {
+  "label": "T1 W6c sweep title conforms to E17",
+  "old_chars": 111,
+  "new_chars": 88,
+  "delta": -23
+ },
+ {
+  "label": "T2 W9 continuity why 1",
+  "old_chars": 177,
+  "new_chars": 214,
+  "delta": 37
+ },
+ {
+  "label": "T2 W9 continuity why 2",
+  "old_chars": 133,
+  "new_chars": 150,
+  "delta": 17
+ },
+ {
+  "label": "T3 source_refs REPLACE semantics stated once (Actions keeps it)",
+  "old_chars": 134,
+  "new_chars": 55,
+  "delta": -79
+ },
+ {
+  "label": "T4 sweep supersedes why into the 120\u2013180 band (was 109)",
+  "old_chars": 116,
+  "new_chars": 181,
+  "delta": 65
+ },
+ {
+  "label": "T4 texture insight why into the band (was 189)",
+  "old_chars": 196,
+  "new_chars": 175,
+  "delta": -21
+ },
+ {
+  "label": "T5 Nadia correction dated at the moment of the gloss",
+  "old_chars": 172,
+  "new_chars": 199,
+  "delta": 27
+ },
+ {
+  "label": "T6 my-side quote clause names delivered method or threshold",
+  "old_chars": 120,
+  "new_chars": 170,
+  "delta": 50
+ },
+ {
+  "label": "T7 gist sweep changes line matches the template",
+  "old_chars": 101,
+  "new_chars": 131,
+  "delta": 30
+ },
+ {
+  "label": "P1 gist `new`: facts first, before any verdict",
+  "old_chars": 392,
+  "new_chars": 767,
+  "delta": 375
+ },
+ {
+  "label": "P3 gist remember sentence: thought named, question at the tail",
+  "old_chars": 321,
+  "new_chars": 404,
+  "delta": 83
+ },
+ {
+  "label": "P3 `thought` named in the gate-region sentence",
+  "old_chars": 76,
+  "new_chars": 100,
+  "delta": 24
+ },
+ {
+  "label": "P2 thin worked window: advice asked, facts in passing, labelled Bad skip",
+  "old_chars": 47,
+  "new_chars": 5639,
+  "delta": 5592
+ }
+]
