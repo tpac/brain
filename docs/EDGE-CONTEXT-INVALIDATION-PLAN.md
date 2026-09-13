@@ -36,6 +36,10 @@ The coverage sweep cannot catch it: `vector_coverage_sweep` → `backfill_vector
 | nodes genuinely stale (qualifying edge: real description, not `community_member`) | **3,519** |
 | of those, would embed *different* text (sampled, untruncated rows only) | **75%** → ~2,600 |
 
+**These figures grow.** Every new described edge stales two more endpoints — roughly 1,092
+distinct endpoint nodes per week at current rates (2,670 edges/week). A larger number on
+re-measure is the leak still running, not a regression and not a bad original measurement.
+
 Caveat that cost a wrong number once: `node_enrichments.text` is `text[:500]` — a truncated
 **debug copy**, not the embedded text. 35% of rows sit at that cap, so containment checks
 against `text` are only valid on rows under 499 chars. The timestamp measure is unaffected.
