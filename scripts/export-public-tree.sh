@@ -55,7 +55,6 @@ DENYLIST=(
   tests/golden_dataset_v2.json
   tests/golden_dataset.json
   tests/golden_canary.json
-  tests/corpus
 
   # The deploy gate itself. It only runs in the dev repo — but the PUBLIC repo
   # IS a git checkout with plugin.json tracked, so it would NOT skip there: it
@@ -79,8 +78,6 @@ DENYLIST=(
   tests/benchmark_multivec_encoding.py
   tests/benchmark_real_conversations.py
   tests/bench_vector_cache.py
-  tests/bench_precision_corpus.py
-  tests/bench_precision_lifecycle.py
   tests/benchmark_full_baseline_214.py
 )
 

@@ -25,6 +25,57 @@ ROOT = '/Users/tpac/brain'
 sys.path.insert(0, ROOT)
 from tests.isolated_brain import IsolatedBrain  # noqa: E402
 
+# Diverse query set — covers different brain areas, query styles, and vocabulary.
+# These calibrate what "normal" cosine looks like for each node.
+CALIBRATION_QUERIES = [
+    # Technical — brain internals
+    "How does the recall pipeline work",
+    "Fix the encoding agent bug",
+    "Deploy the dashboard changes",
+    "Create a new node type",
+    "Remove dead code from the codebase",
+    "Run the tests and check results",
+    "Design the API for this feature",
+    "Debug the crash in brain_recall.py",
+    "What are the different edge types",
+    "How does session management work",
+    # Operational
+    "Write documentation for this module",
+    "Refactor the module into smaller files",
+    "Optimize memory usage in the daemon",
+    "Handle the error gracefully",
+    "Update the database schema",
+    "Check the performance metrics",
+    "Connect to the database",
+    "Install the dependencies",
+    # Conversational / personal
+    "Tell me about Tom",
+    "What is a community in the brain",
+    "How does Haiku select nodes",
+    "What makes Anchor different from Claude",
+    "What did we decide about encoding quality",
+    "Why did we choose this architecture",
+    "What are the open questions right now",
+    # Abstract / inferential
+    "Something about this feels wrong",
+    "Are we making progress or going in circles",
+    "What would happen if the brain had 10000 nodes",
+    "What is the most important thing we learned",
+    "How do we know if the brain is actually helping",
+    # Short / vague
+    "Lets start coding",
+    "What about the decoding side",
+    "Good morning",
+    "Sounds good",
+    "Can you check that",
+    # Domain-specific actions
+    "I want to delete all archived nodes",
+    "I want to optimize the scoring formula",
+    "The hook is taking 15 seconds",
+    "The encoder creates too many nodes",
+    "I keep seeing the same nodes every time",
+]
+
 CORPUS = json.load(open(f'{ROOT}/eval/oracle_audit/meshed_top10.json'))
 KNOWN_EXCO = {'e62cc595', 'dabb3078', 'af92b2cb', '30d88dd0', 'b3bda662', '5fe121db',
               '8359cf1d', '5410f4be', 'ef2f3276', '41d31ca5', '671d1f22', '598d78a8'}
@@ -84,15 +135,12 @@ with IsolatedBrain() as env:
         baseline30[it['rank']] = [r['id'] for r in rows[:PROD_LIMIT]]
 
     # ---- z-score stats computed INLINE on the COPY ----
-    # FINDING: compute_zscore_stats.py is STALE — it imports EmbeddingDAL and queries a
-    # node_embeddings table, both removed in the refactor; it cannot run against the
-    # current schema. That staleness is itself evidence per-node contrastive has been
-    # untested since April. We recompute inline via the live VectorDAL.
-    sys.path.insert(0, f'{ROOT}/scripts')
-    from compute_zscore_stats import CALIBRATION_QUERIES
+    # Stats are recomputed here against the live VectorDAL rather than read from
+    # a precomputed store: the arm tests whether the earlier "z-score is inert"
+    # verdict was a stale-stats artifact, so stale stats would beg the question.
     from servers import embedder
     import statistics as _st
-    print("\n--- computing per-node z-stats INLINE on the COPY (stale script bypassed) ---")
+    print("\n--- computing per-node z-stats INLINE on the COPY ---")
     _active_model = embedder.stats.get('model_name') or ''
     _qvecs = [embedder.embed_query(q) for q in CALIBRATION_QUERIES]
     _qvecs = [v for v in _qvecs if v]
