@@ -70,9 +70,10 @@ first: it changes numbers that stream is actively producing.
 ```
 
 - **Step 1** is the keystone: it dissolves five defects at once and is the prerequisite for 2, 3, 5.
-- **Step 6** is the highest-value *substantive* step: eight filter lists frozen at whenever someone
-  typed them, which never see a verb the classifier adds. It is the real version of what Step 0A
-  looked like.
+- **Step 6** was the highest-value *substantive* step; most of it has since shipped. **Re-scoped
+  2026-09-14** — six of its nine literals are deleted, three remain, and two of those three are
+  deliberate. Read its correction block before scheduling it; its A and B items are independent
+  one-liners and A is a live correctness defect owned by another stream.
 - **Steps 1 and 4** are independent of each other and together make Steps 2/3/5
   unnecessary-rather-than-fixed.
 - **Steps 7–10** are standalone cleanups; 9 is the cheapest legibility-per-line on the list.
@@ -424,13 +425,22 @@ Two consequences measurable right now:
    the seed lacks, zero seed-only entries. The seed is not a baseline; it is a stale minority. The
    reconcile is one-way and additive, so the seed can never correct a bad classification.
 2. **`noise.edge_relations` contains `temporal_sequence`, `extension_refinement`,
-   `validation_evidence` — three *aspect names* filed as relation verbs.** The file cannot tell you
+   `validation_evidence` and `correction_improvement` — four *aspect names* filed as relation
+   verbs.** (Three when this was written; re-measured 2026-09-14.) The file cannot tell you
    whether real edges carry those literal strings or the classifier echoed the menu it was shown —
    which is the provenance gap in miniature. **The brain can, and did:** node `id:40e7125a` audited
    this a month ago and confirmed no real edge uses those strings as relation values, so it is
    harmless today and a one-line cleanup. Keep it as the worked example of *why* records matter —
    answering it required a human-run audit that a `count_at` field would have answered for free —
-   but do not treat it as an open question, and fix the three entries whenever this step lands.
+   but do not treat it as an open question, and fix the four entries whenever this step lands.
+
+   **Sharper as of 2026-09-14.** Live counts: `temporal_sequence` 18 rows / 0 active,
+   `validation_evidence` 4 / 0, `correction_improvement` 1 / 0 — and **`extension_refinement` has
+   zero rows, ever.** Three entered `noise` from an observation since archived; the fourth entered
+   with no observation at all. That is this step's argument stated better than the paragraph above
+   states it: a member with `count_at: 0` and no rationale should never have been accepted silently.
+   The upstream leak is an S1 encoder emitting the aspect *name* as a lazy catch-all relation value
+   (`id:e89a5267`) — the classifier filing those strings under noise is correct behaviour.
 
 And because the heal is additive-only *and* a member is a bare string, a manual retirement is
 reverted on the next boot with no way to express intent. Removal is not awkward — it is
@@ -477,85 +487,140 @@ additive-only stays correct — it *widens* what additive can express).
 
 ---
 
-## Step 6 — Name the second concept inside `noise`; unify nine exclusion literals
+## Step 6 — Unify the remaining exclusion literals behind named policies
 
-> **CORRECTION 2026-07-28 (refined same day) — two policies, PARTIALLY SHIPPED.** The standing
-> operator call (id:49d734ad, "Hide and align with exclusion list for now!") governs flat READS;
-> Tom refined it 2026-07-28: graph DYNAMICS keep conducting through community edges — conduction
-> is not visibility. Both policies now exist, derived at `AspectRegistry._adopt`:
-> · `brain.aspects.structural_exclusions` = `relations_in(['noise'])` — full noise, for read
->   exclusion. APPLIED (branch `claude/sweet-lichterman-ba9854`, 2026-09-05): `get_node` passes it
->   to `get_connections_bulk`, so every reader of a node's `connections` is noise-free without a
->   filter of its own (the encoder catalog's `_filter_noise_relations` is deleted), and
->   consolidation's `_load_edge_data` passes the same set. Community membership reaches readers
->   that want it (Anchor, the recall surface) as a `Communities:` line, not as edge lines —
->   `docs/REVISE-SHAPE-ARCH-PLAN.md` Step 7. The DAL itself keeps no default.
-> · `brain.aspects.traversal_exclusions` = noise − {community_member} — ALREADY LIVE (2026-07-28)
->   at `pipeline_contract.traverse`, spread activation (`surface_contract`), and MCP
->   `graph_expand`; the `TRAVERSE_EXCLUDED_EDGES` / `EXCLUDED_EDGE_TYPES` literals are deleted.
-> The cohesion/adjacency policies below are still open. Also read
-> `docs/DAL-BOUNDARY-ARCH-PLAN.md` §"Handoff to aspects Step 6" for five consumer sites this
-> step's file list misses (incl. a VectorDAL+CachedVectorDAL lockstep signature change).
+> **CORRECTION 2026-09-14 — THIS BLOCK GOVERNS. Scope is much smaller than the body below.**
+> An architecture review (commit `19fa1e7`, brain `id:c1e3b18c`) traced every consumer and found the
+> body's Problem section describes code that has since been deleted. Corrected state:
+>
+> **Already shipped, do not redo.** `structural_exclusions` (full noise — flat READS, applied at
+> `get_node` and consolidation's edge loader) and `traversal_exclusions` (noise − `community_member`
+> — traverse, spread, `graph_expand`). `lineage_relations` is derived from the `structural_lineage`
+> per-aspect fact and subtracts the **traversal** set (`id:4fd930b6` — conduction is not visibility).
+>
+> **The nine literals are down to three.** Deleted since this step was written:
+> `DEFAULT_EXCLUDED_RELATIONS`, `TRAVERSE_EXCLUDED_EDGES`, `EXCLUDED_EDGE_TYPES`,
+> `INTENTIONAL_EDGE_TYPES` (Step 0A), `LINEAGE_FAMILIES`, `ASPECT_ACCEPTS`,
+> `EDGE_ASPECT_PROMPT_SKIP` (Step 4 → the `prompt_visible` fact), and the encoder catalog's
+> `_filter_noise_relations` (`id:828b86f8`). What remains is listed under Target state.
+>
+> **Two consumers the body never listed:** the community idle-gate wake filter
+> (`community.py:121`) and a third frozen non-cohesion spelling in inline SQL
+> (`community_decoder.py:1381-1382`).
+>
+> **`community_member` is HIDDEN.** The body's `structural_exclusions = relations_in(['noise']) −
+> {community_member}` is dead text — the carve-out belongs to `traversal_exclusions` only. The
+> operator contradiction the body warns about was resolved 2026-07-28; membership reaches readers as
+> a `Communities:` line, not as edge lines.
 
-**Problem.** Nine independent hardcoded "noise exclusion" sets coexist with
-`relations_in(['noise'])`, and no two agree — cardinalities 1, 2, 2, 2, 3, 5, 7 against a live
-taxonomy of 10. Sites: `dal_graph.py:65`, `pipeline_contract.py:412` (a byte-identical duplicate of
-the previous under a different name in a different module), `brain_recall.py:340,344`,
-`brain_constants.py:309`, `community_contract.py:85,146`, `community_decoder.py:1289`. The most
-legible instance: `community_decoder.py:222` reads the set from the registry, and **the same file**
-at `:1289` inlines it as a SQL literal, 1,000 lines apart.
+**Problem.** Three frozen verb lists still answer "which relations does this consumer ignore" without
+reading the registry, and they do not agree with each other:
 
-**This is not lazy duplication, and that is the finding.** `noise` holds two different kinds of
-member: **code-owned plumbing** (`co_accessed`, `emergent_bridge` — written by `recall_write_queue`,
-defined in `brain_constants.EDGE_TYPES`, fixed by code) and **classifier verdicts**
-(`community_member`, `dreamed_from`, `member`, `co_member`, `test_marker`, and the three
-aspect-names — judgments that grow and can be wrong). The literals contain only the plumbing subset.
-So the two sets were never supposed to be equal, which is why nobody unified them — and why
-`dal_graph.py:63-64` states in a comment that `community_member` is **NOT** in its default because
-it is "real thematic context," while `aspects_v1.json` files `community_member` under `noise`. The
-DAL and the taxonomy openly contradict each other about one string, and the only way to learn that
-is to read both.
+| site | contents | note |
+|---|---|---|
+| `community_contract.py:99` `non_cohesion_relations` | 5 verbs | the auto-archive set — **deliberately narrow, see ruling** |
+| `community_contract.py:164` `ADJACENCY_EXCLUDED_RELATIONS` | 1 verb | narrowed from 3; redundant with the aspect tuple beside it — **see ruling** |
+| `community_decoder.py:1381-1382` | 3 verbs, inline SQL | a third spelling of non-cohesion, matching neither of the other two |
 
-**The trap:** a maintainer told to "source the noise set from the taxonomy" will do it, silently pull
-`community_member` (7,237 edges) into `DEFAULT_EXCLUDED_RELATIONS`, and drop community context out
-of every `get_connections_bulk` read. (Resolved by the ruling above: hidden as edge lines,
-carried as a `Communities:` line; consolidation reads placement from `_load_community_membership`.)
+Alongside them sit four registry reads that each resolve their own way (`relations_in([…])` inline at
+`community.py:121` and `community_decoder.py:223`, two registry attributes, and a zero-arg callable
+installed on `GraphDAL`). The delivery varies; the policies are not named anywhere together.
 
-**Target state.** Name the second concept — a non-routable `structural_plumbing` aspect
-(`routable: false` per Step 4, following the shipped `survivor_lineage` pattern), or derive the
-plumbing set from `EDGE_TYPES` keys flagged system-written. Then three named policies replace nine
-literals, each a registry union minus an explicitly named carve-out:
+**Target state.** A policy table computed at `_adopt`, with **four** entries — `reads`, `traversal`,
+`edge_context`, `community_adjacency`. Consumers call `brain.aspects.excluded('<name>')`. The two
+existing attributes become aliases.
 
-- `structural_exclusions(brain)` = `relations_in(['noise']) − {community_member}` → replaces
-  `dal_graph.py:65`, `pipeline_contract.py:412`, `brain_recall.py:340,344`,
-  `brain_constants.py:309`, and Step 0A's whitelist
-- `cohesion_exclusions(brain)` = `relations_in(['noise','generic_relation'])` → replaces
-  `community_contract.py:85`, `community_decoder.py:1289`
-- `adjacency_exclusions(brain)` → replaces `community_contract.py:146`
+Two entries proposed elsewhere are **excluded on purpose**:
 
-Put the `community_member` carve-out in the JSON as aspect metadata, not a code literal, so the one
-real policy decision lives in the config file and the accessors stay pure derivation. Model it on
-`ABSORB_EXCLUDED_RELATIONS` (`dal_graph.py:82`) — one deliberate, documented, tested carve-out.
+- **`encoder_vocabulary`** is an opt-in *selection* on the per-aspect `prompt_visible` fact, not an
+  exclusion. Restating it as a skip list inverts its default from quiet to visible, against the
+  conservative degradation `aspects.py:345-348` chose deliberately.
+- **`community_cohesion`** — see the ruling below. It must not be converted.
 
-Residual migration delta beyond `community_member` is small and measured: `dreamed_from` 20 +
-`dream_observation` 19 + `temporal_sequence` 9 + `member` 8 + `co_member` 3 = **59 edges**.
+Three constraints the table does not remove:
 
-**Files & call sites.** The nine sites above, plus a home for the three accessors (`servers/aspects.py`
-or `pipeline_contract.py`). `dashboard/queries/encoding.py:64,331` and `s2_runs.py:153` are forced by
-the disconnection contract — **leave them.**
+1. **Bind per call, never at construction.** The hazard is not where the set is declared, it is when
+   the consumer binds it: `_adopt` rebinds on every classifier cycle, so a snapshot goes stale
+   silently. `dal_graph.py:160-171` records the failure mode — a snapshot "would silently disagree
+   with the backfill filter, which reads live … deleting vectors nothing would rebuild."
+2. **The DAL's callable indirection stays.** The DAL cannot hold a registry reference, so
+   `brain.py:352` installs `_edge_context_excluded` as a zero-arg callable read through a property.
+   That is the pattern to copy where a consumer cannot reach the registry — not an exception to tidy
+   away. Pinned by `tests/test_edge_context_invalidation.py`.
+3. **Degradation stays at the call site.** Four consumers behave differently on an empty registry and
+   each has a reason in a comment: `brain_connections.py:119` returns `frozenset()` so producer and
+   filter still agree; `community_decoder.py:225` returns empty **and logs**, because an empty noise
+   set *includes* noise in the fingerprint and churns it; `get_node` is unguarded and loud (Step 10);
+   `archive_exempt_relations` is loud because a silent empty scrubs `absorbed_into`. One universal
+   semantic would flatten four deliberate choices.
 
-**Verification.** `tests/test_community_detection.py`, `tests/test_consolidation*.py`,
-`tests/integration/test_recall_pipeline.py`, `tests/test_raw_sql_guardrail.py`. Full suite — this
-touches the DAL default and the recall path.
+**Ruling — `non_cohesion_relations` stays literal.** Its five verbs are three from `noise` plus
+**two of `generic_relation`'s twenty**. A table keyed by aspect *name* cannot express that. Converting
+it to `{'skip': ['noise','generic_relation']}` newly excludes 19 verbs including `co_anchored`
+(3,252 live rows) and `similar_to`, which re-opens the blind spot the health seam closed: a
+community cohesive only via `similar_to` would be auto-archived **in code — no encoder round, no
+rejection fingerprint** — instead of routed for judgment. `tests/test_community_health_seam.py:105`
+goes red on it. The dream verbs are not droppable either: dreams are paused, the rows are not
+(`dreamed_from` 20, `dream_observation` 19 live). It also lives in the registered `s2_community`
+interaction, so moving it to `aspects.py` deletes an override surface. **Correct the comment to say
+it is deliberately narrower than the two aspects; do not convert it.**
 
-**Blast radius.** Widest of any step; nine call sites across four subsystems, each with a slightly
-different current set. Land it as one step so the sets converge together rather than drifting mid-migration.
+**Ruling — `ADJACENCY_EXCLUDED_RELATIONS` is redundant, and still stays.** The Python aspect skip
+already removes `community_member`, because `_adopt`'s noise veto (`id:52cdf2b9`) forces its primary
+family to `noise` whatever the JSON order. It was written *before* that veto, when first-claimant-by-
+file-order made the aspect skip unreliable for exactly this consumer — the veto's own comment names
+community adjacency as the reason it exists. Keep it: it is a SQL-side prefilter dropping ~12,272
+live rows before Python on a graph-wide scan, and it is the named constant the decoder↔stamper parity
+rests on. Restate the comment as a volume prefilter, and **pin the invariant**: every verb in it must
+resolve to an aspect in `ADJACENCY_SKIP_ASPECTS`.
 
-**Depends on.** Step 4 (the flags mechanism). Step 0A should land first and can inline its exclusion
-until this arrives.
+**Ruling — the consolidation suppression fallback is closed.** It is a *selection* from a closed
+(`routable: false`) aspect, and `tests/test_s2_consolidation.py:193`
+(`test_contract_fallback_mirrors_seed_settlement`) already pins it to the seed. Nothing to decide;
+drop it from this step's scope. (It is also not config-scoped — `CONSOLIDATION` is a plain module
+constant, absent from `INTERACTION_DEFAULTS`. This also clears the Step 7 collision warning above.)
 
-**Respects.** Settled #6. Preserves the deliberate `community_member` carve-out rather than
-"unifying" it away.
+**Order.** The first two do not depend on the table and should not wait for it.
+
+- **A — fix the stamper's relation→family map.** `community_structural.py:78-82` hand-rolls a
+  **last-claimant** map where `community_decoder.py:370` uses `primary_edge_map()`. Measured
+  2026-09-14: the two skip-sets are 140 vs 98 relations, **disagreeing on 42**, `similar_to` among
+  them (1,314 live rows) — so stamped `community_internal_fraction` can disagree with the decoder's,
+  which `community_structural.py:11-16` says is impossible. `tests/test_community_structural.py:132`
+  cannot see it: it builds the same last-claimant map for both sides, over single-homed fixtures.
+  **⚠ OWNED BY ANOTHER STREAM as of 2026-09-14 — check before touching.** Brain `id:61f24059`.
+- **B — collapse the third non-cohesion spelling.** `community_decoder.py:1381-1382` reads
+  `self.config['non_cohesion_relations']`. Depends on nothing.
+- **C — pin the adjacency prefilter invariant** (the test named in the ruling above). Depends on A,
+  so both sides share one map.
+- **D — the four-entry table.** Depends on A–C.
+- **E — ratchet test**: a verb tuple in `servers/` whose contents are a subset of a policy's resolved
+  set must read the policy. **Do not widen any allowlist to land it** — `non_cohesion_relations` and
+  `absorb_migrates_relation` are deliberate literals and belong in the documented exceptions with
+  their reasons.
+
+**Files & call sites.** `servers/aspects.py` (the table at `_adopt`),
+`servers/scales/s2/community_contract.py:99,164-165`,
+`servers/scales/s2/community_decoder.py:223,370,1381`, `servers/scales/s2/community_structural.py:78`,
+`servers/scales/s2/community.py:121`, `servers/brain_connections.py:106`, `servers/brain.py:352`.
+`dashboard/queries/encoding.py` and `s2_runs.py` are forced by the disconnection contract — **leave
+them.**
+
+**Verification.** `tests/test_aspects_contract.py`, `tests/test_community_structural.py`,
+`tests/test_s2_community.py`, `tests/test_community_health_seam.py`,
+`tests/test_edge_context_invalidation.py`, `tests/integration/test_recall_pipeline.py`. A–C are
+targeted tiers; D touches the registry's construction body and needs the wide tier.
+
+**Blast radius.** Much smaller than this step originally carried. A changes stamped int_frac for
+communities holding any of the 42 divergent relations. D is a rename if the resolved sets are
+byte-identical before and after — pin that with a one-shot equality check per policy at the first
+boot after the change.
+
+**Depends on.** Step 4 (the facts mechanism) — shipped.
+
+**Respects.** `id:49d734ad` and `id:c8de37c6` — the DAL still holds no policy; the callable
+indirection is how that is preserved, not a violation of it. `id:4fd930b6` — `lineage_relations`
+keeps subtracting the traversal set.
 
 ---
 
@@ -760,9 +825,10 @@ but each is a genuine defect. Fold them into whichever step touches the same fil
   never re-seeds — permanently the empty-registry state the function's own comment calls
   catastrophic. Fix: copy into a tempfile + `os.replace`, and on `JSONDecodeError` move the corrupt
   file aside and re-seed rather than returning False. Belongs with Step 1.
-- **Three aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
-  `extension_refinement`, `validation_evidence`) — audited harmless (`id:40e7125a`), one-line
-  cleanup, do it whenever Step 5 or Step 6 opens the JSON.
+- **Four aspect names sitting in `noise.edge_relations`** (`temporal_sequence`,
+  `extension_refinement`, `validation_evidence`, `correction_improvement`) — audited harmless
+  (`id:40e7125a`), re-measured 2026-09-14 (all four at zero active edges), one-line cleanup, do it
+  whenever Step 5 or Step 6 opens the JSON.
 - **`run_aspect_cycles_on_clone.py --wipe-members` is broken since `2109376`** (pre-dates
   Step 1): the member-level seed heal re-heals wiped members back at Brain construction, so
   the "harder eval" starting state gets un-wiped. Default (keep-seeds) mode unaffected.

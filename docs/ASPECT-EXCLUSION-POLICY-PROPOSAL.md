@@ -12,10 +12,11 @@ brain's prior rulings. Not started.
 > `docs/DAL-BOUNDARY-ARCH-PLAN.md` Step 7 is a third document on the same boundary.
 >
 > The first version of this document was written without recalling Step 6 and re-derived its
-> conclusion. **This revision keeps the corrected inventory and the rulings, and hands the work back
-> to Step 6.** Do not execute from here as a parallel plan — fold §"What is actually left" into
-> Step 6 and run it there, under that plan's execution posture (id:82f72780: show the code, discuss,
-> then implement, per step).
+> conclusion. **The fold is DONE (2026-09-14): Step 6 has been re-scoped and now carries the
+> corrected inventory, the three rulings, and the A–E ordering.** Step 6 is the executable plan; run
+> it there, under that plan's execution posture (id:82f72780: show the code, discuss, then
+> implement, per step). This document is kept as the review record — the evidence behind those
+> rulings, and what the original proposal got wrong. Nothing here is executable on its own.
 
 ## What the review checked
 
@@ -204,12 +205,13 @@ a gap at the write door, and it is the argument for Step 5's `count_at` field st
 plan states it: a member with `count_at: 0` and no rationale should never have been accepted
 silently.
 
-## What is actually left
+## What is actually left — now folded into Step 6
 
-Fold into `ASPECT-OWNERSHIP-ARCH-PLAN.md`. Ordered by real dependency — the first two do not depend
+**These items now live in `ASPECT-OWNERSHIP-ARCH-PLAN.md` Step 6 as items A–E. Execute there, not
+here.** Kept below as the reasoning trail. Ordered by real dependency — the first two do not depend
 on the policy table and should not wait for it.
 
-**A. Fix the stamper's relation→family map.** One line: `community_structural.py:78-82` →
+**A. Fix the stamper's relation→family map.** *(⚠ owned by another stream as of 2026-09-14.)* One line: `community_structural.py:78-82` →
 `brain.aspects.primary_edge_map()`. Then fix `tests/test_community_structural.py:132` to build the
 decoder's side from `primary_edge_map()` too, and add a multi-homed fixture (`similar_to`) so the
 test can fail. *Verification:* `tests/test_community_structural.py`, `tests/test_s2_community.py`,
