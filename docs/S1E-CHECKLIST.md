@@ -1,6 +1,6 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Current pickup — September 14: V3.6 IS the production default (merged 4d6ef90, deployed 2026-09-14); next is V3.7 in a fresh session on clean production — see [S1E eval protocol](S1E-EVAL-PROTOCOL.md) and [V3.6 results](S1E-V3-6-RESULTS-2026-09-13.md)
+## Current pickup — September 14: V3.7 (V3.6 full + the advice-node scope guard in the thin worked window) IS the production default — Tom ruled ship on the advice carrier's trade; see [V3.7 results](S1E-V3-7-RESULTS-2026-09-14.md) for the readout, the costs accepted (fewer of the person's incidental facts, uptake claims on the surviving method nodes) and what the next round should carry; method in [S1E eval protocol](S1E-EVAL-PROTOCOL.md)
 
 **Pickup as of 2026-09-13:** read [HANDOFF-S1E-V3-5-2026-09-13.md](HANDOFF-S1E-V3-5-2026-09-13.md) first — where every
 V3.x artifact lives, the state of the evidence, the standing defect classes with carriers tried, and the rules.
