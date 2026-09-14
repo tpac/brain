@@ -320,8 +320,15 @@ the decoder's private SQL and the `rel_to_fam`/`skip_fams` plumbing go. Behaviou
 preserving — decoder proposals must match before/after on isolated data
 (`eval/s2_community_decoder_eval.py` + the community test files). The parity test then
 shrinks to a regression test of the one builder; keep its multi-homed fixture. Plan and
-watch-outs: id:294e48bb. Separate from the aspect-exclusion policy table
-(ASPECT-OWNERSHIP Step 6) and from the one-time stale-stamp backfill.
+watch-outs: id:294e48bb. **Same cut, second half:** stamps are rewritten only when a
+run touches a community, so they drift on every untouched one as edges accrue — census
+2026-09-14: 644 of 1,008 stored `community_internal_fraction` differ from fresh, 280 of
+them *lower* (not the bug — plain staleness), 25 corridor flags wrong, 0 decision-
+relevant (id:ab282352). Add a boot-time pass that re-stamps stale or missing structural
+fields, the way `_enqueue_vector_backfill_gaps` refills vectors; it retires the by-hand
+`backfill_all_communities()` and answers the fleet-migration question for free (a
+migration step can only delete, the boot pass refills). Separate from the
+aspect-exclusion policy table (ASPECT-OWNERSHIP Step 6).
 
 ---
 
