@@ -332,6 +332,30 @@ aspect-exclusion policy table (ASPECT-OWNERSHIP Step 6).
 
 ---
 
+### 16. `nanmax` swallows the edge_context view — the aggregator is the lever
+
+**Answered, and it inverted.** The v33 producer change (top_k 5→15 + noise-aspect
+exclusion) makes the edge_context view **measurably better**: scored alone, reach@5 goes
+15.66 → 18.56, **+2.90pp [+1.39, +4.55], McNemar b/c 33/10, p=0.0006**, holding at every
+k. `top_k` carries most of it (+2.40pp, p=0.004); the exclusion adds +1.01pp (p=0.057).
+
+In the shipped stack that improvement is **completely erased**: 33.46 vs 33.46, b/c 5/5,
+p=1.000 — and removing the lane outright costs +0.13pp. MaxSim is `nanmax` over six
+views, so a view only moves a node when it is the argmax, which edge_context rarely is.
+`maxsim_decomp.md` already measured the same shape: this view alone 9% need@5, shipped
+`nanmax` 14%, `sum(z)` **16%**.
+
+So: **keep `top_k` at 15** (brain `1e1c9465`, probe `eval/laf/edge_context_arms.py`), and
+the open work is the aggregator, not the producer policy — per-view z, or `sum(z)`, which
+this repo has already measured at +2pp over `nanmax`. That is a recall-path change and
+needs its own benchmark before anything moves.
+
+Two measurement gaps remain on the probe, both recorded in its docstring: edge-level
+time-honesty (node text is built from today's edge table; ~75% of eligible description
+rows postdate the cutoff, and `operators.py:227` already ships the `cutoff` guard for this
+on this substrate), and v33's *other* half — every arm rebuilds fresh, so the ~44%
+staleness the migration fixed is held constant and unmeasured.
+
 ## Decisions needed
 
 These aren't builds — they gate other work. Each needs the operator.
