@@ -236,6 +236,32 @@ class TestCommunityDecoder(BrainTestBase):
         self.assertIn('sample_edges', p)
         self.assertIn('is_corridor', p)
 
+    def test_sample_internal_edges_skips_non_cohesion_relations(self):
+        """The evidence sample hides exactly what the disconnected check
+        hides. Both read `non_cohesion_relations`, so a verb can never be
+        shown to the encoder as evidence of cohesion while simultaneously
+        not counting as cohesion."""
+        from servers.scales.s2.community_decoder import CommunityDecoder
+
+        ids = self._create_cluster('sample', 3, connect=False)
+        a, b, c = ids
+        self.brain.connect_typed(a, b, relation='implements',
+                                 description='a real semantic edge')
+        self.brain.connect_typed(a, c, relation='related',
+                                 description='pure generic, never cohesion')
+        self.brain.connect_typed(b, c, relation='dreamed_from',
+                                 description='dream artifact, never cohesion')
+
+        decoder = CommunityDecoder(self.brain)
+        sampled = {e['relation']
+                   for e in decoder._sample_internal_edges(ids, limit=10)}
+
+        self.assertIn('implements', sampled)
+        self.assertNotIn('related', sampled)
+        # dreamed_from is in non_cohesion_relations but was absent from the
+        # narrower literal this query used to carry — the drift this pins.
+        self.assertNotIn('dreamed_from', sampled)
+
     def test_decode_stats_populated(self):
         """Decode result includes stats for trace consumption."""
         from servers.scales.s2.community_decoder import CommunityDecoder
