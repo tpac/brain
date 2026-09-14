@@ -221,14 +221,18 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
     def test_intra_cluster_edge_rendered_with_direction(self):
         old = self._node('opener old')
         new = self._node('opener new')
-        # Production shape (get_neighbors_bulk): an intra-cluster edge is
-        # assigned to its SOURCE member only, direction='outgoing'. The
-        # target member has NO mirror entry.
+        # Production shape (get_connections_bulk, grouped per owner): the
+        # intra-cluster edge appears under BOTH members, outgoing from the
+        # actor and incoming on the target — the render must show it once.
         edge_details = {
-            new: {old: [{'relation': 'supersedes', 'description': 'newer opener',
-                         'title': 'opener old', 'type': 'handoff',
-                         'direction': 'outgoing'}]},
-            old: {},
+            new: {old: {'id': old, 'title': 'opener old', 'type': 'handoff',
+                        'direction': 'outgoing',
+                        'relations': [{'relation': 'supersedes',
+                                       'description': 'newer opener'}]}},
+            old: {new: {'id': new, 'title': 'opener new', 'type': 'handoff',
+                        'direction': 'incoming',
+                        'relations': [{'relation': 'supersedes',
+                                       'description': 'newer opener'}]}},
         }
         text = self._encoder()._format_clusters([self._cluster(old, new, edge_details)])
 
@@ -241,6 +245,106 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         self.assertNotIn(reversed_line, text)
         self.assertEqual(text.count('supersedes →'), 1)
 
+    def test_edge_data_arrives_whole_with_the_relations_age(self):
+        """The decoder used to cut descriptions to 80 and titles to 60 chars
+        before the encoder ever saw them — a description a reader copies as
+        a swap's `old` has to arrive whole, and the edge line's age is the
+        relation's, so the loader carries it."""
+        a = self._node('member')
+        b = self._node('a neighbor title long enough to have been cut at sixty characters by the old loader', type='fact')
+        long_desc = 'd' * 120 + ' — the tail past eighty that used to vanish'
+        self.brain.connect_typed(a, b, relation='extends', weight=0.6,
+                                 description=long_desc, encoding_source='test')
+        data = self._decoder()._load_edge_data([a])
+        conn = data[a][b]
+        (rel,) = conn['relations']
+        self.assertEqual(rel['description'], long_desc)
+        self.assertEqual(conn['title'], self.brain.get_node(b)['title'])
+        self.assertTrue(rel.get('created_at'))
+        # and the encoder's External block renders it whole, in the one grammar
+        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: {b: conn}})])
+        self.assertIn('this extends "%s' % conn['title'][:100], text)
+        self.assertIn(' — ' + long_desc, text)
+
+    def test_edge_between_members_of_two_clusters_reaches_both(self):
+        """The decoder loads edges for every cluster's ids at once. An edge
+        whose endpoints sit in two different clusters must appear under BOTH
+        owners — the flat loader gave it to the source only, and with the
+        rich block's edges off the target member rendered edge-blind."""
+        a = self._node('member of cluster one')
+        n = self._node('member of cluster two', type='fact')
+        self.brain.connect_typed(n, a, relation='depends_on', weight=0.6,
+                                 description='cluster two leans on cluster one',
+                                 encoding_source='test')
+        data = self._decoder()._load_edge_data([a, n])
+        self.assertEqual(data[a][n]['direction'], 'incoming')
+        self.assertEqual(data[n][a]['direction'], 'outgoing')
+        text = self._encoder()._format_clusters([self._cluster(a, self._node('other'), {a: data[a]})])
+        self.assertIn('"member of cluster two" depends_on this — cluster two leans on cluster one', text)
+
+    def test_edge_loader_excludes_noise_like_get_node(self):
+        """The loader applies the registry's structural_exclusions — the same
+        set get_node uses — so community_member and the other plumbing
+        relations are neither rendered as External edges nor offered to the
+        encoder as migration candidates. Community placement still reaches
+        the cluster block, through _load_community_membership."""
+        a = self._node('member')
+        comm = self._node('a community', type='community')
+        peer = self._node('a peer', type='fact')
+        self.brain.connect_typed(comm, a, relation='community_member', weight=0.9,
+                                 encoding_source='test')
+        self.brain.connect_typed(a, peer, relation='co_anchored', weight=0.9,
+                                 description='shared episodic anchor', encoding_source='test')
+        self.brain.connect_typed(a, peer, relation='extends', weight=0.5,
+                                 description='the semantic claim', encoding_source='test')
+        data = self._decoder()._load_edge_data([a])
+        self.assertEqual(set(data[a]), {peer})
+        self.assertEqual([r['relation'] for r in data[a][peer]['relations']], ['extends'])
+        self.assertEqual(self._decoder()._load_community_membership([a]),
+                         {a: [{'id': comm, 'title': 'a community'}]})
+
+    def test_cluster_block_prints_one_header_per_node_keeping_the_flags(self):
+        """render_rich_node prints the `[type] "title" (id:…)` header; the
+        encoder's own `[type] "title"` line above it was a duplicate. The
+        separator keeps the flags the rich header lacks (CRITICAL)."""
+        old = self._node('opener old', locked=True)
+        new = self._node('opener new')
+        cluster = self._cluster(old, new, {old: {}, new: {}})
+        cluster['node_details'][old]['locked'] = True
+        cluster['node_details'][old]['critical'] = True
+        text = self._encoder()._format_clusters([cluster])
+        self.assertEqual(text.count('"opener old"'), 1, text)
+        self.assertEqual(text.count('"opener new"'), 1, text)
+        self.assertIn('    --- %s --- [LOCKED, CRITICAL]' % old[:8], text)
+        self.assertIn('    --- %s ---\n' % new[:8], text)
+        self.assertIn('[handoff] "opener old" (id:%s, locked' % old[:8], text)
+        # the rich header already carries src: and the age — the separator
+        # block does not repeat them
+        self.assertNotIn('src=', text)
+        self.assertNotIn('created=', text)
+        # a member that vanished between decode and encode still reads as
+        # `[type] "title"`, never as an anonymous body
+        gone = 'deadbeef'
+        cluster = self._cluster(old, gone, {old: {}, gone: {}})
+        cluster['node_details'][gone] = {'title': 'vanished', 'type': 'handoff',
+                                         'content': 'its body'}
+        text = self._encoder()._format_clusters([cluster])
+        self.assertIn('      [handoff] "vanished"\n      Content: its body', text)
+
+    def test_cluster_block_renders_member_content_whole(self):
+        """A merge or keep is decided on the claim, not a gist: the rich node
+        block and both fallbacks render the member's content whole."""
+        long_body = 'c' * 900 + ' THE TAIL PAST SIX HUNDRED'
+        a = self._node('long member')
+        self.brain.revise(a, content=long_body)
+        cluster = self._cluster(a, self._node('other'), {})
+        self.assertIn(long_body, self._encoder()._format_clusters([cluster]))
+        gone = 'deadbeef'
+        cluster = self._cluster(a, gone, {})
+        cluster['node_details'][gone] = {'title': 'vanished', 'type': 'handoff',
+                                         'content': long_body}
+        self.assertIn('      Content: ' + long_body, self._encoder()._format_clusters([cluster]))
+
     def test_external_edges_still_external_only(self):
         # The intra block must not leak external edges, and vice versa.
         old = self._node('opener old')
@@ -248,12 +352,12 @@ class TestIntraClusterEdgeRenderContract(SupersessionBase):
         outsider = self._node('elsewhere', type='fact')
         edge_details = {
             new: {
-                old: [{'relation': 'supersedes', 'description': '',
-                       'title': 'opener old', 'type': 'handoff',
-                       'direction': 'outgoing'}],
-                outsider: [{'relation': 'extends', 'description': '',
-                            'title': 'elsewhere', 'type': 'fact',
-                            'direction': 'outgoing'}],
+                old: {'id': old, 'title': 'opener old', 'type': 'handoff',
+                      'direction': 'outgoing',
+                      'relations': [{'relation': 'supersedes', 'description': ''}]},
+                outsider: {'id': outsider, 'title': 'elsewhere', 'type': 'fact',
+                           'direction': 'outgoing',
+                           'relations': [{'relation': 'extends', 'description': ''}]},
             },
             old: {},
         }

@@ -1,0 +1,24 @@
+{
+  "status": "authored_for_offline_review",
+  "model_calls": 0,
+  "prior_cell_inputs": {
+    "eval/fixtures/s1e_guide_sanity_2026-09-08/contrasts_three_windows.json": "9a13976581370395b8a25109e24b64d09ea6c544e1226c230e86eb4586fe7a6c",
+    "eval/s1e_guide_v2_sequence_probe.py": "c7c33d9b880b54551c89bb4607a1a8b2227e4edb5658a3ea554f5dcc1c465e1c"
+  },
+  "files": {
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/contrasts_three_windows.json": "166e16ad6d8645a515360094e9d9c210b1582c0a7c8f161165be11b99e779302",
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/run_sequence.py": "40dc437b5693c75b18c81414077daf5d4b47ceb0b57eb0cdc3f7be1fecd8662f",
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/runner.diff": "b0fd881dda0f8f9b95a4de3c319a7d98887b3d9baa0f1c7460a81273890156b5",
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/fixture.diff": "fdf9f126082b2e2d0baf71574003765879a69ff4104acdb7948ebe8e2ebcb79c",
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/author.py": "08f2ee67adb3b6be220979511529d347172124a299b6c4e1f39a3623d5244b45",
+    "eval/fixtures/s1e_guide_context_v2_2026-09-08/context_support.py": "27c5d84a33ffb291ffaac7ea37434b84c540e85b9cb2fdd5e871e9f28fff8061"
+  },
+  "turn_counts": [
+    4,
+    3,
+    5
+  ],
+  "guide_and_tools": "unchanged; the versioned runner still selects frozen arms and frozen tools",
+  "comparison_rule": "All future arms must share this new context; do not pool with old-context samples.",
+  "runner_scope": "Versioned snapshot with eight exact substitutions; no shared runtime edit."
+}

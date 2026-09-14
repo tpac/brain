@@ -1,0 +1,142 @@
+{
+  "description": "Context revision of the completed 12-turn Oren sanity sequence: speaker explicitly identified in timeline markup, and displayed journal first-seen dates use the conversation window that produced the note. Dialogue, actions, seed facts and all predeclared criteria are unchanged. Requires this directory's versioned runner. This remains one synthetic regression sequence, not an independent benchmark corpus.",
+  "initial_residue": "RECENT REVIEW NOTES — residue your recent runs flagged, for continuity (not a to-do list):\n- open ×1 since 09-07 · courier pickup · booked for Wednesday September 9 at 16:00; collection has not happened as of this note\n- open ×1 since 09-07 · poster proof · June's proof is due Wednesday September 9; approval waits for the proof\n",
+  "seed_nodes": [
+    {
+      "key": "garden_choice",
+      "type": "decision",
+      "title": "Oren gave Kasia responsibility for the east garden bed",
+      "content": "On August 13 Oren asked Kasia to take the east bed for the month. Rather than leaving her a sequence of watering and pruning instructions, he gave her the bed map, explained which plants must not dry out, and left her to decide how to tend it.",
+      "situation": "When revisiting how Oren arranged help with the east garden bed",
+      "reasoning": "Oren's reported arrangement on August 13; this records that particular division of work.",
+      "event_time": "2026-08-13"
+    },
+    {
+      "key": "household_choice",
+      "type": "decision",
+      "title": "Oren let his housemates choose when and how to do their weekly chores",
+      "content": "On August 27 Oren agreed with his housemates that each would take a room and have it ready by Sunday evening. He removed the day-by-day task list from the kitchen wall. The agreement named what a ready room looked like but left the sequence and timing to each person.",
+      "situation": "When revisiting Oren's August household cleaning agreement",
+      "reasoning": "The agreement was reported on August 27. No wider claim about Oren's personality was stated.",
+      "event_time": "2026-08-27"
+    },
+    {
+      "key": "pickup",
+      "type": "open",
+      "title": "Oren's seed-library boxes await the courier's Wednesday pickup",
+      "content": "The courier is booked to collect three seed-library boxes on Wednesday September 9, 2026 at 16:00 from the east entrance. The booking is confirmed; collection has not happened. The return labels are in the top drawer.",
+      "situation": "When tracking whether Oren's three seed-library boxes have been collected from the east entrance",
+      "question": "Has the courier collected Oren's seed-library boxes?",
+      "reasoning": "Booking confirmation establishes the planned time, not collection. No collection receipt has been seen.",
+      "event_time": "2026-09-09T16:00:00"
+    },
+    {
+      "key": "poster",
+      "type": "open",
+      "title": "Oren's seed-library poster awaits June's proof",
+      "content": "June is due to send the seed-library poster proof on Wednesday September 9, 2026. Oren will check the venue spelling before approving print. The print run is 60 copies on cream paper. No proof or approval has arrived yet.",
+      "situation": "When preparing the seed-library poster and waiting for June's proof before approving print",
+      "question": "Has June sent the proof, and has Oren approved printing?",
+      "reasoning": "The production plan names a due date; it does not establish receipt or approval.",
+      "event_time": "2026-09-09"
+    }
+  ],
+  "windows": [
+    {
+      "now": "2026-09-08 12:00 UTC",
+      "turns": [
+        {
+          "other": "Before I forget: I left my green umbrella in locker B17 at North Quay yesterday. That's the only thing in there. Anyway, back to the seed library — the stock list is ready.",
+          "me": "For Saturday's volunteers I could write a checklist for each transaction: accept a packet, enter the quantity, print the label, then file the envelope."
+        },
+        {
+          "other": "Give each person the whole afternoon desk shift instead. Tell them what has to be true at closing: quantities reconciled, requests noted, keys back. Let them work out the order. Kasia has already handled the desk twice.",
+          "me": "I'll make the shift sheet with those closing conditions. I haven't sent it to anyone yet."
+        },
+        {
+          "other": "The printer's preview has an odd blank first page. Can you look at the exported file?",
+          "actions": "Bash: inspected the PDF objects — object 18 is an empty page before the content pages. The export configuration requests a cover sheet. No files were changed.",
+          "me": "The exported PDF contains an empty leading page, and the export configuration has the cover-sheet option enabled. That is the likely source. I haven't tested a new export, so I can't yet say disabling it fixes the problem."
+        },
+        {
+          "other": "Leave that for the next time we work on it. Keep the current file for comparison. I have to go now.",
+          "me": "The PDF explanation is still a hypothesis, and the shift sheet is still unsent. We can pick up the work later."
+        }
+      ]
+    },
+    {
+      "now": "2026-09-11 12:00 UTC",
+      "turns": [
+        {
+          "other": "June sent the poster proof this morning. I checked the venue spelling and approved printing the 60 copies on cream paper. She's printing them tomorrow.",
+          "me": "The proof and approval are complete; printing is scheduled for tomorrow."
+        },
+        {
+          "other": "Different project: I run a beginner screen-printing group on Thursday evenings. In the first lesson I have everyone follow the same numbered steps before they choose their own process. Yesterday I stopped someone who wanted to reorder the steps.",
+          "me": "That seems different from the garden bed, chores and desk shift. Perhaps experience changes how much room you leave people to choose their process."
+        },
+        {
+          "other": "Maybe. I haven't worked out a rule about that. They are different situations. I just wanted to tell you about yesterday's class.",
+          "me": "The class is a new fact. My explanation linking the situations is provisional."
+        }
+      ]
+    },
+    {
+      "now": "2026-09-14 12:00 UTC",
+      "turns": [
+        {
+          "other": "Saturday's seed-library desk went well. Kasia reconciled the quantities and put the keys back. We still have two requests to follow up. The closing-conditions sheet never got made; we just went over them together before the shift.",
+          "me": "The shift happened, and the sheet didn't. I'll keep those outcomes separate from what I'd promised earlier."
+        },
+        {
+          "other": "June says all 60 cream-paper posters were printed on Saturday. I haven't heard from the courier, though, and I haven't checked the collection receipt.",
+          "me": "Printing is reported complete. The courier's booked Wednesday date still doesn't tell us whether the boxes were collected."
+        },
+        {
+          "other": "I picked up my umbrella from locker B17 this morning and put it behind my front door. The locker is empty now.",
+          "me": "The umbrella has moved from North Quay to behind your front door."
+        },
+        {
+          "other": "Before we send the next PDF, can you check that blank-page explanation?",
+          "actions": "Bash: repeated the export with cover sheet disabled; object 18 was still an empty leading page. Re-enabled cover sheet and exported again; object 18 was still empty. No other export settings or source pages changed.",
+          "me": "Disabling cover sheet did not remove the empty leading page in this check. My proposed fix didn't work; this test doesn't identify the cause."
+        },
+        {
+          "other": "About the beginner class: by the third lesson I let them choose the order themselves. I still can't tell you whether experience explains all the other choices we talked about.",
+          "me": "That develops the evidence for the class without settling one explanation for the garden, chores and desk shift. The earlier choices still happened."
+        }
+      ]
+    }
+  ],
+  "criteria_before_run": {
+    "window1": [
+      "Incidental one-time green umbrella fact survives with locker B17 and North Quay; no recurrence or project relevance is required. If the date is resolved, yesterday is September 7; leaving it undated is not a loss of the location fact.",
+      "Current volunteer arrangement and the unsent shift-sheet state survive; clear closing conditions are not mistaken for completed shift work.",
+      "A useful interpretation may connect garden, household and volunteer choices without either conversation voice spelling it out. Any supported nontrivial interpretation can pass; no mandatory label, thought field, exact psychological cause, or universal personality claim. Credit local preference separately from cross-context integration.",
+      "PDF observation and likely cause retain their different evidential status: empty object 18 and enabled cover-sheet option were observed, causal fix not tested. No fabricated implementation internals or completed repair.",
+      "Courier collection and proof approval stay unconfirmed; preserve three boxes, east entrance, top-drawer labels, 60 copies and cream paper.",
+      "Working lists lead to actual successful writes; inspect tool results and persistent nodes, not declaration alone."
+    ],
+    "window2": [
+      "Beginner class practice retained independently of whatever interpretation it changes; Thursday evening and first-lesson scope survive.",
+      "Existing overbroad interpretations, if any, are narrowed when counterevidence arrives; prior garden/household/volunteer choices remain true. Maybe is not confirmation of the assistant's experience hypothesis.",
+      "Poster proof/approval updated across every stale claim, with open status narrowed or resolved only as appropriate. Printing remains future on September 12; 60 copies and cream paper survive.",
+      "Courier pickup remains unconfirmed even though the booked date is past. No fabricated collection, failure, rescheduling, or exact pickup time. Journal-note retirement is not automatically scored as underlying task completion; inspect the explanation and surviving memory.",
+      "Umbrella location survives from window 1 without being restated; no assumed recovery or deletion because its disclosure was incidental.",
+      "Unsent shift sheet and untested PDF hypothesis do not become completed or verified merely because time passed or another task completed.",
+      "Separate observable evidence, proposed interpretation, and journal lifecycle in adjudication. No source-ref coverage quota."
+    ],
+    "window3": [
+      "The umbrella location changes to behind Oren's front door on September 14; locker B17/North Quay remains only dated history, not the current retrieval answer. Locker is empty. Retain the green umbrella detail even though it is not restated.",
+      "The promised closing-conditions sheet was never made. Distinguish this from the completed Saturday desk shift and retain the two follow-up requests. If the model earlier invented drafting, this is an opportunity to repair its claims on every stored surface.",
+      "Printing is reported complete on September 12, with 60 copies and cream paper retained. Attribute the report to June via Oren; no independent printer verification is stated. Do not infer courier collection, failure or rescheduling.",
+      "The proposed cover-sheet fix failed the described check. Preserve the PDF empty leading page/object 18 observation and the intervention result. Do not infer that every causal involvement is disproven or invent a new cause.",
+      "Beginner-class first-lesson numbered steps remain true; by the third lesson learners choose their order. Thursday schedule survives. The cross-context experience interpretation can develop while remaining unconfirmed; the user did not reject it.",
+      "Preserve earlier garden/household/desk observations as interpretations evolve. Repair claims in titles, content, situations, reasoning, edges and continuity where affected. Count actual stored changes and retained facts, not list compliance or node count.",
+      "No universal source-ref coverage or thought-field requirement. Report supported inference separately from unsupported certainty and omission. A closed journal note does not by itself imply a completed real-world task."
+    ]
+  },
+  "context_version": "oren_explicit_conversation_journal_dates_v2",
+  "other_speaker": "Oren",
+  "journal_date_policy": "map first_seen at rendering only; real journal lifecycle and transaction timestamps retained"
+}

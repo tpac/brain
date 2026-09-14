@@ -52,7 +52,10 @@ CLUSTER_SHAPE = {
     # ── Graph structure ──
     'shared_edge_count': 'int',        # Neighbors shared by ALL cluster members
     'unique_edges': 'dict[str, int]',  # node_id → edges not in shared set
-    'edge_details': 'dict[str, dict]', # node_id → {neighbor_id: [{relation, description, title, type}]}
+    'edge_details': 'dict[str, dict]', # node_id → {neighbor_id: get_connections_bulk entry — id, type,
+                                        #   title, direction, edge_created_at, relations: [{relation,
+                                        #   description, weight, created_at, updated_at}]}
+                                        #   (render_edge_lines' input)
     'communities': 'dict[str, list]',  # node_id → [{id, title}] community memberships
     'same_community': 'bool',          # Any pair shares a community?
     'shared_community_ids': 'list[str]',
@@ -73,6 +76,9 @@ CLUSTER_REQUIRED_FIELDS = {
     'node_details',
     'co_recall_count', 'judge_preference', 'catalog_blind',
     'shared_edge_count', 'same_community', 'has_correction_edge',
+    # the prompt's ONLY edge source (the rich node block renders none) — a
+    # cluster without it hands the encoder edge-blind nodes
+    'edge_details',
 }
 
 
@@ -80,19 +86,21 @@ CLUSTER_REQUIRED_FIELDS = {
 # NODE RENDERING FORMAT
 #
 # How cluster member nodes are rendered for the consolidation encoder.
-# Consolidation needs FULL depth for 2-5 nodes — Sonnet must read
-# the actual content to decide synthesize vs keep.
-#
-# Compare to community format (gist of 5 reps → 300 char content):
-#   S2CE writes about communities → needs the gist
-#   Consolidation decides per-node fate → needs the substance
+# Consolidation needs FULL depth for 2-5 nodes — Sonnet must read the whole
+# content to decide synthesize vs keep, and a survivor's content it did not
+# fully see is content a merge can silently drop.
 # ═══════════════════════════════════════════════════════════════
 
 CONSOLIDATION_NODE_FORMAT = {
-    'content_limit': 600,       # More depth than community (300)
-    'edge_limit': 5,            # Full edge context
+    'content_limit': None,      # the whole node: a merge or keep is decided on the claim, not a gist
+    # Edges render ONCE per cluster, in the Intra-cluster and External blocks
+    # (_format_clusters) — every edge, with direction and the whole
+    # description — so the rich node block shows none.
+    'edge_limit': 0,
     'metadata_limit': 300,      # Full metadata — reasoning, raw quotes
     'time_format': 'relative',
+    # `communities` stays off: the cluster block prints one Communities
+    # line per cluster (_format_clusters).
 }
 
 

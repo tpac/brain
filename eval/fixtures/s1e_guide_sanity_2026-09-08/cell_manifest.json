@@ -1,0 +1,37 @@
+{
+  "status": "pinned_before_model_calls",
+  "arms": [
+    "v2_frozen",
+    "v3_titles"
+  ],
+  "repetitions": 3,
+  "encodes_per_repetition": 3,
+  "turn_counts": [
+    4,
+    3,
+    5
+  ],
+  "total_encodes": 18,
+  "parallelism": "two arm processes, sequential repeats/windows",
+  "session_id": "ca930f27-three-window-sanity",
+  "arm_sha256": {
+    "v2_frozen": "d06ee141161bf6ec7e00f109c6ed47175ece8de751027f0dadadc3edd79448e0",
+    "v3_titles": "d3cb6b011fa285b96d1fc569def31bf455012391e7c3a60f1077f9f9d6c06152"
+  },
+  "files": {
+    "eval/fixtures/s1e_guide_sanity_2026-09-08/contrasts_three_windows.json": "9a13976581370395b8a25109e24b64d09ea6c544e1226c230e86eb4586fe7a6c",
+    "eval/s1e_guide_v2_sequence_probe.py": "c7c33d9b880b54551c89bb4607a1a8b2227e4edb5658a3ea554f5dcc1c465e1c",
+    "eval/fixtures/s1e_guide_sanity_2026-09-08/run_cell.py": "0f4ea5bddf35a5e328a4da38ec52d1da42d55bbf39d0608f5333cd4c6fbcabfd",
+    "eval/results/s1e_guide_sanity_2026-09-08/baseline.json": "c1a101cca2c8f65c2cd32772beb8fdb0c7bc8ba9d8e56314c03ac510bbdfff64",
+    "eval/results/s1e_guide_sanity_2026-09-08/background_catalog.txt": "1223ccb9245bdacf281c4a7a3b0cfe1fc310b76947ec6f29bb97251c4992d94a",
+    "eval/results/s1e_guide_sanity_2026-09-08/comparison_contract.json": "5b166015c6d9b1fc90dbda30a7ba6d17add1f2dba0ab0d3b20d42c1c05af459e",
+    "eval/results/s1e_guide_sanity_2026-09-08/first_user_sha256.txt": "b79dea77d8f638649e707cc22c4536c77b7c5e46335c2bbf2769806f58ad15e1"
+  },
+  "baseline_files": {
+    "/var/folders/p8/v9_c_hfj0pzbyj2shlzjsj1c0000gq/T/brain_test_18f3q0pt/brain.db": "1f763536f5197c330dc93e0801e0fce4692fbc886f6e115f8f8a96ec7e7c2008",
+    "/var/folders/p8/v9_c_hfj0pzbyj2shlzjsj1c0000gq/T/brain_test_18f3q0pt/brain_logs.db": "13e22c798aaf86022e1b98e667aaccadb51c56c2d5f1846c37b77a027fb27f29",
+    "/var/folders/p8/v9_c_hfj0pzbyj2shlzjsj1c0000gq/T/brain_test_18f3q0pt/aspects_v1.json": "b65fe44cef6464e6074365c2b0693019c77920953212e574b520cbf4c71c1ff5"
+  },
+  "interpretation": "one synthetic regression sequence, not independent corpus items; no S1R/S2",
+  "source_trace_limit": "source traces for all windows are preseeded for stable ids; only current-window text is shown and the encoder toolset has no episode-search tool"
+}

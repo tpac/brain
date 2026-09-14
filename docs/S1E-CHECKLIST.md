@@ -1,8 +1,43 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
+## Current pickup — September 11: V3.3 authoring and broad evaluation
+
+**Pickup as of 2026-09-13:** read [HANDOFF-S1E-V3-5-2026-09-13.md](HANDOFF-S1E-V3-5-2026-09-13.md) first — where every
+V3.x artifact lives, the state of the evidence, the standing defect classes with carriers tried, and the rules.
+
+Read [the V3.3 handoff](HANDOFF-S1E-V3-3-2026-09-11.md) and its
+[working set](S1E-V3-3-WORKING-SET-2026-09-11.md) before acting. Production
+versus V3.2 is complete, with mixed strengths; V3.3 is not yet authored.
+Tom asks the successor to weave many shapes into coherent examples, use and
+improve these challenges and the example probes, then evaluate deeply and
+widely while preserving prior gains. Compression serves focus, not a token
+target. **V3.3 was authored, reviewed and frozen on 2026-09-11** —
+[authoring review](S1E-V3-3-AUTHORING-REVIEW-2026-09-11.md), fixture
+`eval/fixtures/s1e_guide_v3_3_2026-09-11/` — and its sanity and transfer
+cells are complete: [results](S1E-V3-3-RESULTS-2026-09-11.md) (126 transfer
+encodes on untouched material, 18 blind packs, a downstream answer test).
+**V3.4 (2026-09-12)** — one more weave on live tool schemas, measured on fresh
+corpora with a regression set: [authoring](S1E-V3-4-AUTHORING-2026-09-12.md),
+[results](S1E-V3-4-RESULTS-2026-09-12.md). **V3.5 (2026-09-12, later)** — the overlay's
+seven edits without its ownership line, the three cross-arm defect classes woven at their
+carriers, two ledger repairs; four cells pinned with zero model calls, analysis instruments
+built first: [authoring](S1E-V3-5-AUTHORING-2026-09-12.md),
+`eval/fixtures/s1e_guide_v3_5_2026-09-12/ANALYSIS.md`; **run and measured — not adopted**:
+[results](S1E-V3-5-RESULTS-2026-09-12.md). V3.4 remains the candidate. The older
+walk/measurement heads below are historical. Nothing is merged or deployed.
+
 ## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
 
-## v-next.7 — INSTRUMENT BUILT, NOTHING MEASURED (2026-09-01) ◀ HEAD
+## Measurement arc CLOSED 2026-09-03 — position is the lever, the revise shape is the next change ◀ HEAD
+
+- **v-next.7 measured, not green** (30 runs, 3/cell, hand-adjudicated): 17/30 vs 15/30, run-44 tie — `e6390869`.
+- **A payload-level gist before `<timeline>` moved the unchanged production template 50% → 80%** surface coverage; four template rewrites moved ~0 — `7bdb1c25`, `2e4da492`. The gist is the `s1e_gist` interaction (`encoding_gist_prompt.py`, resolver-read since 2026-09-04), `--gist` on the harness. **Committed on the branch (`ed36eda`), unmerged, not promoted** — the pre-merge review (`docs/REVISE-SHAPE-SPEC.md` §8) found the gist bypasses the interaction resolver and names an edge surface no revise op reaches; it ships only with the revise-shape change.
+- **Edge descriptions: 0/24 through every prompt layer.** Ruled a contract-shape defect, not a prompt one: one revise shape — every field takes its new value or `{old,new}` swaps, edges ride as `connect_to` on revise — `docs/REVISE-SHAPE-SPEC.md`, `73d30b14`. Drift guardrail: `tests/test_teaching_vocabulary_sync.py`.
+- New boxes from the arc: **T8, A11, E18–E24** below. Full record: `docs/S1E-REORG-AUDIT.md`.
+- **Revise shape steps 1–2 committed on the branch (`2ad74aa`, 2026-09-03):** contract (value-or-swap, `connect_to` on revise, `target` alias) and write path (`brain.revise` swaps + edge routing) — `docs/REVISE-SHAPE-SPEC.md` §4 marks the rows. Unmerged; deploy is one merge together with the surfaces, after the edge cell. Done 2026-09-04: the full prompt read + per-section audit (id:71eeff20; finding 0d40ac77 — three rows the spec missed), the tool-layer rows (`a932bac`), the `s1e_gist` interaction + guardrail rewrite (`c1a66df`), the harness (`50032ba`; 0 gold numbers moved on re-score), the prompt rows (`ba54b8d` — A10 recount below), probes green + wide tier 1,203 passed (`a1699cf`), and the edge cell. **Cell result (id:9a9e35c1): edge description 0/3 — 0/27 across every arm; `connect_to` on 0 of 13 revise ops while the same runs wrote 13 standalone connects. Other surfaces held (canonical 2,3,3 of 4 adjudicated vs 3,3,3; run-44 4/4 and 1/4 vs 2,2,1 — the first 4/4; twin 2/2 vs 2/3). Value-or-swap transferred (content swaps 91%, full rewrites 0%); connect_to-on-revise did not.** Merge is Tom's gate; next levers named in REVISE-SHAPE-SPEC §6 step 3. v42 stays dormant.
+- **Two-lever cell 2026-09-05 (id:203d2276; ops6; scorer fixed first — plan step 1, 0 gold numbers moved):** L1 a "revise + edges" paragraph in the brain_batch description, L2 a gist bullet naming the Edges line's text as the node's own claim. **Edge 0/3 — 0/30 across every arm.** `connect_to` on 1 of 13 revise ops, and that one targeted a same-batch sibling by title (refused on revise). L1 correlated with the follow-up connect round disappearing (standalone `connect` ops 2.6/run → 0; every baseline connect was a second-round edge on a just-created node's returned id, now declared inside the remember's `connect_to`; the probe's own encodes brought the round back, so weak) — and moved edge REPAIR not at all. Other surfaces held (canonical 3, 0, 3 of 4 by hand; run-44 run 2 revised the prior decision 78983ba6 by id instead of minting the twin, but VOID on a live read). Tools verified in-process from the worktree's `brain_mcp` (L1 + `$defs` present in what the harness sends). Tom's call: probe the encoder for WHY before another lever. **Interview probe ×3 (id:4c52b82c):** the sweep is a stale-string scan over the labeled fields, the Edges block sits outside it, the rule never runs as a procedure at revise time. **Arms W (L2 rewritten) and R (+ every why as its own `why:` line): edge 0/3 and 0/3 — 0/36 across every arm.** The Edges SECTION is the boundary, not the line grammar. Open, unruled: a write-boundary stale-edge check in `brain.revise`, the worked example (template), the why rendered among the node's fields. REVISE-SHAPE-SPEC §6 step 3 carries the numbers.
+
+## Prior head — v-next.7 instrument built (2026-09-01), superseded by the measurement above
 
 Steps 1–3 of the measurement chain are committed (`979aaf8`); the A/B has not
 been run. **Handoff: brain `b64d3e14`. Runbook:
@@ -371,6 +406,11 @@ as a section; the Allen full-cut.
 
 ## How we use it
 
+Current release objective and evidence: [S1E release regression map](S1E-RELEASE-REGRESSION-MAP-2026-09-11.md).
+Before another narrow probe or revision, retain the whole capability set and
+apply Tom's quote-aware fidelity calibration there. The historical walk state
+above is not the status of the completed V3.2 sanity.
+
 1. **Walk the prompt section-by-section.** Per section: which boxes apply,
    current status — `HOLDS` / `VIOLATES` / `ABSENT` / `DELEGATED(where)` /
    `OPEN-BY-DESIGN` — and the shape we want.
@@ -402,6 +442,9 @@ as a section; the Allen full-cut.
    → eval (run-44 staleness set + longmem sweep, multiple reps — no single-run
    conclusions) → Tom approves → the candidate replaces `SYSTEM_PROMPT` in
    `encoding_prompt.py`.
+8. **Measure a candidate by the protocol** — [S1E eval protocol](S1E-EVAL-PROTOCOL.md): corpora by id and the
+   win pre-registered before authoring, arms as separate carriers through the runtime assembly, the
+   instrument order, the sealed blind read, the regression of the shipping rung, the readout shape.
 
 ## T. Tom's fundamentals (the frame — 2026-08-21)
 
@@ -426,8 +469,30 @@ as a section; the Allen full-cut.
   consistent marker. Placeholders = one grammar. What's best for the LLM is
   the right shape; a mixed sign system is noise that costs comprehension
   every run. (Tom, 2026-08-21)
+- **T8. Verbs in the shape of the functions.** When the prompt asks for an
+  act an op performs, it names the op. The agent's decision at write time is
+  a lookup from intent to tool, and an English synonym for the act breaks the
+  lookup exactly there — it teaches the intent and hides the door. Every
+  surface the agent is asked to maintain therefore comes with the op that
+  writes it, by name. (Tom, 2026-09-03; conviction `f358bba7`: a surface the
+  prompt named by an English verb, whose op existed in the toolset, was
+  written 0 times in 24 runs.) Enforced mechanically:
+  `tests/test_teaching_vocabulary_sync.py`.
 
 ## A. Example laws (under T1)
+
+Current application: [Semantic fidelity](challenges/semantic-fidelity.md)
+checks claim strength, agreement, plans, unused ideas, trial scope and actual
+repair, in both directions: no overstatement and no unnecessary weakening.
+Its V3.2 carrier map is author-reviewed; nine V3.2 encodes and the nine-run
+production comparison are complete. V3.3 (2026-09-11) added two evidence
+shapes to the challenge — a choice folded into an existing node keeps its
+order and reason; a read that later evidence supports firms up with the case
+it does not cover named — and the receiver's view; its worked carriers are
+the Mira episode's second window and the Inez coda (a thought-only
+narrowing). The blind cold reader recovered the shapes from the fenced
+blocks alone; the independent review's seventeen findings are dispositioned
+in the authoring review.
 
 - **A1. Every behavioral ask gets a worked example; instruction-only = dead.**
   `thought` 0/120 nodes, `emotional_context` 0 brain-wide, event_time ~0% for
@@ -509,6 +574,15 @@ as a section; the Allen full-cut.
   teaching economy. Point those at every example family in the prompt, not
   just the revise ops; this defect was only *found* in revise.
 
+- **A11. A rule born from a census is checked against every worked example
+  before it is written down.** A census finds a shape; a rule has to name the
+  discriminator. If an example violates the draft rule and the example is
+  right, the rule is too broad — and examples outrank rules (A3), so it would
+  lose silently wherever they met. (Conviction `206171f1`: two census-born
+  rules forbade a dozen legitimate example fields; narrowed to the offender
+  class the census had actually found, both held.) Run it on: any rule whose
+  evidence is a production distribution.
+
 ## B. Placement laws (under T3)
 
 - **B1. Placement beats content.** Same idea: 30% as a buried bullet, 60% as
@@ -551,7 +625,9 @@ as a section; the Allen full-cut.
 - **C1. Fix at the layer that binds:** schema > code guard > MCP description >
   prompt example > prompt rule. Hard constraints go in code (learned 3×
   independently); tool schemas are a hard contract, prompts are advisory.
-  (genealogy #11, #76, #17)
+  (genealogy #11, #76, #17) Strongest conviction so far: a surface untouched
+  through four prompt layers was a contract-shape defect — the op existed but
+  was defined as a different act (`73d30b14`).
 - **C2. Tool-mechanics rules work best AT the tool** — the connect_to rule in
   the MCP description took violations 1/run → 0 where the same rule at the top
   of the prompt never did; the absorb description fix re-framed every caller
@@ -730,14 +806,17 @@ Author-blindness is the point — I know the intent, which is exactly what hides
   (Stop 8, DEAD-CONFLICT — the Speed line now defers to the two reads).
 - **E2. Example sweep after the draft settles** — every example re-audited
   against every rule that changed (A3), on all dimensions (A4), for leakable
-  ids (A5).
+  ids (A5), and every census-born rule against every example (A11).
 - **E3. Coverage matrix:** every box → carrier (line/example/MCP/code/
   open-by-design). Empty cell = caught gap.
 - **E4. Eval gate:** register DORMANT → eval → activate → sync. Never sync
   between register and activate. No single-run conclusions — same-capture
   variance exceeds arm deltas (079d9736); pendulum-test both directions;
   check the axes you didn't target (v15.9 fixed one item, cost the cohort
-  -30%). (genealogy #18, #33)
+  -30%). (genealogy #18, #33) A baseline quoted in a handoff says whether it
+  pins the INSTRUMENT (a scorer assertion on recorded ops) or the BEHAVIOR (a
+  rerun expectation) — the two are read as the same number and are not
+  (`9c1b2ab0`).
 - **E5. A rule earns its place only if removing it degrades behavior with
   examples still present.** (genealogy #142)
 - **E6. Guide, don't engineer (T5).** Emergent types, open KV, lazy promotion,
@@ -943,6 +1022,76 @@ the general forms.**
   the existing explanation that could carry it as a clause. If one exists,
   fold. Report the net-per-hunk table, not just the total.
 
+### E18–E24 — the measurement-arc boxes (2026-09-03)
+
+Seven audits from the week the v-next.7 instrument was finally run (record:
+`docs/S1E-REORG-AUDIT.md`). The through-line: a prompt can be right and
+retrievable and still not change what the agent does — the levers that did
+were position in the input and the shape of the tool, and the instrument
+that saw the trade-offs was the full-shape read, not the target metric.
+
+- **E18. Reachability census.** For every surface the prompt tells the agent
+  to maintain, name the op in the agent's toolset that writes it, and check
+  that the op's own definition reads as that act. A surface with no op is
+  unreachable whatever the teaching; an op that exists but is defined as a
+  different act is unreachable in practice. (Conviction `ef0db084`,
+  `92519f2e`: one surface stayed at 0/24 through rule, rationale, worked
+  example, and recency restatement — the door existed under another name,
+  and the tool carrying the right name sat outside the toolset.) Run it on:
+  every surface in the every-surface sentence, every contract field, every
+  S2 prompt.
+
+- **E19. Ownership audit.** E12 asks whether the trigger is visible in the
+  input; this asks whether the surface reads as the agent's OWN text —
+  something it may edit — rather than as a description of something else. A
+  claim the agent does not experience as its own is a claim it will not
+  repair. (Conviction: the encoder model's uncued account of the surface it
+  never touched — it "reads like description of the target node rather than
+  my own asserted text", `92519f2e`.) Run it on: every rendered element the
+  agent is expected to revise.
+
+- **E20. Know whether the instrument measures teaching or application.**
+  Cold-read probes answer "does the reader retrieve the rule?"; encoder runs
+  answer "does the reader apply it under load?" Perfect probe scores on every
+  arm mean the defect is application, and probing further measures nothing.
+  (Conviction `70cdd24d`: three versions, every rule question answered
+  correctly, zero behavioral separation.) Run it on: any change whose defect
+  is described as under-application.
+
+- **E21. Position before prose.** The last instruction before the work is a
+  lever the template cannot reach. A rule the agent under-applies at scale is
+  restated there first; the template grows only if that fails. (Conviction
+  `7bdb1c25`: a short reminder at the payload's recency slot changed
+  application by thirty points on an unchanged template; four template
+  rewrites the same week changed it by about none.) Extends B1–B6 from the
+  template to the assembled input.
+
+- **E22. Read every A/B on the full shape.** The target metric is one column.
+  Field fill, voice, refs, edge topology, relation entropy, title length,
+  patch-vs-rewrite are read beside it; a win on the target with a loss
+  elsewhere is a trade, and trades are ruled, not assumed. (Conviction
+  `4c7a4c05`: the intervention that moved the target also thinned voice
+  capture and destabilized episodic refs; the target criterion could see
+  neither.) Instrument: the op-layer shape read ported from
+  `eval/longmem/corpus_shape.py`.
+
+- **E23. Field write-rate census.** Every taught field against its production
+  write rate, standing. A field taught in prose and written at ~0% is either
+  dropped or given a carrier op in a worked example — A1 measured, not
+  asserted. (Conviction `4c7a4c05`: three taught fields at 0–6% in
+  production, none carried by an example op; a new key taught in two prose
+  places was written 0 times in 10 runs.) Run it on: every field in the
+  contract summary, every open key the prompt names.
+
+- **E24. Gold coverage per encoding purpose.** A gold set scores one purpose
+  — factual repair, conceptual capture, voice, arc. A change aimed at a
+  purpose the set does not score cannot be ruled on by that set, whatever its
+  number says: build the items for that purpose first, or say the eval is
+  silent. (Conviction `2e4da492`: a candidate written to change WHAT gets
+  captured was scored on stale-token repair; the only signal came from an
+  unplanned classification pass.) Names an example gap too: nothing in the
+  set models a node about how the other side works, talks, or repeats.
+
 ## R. Recall→encode pointers (Opus scout, 2026-08-21)
 
 Full 30-row table: [challenges/recall-to-encode.md](challenges/recall-to-encode.md).
@@ -991,6 +1140,8 @@ teaching surface. Columns: what it teaches now / spare capacity / risks.
 | Sweep example (BAD hub-only + 4-patch GOOD batch) | Actions/Speed seam | Event→multi-node propagation (R16, real ledger case); falsified-referent law (verdict node); edge-line id targeting + supersedes-over-remint; grounded source_refs copied from a trace= attr (R7 + three-connections); restraint clause (patch only what the event falsified); lookup question on the decision node (9b) | UPDATE-append counter-clause landed in the content_edits paragraph instead (stop-8 addendum) | Dev-domain skin nearer our corpus (A7) — accepted risk, package eval is backstop; +5.5K chars, first asset to push draft over v37 |
 | Lexicon example (second misreading → interpretation) | §7.6, after A2 | The commissioned upgrade move (4bb5b1e8 §2): second occurrence visible via catalog = the signal; person-lexicon entry with trigger-register situation firing at the utterance; twin-incident trap shown (A2 law); emergent `interpretation` type demonstrates T5 open taxonomy; abstracts edge by copied id; question = the future moment's phrasing | voice anchor on the interpretation (defining quote rides the grounding event instead — detail/meaning split, decide at Stop 10 zone pass) | Probe N: full transfer on a fresh surface (retire/starter) — upgrade minted, trap avoided, honest sweep:none, self-directed thought about the reflex-vs-record gap. §7.6.A2 deliberately UNCHANGED: forcing `corrects` there would violate edge honesty (no prior-belief node exists in its scene); R8 satisfied by the canonical since 9a |
 | §7.6 A6/A7/A4/A2/A3/A8 | §7.6 | Identity/hot-register encoding; anchor-voice depth; locked + trigger usage; correction at register; agent-as-other-side (A8); source_refs shape (placeholders) | **A voice-disagreement example — me holding my ground with evidence and encoding the contradiction as signal (new D3): none of the six shows it; every §7.6 example is me being corrected or seeing, never me disagreeing** | Big real estate; locked generosity needs its disclaimer kept; placeholder discipline must survive edits (A5) |
+| Mira episode, two windows (V3.3) | Cadence and worked examples | W1: first-disclosure fact; multi-surface state change with swaps, bare values and a `partially_resolves` closure edge; an open narrowed; edge-only fetch and read; my rejected proposal beside adopted checks; conditional leaning with an unused alternative; recurring correction → scoped interpretation with hedged thought and selective refs; post-write overstatement caught and repaired; `sweep:`; Arc as movement. W2: an ordering decision with its reason folded into the existing plan (title swap, content swap, bare situation/reasoning) with the Bad detail-only fold shown; a relative date resolved against the conversation date; the interpretation firming up across title/content/situation/reasoning/thought with a competing reading kept; its stale edge why repaired through `connect_to` on the revise; two facts with different retrieval intents (`grounds` / `qualifies`); `fetch: none`; receiver's-view inspection | A firm-at-mint interpretation (only the lexicon entry and identity examples carry that register); failure handling; archive/absorb/disconnect | Highest-attention asset — every default it models transfers (A4): the five-field interpretation revise could read as churn (the targets line keeps `question clean`); the receiver's view narrated in the close and the strategy could become a ritual paragraph (eval-watch) |
+| Inez coda (V3.3) | Identity-bearing examples | A new fact beside a thought-only revise that NARROWS a pattern's competing readings while content and scope stand — the counterweight to the Mira window's firming-up; `explains` as the edge from the practical reading to the pattern | — | Uses a returned id (`d3e17a4b`) so the revise targets an id, not a placeholder |
 | v-next.4 sweep example (BAD hub-only + full sweep) | candidate | Sweep discipline (D11); content_edits patch form; labeled BAD contrast (T1 ✓); first-person falsifying evidence (D3/D12); supersedes lineage; edge-visible neighbor walk | Fix the wrong error name (`connect_to_bad_id`) in the adjacent prose while landing it; differentiation beat | ~100 added lines (D2); territory overlap with ghi789 (above) |
 | MCP description examples (brain_batch, connect_to, absorb) | MCP | connect_to resolution scopes; sibling-vs-catalog forms; forward-reference example; empty-why anti-pattern; vocabulary + never-generic ban | Correct error-name semantics live here too (mechanics = MCP home, C2); absorb's content-destructive warning held — keep | Shared across ALL callers (C3) — no encoder-specific teaching; changes need the 8-step MCP eval gate |
 
@@ -1038,6 +1189,44 @@ on two ops and an id-keyed dict collides; both patches diff byte-identical.)
 | edge description | **0** | 1 | via `connect` upsert — `revise_edge` is NOT in `ENCODING_TOOLS`; `GraphDAL.add_relation` is a field-preserving UPDATE (verified live, node ff95dde0) |
 | `source_refs` | 0 | 0 | **DELIBERATE ZERO.** Prose (REPLACE semantics, "never pass `[]` as a no-op") warns about a footgun whose correct behavior is *omission* — and an omitted field cannot be shown in an example. Recorded per A10.5 rather than forced. |
 | voice fields, emotion | 0 | 0 | **DELIBERATE ZERO** — revise-time voice/emotion rewriting is not a behavior we want; they belong to the authoring moment. |
+
+**Revise-shape branch (2026-09-04) — recounted after the step-5 rows** (a
+`./dev python3` census over the fenced examples; the same 11 revise ops as v6,
+no example added):
+
+| field | ops | form |
+|---|---|---|
+| title | 7 | 3 swap (2b8ef0c1, 97b1f24e, c37d10be — one span went stale) / 4 bare (restructures) |
+| content | 7 | 7 swap — `content_edits` no longer appears in the prompt |
+| situation | 3 | 3 bare — the excerpts render no stored situation to swap into; d0e4b856's comment says why bare |
+| reasoning / event_time / type | 1 each | bare |
+| edge description | **1** (was 0) | a45c88f1's `connect_to` why swap, `old` copied from the excerpt's edge line |
+| question / thought / evolution_status / confidence | 0 | not this change's rows — v-next.7's additions ride the next template pass (Tom, 2026-09-04: template scope) |
+
+Rationale attachment: the every-surface sentence now names six surfaces with one
+consequence clause, and "Edges ride the same revise" attaches a second to the
+edge description — the surface that measured 0/24.
+
+**V3.3 (2026-09-11) — recounted over the frozen template** (`static_checks.py`
+census; JSON and pseudo-JSON revises alike):
+
+| op | node | fields |
+|---|---|---|
+| Mira W1 | `a6b0139d` | title (swap), content (swaps incl. a deletion), situation, reasoning, `connect_to` create (`partially_resolves`) |
+| Mira W1 | `82c41f0b` | title, content, situation, question, reasoning (restructure) |
+| Mira W1 repair | `49d28ce0` | situation only |
+| Mira W2 | `49d28ce0` | title (swap), content (swap), situation, reasoning |
+| Mira W2 | `93bf027e` | title (swap), content (swap), situation, reasoning, thought, `connect_to` why swap |
+| Inez coda | `d3e17a4b` | thought only |
+| Aisha | `7c1a4d93` | type, title, content, situation, reasoning, event_time |
+| ladder / sweep | 8 ops | unchanged from the 2026-09-04 recount |
+
+Edge description repaired via `connect_to` on revise: **2** (was 1). Thought:
+**2** ops, one thought-only (was 1, thought-only). Title: swaps on a plan and
+an interpretation join the ladder's three. Situation: bare on every W2 op —
+the rendered old situations are restructured, not patched; a situation swap
+remains a deliberate zero. `confidence` and `source_refs` on revise: still
+deliberate zeros.
 
 **Rationale-attachment count** (A10.3) — where consequence clauses attach:
 

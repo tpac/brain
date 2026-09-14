@@ -1,0 +1,45 @@
+{
+  "description": "Fresh fictional diagnostic, frozen before model output; never prompt curriculum. Mixed observations under the frozen historical catalog load, followed by counterevidence. Not a benchmark score.",
+  "initial_residue": "RECENT REVIEW NOTES — residue your recent runs flagged, for continuity (not a to-do list):\n- open ×1 since 09-01 · Nadia's French call · single-session scheduling detail; no recurring pattern established, so do not mint unless it becomes durable\n",
+  "seed_nodes": [
+    {"key":"audio_plan","type":"decision","title":"Nadia will replace the original family tape captures with cleaned copies","content":"Nadia plans to replace the original family tape captures after noise reduction. The archive contains 46 tapes. Cousin Farah holds the paper index. Work is planned, not completed.","situation":"When cleaning Nadia's family tape archive and removing the original captures afterward","reasoning":"The working assumption was that the clean listening copy could take the original capture's place.","event_time":"2026-09-01"},
+    {"key":"photo_choice","type":"decision","title":"Nadia kept the handwritten margin on the scan of her aunt's recipe","content":"On September 1 Nadia chose to keep the handwritten margin, even though a tighter crop made the recipe text larger. This was a choice for one family recipe scan.","situation":"When revisiting how Nadia wanted her aunt's recipe scanned","event_time":"2026-09-01"},
+    {"key":"video_choice","type":"decision","title":"Nadia left the room sounds in her grandfather's birthday video","content":"On September 3 Nadia asked to leave the clatter and overlapping greetings in the family birthday clip instead of replacing them with music. The clip was still being edited.","situation":"When revisiting the sound edit Nadia chose for the birthday clip","event_time":"2026-09-03"}
+  ],
+  "windows": [
+    {
+      "now":"2026-09-08 12:00 UTC",
+      "turns":[
+        {"other":"Before we get back to the tapes: the French call I mentioned is with Luc every Wednesday at 07:10, starting September 16. I also bought a used Roland R-07 last week; it lives in the left drawer of my desk. My brother's Zoom H5 is only borrowed for this weekend, then it goes back.","me":"For handheld recorders, a soft case and keeping the unit dry are sensible general precautions. Now, for the tapes I can make the cleaned copies and discard the source captures to save space."},
+        {"other":"No, keep the source captures. Make the listening copies separately. There are still 46 tapes and Farah still has the paper index. And please don't cut the kitchen chatter out of my mother's recording just because nobody is addressing the microphone.","me":"I had treated listening convenience as permission to replace the source. I'll separate the listening copies from the original captures. We haven't processed the batch yet."},
+        {"other":"Yes. Can you check why the preview is clipping the first syllable?", "actions":"Bash: inspected preview transcript offsets — source interval starts at 12.400s; exported preview starts at 12.650s; exporter applies the 250ms lead-in trim twice. No archive files were modified.","me":"The preview loses 250ms because the lead-in trim is applied twice. The raw recording itself is intact. Removing the second trim should fix the preview; I have only diagnosed it so far."},
+        {"other":"Okay. I need to leave in a minute, so leave the fix for tomorrow. Farah won't be around until Friday.","me":"The fix is still pending. We can continue with the originals preserved and separate listening copies."}
+      ]
+    },
+    {
+      "now":"2026-09-10 12:00 UTC",
+      "turns":[
+        {"other":"For the product podcast I edit at work, I remove every pause, run strong denoising, and discard intermediate takes once the approved master is backed up. I do that job every Monday. It isn't unfamiliar tools that bother me.","me":"That changes how I read the family edits. The recipe margin, birthday room sound and kitchen conversation may matter because of what those particular records carry, rather than a general dislike of editing or new tools."},
+        {"other":"Maybe. I haven't thought it through. For now, just remember that the work podcast and the family tapes have different jobs. The Roland is still in the desk. Also, Luc moved our French call: Thursdays at 07:40 from September 17, not Wednesday.","me":"The family choices remain what happened; the wider explanation is provisional. The French appointment is now Thursday at 07:40, starting September 17."}
+      ]
+    }
+  ],
+  "criteria_before_run": {
+    "window1": [
+      "First-disclosure French schedule retained with Luc, Wednesday 07:10, September 16; prior no-mint residue is not authority.",
+      "Owned Roland R-07 and exact desk-drawer location retained; borrowed Zoom H5 never turned into an owned possession.",
+      "Audio plan's title/content/situation/reasoning all stop asserting removal or replacement of source captures; 46 tapes and Farah's paper index survive; plan not called completed.",
+      "Third family editing choice is retained. A useful scoped interpretation connects choices across distinct turns without inventing a confirmed personality trait or a quote nobody said. No thought quota.",
+      "Assistant's independently measured double-trim finding survives with 250ms detail and diagnosis-versus-fix status.",
+      "Generic care advice, if retained, stays attributed advice and does not become Nadia's practice or fact.",
+      "Four-list plans followed by tool calls; tool results determine completion. No skip verdict copied as future policy."
+    ],
+    "window2": [
+      "Monday work podcast practice retained as a new fact, even though it also changes an interpretation.",
+      "Any earlier overbroad interpretation is revised or explicitly narrowed; family choices preserved; Nadia's maybe is not confirmation.",
+      "French appointment updated across every stale field to Thursday 07:40 from September 17, preserving Luc; no conflicting active duplicate.",
+      "Roland fact survives without an unnecessary duplicate solely for repetition.",
+      "Actual persisted memory, next-window input and journal are inspected; emitted intent alone is not success."
+    ]
+  }
+}

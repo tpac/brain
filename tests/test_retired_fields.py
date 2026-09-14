@@ -49,12 +49,26 @@ def _seed_prompts():
     ]
 
 
+def _op_surfaces():
+    """The teaching surfaces beyond the prompts: the encoder's payload gist,
+    the contract field summary injected after the prompt, and every
+    brain_batch op description. A retired op FIELD (the `content_edits` alias
+    when its day comes) is retired here the same way a node field is — add it
+    to RETIRED_NODE_FIELDS and every surface must fall silent."""
+    from servers.contract import BATCH_OP_SPECS, generate_field_summary
+    from servers.interaction_defaults import INTERACTION_DEFAULTS
+    return ([('s1e gist', INTERACTION_DEFAULTS['s1e_gist'][0]),
+             ('field summary', generate_field_summary())]
+            + [('brain_batch %s description' % op, spec['description'])
+               for op, spec in BATCH_OP_SPECS.items()])
+
+
 class TestRetiredFieldsNotTaught(unittest.TestCase):
     """The encoder must not be TOLD to write a field the schema dropped."""
 
     def test_retired_field_absent_from_every_encoder_prompt(self):
         for field, reason in RETIRED_NODE_FIELDS.items():
-            for name, text in _seed_prompts():
+            for name, text in _seed_prompts() + _op_surfaces():
                 hits = [ln.strip() for ln in text.split('\n') if field in ln]
                 self.assertEqual(
                     hits, [],

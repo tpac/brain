@@ -32,6 +32,19 @@ class TestFormatNode(BrainTestBase):
             return None
         return render_rich_node(node, config)
 
+    def _stamp_relation(self, source_id, target_id, ts, column='created_at'):
+        """Backdate (or clear) a relation's timestamp on the (source, target) pair."""
+        self.brain.conn.execute(
+            "UPDATE edge_relations SET %s = ? WHERE edge_id = "
+            "(SELECT edge_id FROM edges WHERE source_id = ? AND target_id = ?)" % column,
+            (ts, source_id, target_id))
+        self.brain.conn.commit()
+
+    def _edge_line(self, node_id, relation, config=None):
+        """The rendered edge line carrying `relation` (absolute dates by default)."""
+        out = self._render(node_id, config)
+        return next(l for l in out.split('\n') if l.startswith('    [') and relation in l)
+
     # ── Basic rendering ──
 
     def test_full_node(self):
@@ -192,6 +205,194 @@ class TestFormatNode(BrainTestBase):
         out2 = self._render(nid, config={'edge_limit': 2})
         edge_lines2 = [l for l in out2.split('\n') if l.startswith('    [')]
         self.assertEqual(len(edge_lines2), 2)
+
+    def test_edge_line_age_is_the_relations_not_the_neighbors(self):
+        """The age in an edge line's bracket is when THIS relation was written,
+        never the neighbor node's age — which used to sit there unlabeled and
+        read as the edge's."""
+        nid = self._make_node(title='Owner')
+        old_nbr = self._make_node(title='Ancient neighbor')
+        self.brain.conn.execute("UPDATE nodes SET created_at = ? WHERE id = ?",
+                                ('2020-01-01T00:00:00+00:00', old_nbr))
+        self._add_edge(nid, old_nbr, relation='grounds', description='written today')
+        edge_line = self._edge_line(nid, 'grounds')   # absolute dates
+        self.assertNotIn('2020', edge_line)
+        from servers.clock import iso_now
+        self.assertIn(iso_now()[:10], edge_line)
+
+    def test_get_node_excludes_noise_relations_for_every_reader(self):
+        """The read exclusion lives in get_node (registry structural_exclusions
+        = the noise aspect), so every reader of `connections` — Anchor, the
+        recall surface, the encoder catalog, the healer, consolidation — is
+        noise-free without a filter of its own. A pair that carries a noise
+        relation AND a semantic one keeps the semantic line; a pair that is
+        noise only disappears; the compat `relation` is never a noise verb."""
+        self.assertIn('community_member', self.brain.aspects.structural_exclusions)
+        nid = self._make_node(title='Member')
+        comm = self._make_node(type='community', title='A community')
+        peer = self._make_node(title='Peer')
+        self._add_edge(comm, nid, relation='community_member', weight=0.9)
+        self._add_edge(nid, peer, relation='co_anchored', weight=0.9,
+                       description='shared episodic anchor')
+        self._add_edge(nid, peer, relation='extends', weight=0.5,
+                       description='the semantic claim')
+        node = self.brain.get_node(nid)
+        self.assertEqual([c['id'] for c in node['connections']], [peer])
+        (conn,) = node['connections']
+        self.assertEqual([r['relation'] for r in conn['relations']], ['extends'])
+        self.assertEqual(conn['relation'], 'extends')
+        out = render_rich_node(node)
+        self.assertNotIn('community_member', out)
+        self.assertNotIn('co_anchored', out)
+        self.assertIn('this extends "Peer" — the semantic claim', out)
+
+    def test_communities_ride_as_their_own_line_where_a_format_opts_in(self):
+        """Community membership is a `communities` attachment on the canonical
+        pull and renders as ONE `Communities:` line — never as edge lines
+        (community_member is noise-excluded from connections). cfg
+        `communities`: unset → nothing; 'title' → titles only (the encoders,
+        the picker's full render); 'ref' → "title" (id) for the reader that
+        follows ids with a pull (Anchor's get_nodes / recall)."""
+        from servers.contract import (
+            GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT, node_format_for)
+        from servers.scales.s1.encode_contract import S1_NODE_CONFIG
+        from servers.scales.s1.surface_contract import HAIKU_FORMAT, HAIKU_FORMAT_LEAN
+        from servers.scales.s2.consolidation_contract import CONSOLIDATION_NODE_FORMAT
+        nid = self._make_node(title='Member')
+        comm = self._make_node(type='community', title='A community')
+        self._add_edge(comm, nid, relation='community_member', weight=0.9)
+        node = self.brain.get_node(nid)
+        self.assertEqual(node['communities'], [{'id': comm, 'title': 'A community'}])
+        self.assertEqual(node['connections'], [])
+        # the same member pulled in one batch WITH its community keeps its
+        # placement — the lookup decides which endpoint is the community by
+        # the node's type, not by which id the caller asked for
+        batch = self.brain.get_node([nid, comm])
+        self.assertEqual(batch[nid]['communities'], [{'id': comm, 'title': 'A community'}])
+        self.assertEqual(batch[comm]['communities'], [])
+        ref_line = '  Communities: "A community" (id:%s)' % comm[:8]
+        title_line = '  Communities: "A community"'
+        for cfg in (None, CONSOLIDATION_NODE_FORMAT, HAIKU_FORMAT_LEAN):
+            self.assertNotIn('Communities:', render_rich_node(node, cfg))
+        for cfg in (S1_NODE_CONFIG, HAIKU_FORMAT):
+            out = render_rich_node(node, cfg)
+            self.assertIn(title_line, out)
+            self.assertNotIn(comm[:8], out)             # no id to link to
+            self.assertNotIn('community_member', out)
+        for cfg in (GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT,
+                    node_format_for(1, rich=True)):
+            out = render_rich_node(node, cfg)
+            self.assertIn(ref_line, out)
+            self.assertNotIn('community_member', out)
+        # a node in no community renders no empty line
+        lonely = self._make_node(title='Lonely')
+        self.assertEqual(self.brain.get_node(lonely)['communities'], [])
+        self.assertNotIn('Communities:', render_rich_node(
+            self.brain.get_node(lonely), GET_NODES_DETAIL_FORMAT))
+
+    def test_flat_weights_break_ties_by_relation_recency_and_the_cut_says_so(self):
+        """Weights are flat in production (0.5/0.6 everywhere), so the top-N
+        cut used to be a tie broken by SQL row order. get_node orders equal
+        weights by relation_age, newest first, and the fetch views say when
+        the cut dropped edges: 'Edges (5 of 7)'. (The encoder catalog says it
+        too, through the view policy's cfg — pinned in test_encoder_view.)"""
+        from servers.contract import GET_NODES_DETAIL_FORMAT, GET_NODES_SCAN_FORMAT
+        hub = self._make_node(title='Hub')
+        spokes = [self._make_node(title='Spoke %d' % i) for i in range(7)]
+        for i, s in enumerate(spokes):
+            self._add_edge(hub, s, relation='extends', weight=0.6,
+                           description='claim %d' % i)
+            # the relation's birth: spoke 0 oldest ... spoke 6 newest
+            self._stamp_relation(hub, s, '2026-01-%02dT00:00:00+00:00' % (i + 1))
+        node = self.brain.get_node(hub)
+        self.assertEqual([c['id'] for c in node['connections']], spokes[::-1])
+        out = render_rich_node(node, GET_NODES_SCAN_FORMAT)         # limit 5
+        self.assertIn('  Edges (5 of 7):', out)
+        self.assertIn('claim 6', out)
+        self.assertNotIn('claim 0', out)          # the oldest are the ones cut
+        # a limit that does not cut (8) keeps the bare header
+        self.assertIn('  Edges:\n', render_rich_node(node, GET_NODES_DETAIL_FORMAT))
+        # the recency that orders is the recency the line prints: a claim
+        # REPAIRED today outranks its untouched siblings even though it was
+        # born first
+        self._stamp_relation(hub, spokes[0], '2026-09-01T00:00:00+00:00', column='updated_at')
+        self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], spokes[0])
+        # a higher weight still wins over recency
+        heavy = self._make_node(title='Heavy')
+        self._add_edge(hub, heavy, relation='grounds', weight=0.9, description='heavy')
+        self._stamp_relation(hub, heavy, '2020-01-01T00:00:00+00:00')
+        self.assertEqual(self.brain.get_node(hub)['connections'][0]['id'], heavy)
+        # a pair's weight is the max over its SURVIVING relations: a heavy
+        # noise relation on a weak pair must not lift it above semantic peers
+        noisy = self._make_node(title='Noisy')
+        self._add_edge(hub, noisy, relation='extends', weight=0.5, description='weak claim')
+        self._add_edge(hub, noisy, relation='co_anchored', weight=0.95)
+        conns = self.brain.get_node(hub)['connections']
+        self.assertEqual(conns[-1]['id'], noisy)
+        self.assertEqual(conns[-1]['weight'], 0.5)
+
+    def test_edge_line_age_is_the_repair_when_the_claim_changed(self):
+        """A description repaired in place used to keep its birth date on the
+        line — the age lied after exactly the repair we want. edge_relations
+        now carries updated_at, stamped only when the claim changes
+        (description / weight via the upsert, the verb via rename); a no-op
+        re-connect leaves it NULL and the line keeps the honest birth date."""
+        from servers.clock import iso_now
+        nid = self._make_node(title='Owner')
+        nbr = self._make_node(title='Neighbor')
+        # seed through the same door the assertions exercise, so the
+        # re-connect below is a true no-op whatever weight it resolves
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='asserted 9.6.0', encoding_source='test')
+        self._stamp_relation(nid, nbr, '2020-01-01T00:00:00+00:00')
+
+        def _row():
+            return self.brain.conn.execute(
+                "SELECT er.relation, er.updated_at FROM edge_relations er JOIN edges e "
+                "ON e.edge_id = er.edge_id WHERE e.source_id = ? AND e.target_id = ? "
+                "AND er.archived = 0", (nid, nbr)).fetchone()
+
+        # untouched: birth date on the line, no stamp
+        self.assertIsNone(_row()[1])
+        self.assertIn('2020', self._edge_line(nid, 'gaps_in'))
+        # a re-connect that changes nothing is a true no-op
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='asserted 9.6.0', encoding_source='test')
+        self.assertIsNone(_row()[1])
+        # the repair stamps, and the line's age is the repair
+        self.brain.connect_typed(nid, nbr, relation='gaps_in',
+                                 description='moved to 9.7.2', encoding_source='test')
+        self.assertTrue(_row()[1])
+        line = self._edge_line(nid, 'gaps_in')
+        self.assertNotIn('2020', line)
+        self.assertIn(iso_now()[:10], line)
+        self.assertIn('moved to 9.7.2', line)
+        # renaming the verb is a claim change too
+        self._stamp_relation(nid, nbr, None, column='updated_at')
+        self.brain.revise_edge(nid, nbr, 'gaps_in', new_relation='closes',
+                               encoding_source='test')
+        relation, stamped = _row()
+        self.assertEqual(relation, 'closes')
+        self.assertTrue(stamped)
+
+    def test_edge_lines_one_per_relation_descriptions_whole(self):
+        """A pair carrying several relations renders one line per relation,
+        each with its own description untruncated — a reader may copy it
+        verbatim as a swap's `old`."""
+        nid = self._make_node(title='Owner')
+        nbr = self._make_node(title='Neighbor')
+        long_desc = 'x' * 250 + ' the load-bearing tail'
+        self._add_edge(nid, nbr, relation='extends', description=long_desc)
+        self._add_edge(nid, nbr, relation='grounds', description='second claim')
+        out = self._render(nid)
+        edge_lines = [l for l in out.split('\n') if l.startswith('    [')]
+        self.assertEqual(len(edge_lines), 2)
+        self.assertTrue(any(l.endswith(' — ' + long_desc) for l in edge_lines), edge_lines)
+        self.assertTrue(any(l.endswith(' — second claim') for l in edge_lines))
+        self.assertTrue(all(' | ' not in l for l in edge_lines))
+        # incoming direction still reads actor-first
+        out_nbr = self._render(nbr)
+        self.assertIn('"Owner" extends this — ' + long_desc, out_nbr)
 
     def test_differential_project_mark_on_mismatch(self):
         """cfg['scope']: foreign project renders the ⚠ mark, the generic

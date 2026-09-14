@@ -1107,7 +1107,8 @@ def render_prompt_closure():
         "## Finishing\n\n"
         "The run is done when a reply makes no tool call — that final reply is the "
         "only place the review goes. Two ways to get there, both ending the same:\n"
-        "- After tool calls: once the results come back, the next reply is the final one.\n"
+        "- After tool calls: the run closes on the first reply that makes no tool call — "
+        "a read's results are followed by the write; the write's results by the final reply.\n"
         "- A reply with no tool call at all (nothing needed changing): that reply is "
         "already the final one.\n\n"
         'End the final reply with the `## Review`, then write "DONE".'

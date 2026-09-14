@@ -1278,5 +1278,406 @@ class TestContentEdits(BrainTestBase):
         self.assertIn('content_edits', items['properties'])
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# Class H — value or swap on every text field (contract.REVISE_RULE)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _title(brain, nid):
+    return brain.conn.execute(
+        "SELECT title FROM nodes WHERE id = ?", (nid,)).fetchone()[0]
+
+
+def _content(brain, nid):
+    return brain.conn.execute(
+        "SELECT content FROM nodes WHERE id = ?", (nid,)).fetchone()[0]
+
+
+class TestValueOrSwap(BrainTestBase):
+    """A field takes its new value or {old, new} swaps — title, situation,
+    open KV keys, content; exactly-once or loud; nothing written on error;
+    bare_only fields refuse swaps."""
+    needs_embedder = False
+
+    def test_title_swap(self):
+        nid = _make_node(self.brain, title='brain/9.6.0 — manifests still say 9.6.0',
+                         content='Body stays.')
+        r = self.brain.revise(node_id=nid, reason='bumped',
+                              title={'old': 'brain/9.6.0', 'new': 'brain/9.7.2'})
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_title(self.brain, nid),
+                         'brain/9.7.2 — manifests still say 9.6.0')
+        self.assertEqual(_content(self.brain, nid), 'Body stays.')
+        self.assertIn('title', r['fields_updated'])
+        d = [x for x in r['deltas'] if x['field'] == 'title'][0]
+        self.assertEqual(d['old'], 'brain/9.6.0 — manifests still say 9.6.0')
+        self.assertEqual(d['new'], 'brain/9.7.2 — manifests still say 9.6.0')
+
+    def test_situation_swap_hits_kv(self):
+        nid = _make_node(self.brain, situation='When picking up Phase 5 — version is 9.6.0')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              situation={'old': '9.6.0', 'new': '9.7.2'})
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_kv_value(self.brain, nid, 'situation'),
+                         'When picking up Phase 5 — version is 9.7.2')
+
+    def test_open_kv_key_swap(self):
+        nid = _make_node(self.brain, note='alpha then beta')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              note=[{'old': 'alpha', 'new': 'gamma'}])
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_kv_value(self.brain, nid, 'note'), 'gamma then beta')
+
+    def test_content_swap_list_applies_in_order(self):
+        nid = _make_node(self.brain, content='status: open. next: review.')
+        r = self.brain.revise(node_id=nid, reason='r', content=[
+            {'old': 'status: open.', 'new': 'status: closed.'},
+            {'old': 'closed. next: review.', 'new': 'closed.'}])
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_content(self.brain, nid), 'status: closed.')
+
+    def test_bare_value_still_replaces_whole_field(self):
+        nid = _make_node(self.brain, title='old title')
+        r = self.brain.revise(node_id=nid, reason='r', title='new title')
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_title(self.brain, nid), 'new title')
+
+    def test_no_match_is_loud_and_writes_nothing(self):
+        nid = _make_node(self.brain, title='T one', situation='S one')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              title={'old': 'one', 'new': 'two'},
+                              situation={'old': 'absent', 'new': 'x'})
+        self.assertIn('not found', r['error'])
+        self.assertIn('situation', r['error'])
+        self.assertEqual(_title(self.brain, nid), 'T one')   # all-or-nothing
+        self.assertEqual(_kv_value(self.brain, nid, 'situation'), 'S one')
+
+    def test_ambiguous_match_is_loud(self):
+        nid = _make_node(self.brain, content='a b a')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              content={'old': 'a', 'new': 'c'})
+        self.assertIn('matches 2 places', r['error'])
+        self.assertEqual(_content(self.brain, nid), 'a b a')
+
+    def test_swap_on_bare_only_field_refused(self):
+        nid = _make_node(self.brain)
+        r = self.brain.revise(node_id=nid, reason='r',
+                              type={'old': 'concept', 'new': 'decision'})
+        self.assertIn('bare value', r['error'])
+        r = self.brain.revise(node_id=nid, reason='r',
+                              confidence={'old': '1', 'new': '0.5'})
+        self.assertIn('bare value', r['error'])
+
+    def test_swap_on_field_without_stored_value_refused(self):
+        nid = _make_node(self.brain)  # no question
+        r = self.brain.revise(node_id=nid, reason='r',
+                              question={'old': 'x', 'new': 'y'})
+        self.assertIn('no stored value', r['error'])
+
+    def test_content_edits_alias_and_content_swaps_conflict(self):
+        nid = _make_node(self.brain, content='a b')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              content=[{'old': 'a', 'new': 'c'}],
+                              content_edits=[{'old': 'b', 'new': 'd'}])
+        self.assertIn('mutually exclusive', r['error'])
+        self.assertEqual(_content(self.brain, nid), 'a b')
+
+    def test_malformed_swap_on_open_kv_key_refused(self):
+        """A dict that is TRYING to be a swap (extra or missing key) on an open
+        KV key is refused, not JSON-written over the stored text."""
+        nid = _make_node(self.brain, note='alpha beta')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              note={'old': 'alpha', 'new': 'x', 'extra': 1})
+        self.assertIn('error', r)
+        self.assertEqual(_kv_value(self.brain, nid, 'note'), 'alpha beta')
+        r = self.brain.revise(node_id=nid, reason='r',
+                              note=[{'old': 'alpha', 'new': 'x'}, {'old': 'beta'}])
+        self.assertIn('error', r)
+        self.assertEqual(_kv_value(self.brain, nid, 'note'), 'alpha beta')
+
+    def test_open_kv_list_that_is_not_a_swap_still_stores(self):
+        nid = _make_node(self.brain)
+        r = self.brain.revise(node_id=nid, reason='r', tags=['a', 'b'])
+        self.assertNotIn('error', r, r)
+        self.assertIn('tags', _kv_keys(self.brain, nid))
+
+
+class TestSwapDispatch(BrainTestBase):
+    """The dispatch validator knows the swap shape: a swap on a text field
+    passes to the brain, a swap on a bare_only field or a malformed swap is
+    refused before any write."""
+    needs_embedder = False
+
+    def _dispatch(self, cmd, args):
+        from servers.daemon_dispatch import dispatch_command
+        return dispatch_command(self.brain, cmd, args, [])
+
+    def test_title_swap_through_dispatch(self):
+        nid = _make_node(self.brain, title='v 9.6.0')
+        r = self._dispatch('revise', {'node_id': nid, 'reason': 'r',
+                                      'title': {'old': '9.6.0', 'new': '9.7.2'}})
+        self.assertTrue(r.get('ok'), r)
+        self.assertEqual(_title(self.brain, nid), 'v 9.7.2')
+        traces = _query_revise_traces(self.brain, nid)
+        self.assertEqual(len(traces), 1)
+        self.assertEqual(traces[0]['summary'], 'revised 1 field(s): title')
+
+    def test_swap_on_type_refused_at_dispatch(self):
+        nid = _make_node(self.brain)
+        r = self._dispatch('revise', {'node_id': nid, 'reason': 'r',
+                                      'type': {'old': 'concept', 'new': 'x'}})
+        self.assertFalse(r.get('ok'))
+        self.assertIn('bare value', r['error'])
+
+    def test_malformed_swap_refused_at_dispatch(self):
+        nid = _make_node(self.brain, title='t')
+        r = self._dispatch('revise', {'node_id': nid, 'reason': 'r',
+                                      'title': {'old': '', 'new': 'x'}})
+        self.assertFalse(r.get('ok'))
+        self.assertIn('non-empty', r['error'])
+        r = self._dispatch('revise', {'node_id': nid, 'reason': 'r',
+                                      'title': [{'old': 't', 'new': 't'}]})
+        self.assertFalse(r.get('ok'))
+        self.assertIn('identical', r['error'])
+
+    def test_swap_on_remember_is_a_type_error(self):
+        """Swaps patch a stored value — they exist only on revise. On remember
+        a swap dict on a text field is refused as before, never stored."""
+        r = self._dispatch('remember', {'type': 'concept', 'title': 'T',
+                                        'content': 'C',
+                                        'situation': {'old': 'a', 'new': 'b'}})
+        self.assertFalse(r.get('ok'), r)
+        self.assertIn('must be string', r['error'])
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Class I — connect_to on revise (edges ride inside the node's own op)
+# ═══════════════════════════════════════════════════════════════════════
+
+WHY = 'both manifests still say 9.6.0 while the release plan asks for 0.9.0'
+
+
+class TestConnectToOnRevise(BrainTestBase):
+    needs_embedder = False
+
+    def _rels(self, a, b):
+        eid = self.brain._graph.get_edge_id(a, b)
+        return {r['relation']: r for r in self.brain._graph.get_relations(eid)}
+
+    def _pair(self):
+        a = _make_node(self.brain, title='A', content='A body')
+        b = _make_node(self.brain, title='B', content='B body')
+        self.brain.connect_typed(a, b, relation='gaps_in', description=WHY, weight=0.6)
+        return a, b
+
+    def test_update_why_bare(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='manifests moved',
+                              connect_to=[{'target': b, 'relation': 'gaps_in',
+                                           'why': 'manifests moved to 9.7.2 and still miss 0.9.0'}])
+        self.assertNotIn('error', r, r)
+        self.assertEqual(len(r['connect_to_result']['revised']), 1)
+        self.assertEqual(self._rels(a, b)['gaps_in']['description'],
+                         'manifests moved to 9.7.2 and still miss 0.9.0')
+
+    def test_update_why_swap(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'gaps_in',
+                                           'why': {'old': '9.6.0', 'new': '9.7.2'}}])
+        self.assertNotIn('error', r, r)
+        self.assertEqual(r['connect_to_result']['failed'], [])
+        self.assertIn('9.7.2', self._rels(a, b)['gaps_in']['description'])
+        self.assertNotIn('9.6.0', self._rels(a, b)['gaps_in']['description'])
+
+    def test_rename_relation_swap_preserves_description(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b,
+                                           'relation': {'old': 'gaps_in', 'new': 'short_of'}}])
+        self.assertNotIn('error', r, r)
+        rels = self._rels(a, b)
+        self.assertIn('short_of', rels)
+        self.assertNotIn('gaps_in', rels)
+        self.assertEqual(rels['short_of']['description'], WHY)
+
+    def test_relation_optional_when_pair_has_one(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'why': {'old': '9.6.0', 'new': '9.7.2'}}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+        self.assertIn('9.7.2', self._rels(a, b)['gaps_in']['description'])
+
+    def test_relation_required_when_pair_has_several(self):
+        a, b = self._pair()
+        self.brain.connect_typed(a, b, relation='grounds', description=WHY, weight=0.5)
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'why': 'x' * 40}])
+        f = r['connect_to_result']['failed']
+        self.assertEqual(len(f), 1)
+        self.assertIn('carries 2 relations', f[0]['reason'])
+
+    def test_create_when_absent_is_outgoing(self):
+        a = _make_node(self.brain, title='A')
+        c = _make_node(self.brain, title='C')
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': c, 'relation': 'grounds', 'why': WHY}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+        self.assertEqual(len(r['connect_to_result']['created']), 1)
+        eid = self.brain._graph.get_edge_id(a, c)
+        self.assertEqual(self.brain._graph.get_edge_endpoints(eid), (a, c))
+        self.assertEqual(r['warnings'], [])
+
+    def test_create_needs_bare_why(self):
+        a = _make_node(self.brain, title='A')
+        c = _make_node(self.brain, title='C')
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': c, 'relation': 'grounds', 'why': 'short'}])
+        self.assertIn('30+', r['connect_to_result']['failed'][0]['reason'])
+        self.assertIsNone(self.brain._graph.get_edge_id(a, c))
+
+    def test_sibling_title_rejected(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': 'B', 'relation': 'gaps_in', 'why': WHY}])
+        self.assertIn('sibling titles', r['connect_to_result']['failed'][0]['reason'])
+
+    def test_incoming_edge_is_found_and_revised(self):
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(b, a, relation='grounds', description=WHY, weight=0.6)
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'grounds',
+                                           'why': {'old': '9.6.0', 'new': '9.7.2'}}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+        self.assertIn('9.7.2', self._rels(a, b)['grounds']['description'])
+
+    def test_new_relation_on_incoming_edge_rides_it_and_warns(self):
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(b, a, relation='grounds', description=WHY, weight=0.6)
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'supersedes', 'why': WHY}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+        eid = self.brain._graph.get_edge_id(a, b)
+        self.assertEqual(self.brain._graph.get_edge_endpoints(eid), (b, a))  # one edge, stored direction
+        self.assertIn('supersedes', self._rels(a, b))
+        ct = r['connect_to_result']
+        self.assertTrue(any('passive verb' in w for w in ct['warnings']), ct)
+        self.assertEqual(r['warnings'], [])  # edge warning, not a node warning
+
+    def test_title_alias_accepted(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'title': b, 'relation': 'gaps_in',
+                                           'why': 'x' * 40}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+
+    def test_connect_to_never_lands_as_node_field(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'gaps_in', 'why': 'x' * 40}])
+        self.assertNotIn('error', r, r)
+        self.assertNotIn('connect_to', r['fields_updated'])
+        self.assertFalse(any(d['field'] == 'connect_to' for d in r['deltas']))
+        self.assertNotIn('connect_to', _kv_keys(self.brain, a))
+        self.assertTrue(r['verified'])
+
+    def test_field_swap_and_edge_in_one_op(self):
+        a, b = self._pair()
+        self.brain.revise(node_id=a, reason='seed', title='brain/9.6.0',
+                          situation='When picking up — version is 9.6.0')
+        r = self.brain.revise(node_id=a, reason='manifests moved 9.6.0 → 9.7.2',
+                              title={'old': '9.6.0', 'new': '9.7.2'},
+                              situation={'old': '9.6.0', 'new': '9.7.2'},
+                              connect_to=[{'target': b, 'relation': 'gaps_in',
+                                           'why': {'old': '9.6.0', 'new': '9.7.2'}}])
+        self.assertNotIn('error', r, r)
+        self.assertEqual(_title(self.brain, a), 'brain/9.7.2')
+        self.assertEqual(_kv_value(self.brain, a, 'situation'),
+                         'When picking up — version is 9.7.2')
+        self.assertIn('9.7.2', self._rels(a, b)['gaps_in']['description'])
+
+    def test_revise_batch_carries_connect_to(self):
+        a, b = self._pair()
+        r = self.brain.revise_batch(revisions=[
+            {'node_id': a, 'reason': 'r',
+             'connect_to': [{'target': b, 'relation': 'gaps_in', 'why': 'y' * 40}]}])
+        self.assertEqual(r['revised'], 1, r)
+        self.assertEqual(self._rels(a, b)['gaps_in']['description'], 'y' * 40)
+
+    def _edge_traces(self, eid, relation):
+        # Edge ref ids are composite `edge_id:relation` (mutation_emitter).
+        rows = self.brain._trace_dal.conn.execute(
+            "SELECT ref_type, metadata FROM trace_events WHERE ref_id = ?",
+            ('%s:%s' % (eid, relation),)).fetchall()
+        return [(r[0], json.loads(r[1]) if r[1] else {}) for r in rows]
+
+    def test_dispatch_emits_edge_trace_not_node_delta(self):
+        from servers.daemon_dispatch import dispatch_command
+        a, b = self._pair()
+        eid = self.brain._graph.get_edge_id(a, b)
+        r = dispatch_command(self.brain, 'revise', {
+            'node_id': a, 'reason': 'r',
+            'connect_to': [{'target': b, 'relation': 'gaps_in',
+                            'why': {'old': '9.6.0', 'new': '9.7.2'}}]}, [])
+        self.assertTrue(r.get('ok'), r)
+        self.assertNotIn('mutations', r)
+        self.assertEqual(_query_revise_traces(self.brain, a), [])  # no node field changed
+        traces = self._edge_traces(eid, 'gaps_in')
+        self.assertEqual([t[0] for t in traces], ['edge_relation_revised'])
+
+    def test_direction_warning_stays_on_the_edge(self):
+        """A connect_to-only revise that warns about direction must not mint a
+        node_revised trace; the warning rides the edge trace, and the manifest
+        records the edge's STORED endpoints, not the caller's order."""
+        from servers.daemon_dispatch import dispatch_command
+        a = _make_node(self.brain, title='A')
+        b = _make_node(self.brain, title='B')
+        self.brain.connect_typed(b, a, relation='grounds', description=WHY, weight=0.6)
+        r = dispatch_command(self.brain, 'revise', {
+            'node_id': a, 'reason': 'r',
+            'connect_to': [{'target': b, 'relation': 'supersedes', 'why': WHY}]}, [])
+        self.assertTrue(r.get('ok'), r)
+        self.assertEqual(r['result']['warnings'], [])           # not a node warning
+        self.assertTrue(r['result']['connect_to_result']['warnings'])
+        self.assertEqual(_query_revise_traces(self.brain, a), [])  # no phantom node trace
+        eid = self.brain._graph.get_edge_id(a, b)
+        traces = self._edge_traces(eid, 'supersedes')
+        self.assertEqual(len(traces), 1, traces)
+        md = traces[0][1]
+        self.assertEqual((md.get('source_id'), md.get('target_id')), (b, a))
+        self.assertTrue(any('passive verb' in w for w in md.get('warnings', [])), md)
+
+    def test_revise_batch_surfaces_edge_failures_and_emits_edge_traces(self):
+        from servers.daemon_dispatch import dispatch_command
+        a, b = self._pair()
+        c = _make_node(self.brain, title='C')
+        eid = self.brain._graph.get_edge_id(a, b)
+        r = dispatch_command(self.brain, 'revise_batch', {'revisions': [
+            {'node_id': a, 'reason': 'r',
+             'connect_to': [{'target': b, 'relation': 'gaps_in', 'why': 'z' * 40},
+                            {'target': c, 'relation': 'grounds', 'why': 'short'}]}]}, [])
+        self.assertTrue(r.get('ok'), r)
+        row = r['result']['results'][0]
+        ct = row['connect_to_result']
+        self.assertEqual(len(ct['revised']), 1)
+        self.assertEqual(len(ct['failed']), 1)
+        self.assertIn('30+', ct['failed'][0]['reason'])
+        self.assertEqual([t[0] for t in self._edge_traces(eid, 'gaps_in')],
+                         ['edge_relation_revised'])
+
+    def test_description_alias_and_short_bare_why(self):
+        a, b = self._pair()
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'gaps_in',
+                                           'description': 'd' * 40}])
+        self.assertEqual(r['connect_to_result']['failed'], [], r)
+        self.assertEqual(self._rels(a, b)['gaps_in']['description'], 'd' * 40)
+        r = self.brain.revise(node_id=a, reason='r',
+                              connect_to=[{'target': b, 'relation': 'gaps_in', 'why': ''}])
+        self.assertIn('30+', r['connect_to_result']['failed'][0]['reason'])
+        self.assertEqual(self._rels(a, b)['gaps_in']['description'], 'd' * 40)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -17,13 +17,14 @@ Fix: _format_result handles BOTH list and dict shapes; with get_nodes_config
 set it renders via render_rich_node at every batch size. The community encoder
 passes S2CE_NODE_FORMAT (content 800, edges 5, corrections 'balanced').
 
-2026-06-28 — the <=3 raw-JSON escape hatch is GONE entirely. get_node /
-get_nodes / filter_nodes always render through render_rich_node (representation
-is a render concern; brain.get_node stays the always-full data layer). Default
-de-stuffs by batch size (small = full content + bounded edges/corrections via
-GET_NODES_SMALL_FORMAT); the MCP `rich=true` opt-in renders the full view
-(GET_NODES_FULL_FORMAT). get_nodes_config still overrides both — encoders are
-never blocked.
+The <=3 raw-JSON escape hatch is GONE entirely. get_node / get_nodes /
+filter_nodes / the recall tool's results always render through
+render_rich_node (representation is a render concern; brain.get_node stays the
+always-full data layer), through the one selector contract.node_format_for:
+DETAIL up to GET_NODES_DETAIL_MAX nodes (whole content, bounded
+edges/corrections), SCAN above; the MCP `rich=true` opt-in lifts DETAIL to
+every edge and the heavy correction K/V. get_nodes_config still overrides
+all of it — encoders are never blocked.
 
 Pure-function tests — _format_result + render_rich_node take a result value,
 no brain/embedder.
@@ -117,10 +118,9 @@ class TestGetNodesConfigOverride(unittest.TestCase):
     # ── production (list) shape ──────────────────────────────────────
 
     def test_default_small_batch_bounded_not_raw(self):
-        """NEW CONTRACT (2026-06-28): <=3 nodes, no config, rich=false →
-        bounded render (GET_NODES_SMALL_FORMAT), NOT the old raw-JSON firehose.
-        Full content stays (content is the signal you fetched for); heavy
-        correction K/V is dropped (balanced corrections)."""
+        """A small pull, no config, rich=false → the DETAIL view, NOT the old
+        raw-JSON firehose. Full content stays (content is the signal you
+        fetched for); heavy correction K/V is dropped (balanced corrections)."""
         result = _dispatch_list(1)
         out = _format_result("get_nodes", result)            # config=None, rich=False
         self.assertFalse(_is_raw_json(out))                  # rendered, not raw
@@ -132,7 +132,7 @@ class TestGetNodesConfigOverride(unittest.TestCase):
         self.assertNotIn("USER_QUOTE_SENTINEL", out)
 
     def test_rich_small_batch_full_view(self):
-        """rich=true → GET_NODES_FULL_FORMAT: full content + ALL edges + heavy
+        """rich=true → DETAIL lifted: full content + ALL edges + heavy
         correction K/V (the deliberate firehose), still rendered (not raw)."""
         result = _dispatch_list(1)
         out = _format_result("get_nodes", result, rich=True)
@@ -238,6 +238,19 @@ class TestGetNodesConfigOverride(unittest.TestCase):
         self.assertFalse(_is_raw_json(out))
         self.assertNotIn("ANCHOR_QUOTE_SENTINEL", out)       # balanced, not heavy
         self.assertEqual(out.count("Hub member"), 12)
+
+    def test_recall_results_render_exactly_like_get_nodes(self):
+        """The recall tool's results and a get_nodes of the same ids go through
+        one selector — byte-identical node renders, at both view sizes — so a
+        recall and a pull of one node never read differently."""
+        for n in (2, 12):
+            nodes = [_hub_node("same%04d" % i) for i in range(n)]
+            via_get_nodes = _format_result("get_nodes", list(nodes))
+            via_recall = _format_result("recall", {"results": list(nodes)})
+            self.assertEqual(via_recall, via_get_nodes)
+        # the two views are really two: DETAIL keeps the content whole, SCAN cuts
+        self.assertIn("CONTENT_TAIL_SENTINEL", _format_result("get_nodes", _dispatch_list(1)))
+        self.assertNotIn("CONTENT_TAIL_SENTINEL", _format_result("get_nodes", _dispatch_list(12)))
 
     def test_error_entries_render_as_miss_line(self):
         """{"id","error"} entries from unresolved ids must not render as

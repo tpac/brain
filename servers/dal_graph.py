@@ -48,6 +48,8 @@ EDGE_ROW_SHAPE = {
     'weight':             'float — edge-aggregate weight',
     'direction':          "str — 'outgoing' | 'incoming' from queried node",
     # Optional (present on richer methods)
+    'edge_created_at':    'str ISO — when the pair was first connected (get_neighbors_bulk)',
+    'relation_created_at': 'str ISO — when THIS relation was first written (get_neighbors_bulk)',
     'last_accessed':      'str ISO',
     'access_count':       'int',
     'emotion':            'float',
@@ -219,6 +221,15 @@ class GraphDAL:
         ).fetchone()
         return row[0] if row else None
 
+    def get_edge_endpoints(self, edge_id: str):
+        """(source_id, target_id) as STORED — the direction the pair was first
+        written in, which every later relation on the edge inherits. None when
+        no such edge."""
+        row = self.conn.execute(
+            'SELECT source_id, target_id FROM edges WHERE edge_id = ?',
+            (edge_id,)).fetchone()
+        return (row[0], row[1]) if row else None
+
     def get_neighbors(self, node_id: str, limit: int = 8,
                       exclude_relations: set = None,
                       exclude_node_ids: set = None,
@@ -373,7 +384,8 @@ class GraphDAL:
                 n.locked, n.emotion, n.emotion_label,
                 er.relation, er.weight, er.description,
                 e.last_strengthened, e.co_access_count, e.edge_id,
-                CASE WHEN e.source_id IN ({owner_ph}) THEN 'outgoing' ELSE 'incoming' END as direction
+                CASE WHEN e.source_id IN ({owner_ph}) THEN 'outgoing' ELSE 'incoming' END as direction,
+                e.created_at, er.created_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n ON n.id = CASE WHEN e.source_id IN ({owner_ph}) THEN e.target_id ELSE e.source_id END
@@ -398,6 +410,7 @@ class GraphDAL:
                 'edge_description': r[15], 'last_strengthened': r[16],
                 'co_access_count': r[17], 'edge_id': r[18],
                 'direction': r[19],
+                'edge_created_at': r[20], 'relation_created_at': r[21],
             })
         return result
 
@@ -426,8 +439,15 @@ class GraphDAL:
 
         Returns dict {owner_id: [connection_dict, ...]} where each
         connection_dict has:
-            id, type, title, created_at, revised_at, confidence, locked,
-            weight, direction, relations: [{relation, description, weight}, ...]
+            id, type, title, created_at, revised_at, confidence, locked
+                (the NEIGHBOR node's fields — created_at is the neighbor's age),
+            weight, direction, edge_created_at (when the pair was connected),
+            relations: [{relation, description, weight, created_at,
+                         updated_at}, ...]
+                (created_at is when THAT relation was first written;
+                updated_at when its claim — description, weight, verb — last
+                changed, NULL until then. The edge line renders
+                `updated_at or created_at`.)
 
         Raises ValueError on empty node_ids.
         """
@@ -464,7 +484,8 @@ class GraphDAL:
                    n1.id, n1.type, n1.title, n1.created_at, n1.revised_at,
                    n1.confidence, n1.locked,
                    n2.id, n2.type, n2.title, n2.created_at, n2.revised_at,
-                   n2.confidence, n2.locked
+                   n2.confidence, n2.locked,
+                   e.created_at, er.created_at, er.updated_at
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
             JOIN nodes n1 ON n1.id = e.target_id
@@ -497,20 +518,22 @@ class GraphDAL:
             n2 = {'id': row[13], 'type': row[14], 'title': row[15],
                   'created_at': row[16], 'revised_at': row[17],
                   'confidence': row[18], 'locked': row[19] == 1}
+            edge_created, rel_created, rel_updated = row[20], row[21], row[22]
             relation_entry = {'relation': rel, 'description': desc,
-                              'weight': rel_weight}
+                              'weight': rel_weight, 'created_at': rel_created,
+                              'updated_at': rel_updated}
 
             if src in owner_set and tgt != src:
                 entry = grouped[src].setdefault(n1['id'], {
                     **n1, 'weight': agg_weight, 'direction': 'outgoing',
-                    'relations': [],
+                    'edge_created_at': edge_created, 'relations': [],
                 })
                 entry['relations'].append(relation_entry)
 
             if tgt in owner_set and src != tgt:
                 entry = grouped[tgt].setdefault(n2['id'], {
                     **n2, 'weight': agg_weight, 'direction': 'incoming',
-                    'relations': [],
+                    'edge_created_at': edge_created, 'relations': [],
                 })
                 entry['relations'].append(relation_entry)
 
@@ -882,39 +905,39 @@ class GraphDAL:
         if not ids:
             raise ValueError("get_communities_for: node_ids is empty")
 
-        id_ph = ','.join('?' * len(ids))
         archived_clause = '' if include_archived else 'AND er.archived = 0'
-        community_clause = 'AND n.archived = 0' if require_active_community else ''
-
+        community_clause = 'AND c.archived = 0' if require_active_community else ''
+        # Which endpoint is the community is decided by the NODE'S TYPE, never
+        # by which endpoint the caller asked for: a batch that holds both a
+        # community and one of its members used to attribute the row to the
+        # community as "member" and drop it on the type filter — the member
+        # rendered as unplaced whenever its community was pulled alongside it
+        # (canonicalize_results does exactly that when recall returns both).
         sql = """
-            SELECT
-                CASE WHEN e.source_id IN ({id_ph}) THEN e.source_id
-                     ELSE e.target_id END as member,
-                CASE WHEN e.source_id IN ({id_ph}) THEN e.target_id
-                     ELSE e.source_id END as community,
-                n.title
+            SELECT m.id, c.id, c.title
             FROM edges e
             JOIN edge_relations er ON er.edge_id = e.edge_id
-            JOIN nodes n ON n.id = CASE
-                WHEN e.source_id IN ({id_ph}) THEN e.target_id
-                ELSE e.source_id END
-            WHERE (e.source_id IN ({id_ph}) OR e.target_id IN ({id_ph}))
+            JOIN nodes c ON c.type = 'community'
+                        AND c.id IN (e.source_id, e.target_id)
+            JOIN nodes m ON m.id = CASE WHEN c.id = e.source_id
+                                        THEN e.target_id ELSE e.source_id END
+            WHERE m.id IN ({id_ph})
               AND er.relation = 'community_member'
-              AND n.type = 'community'
               {archived_clause}
               {community_clause}
-        """.format(
-            id_ph=id_ph,
-            archived_clause=archived_clause,
-            community_clause=community_clause,
-        )
-
-        rows = self.conn.execute(sql, ids * 5).fetchall()
-
+        """
         from collections import defaultdict
         membership = defaultdict(list)
-        for member_id, comm_id, comm_title in rows:
-            membership[member_id].append({'id': comm_id, 'title': comm_title})
+        # Chunk to stay within SQLite's bind-variable limit (the sibling
+        # bulk walks do the same) — get_node puts this on every pull.
+        for i in range(0, len(ids), 400):
+            chunk = ids[i:i + 400]
+            rows = self.conn.execute(sql.format(
+                id_ph=','.join('?' * len(chunk)),
+                archived_clause=archived_clause,
+                community_clause=community_clause), chunk).fetchall()
+            for member_id, comm_id, comm_title in rows:
+                membership[member_id].append({'id': comm_id, 'title': comm_title})
         return dict(membership)
 
 
@@ -1235,6 +1258,9 @@ class GraphDAL:
             # connect upsert's — so es_specified is intentionally ignored here.
 
             if updates:
+                # The claim on this line changed — stamp it. A no-op
+                # re-connect never reaches here, so updated_at stays honest.
+                updates['updated_at'] = ts
                 set_clause = ', '.join('%s = ?' % k for k in updates)
                 self.conn.execute(
                     'UPDATE edge_relations SET %s '
@@ -1252,7 +1278,7 @@ class GraphDAL:
                 'UPDATE edge_relations '
                 'SET archived = 0, archived_at = NULL, archived_by = NULL, '
                 '    description = ?, weight = ?, encoding_source = ?, '
-                '    created_at = ? '
+                '    created_at = ?, updated_at = NULL '
                 'WHERE edge_id = ? AND relation = ?',
                 (desc_value, weight_value, es_value, ts, edge_id, relation))
             result['created'] = True
@@ -1392,11 +1418,12 @@ class GraphDAL:
         (reclassify, revise_edge) stay embedding-ignorant; the worker owns the
         actual re-embed via Brain.backfill_edge_embeddings.
         """
+        # The verb is part of the claim — the rename stamps updated_at.
         self.conn.execute(
             "UPDATE edge_relations SET relation = ?, encoding_source = ?, "
-            "embedding = NULL, embedding_model = NULL "
+            "updated_at = ?, embedding = NULL, embedding_model = NULL "
             "WHERE edge_id = ? AND relation = ?",
-            (new_relation, encoding_source, edge_id, old_relation))
+            (new_relation, encoding_source, iso_now(), edge_id, old_relation))
         commit_unless_batched(self.conn)
         self._enqueue_edge_embed(edge_id, 'rename_relation')
         # The relation NAME is not in the edge_context text, so a rename only

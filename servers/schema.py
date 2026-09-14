@@ -190,6 +190,7 @@ TABLES = {
             encoding_source TEXT DEFAULT '',
             decay_rate REAL DEFAULT NULL,
             created_at TEXT,
+            updated_at TEXT DEFAULT NULL,
             archived INTEGER DEFAULT 0,
             archived_at TEXT DEFAULT NULL,
             archived_by TEXT DEFAULT NULL,
@@ -202,6 +203,12 @@ TABLES = {
             'description': "''", 'weight': '0.5',
             'encoding_source': "''",
             'decay_rate': 'NULL', 'created_at': 'NULL',
+            # When the CLAIM on this line last changed — description, weight
+            # or the relation verb (add_relation Branch 2, rename_relation).
+            # NULL until the first repair: the edge line renders
+            # `updated_at or created_at`, so an untouched row keeps showing
+            # its birth date honestly. A no-op re-connect never stamps it.
+            'updated_at': 'NULL',
             # v25: soft-archive columns. PK stays (edge_id, relation);
             # add_relation handles re-archive as un-archive (UPDATE
             # archived=0) rather than requiring a composite PK.

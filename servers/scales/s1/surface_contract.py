@@ -828,7 +828,7 @@ SURFACE_BACKGROUND_FORMAT = {
 
 def surface_voice_labels(scope):
     """The quote label for the inject: the counterpart's name from the
-    session scope ('Tom said'), or 'They said' when the session declares
+    session scope ('<counterpart> said'), or 'They said' when the session declares
     none. Only the counterpart's quote renders (my_raw_quote is a skip
     key); the label says whose words they are, in a form the reader reads
     through rather than parses."""
@@ -859,13 +859,14 @@ def seed_render_cfg(mode, scope=None, content_limit=None):
 # the IN (rendered candidate menu Haiku reads), the SURFACE_*_FORMATs
 # are the OUT (what Anchor receives after Haiku's selection).
 HAIKU_FORMAT = {
-    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'content_limit': 600, 'edge_limit': 5, 'metadata_limit': 120,
     'time_format': 'relative',
     # Haiku surface receives correction context at balanced fidelity:
     # relation + edge_description + content excerpt (~150 chars). Enough
     # for picks to factor in superseded knowledge without bloating the
     # 25-candidate prompt.
     'correction_render': 'balanced',
+    'communities': 'title',
 }
 
 # Selection-grade lean render (Area 2, 2026-06-12). The selector's job is
@@ -877,7 +878,8 @@ HAIKU_FORMAT = {
 # reasoning 10%, question 6%, corrections 6%, quotes 5%. Lean keeps every
 # SELECTION signal in cheapest sufficient form (~60% cut):
 #   • situation kept whole — it IS the selection question ("when relevant")
-#   • content kept at 300 (operator call, 2026-06-12)
+#   • content 600 and 5 edges (operator call: the 300/3 lean cut was too
+#     cheap for a selector that must recognize the node it is picking)
 #   • encoding_source kept in header (future: guide Haiku to prefer
 #     src:anchor manual encodings)
 #   • edges → oneline (direction + relation + title; descriptions are
@@ -894,12 +896,15 @@ HAIKU_FORMAT = {
 # the aspect-aligned edge-choice experiment decides whether edges can earn
 # their place in selection (operator's aspect-traversal thread).
 HAIKU_FORMAT_LEAN = {
-    'content_limit': 300, 'edge_limit': 3, 'metadata_limit': 120,
+    'content_limit': 600, 'edge_limit': 5, 'metadata_limit': 120,
     'time_format': 'relative',
     'correction_render': 'lean',
     'edge_style': 'oneline',
     'extra_skip_keys': ('question', 'reasoning', 'their_raw_quote',
                         'my_raw_quote'),
+    # `communities` stays off: this render is ablation-measured
+    # (ab_render_ablation.py) and a line per candidate is a cost the
+    # selector has not been shown to repay — turn it on with a number.
 }
 
 

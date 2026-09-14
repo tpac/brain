@@ -108,6 +108,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
     # K-provenance stamp, resolved at the same moment as the template so the
     # delta trace records the K this run actually used.
     enc_stamp = brain.get_interaction_stamp('s1e')
+    # The gist is its own K (`s1e_gist`, read in _build_user_content); its
+    # stamp rides the same delta so a run's provenance names both texts.
+    gist_stamp = brain.get_interaction_stamp('s1e_gist')
     # Per-version config rides in the interaction's parameters JSON (the
     # K-store): `effort` maps to the API's output_config.effort; `model`
     # picks the encoder model. Lets an effort or model change ship as a
@@ -330,6 +333,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             interaction_version=enc_stamp['version'],
             interaction_fingerprint=enc_stamp['fingerprint'],
             interaction_source=enc_stamp['source'],
+            gist_interaction_version=gist_stamp['version'],
+            gist_interaction_fingerprint=gist_stamp['fingerprint'],
+            gist_interaction_source=gist_stamp['source'],
             stop_counter=counter,
         )
         dispatch_fn('trace_append', {
@@ -739,7 +745,16 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # <continuity>/<node_catalog>/<timeline>), so the preamble here drops the legend
     # and keeps only the operational anchor — two voices describing the layout would
     # confound the A/B. The control arm keeps the legacy legend verbatim.
-    if lived:
+    if lived and os.environ.get('BRAIN_S1E_LISTS_PREAMBLE', '0') in ('1', 'true', 'True'):
+        # The operating-guide arm (flag-gated input change, like the view policy
+        # and associated stubs): the encoder's first reply carries its four lists
+        # as text, then the tool call they call for, in the same reply.
+        preamble = (
+            "I'm encoding what I've just observed. I read everything below; my "
+            "first reply opens with my four lists — changes, targets, fetch, new — "
+            "and ends in the tool call they call for.\n"
+        )
+    elif lived:
         # First person — matches the v-next system prompt's register (the encoder
         # speaks as itself: "This is me encoding my own memory").
         preamble = (
@@ -785,6 +800,14 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
             body += "<failed_encodes>\n%s</failed_encodes>\n\n" % failed_block
         if node_catalog:
             body += "<node_catalog>\n%s\n</node_catalog>\n\n" % node_catalog
+        # The gist — the last instruction before the timeline, its own K
+        # (`s1e_gist`): read through the resolver so an override can edit it
+        # or turn it off (`enabled`), and its fingerprint says what the
+        # encoder actually read. Config is total by construction — subscript.
+        if brain.get_interaction_config('s1e_gist')['enabled']:
+            gist = brain.get_interaction_prompt('s1e_gist')
+            if gist:
+                body += gist.rstrip('\n') + "\n\n"
         # `now=` stamp (view policy): the absolute anchor that makes every
         # relative label below invertible — and the current-time declaration
         # the encoder's date resolution never had before the view policy.
@@ -1385,11 +1408,7 @@ def _save_session_context(brain, dispatch_fn, session_id, final_text):
 def _get_tool_schemas():
     """Get S1 encoding tool schemas from brain_mcp (single source of truth)."""
     from servers import brain_mcp
-    ENCODING_TOOLS = {
-        'remember_batch', 'revise_batch',
-        'brain_batch', 'connect_batch',
-        'recall_batch', 'get_nodes',
-    }
+    from servers.scales.s1.encode_contract import ENCODING_TOOLS
     return [{"name": t["name"], "description": t["description"],
              "input_schema": t["inputSchema"]}
             for t in brain_mcp.TOOLS if t["name"] in ENCODING_TOOLS]

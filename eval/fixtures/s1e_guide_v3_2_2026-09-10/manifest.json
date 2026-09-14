@@ -1,0 +1,25 @@
+{
+  "status": "frozen_after_author_and_independent_review_before_model_calls",
+  "parent_arm": "041c17855275480da9a702a6eb92fa0f067d208ef23c6c1d481e653077afbcd6",
+  "candidate_arm": "15a9770ef2b21aa4939b127e3dcb51792c861ca0850130d0e03dfe7135821031",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/arms.py": "1b76d928f4eb78d70772e3da7e91b53b9c26ead5a24296bda7016e1e8acecbab",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/v3_2_titles.json": "9222968a9a75d9e21a2878c7630fd7fb0a8d59f5e4e10851ef0bd5612fc2f603",
+    "docs/S1E-V3-2-AUTHORING-REVIEW-2026-09-10.md": "63041b8ca44f937e7d1cfa4690d8e5751ee78849c17e4dbf5b7a6304a8f102ff",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/CHALLENGES.md": "5eb650e107d5e6a7cbc800f1312fecec3ffe7574c04b02cfd14780dd82c25377",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/template.md": "e42ebc0efecf71955070e42325f9d3ed6e440e7d86e8a627596087bb0c60152f",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/gist.md": "8e2470d379e475555feaf705756c0849298ebca38b7df148e103401f1cbf3b5b",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/strategy.md": "60d11a3218f0341e83dace1dbb6631884affe5a5ceec7d3f480ee5153e5eb210",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/template.md.diff": "dac0eafda8d9a3c56b67c93175f955889862bdb93b121bbbf944a4ff4365de75",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/gist.md.diff": "078219e1a8ffe44dde3948315d2a6602d86c8753c1130c1f52f3961e9a467191",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/strategy.md.diff": "2f4b00a7b1313982865419e7a8059550188c2cb05e14d3816f6ef7a04b48222f",
+    "eval/fixtures/s1e_guide_v3_2_2026-09-10/closure.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "eval-only prompt candidate; no runtime, tools, catalog rendering or model-setting changes",
+  "development_sources_already_seen": [
+    "creative_design",
+    "longmem_unseen"
+  ],
+  "generalization_claim": "none; later untouched material required"
+}

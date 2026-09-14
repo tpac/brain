@@ -46,6 +46,7 @@ Usage:
 """
 import argparse
 import json
+import re
 import os
 import sys
 
@@ -58,6 +59,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from encoder_prompt_reassembly import (  # noqa: E402  (path set above)
     catalog_ids_of, parse_chain, report, resolve_run, section,
     strip_scout_blocks, turn_count)
+from encoder_ops import (  # noqa: E402  the one op-dump reader, shared with encoder_ops_shape
+    edge_entries, kind, new_text, ops_of, revise_surfaces, revise_text, swaps_of)
+from servers.contract import (apply_swaps, connect_to_target, connect_to_why,  # noqa: E402
+                              is_swap, is_swap_list)
 
 # (label, view_policy, window_aligned, aged_content_chars)
 #   -1 = the policy's own config — body whole since arm D shipped as the
@@ -278,26 +283,34 @@ def _synth_write_result(args):
     naming a sibling created earlier in the same run still resolves.
     """
     import hashlib
-    ops = _ops_of({'args': args})
+    ops = ops_of({'args': args})
     results = []
     for i, op in enumerate(ops):
+        title = new_text(op.get('title'))
         nid = str(op.get('node_id') or op.get('survivor_id') or
-                  hashlib.sha1((op.get('title') or str(i)).encode()
-                               ).hexdigest()[:8])[:8]
-        results.append({'op': op.get('op', 'remember'), 'index': i,
-                        'ok': True,
-                        'result': {'id': nid, 'title': op.get('title')}})
+                  hashlib.sha1((title or str(i)).encode()).hexdigest()[:8])[:8]
+        results.append({'op': kind(op), 'index': i, 'ok': True,
+                        'result': {'id': nid, 'title': title}})
     return {'ok': True,
             'result': {'total': len(ops), 'succeeded': len(ops), 'failed': 0,
                        'results': results}}
 
 
-def stored_contents(brain, ids):
-    """{id8: stored content} for revise-target comparison."""
+def stored_nodes(brain, ids):
+    """{id8: rich node} for revise-target comparison — brain.get_node's shape:
+    title / content / situation promoted top-level, other KV under
+    `_metadata` (read them through stored_field)."""
     if not ids:
         return {}
     got = brain.get_node(list(ids)) or {}
-    return {k[:8]: (v.get('content') or '') for k, v in got.items()}
+    return {k[:8]: v for k, v in got.items()}
+
+
+def stored_field(node, field):
+    """A node's stored value for `field`, or None."""
+    if field in node:
+        return node.get(field)
+    return (node.get('_metadata') or {}).get(field)
 
 
 def run_arm_behavior(brain, prompt_text, aged_ids, index):
@@ -350,6 +363,7 @@ def run_arm_behavior(brain, prompt_text, aged_ids, index):
         tools=_get_tool_schemas(),
         dispatch_fn=dispatch) or {}
     log['final_text'] = res.get('final_text') or ''
+    log['round_texts'] = res.get('round_texts') or []
     log['rounds'] = res.get('rounds', 0)
     return score_arm(log, aged_ids, index, brain), log
 
@@ -378,16 +392,17 @@ def score_partial_view(revises, stored, aged_ids):
     the stored one and reports how much of the original survives; `aged` marks
     the ones where the encoder was reasoning from ~400 chars.
 
-    content_edits revises are handled by score_patch_fidelity instead — a
-    patch structurally cannot drop text it doesn't name, but the harness
-    SYNTHESIZES its write success, so the check that matters is whether each
-    `old` would actually have matched (score_patch_fidelity).
+    Swap-form revises (content swaps, or the content_edits alias) are
+    score_swap_fidelity's — a swap structurally cannot drop text it doesn't
+    name, but the harness SYNTHESIZES its write success, so the check that
+    matters is whether each `old` would actually have matched.
     """
     rows = []
     for op in revises:
         nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-        old, new = stored.get(nid), op.get('content')
-        if not old or new is None:
+        node, new = stored.get(nid), op.get('content')
+        old = stored_field(node, 'content') if node else None
+        if not old or not isinstance(new, str):
             continue
         old_lines = {ln.strip() for ln in old.split('\n') if len(ln.strip()) > 25}
         kept = sum(1 for ln in old_lines if ln in new)
@@ -409,35 +424,40 @@ def score_arm(log, aged_ids, index, brain=None):
                 if isinstance(i, str) and i[:8] in aged_ids:
                     expanded.add(i[:8])
 
-    creates, revises, refs, refs_unknown, on_encoded = 0, 0, 0, 0, 0
-    revise_on_aged = 0
+    counts = {'creates': 0, 'revises': 0, 'connects': 0, 'archives': 0}
+    refs, refs_unknown, on_encoded, revise_on_aged = 0, 0, 0, 0
     created_ops, revise_ops = [], []
     for w in log['writes']:
-        for op in _ops_of(w):
-            kind = op.get('op') or ('revise' if 'node_id' in op else 'remember')
-            if kind in ('revise', 'absorb', 'archive'):
-                revises += 1
+        for op in ops_of(w):
+            k = kind(op)
+            if k in ('revise', 'absorb'):
+                counts['revises'] += 1
                 revise_ops.append(op)
                 if str(op.get('node_id') or op.get('survivor_id'))[:8] in aged_ids:
                     revise_on_aged += 1
-                continue
-            creates += 1
-            created_ops.append(op)
-            for ref in (op.get('source_refs') or []):
-                refs += 1
-                hit = index.get(ref)
-                if hit is None:
-                    refs_unknown += 1
-                elif hit['encoded']:
-                    on_encoded += 1
-    _stored = stored_contents(
+            elif k == 'connect':
+                counts['connects'] += 1
+            elif k in ('archive', 'disconnect'):
+                counts['archives'] += 1
+            else:
+                counts['creates'] += 1
+                created_ops.append(op)
+                for ref in (op.get('source_refs') or []):
+                    refs += 1
+                    hit = index.get(ref)
+                    if hit is None:
+                        refs_unknown += 1
+                    elif hit['encoded']:
+                        on_encoded += 1
+    _stored = stored_nodes(
         brain, [str(o.get('node_id') or o.get('survivor_id') or '')
                 for o in revise_ops]) if brain else {}
+    _edges = stored_edges(_stored)
     return {
         'rounds': log['rounds'],
         'reads': len(log['reads']),
         'aged_expanded': len(expanded),
-        'creates': creates, 'revises': revises,
+        **counts,
         'revise_on_aged': revise_on_aged,
         'source_refs': refs,
         'refs_not_in_window': refs_unknown,
@@ -445,22 +465,22 @@ def score_arm(log, aged_ids, index, brain=None):
         'usage': log['usage'],
         'shape': score_shape(created_ops),
         'partial_view': score_partial_view(revise_ops, _stored, aged_ids),
-        'patch_fidelity': score_patch_fidelity(revise_ops, _stored),
+        'swap_fidelity': score_swap_fidelity(revise_ops, _stored, _edges),
         'journal_chars': len(log['final_text']),
     }
 
 
 def _edge_asserts(op):
     """(target-string, relation, supporting-text) triples an op asserts —
-    connect_to on creates plus standalone connect ops. DIRECTION-STRICT: only
-    the ACTED-UPON end counts as the assertion target (connect_to's `title`,
-    connect's `target_id`) — the edge model is source-acts-on-target, so 'X
-    corrects TARGET' names TARGET as the corrected node; counting the source
-    end would score a backwards correction as a pass. Target is
-    the raw string the encoder wrote (an id, 'id:xxx', or a title); gold
-    matching is substring-on-hex, so all three forms hit."""
-    out = []
-    body = ' '.join(str(op.get(k) or '') for k in ('content', 'title'))
+    connect_to on creates AND revises, plus standalone connect ops.
+    DIRECTION-STRICT: only the ACTED-UPON end counts as the assertion target
+    (connect_to's target, connect's `target_id`) — the edge model is
+    source-acts-on-target, so 'X corrects TARGET' names TARGET as the
+    corrected node; counting the source end would score a backwards
+    correction as a pass. The target is the raw string the encoder wrote (an
+    id, 'id:xxx', or a title); gold matching is substring-on-hex, so all
+    three forms hit. Relation and why are the NEW text of a swap."""
+    body = ' '.join(new_text(op.get(k)) for k in ('content', 'title'))
 
     def acted_upon_is_source(rel):
         # Passive-voice relations invert the acted-upon end: in 'X
@@ -469,75 +489,37 @@ def _edge_asserts(op):
         # superseded_by, absorbed_into, ...).
         return rel.endswith('_by') or rel.endswith('_into')
 
-    for c in (op.get('connect_to') or []):
-        rels = ([r.get('relation') for r in (c.get('relations') or [])]
-                or [c.get('relation')])
-        why = ' '.join([str(c.get('why') or '')] +
-                       [str(r.get('why') or '') for r in (c.get('relations') or [])])
-        for rel in rels:
-            rel = rel or ''
+    out = []
+    for e in edge_entries(op):
+        rel = e['relation']
+        if e['via'] == 'connect_to':
             if acted_upon_is_source(rel):
-                # connect_to's source is the NEW node itself — under a
-                # passive relation the catalog title is the correcTOR, so
-                # no gold target is being acted upon here.
+                # connect_to's source is the node itself — under a passive
+                # relation the target is the correcTOR, so no gold target is
+                # being acted upon here.
                 continue
-            out.append((str(c.get('title') or ''), rel, why + ' ' + body))
-    if (op.get('op') == 'connect') or ('target_id' in op and 'source_id' in op):
-        rel = op.get('relation') or ''
-        end = 'source_id' if acted_upon_is_source(rel) else 'target_id'
-        out.append((str(op.get(end) or ''), rel,
-                    str(op.get('description') or '')))
-    return out
-
-
-def _revise_text(op):
-    """The text a revise PROPOSES — new values only. content_edits contributes
-    its `new` strings; the removed `old` text must never satisfy a fact check
-    (the removed text is precisely what a correct patch deletes)."""
-    parts = [str(op.get(k) or '') for k in ('content', 'situation', 'title')]
-    parts += [str(e.get('new') or '') for e in (op.get('content_edits') or [])
-              if isinstance(e, dict)]
-    return ' '.join(parts)
-
-
-def _revise_surfaces(op):
-    """Which node SURFACES a revise op actually WROTE — not what it says.
-
-    `_revise_text` flattens an op into prose to check whether a fact is
-    carried; this is the orthogonal question the field-coverage class needs
-    (id:450650d5): a stale value lives in several separately-embedded
-    surfaces, and a revise that fixes title+content while leaving the same
-    value in `situation` reads as a pass under any text-only check. Content
-    counts whether it arrived whole or as a patch.
-    """
-    out = {k: str(op.get(k)) for k in
-           ('title', 'situation', 'question', 'reasoning', 'thought',
-            'type', 'evolution_status') if op.get(k)}
-    body = [str(op.get('content') or '')]
-    body += [str((e or {}).get('new') or '')
-             for e in (op.get('content_edits') or []) if isinstance(e, dict)]
-    body = ' '.join(x for x in body if x)
-    if body:
-        out['content'] = body
+            out.append((e['target'], rel, e['why'] + ' ' + body))
+        else:
+            end = e['source'] if acted_upon_is_source(rel) else e['target']
+            out.append((end or '', rel, e['why']))
     return out
 
 
 def _edge_pairs(op):
-    """Unordered {source8, target8} pairs an op writes an edge BETWEEN.
+    """Unordered {source8, target8} pairs an op writes an edge BETWEEN, with
+    the edge's proposed why (new text).
 
     Source-aware on purpose: an `edge:X` surface on node N means the edge
     N–X, and counting any edge that merely lands on X would score a
     different node's edge as N's repair. connect_to on a `remember` has no
     source id yet (the node is being created) and is skipped rather than
-    guessed."""
-    pairs, src = {}, str(op.get('node_id') or op.get('source_id') or '')[:8]
-    if src:
-        for c in (op.get('connect_to') or []):
-            for h in _hex_ids(str(c.get('title') or '')):
-                pairs[frozenset((src, h))] = str(c.get('why') or '')
-        tgt = str(op.get('target_id') or '')[:8]
-        if tgt:
-            pairs[frozenset((src, tgt))] = str(op.get('description') or '')
+    guessed; connect_to on a revise is the node's own edge repair."""
+    pairs = {}
+    for e in edge_entries(op):
+        if not e['source']:
+            continue
+        for h in _hex_ids(e['target']):
+            pairs[frozenset((e['source'], h))] = e['why']
     return pairs
 
 
@@ -555,29 +537,110 @@ def _hex_ids(v):
     return set()
 
 
-def score_patch_fidelity(revises, stored):
-    """Would each content_edits patch have LANDED? Harness writes are
-    intercepted and synthesized as successes, so a patch whose `old` doesn't
-    match the stored content exactly once looks fine here but fails loudly in
-    production. Advisory when the isolated copy has drifted past the capture
-    (stored content moved) — read misses alongside the run's date before
-    trusting them."""
+def stored_edges(stored):
+    """{frozenset((node8, neighbor8)): {relation: description}} for every
+    edge the stored revise targets carry — read off the `connections` the
+    canonical pull already attached to each node (every relation on the pair,
+    with its description), so the fidelity check needs no second read and no
+    reach into the DAL."""
+    out = {}
+    for nid, node in stored.items():
+        for conn in node.get('connections') or ():
+            nbr = str(conn.get('id') or '')[:8]
+            if not nbr:
+                continue
+            rels = conn.get('relations') or [{'relation': conn.get('relation'),
+                                              'description': conn.get('description')}]
+            out[frozenset((nid, nbr))] = {r['relation']: r.get('description') or ''
+                                          for r in rels if r.get('relation')}
+    return out
+
+
+def score_swap_fidelity(revises, stored, edges):
+    """Would each swap have LANDED? Harness writes are intercepted and
+    synthesized as successes, so a swap whose `old` doesn't match the stored
+    value exactly once looks fine here but fails loudly in production. The
+    same refusals from the same primitive (contract.apply_swaps: non-empty
+    `old`, `old != new`, exactly one match, applied in order — a failure
+    fails the field), on every node field that takes swaps AND on
+    `connect_to`: a `why` swap patches the stored edge description, a
+    `relation` swap renames an active relation, the row resolved as
+    brain.revise resolves it (a bare relation names it; absent means the
+    pair's one relation; a relation swap is exactly one {old, new}). Ops on a
+    node the copy no longer holds are skipped whole — a missing node says
+    nothing about its edges. `edges` is stored_edges' shape. Rows are
+    {id, field, error}; advisory when the isolated copy has drifted past the
+    capture (stored values moved) — read misses alongside the run's date
+    before trusting them."""
     rows = []
-    evolving = dict(stored)  # a later op patches what an earlier op produced
+    evolving = {nid: dict(n) for nid, n in stored.items()}
+    live = {pair: dict(rels) for pair, rels in edges.items()}
+
+    def miss(nid, field, error):
+        rows.append({'id': nid, 'field': field, 'error': error})
+
     for op in revises:
-        edits = op.get('content_edits') or []
         nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-        cur = evolving.get(nid)
-        if not edits or cur is None:
+        node = evolving.get(nid)
+        if node is None:
             continue
-        for i, e in enumerate(edits):
-            o = str((e or {}).get('old') or '')
-            n = cur.count(o) if o else 0
-            if n == 1:
-                cur = cur.replace(o, str((e or {}).get('new') or ''), 1)
-            else:
-                rows.append({'id': nid, 'edit': i, 'matches': n})
-        evolving[nid] = cur
+        for field, swaps in swaps_of(op).items():
+            cur = stored_field(node, field)
+            if not isinstance(cur, str) or not cur:
+                miss(nid, field, 'no stored value to swap into')
+                continue
+            new, err = apply_swaps(cur, swaps, field)
+            if err:
+                miss(nid, field, err)
+                continue
+            node[field] = new   # a later op patches what this one produced
+        for c in (op.get('connect_to') or []):
+            if not isinstance(c, dict):
+                continue
+            target = str(connect_to_target(c) or '')
+            label = 'connect_to:%s' % (target[:8] or '?')
+            items = [r for r in (c.get('relations') or []) if isinstance(r, dict)] or [c]
+            for r in items:
+                rel, why = r.get('relation'), connect_to_why(r)
+                why_swap = why if is_swap(why) or is_swap_list(why) else None
+                rel_swap = None
+                if is_swap_list(rel):
+                    if len(rel) != 1:
+                        miss(nid, label, 'a relation takes one swap {old, new}, not a list')
+                        continue
+                    rel_swap = rel[0]
+                elif is_swap(rel):
+                    rel_swap = rel
+                if not rel_swap and not why_swap:
+                    continue    # bare values are not swaps
+                pair = next((frozenset((nid, t)) for t in _hex_ids(target)
+                             if frozenset((nid, t)) in live), None)
+                if pair is None:
+                    miss(nid, label, 'no edge between the pair to swap into')
+                    continue
+                active = live[pair]
+                if rel_swap:
+                    row = rel_swap.get('old')
+                    if row not in active:
+                        miss(nid, label, 'no active relation %r to rename (has: %s)'
+                             % (row, sorted(active)))
+                        continue
+                elif isinstance(rel, str) and rel:
+                    row = rel if rel in active else None
+                else:
+                    row = next(iter(active)) if len(active) == 1 else None
+                if row is None:
+                    miss(nid, label, 'relation %r is not on the edge (has: %s) — '
+                         'a why swap needs a row to patch' % (rel, sorted(active)))
+                    continue
+                if why_swap:
+                    new, err = apply_swaps(active.get(row) or '', why_swap, 'why')
+                    if err:
+                        miss(nid, label, err)
+                        continue
+                    active[row] = new
+                if rel_swap:
+                    active[rel_swap['new']] = active.pop(row)
     return rows
 
 
@@ -603,14 +666,14 @@ def score_gold(gold, log, corr_rels):
     revised, edges, creates = {}, [], []
     surfaces, pairs = {}, {}
     for w in log['writes']:
-        for op in _ops_of(w):
-            kind = op.get('op') or ('revise' if 'node_id' in op else 'remember')
-            if kind in ('revise', 'absorb'):
+        for op in ops_of(w):
+            k = kind(op)
+            if k in ('revise', 'absorb'):
                 nid = str(op.get('node_id') or op.get('survivor_id') or '')[:8]
-                revised[nid] = revised.get(nid, '') + ' ' + _revise_text(op)
-                for _k, _v in _revise_surfaces(op).items():
+                revised[nid] = revised.get(nid, '') + ' ' + revise_text(op)
+                for _k, _v in revise_surfaces(op).items():
                     surfaces.setdefault(nid, {})[_k] = _v
-            elif kind == 'remember':
+            elif k == 'remember':
                 creates.append(op)
             edges.extend(_edge_asserts(op))
             pairs.update(_edge_pairs(op))
@@ -711,20 +774,110 @@ def print_gold(g, run):
                  ' — minted with no correction edge'))
 
 
-def _ops_of(write):
-    """Flatten a write call to its individual ops (batch tools carry a list)."""
-    args = write.get('args') or {}
-    for key in ('operations', 'nodes', 'revisions', 'connections'):
-        v = args.get(key)
-        if isinstance(v, list):
-            return v
-    return [args]
+GIST_SLOT_CLOSERS = re.compile(
+    r'</(?:scout_legend|node_catalog|failed_encodes|continuity)>\n')
 
 
-def main():
+def splice_gist(captured, gist):
+    """The capture with `gist` as its last instruction before <timeline> —
+    the slot production assembly fills. Whatever free text already sits
+    between the last closing block tag and the <timeline line IS the
+    capture's gist (any wording — an older default, a candidate) and is
+    replaced, so the splice is idempotent and never doubles. `gist=None`
+    strips the slot — what a disabled `s1e_gist` assembles to. The blank
+    lines the capture carries between the closer and the slot's text are
+    kept: production emits one after every block but the scout legend, so
+    keeping them is what makes both paths byte-identical to assembly.
+    Returns (new_capture, replaced_chars); (None, 0) when the capture has no
+    <timeline line."""
+    m = re.search(r'^<timeline', captured, re.M)
+    if not m:
+        return None, 0
+    closers = list(GIST_SLOT_CLOSERS.finditer(captured, 0, m.start()))
+    start = closers[-1].end() if closers else m.start()
+    slot = captured[start:m.start()]
+    lead = re.match(r'\n*', slot).group(0)
+    filled = lead + (gist + '\n\n' if gist is not None else '')
+    return captured[:start] + filled + captured[m.start():], len(slot.strip())
+
+
+def _corr_rels_offline():
+    """The correction-relation vocabulary without a brain: the per-operator
+    WORKING aspects file (aspect_store.aspects_json_path) through the
+    registry's own door (from_dict) — the file an IsolatedBrain snapshots,
+    so a re-score reads the membership the live scorer read when the dump
+    was scored (the seed can lag the S2 aspect unit's classifications). On a
+    machine where no registry has ever loaded (fresh checkout, CI, an empty
+    BRAIN_DB_DIR) the working copy does not exist yet and the repo seed is
+    the only membership there is."""
+    from servers.aspects import AspectRegistry
+    from servers.aspect_store import SEED_ASPECTS_JSON_PATH, aspects_json_path
+    path = aspects_json_path()
+    if not os.path.exists(path):
+        path = SEED_ASPECTS_JSON_PATH
+    with open(path) as f:
+        data = {k: v for k, v in json.load(f).items() if not k.startswith('_')}
+    reg = AspectRegistry.from_dict(None, data)
+    return set(reg.relations_in(['correction_improvement']))
+
+
+def rescore(dump_paths, gold_path):
+    """Re-run score_gold (and the op counts) over saved --dump-ops files and
+    print stored vs recomputed. A scorer change must move no gold number on
+    the baseline dumps before any new cell runs — those are the numbers the
+    cells are compared on. Op counts MAY move where the old counter was wrong
+    (connects counted as creates); they print side by side."""
+    with open(gold_path) as f:
+        gold = json.load(f)
+    corr = _corr_rels_offline()
+    moved = 0
+    for p in dump_paths:
+        with open(p) as f:
+            d = json.load(f)
+        if d.get('chain') and d['chain'] != gold.get('chain'):
+            print('%s: chain %s is not the gold\'s %s — skipped'
+                  % (os.path.basename(p), d['chain'], gold.get('chain')))
+            continue
+        log = {'writes': d.get('writes') or [], 'reads': d.get('reads') or []}
+        new = score_gold(gold, log, corr)
+        old = d.get('gold') or {}
+        old_t = {t['id']: t for t in (old.get('targets') or [])}
+        s_old = d.get('score') or {}
+        s_new = score_arm(dict(log, rounds=s_old.get('rounds', 0),
+                               final_text=d.get('journal') or '',
+                               usage=s_old.get('usage') or
+                               {'input': 0, 'output': 0, 'cache_read': 0,
+                                'cache_write': 0}),
+                          set(d.get('aged_ids') or []), {})
+        print('%s: creates %s→%d revises %s→%d connects=%d archives=%d'
+              % (os.path.basename(p), s_old.get('creates'), s_new['creates'],
+                 s_old.get('revises'), s_new['revises'], s_new['connects'],
+                 s_new['archives']))
+        for t in new['targets']:
+            o = old_t.get(t['id'], {})
+            same = (o.get('surface_score') == t['surface_score']
+                    and o.get('pass') == t['pass'] and o.get('via') == t['via'])
+            moved += 0 if same else 1
+            print('    %s %s: stored %s/%s/%s → now %s/%s/%s%s'
+                  % ('=' if same else '≠', t['id'], o.get('via'),
+                     o.get('surface_score'), o.get('pass'), t['via'],
+                     t['surface_score'], t['pass'], '' if same else '   MOVED'))
+        if ((old.get('pass'), sorted(old.get('invalid_reads') or []))
+                != (new['pass'], sorted(new['invalid_reads']))):
+            moved += 1
+            print('    ≠ run verdict: stored pass=%s invalid=%s → now pass=%s '
+                  'invalid=%s   MOVED' % (old.get('pass'), old.get('invalid_reads'),
+                                          new['pass'], new['invalid_reads']))
+    print('rescore: %d gold number(s) moved across %d dump(s)'
+          % (moved, len(dump_paths)))
+    return moved
+
+
+def build_parser():
     ap = argparse.ArgumentParser()
-    ap.add_argument('captures', nargs='+',
-                    help='payloads/<date>/<chain>/000-prompt.md')
+    ap.add_argument('captures', nargs='*',
+                    help='payloads/<date>/<chain>/000-prompt.md (not needed '
+                         'with --rescore)')
     ap.add_argument('--arms', default='A,B,C')
     ap.add_argument('--out-dir', help='write each arm here as <chain>-<arm>.md')
     ap.add_argument('--behavior', action='store_true',
@@ -750,7 +903,39 @@ def main():
                     help='complete s1e template to run instead of the active '
                          'one — for candidates that EDIT existing text rather '
                          'than append. Isolated copy only, same as --s1e-patch.')
+    ap.add_argument('--gist', action='store_true',
+                    help='arm F: make the frozen capture carry the EFFECTIVE '
+                         '`s1e_gist` as production assembly would — its text '
+                         'directly before the <timeline> line while the '
+                         'interaction is enabled, the slot stripped when it is '
+                         'not — so a capture predating the gist is same-state '
+                         '(a capture already carrying one is re-spliced, never '
+                         'doubled). A flag, never an option: a capture path '
+                         'after it must not be readable as its value.')
+    ap.add_argument('--gist-file', metavar='FILE',
+                    help='deploy FILE as an `s1e_gist` override on the ISOLATED '
+                         'copy first (tests/interaction_override), so assembled '
+                         'arms and the K stamp read it too; implies --gist. The '
+                         'live daemon is never touched.')
+    ap.add_argument('--rescore', nargs='+', metavar='DUMP.json',
+                    help='offline: re-run score_gold over saved --dump-ops '
+                         'files against --gold and print stored vs recomputed '
+                         'scores — the check that a scorer change moved no '
+                         'number. No brain, no spend.')
+    return ap
+
+
+def main():
+    ap = build_parser()
     args = ap.parse_args()
+    splice_f = args.gist or bool(args.gist_file)
+    if args.rescore:
+        if not args.gold:
+            ap.error('--rescore needs --gold')
+        rescore(args.rescore, args.gold)
+        return
+    if not args.captures:
+        ap.error('captures are required (or --rescore DUMP.json …)')
     want = [a.strip().upper() for a in args.arms.split(',') if a.strip()]
 
     from isolated_brain import IsolatedBrain
@@ -758,6 +943,18 @@ def main():
     # calls out, so it stays keyless.
     with IsolatedBrain(cleanup=True, load_env=args.behavior) as env:
         brain = env.brain
+        if args.gist_file:
+            # A gist candidate rides the standard override door on the ISOLATED
+            # copy — assembled arms read it through the resolver and the K
+            # stamp names it; arm F splices the same effective text below.
+            from interaction_override import override_interaction
+            with open(args.gist_file) as f:
+                gist_candidate = f.read().rstrip('\n') + '\n'
+            if not gist_candidate.strip():
+                raise SystemExit('--gist-file %s is empty' % args.gist_file)
+            ver = override_interaction(brain, 's1e_gist', template=gist_candidate)
+            print('[gist] s1e_gist override v%d from %s (isolated copy only)'
+                  % (ver, args.gist_file))
         # Both arms read the EFFECTIVE prompt through the resolver. The override
         # row (get_interaction) is absent on a pointer-less brain, which would
         # make --s1e-template report the base as 0 chars and hand --s1e-patch an
@@ -819,6 +1016,30 @@ def main():
             chain, _short, _stop = parse_chain(cap_path)
             with open(cap_path) as f:
                 captured_raw = f.read()
+            if splice_f:
+                # ONE resolution — template, config and stamp from the same
+                # row — and the same gate production assembly applies: an
+                # `enabled: false` override empties the slot rather than
+                # splicing the words it turned off.
+                eff = brain.get_interaction_effective('s1e_gist')
+                st = eff['stamp']
+                gist_text = (eff['template'] or '').rstrip('\n')
+                if eff['config']['enabled'] and not gist_text:
+                    raise SystemExit('--gist: the effective s1e_gist is empty '
+                                     '— nothing to splice')
+                captured_raw, replaced = splice_gist(
+                    captured_raw, gist_text if eff['config']['enabled'] else None)
+                if captured_raw is None:
+                    raise SystemExit('--gist: no <timeline line in %s' % cap_path)
+                if eff['config']['enabled']:
+                    print('[gist] %s before <timeline>: %d chars of s1e_gist %s (%s v%s)'
+                          % ('replaced %d chars' % replaced if replaced else 'spliced',
+                             len(gist_text), st['fingerprint'], st['source'],
+                             st['version']))
+                else:
+                    print('[gist] s1e_gist DISABLED (%s v%s) — slot before '
+                          '<timeline> stripped (%d chars)'
+                          % (st['source'], st['version'], replaced))
             captured = strip_scout_blocks(captured_raw)
             # Arm F needs none of the session's stored state; keep gold items
             # runnable on captures whose messages have aged out of the copy.
@@ -854,6 +1075,13 @@ def main():
             print('captured: %d chars, %d turns, %d catalog ids'
                   % (len(captured), turn_count(captured),
                      len(catalog_ids_of(captured))))
+            # The Ks this run reads — both texts, so a dump is attributable
+            # to the exact prompt AND gist it ran under (§8 row 11).
+            k_stamps = {n: brain.get_interaction_stamp(n)
+                        for n in ('s1e', 's1e_gist')}
+            print('K: ' + '  '.join('%s=%s (%s v%s)' % (n, st['fingerprint'],
+                                                        st['source'], st['version'])
+                                    for n, st in k_stamps.items()))
             if 'A' in arms:
                 ok, text = report(captured, arms['A'][1], brain=brain)
                 print('control integrity vs the stored capture: %s'
@@ -895,11 +1123,12 @@ def main():
                             spend[k] += s['usage'][k]
                         print('  %s %-8s run%d rounds=%d reads=%d '
                               'aged-expanded=%d | creates=%d revises=%d '
-                              '(on-aged=%d) | refs=%d on-encoded-turns=%d '
-                              'off-window=%d'
+                              '(on-aged=%d) connects=%d archives=%d | '
+                              'refs=%d on-encoded-turns=%d off-window=%d'
                               % (key, name, run, s['rounds'], s['reads'],
                                  s['aged_expanded'], s['creates'],
                                  s['revises'], s['revise_on_aged'],
+                                 s['connects'], s['archives'],
                                  s['source_refs'], s['refs_on_encoded_turns'],
                                  s['refs_not_in_window']))
                         if g:
@@ -910,11 +1139,14 @@ def main():
                                   % (sh['avg_content'], sh['avg_edges'],
                                      ' '.join('%s=%.0f%%' % (f[:4], 100 * sh[f])
                                               for f in RICH_FIELDS)))
-                        for pf in s['patch_fidelity']:
-                            print('       PATCH-WOULD-FAIL id:%s edit %d '
-                                  'matches=%d (advisory if the copy drifted '
-                                  'past the capture)'
-                                  % (pf['id'], pf['edit'], pf['matches']))
+                        for pf in s['swap_fidelity']:
+                            # first sentence of the production refusal — the
+                            # rest teaches the agent the fix, not the reader
+                            print('       SWAP-WOULD-FAIL id:%s %s — %s '
+                                  '(advisory if the copy drifted past the '
+                                  'capture)'
+                                  % (pf['id'], pf['field'],
+                                     pf['error'].split('. ', 1)[0]))
                         for pv in s['partial_view']:
                             print('       PARTIAL-VIEW revise id:%s aged=%s '
                                   '%d→%d chars, kept %s lines (%.0f%% dropped)'
@@ -928,10 +1160,12 @@ def main():
                             with open(out, 'w') as f:
                                 json.dump({'arm': key, 'arm_name': name,
                                            'chain': chain, 'run': run,
+                                           'k': k_stamps,
                                            'aged_ids': sorted(aged),
                                            'gold': g,
                                            'score': s,
                                            'journal': log['final_text'],
+                                           'round_texts': log.get('round_texts') or [],
                                            'reads': log['reads'],
                                            'writes': log['writes']}, f,
                                           indent=2, default=str)

@@ -15,7 +15,7 @@ SERVERS_DIR = os.path.join(os.path.dirname(__file__), '..', 'servers')
 
 # LLM-prompt-backed names carry a real template; config-only names carry ''.
 PROMPT_BACKED = {
-    's1e', 'surface',
+    's1e', 's1e_gist', 'surface',
     's2_community_enrichment', 's2_consolidation_enrichment', 's2_healer',
     's2_aspects', 'recall_query_expansion',
 }

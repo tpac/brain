@@ -45,9 +45,10 @@ The standing operator decision (id:49d734ad) governs flat READS: hide `community
 default connection renders. Tom's same-day refinement: graph DYNAMICS (traverse, spread
 activation, graph_expand) keep conducting through community edges — conduction is not
 visibility. Shipped as two load-time policies on the registry: `structural_exclusions` (full
-noise — reads; DAL swap still pending, aspects Step 6) and `traversal_exclusions` (noise −
-community_member — LIVE at the three traversal sites since 2026-07-28). Original contradiction
-record kept below for context.
+noise — reads; applied at `get_node` and consolidation's edge loader on branch
+`claude/sweet-lichterman-ba9854`, 2026-09-05 — `docs/REVISE-SHAPE-ARCH-PLAN.md` Step 7; the
+DAL keeps no default) and `traversal_exclusions` (noise − community_member — LIVE at the three
+traversal sites since 2026-07-28). Original contradiction record kept below for context.
 
 ## ~~⚠ OPERATOR DECISION NEEDED~~ — `community_member` visibility
 
@@ -369,8 +370,7 @@ changing VectorDAL **and** CachedVectorDAL signatures in lockstep — documented
 `dal_graph.py:787` (`get_edge_descriptions_for`); `brain_connections.py:46,58`;
 `scripts/reembed_edges_drop_meaning.py:33`. Also: `get_neighbors` has NO default exclusion at all
 (callers pass three different sets — see Step 0.3/Step 5); `get_node`→`get_connections_bulk`
-currently passes NO exclusion (the id:49d734ad Phase-1 that never landed); and the
-`community_member` contradiction at the top of this doc must be resolved by Tom first.
+passes `structural_exclusions` since 2026-09-05 (branch, see the RESOLVED block at the top).
 
 ## Dropped — checked and rejected
 

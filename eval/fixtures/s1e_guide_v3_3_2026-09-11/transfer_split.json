@@ -1,0 +1,20 @@
+{
+  "recorded_at": "2026-09-11T22:55:00+00:00",
+  "rule": "LongMemEval oracle items ordered by sha256('s1e-v33-transfer:'+question_id) within question_type; feasible = 2-4 haystack sessions, <=8 user/assistant pairs per session, <=24 pairs total; zero files mentioning the id under eval/, docs/, ~/AgentsContext/{eval-corpus,s1e-field-coverage-gold,brain} (excluding the oracle file and .db files). Selected by id only; no item content or answer read before the V3.3 prompt was frozen.",
+  "excluded_as_inspected": ["54026fce","fca762bc","2311e44b","bc149d6b","71017276","gpt4_b0863698","cc5ded98","59524333","09ba9854_abs","edced276_abs","gpt4_f49edff3","conv_004_art_design_extended","conv_004_art_design"],
+  "primary": {
+    "knowledge-update": ["eace081b", "b6019101", "2133c1b5"],
+    "multi-session": ["80ec1f4f"],
+    "temporal-reasoning": ["2ebe6c92"]
+  },
+  "reserve_in_order": {
+    "knowledge-update": ["69fee5aa", "f685340e"],
+    "multi-session": ["2b8f3739"],
+    "temporal-reasoning": ["eac54adc", "gpt4_1d4ab0c9"]
+  },
+  "rejected_exposed": {"0ddfec37": 128, "6aeb4375": 39, "gpt4_372c3eed_abs": 49, "60bf93ed": 5, "10e09553": 1},
+  "secondary_synthetic": {
+    "conv_005_emotions": "repository synthetic, 5 pairs; brain-domain overlap with the prompt's identity examples is shared by every arm; exercises emotional register and my voice, which the LongMemEval items do not; windows 2/2/1 pairs"
+  },
+  "windows": "one window per haystack session, session date as the clock; each arm x 3 independent repeats, sequential windows inside a repeat"
+}

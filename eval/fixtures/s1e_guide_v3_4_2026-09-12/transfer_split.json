@@ -1,0 +1,46 @@
+{
+ "recorded_at": "2026-09-12T04:19:22+00:00",
+ "recorded_before": "any V3.4 authoring; no item content read \u2014 ids, session counts and dates only",
+ "rule": "fresh transfer material = the V3.3 split's reserve_in_order items (same sha256 ordering rule, same feasibility rule) plus one repository synthetic corpus with zero prior mentions under eval/, docs/ and ~/AgentsContext; the six V3.3 transfer corpora are now inspected development data and run only as a regression set for V3.4 against the saved V3.3/V3.2/production brains",
+ "fresh_primary": {
+  "knowledge-update": [
+   "69fee5aa",
+   "f685340e"
+  ],
+  "multi-session": [
+   "2b8f3739"
+  ],
+  "temporal-reasoning": [
+   "eac54adc",
+   "gpt4_1d4ab0c9"
+  ]
+ },
+ "fresh_synthetic": {
+  "conv_002_debugging": "10 exchanges, 5 pairs, category technical_debugging, 0 prior mentions; windows 2/2/1 pairs like conv_005; exercises corrections and technical detail"
+ },
+ "fresh_reserve": {
+  "synthetic": [
+   "conv_003_philosophy"
+  ],
+  "note": "conv_006_product has one prior mention; conv_001 and conv_004/005 are exposed"
+ },
+ "development_now": [
+  "eace081b",
+  "b6019101",
+  "2133c1b5",
+  "80ec1f4f",
+  "2ebe6c92",
+  "conv_005_emotions",
+  "creative_design"
+ ],
+ "arms_on_fresh": [
+  "production_deployed",
+  "v3_3_titles",
+  "v3_4_titles"
+ ],
+ "arms_on_development": [
+  "v3_4_titles (compared with saved production / V3.2 / V3.3 brains)"
+ ],
+ "windows": "one window per haystack session on the session's own clock; synthetic 2/2/1 pairs on a fixed clock; three independent repeats per arm, sequential windows inside a repeat",
+ "overfitting_guard": "weave items are shape classes observed on >=2 corpora and >=2 arms in the V3.3 cells (quote left behind on revise; question-lane fill; Q&A-window capture; refused-op state; thought shape) \u2014 none is a fix to a node the author reviewed on the fresh corpora"
+}

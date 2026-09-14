@@ -85,6 +85,7 @@ RETIRE = 'retire'
 # correspondence, so the table cannot drift from the registry.
 COLLAPSE_POLICY = {
     's1e':                          COMPARE,
+    's1e_gist':                     COMPARE,
     'surface':                      COMPARE,
     's2_aspects':                   COMPARE,
     's2_healer':                    COMPARE,

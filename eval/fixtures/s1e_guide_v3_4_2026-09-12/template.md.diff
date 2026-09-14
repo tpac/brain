@@ -1,0 +1,68 @@
+--- v3.3/template.md
++++ v3.4/template.md
+@@ -263,7 +263,7 @@
+ 
+ **New AND useful** is the capture gate, not “obviously essential.” Lean to keep a doubtful useful atom: it can be revised; an omitted detail falls out of the sliding window. Preserve names, numbers, exact phrases, choices with their order and reason, emotions, mechanisms, quotations, formulas and supported meaning, including my research, essays, explanations and diagnoses. A passive partner does not make my thinking worthless, and my own read on what something means is part of the capture, not garnish.
+ 
+-**Skip** means zero writes only when the substance is already held or the exchange is routine — greetings, acknowledgements, covered restatements, abandoned questions without engagement. It is a verdict, not an operation or future policy.
++**Skip** means zero writes only when the substance is already held or the exchange is routine — greetings, acknowledgements, covered restatements, abandoned questions without engagement. A window where the other side asked me for options and then picked, leaned or deferred is not routine, whichever voice produced the words: the offered set, the pick and the reason are the knowledge, and ten exchanges that leave no node have almost always dropped some. It is a verdict, not an operation or future policy.
+ 
+ My recurring traps: conversational brevity, packing independent claims into one summary, smoothing voice, skipping uncertainty, treating my voice as mere response, hedging a read the evidence already supports, and letting a leaning or a target date harden into a settled fact. Catch these by their cost to the future reader. Richness belongs in focused nodes with useful fields and honest edges, not additional call ceremony.
+ 
+@@ -462,7 +462,8 @@
+ `thought`. A no-mint verdict never goes to residue. Only the interpretation
+ flags its scene: revisiting the correction helps present how I came to
+ understand Mira. The board stands as a fact, without an invented principle
+-or thought to justify it.
++to justify it; a thought there would be a hunch of my own about the board,
++and I have none yet.
+ 
+ ### A later window — a choice folds into its plan, a read firms up, the facts survive
+ 
+@@ -517,7 +518,7 @@
+ changes: preparation order — unordered checks → route walk first, the morning of October 15, because what the walk finds at the side door decides the invitation wording
+ changes: understanding — rehearsed workshop demonstrations fit my dependable-for-others read; her own frames get the same care with nobody depending on them
+ changes: newly known — Mira rehearses every beginner-workshop demonstration; she measures her own frames twice and dry-fits before gluing
+-targets: 49d28ce0 · agreed, unordered checks → route walk first, reason stated → the order is part of the plan: title stale · content stale · situation stale · reasoning stale; agreement date, sign leaning and both edges still hold: event_time clean · why→a6b0139d clean · why→82c41f0b clean
++targets: 49d28ce0 · agreed, unordered checks → route walk first, reason stated → the order is part of the plan: title stale · content stale · situation stale · reasoning stale · their_raw_quote stale (her words now carry the order; the leaning it quoted stays in content) · thought new (the walk decides the other checks); agreement date, sign leaning and both edges still hold: event_time clean · why→a6b0139d clean · why→82c41f0b clean
+ targets: 93bf027e · tentative hosting read → same shape in her teaching, one exception in her own framing → scope widens, competing reading named: title stale · content stale · situation stale · reasoning stale · thought stale · why→61de80a2 stale; question clean
+ fetch: none
+ new: Mira rehearses every beginner-workshop demonstration — her stated practice and its reason; grounds the interpretation
+@@ -536,6 +537,7 @@
+    "title": "Mira rehearses every demonstration for beginner printmaking workshops",
+    "content": "For beginner printmaking workshops Mira rehearses every demonstration, because participants cannot follow a muddled sequence. She contrasts this with her welcome, the one place she wants room for whoever turns up.",
+    "situation": "When preparing a workshop with Mira or judging what she will want rehearsed versus left open.",
++   "question": "Does Mira rehearse her workshop demonstrations, and why?",
+    "reasoning": "Mira stated the practice and her reason for it on October 14, in answer to my question about other kinds of work.",
+    "their_raw_quote": "For beginner workshops I rehearse every demonstration — if I muddle the sequence, nobody can follow.",
+    "connect_to": [{"target": "93bf027e", "relation": "grounds", "why": "rehearsed demonstrations are a second activity where Mira makes what other people depend on reliable; this practice carries my read beyond hosting into her teaching"}]},
+@@ -543,13 +545,16 @@
+    "title": "Mira measures twice and dry-fits before gluing her own frames",
+    "content": "For frames on her own wall, Mira measures twice and dry-fits before gluing. Nobody else uses those frames.",
+    "situation": "When helping Mira frame her own prints, or weighing how far her care extends beyond what others depend on.",
++   "question": "How carefully does Mira prepare work that nobody else will use?",
+    "reasoning": "Mira described the routine on October 14. The fact stands on its own; the motive reading it feeds lives on the interpretation.",
+    "their_raw_quote": "My own frames I measure twice and dry-fit before gluing, and nobody else ever uses those.",
+    "connect_to": [{"target": "93bf027e", "relation": "qualifies", "why": "the same care for frames nobody else uses is the one case my dependable-for-others read does not cover; it keeps the competing reading, care in general, alive"}]},
+   {"op": "revise", "node_id": "49d28ce0",
+-   "reason": "Mira ordered the checks and gave the reason; the order is part of the plan, so it enters every surface a reader could land on.",
++   "reason": "Mira ordered the checks and gave the reason; the order is part of the plan, so it enters every surface a reader could land on — the quote too: her October 14 words now carry what the plan turns on, while the sign leaning stays in content.",
+    "title": {"old": "agreed checks, sign options still open", "new": "route walk first on October 15, sign still conditional"},
+    "content": {"old": "Mira agreed to walk the street-to-door route and get the manager's ramp answer.", "new": "Mira agreed to walk the street-to-door route and get the manager's ramp answer; on October 14 she put the route walk first, on the morning of October 15, before anything else on the card, because what the walk finds at the side door decides how the invitation is worded."},
++   "their_raw_quote": {"old": "I'm leaning towards using the board if the entrance has room; keep a wall sign as another option.", "new": "Do the route walk first, tomorrow morning, before anything else on the card — if the side door turns out to be a problem, the invitation wording changes."},
++   "thought": "The walk decides the other two checks: a failed side door changes the wording and makes the ramp answer matter less, so the manager may need to be reachable that same morning — a dependency neither of us said out loud.",
+    "situation": "Carrying out the October 17 print-swap preparation: the route walk comes first, on the morning of October 15; the ramp answer and the still-conditional board-or-wall sign choice follow it.",
+    "reasoning": "I proposed the items on October 12; Mira adopted the two checks, and on October 14 set their order and its reason: what the route walk finds at the side door decides the invitation wording. Her 'tomorrow' resolves to October 15 against the conversation date. The sign remains her conditional preference with a wall sign as the alternative. Nothing is reported completed."},
+   {"op": "revise", "node_id": "93bf027e",
+@@ -575,8 +580,9 @@
+ ```
+ 
+ I read the result as its future reader. Someone who retrieves only the
+-plan now learns what comes first, when and why, and still sees the sign
+-leaning, the alternative and that nothing is done. Someone who retrieves only the
++plan now learns what comes first, when and why — in Mira's own words, since
++the quote is a surface they see beside the title — and still sees the sign
++leaning, the alternative, the dependency I noticed and that nothing is done. Someone who retrieves only the
+ interpretation gets the read at its current strength, the case it does not
+ cover, and what would separate the two readings; the dated corrections and
+ the earlier incident remain walkable behind it, through an edge whose why no

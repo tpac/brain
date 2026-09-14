@@ -37,6 +37,13 @@ HEALER = {
     'trace_lookback_hours': 720,     # 30 days of traces to search
 }
 
+# How the healer prompt renders a target's edges (contract.render_edge_lines
+# over NODE_FORMAT_DEFAULTS): every relation, the description whole, ages
+# relative.
+HEALER_EDGE_FORMAT = {
+    'time_format': 'relative',
+}
+
 # Interaction config default for the `s2_healer` K — sliced from HEALER so
 # model/max_tokens have exactly one home in this file.
 HEALER_INTERACTION_DEFAULT = {

@@ -6,7 +6,9 @@ This contract defines:
 - How the node catalog is built (build_node_catalog)
 
 Node formatting uses render_rich_node() from servers.contract.
-Interaction: 's1e' in interactions table. Prompt is learnable.
+Interactions: `s1e` (the system prompt, encoding_prompt.py) and `s1e_gist`
+(the pre-timeline rules, encoding_gist_prompt.py) — both learnable, both read
+through get_interaction_prompt/_config; their config defaults live here.
 """
 
 import os
@@ -175,6 +177,36 @@ S1E_INTERACTION_DEFAULT = {
     'model': 'claude-sonnet-4-6',
 }
 
+# Interaction config default for `s1e_gist` — the operating rules restated
+# just before <timeline> (template: encoding_gist_prompt.py). `enabled` is the
+# one knob: an eval arm or an operator turns the gist off without touching the
+# words (override parameters={'enabled': False}); the assembler subscripts it,
+# so the config is total by construction.
+S1E_GIST_INTERACTION_DEFAULT = {
+    'enabled': True,
+}
+
+
+def validate_s1e_gist_config(config):
+    """Violations for an `s1e_gist` override config: `enabled` must be a
+    bool. A typo'd `"enabled": "false"` is truthy — it would keep the gist on
+    while the operator believes it off, which is exactly the silent shape the
+    resolver's validator door exists to refuse."""
+    enabled = config.get('enabled', True)
+    if not isinstance(enabled, bool):
+        return ["enabled must be true or false, got %r" % (enabled,)]
+    return []
+
+# The encoder's toolset — the brain_mcp tools handed to the S1 encoding
+# agent (encode._get_tool_schemas). Contract-owned so the vocabulary guardrail
+# (tests/test_teaching_vocabulary_sync.py) and the prompt's tool names bind
+# to the same set. Standalone tools outside it (revise_edge, connect, ...)
+# are Anchor's and S2's, not the encoder's.
+ENCODING_TOOLS = frozenset({
+    'remember_batch', 'revise_batch', 'brain_batch', 'connect_batch',
+    'recall_batch', 'get_nodes',
+})
+
 # Lived-sequence timeline (S1E code-half piece 1): how many recent s0 events to
 # pull when assembling the messages+actions interleave. Bounded by EPISODE_MAX_LIMIT
 # (=500) — recall_episodes/filter_events clamps anything larger — so 500 IS the max
@@ -211,6 +243,10 @@ S1_NODE_CONFIG = {
     # s2:*) — noise to the encoder, which shouldn't reason about who wrote a node.
     # render_rich_node defaults show_encoding_source=True, so hide it explicitly.
     'show_encoding_source': False,
+    # Placement as context, titles only: the encoder reads which communities
+    # a node sits in but is handed no id to link to — community nodes stay
+    # out of the catalog and S2CE owns placement.
+    'communities': 'title',
 }
 
 # Provenance tags for the widened catalog (Piece 3), in PRIORITY order — a node in
@@ -232,52 +268,17 @@ PROVENANCE_TAGS = (
 # (recall excludes them), so they never compete for priority.
 ASSOCIATED_TAG = '[associated]'
 
-
-def _filter_noise_relations(nodes_map, brain):
-    """Drop noise-aspect relations from each catalog node's connections (lived
-    arm only). The noise aspect (aspects_v1.json) is the single source for
-    structural-only relations with no semantic claim — community_member,
-    co_anchored, and the legacy S2 markers. The encoder
-    shouldn't read (or learn to imitate) plumbing edges.
-
-    Multi-relation aware: a connection survives when ANY non-noise relation
-    remains; the compat fields (relation/description = top-weight survivor)
-    re-derive so render_rich_node shows a semantic verb, never a structural one.
-    A stub brain without `aspects` degrades quietly to unfiltered (tests)."""
-    try:
-        noise = set(brain.aspects.relations_in(['noise']))
-    except AttributeError:
-        return
-    if not noise:
-        return
-    for node in nodes_map.values():
-        conns = node.get('connections')
-        if not conns:
-            continue
-        kept = []
-        for c in conns:
-            rels = [r for r in (c.get('relations') or ())
-                    if r.get('relation') not in noise]
-            if rels:
-                c['relations'] = rels
-                c['relation'] = rels[0].get('relation') or c.get('relation')
-                c['description'] = rels[0].get('description') or ''
-                kept.append(c)
-            elif not c.get('relations') and c.get('relation') not in noise:
-                kept.append(c)   # bare single-relation shape (no relations list)
-        node['connections'] = kept
-
-
 def _dedup_correction_relations(nodes_map, brain):
     """Drop correction-aspect relations from a node's rendered connections when
     the node's ⚠ correction block already carries that counterpart (view
     policy only). The ⚠ render is the privileged form — direction-explicit,
     corrector content inline, immune to edge_limit — so the same relationship
     in the Edges list is pure duplication (found live: f3302000 rendered its
-    supersedes→9ae6820a both ways). Multi-relation aware like the noise
-    filter: a connection survives when any NON-correction relation remains
-    (supersedes often rides with extends). Aspect source of truth:
-    correction_improvement in aspects_v1.json. Stub brains degrade quietly."""
+    supersedes→9ae6820a both ways). Multi-relation aware: a connection
+    survives when any NON-correction relation remains (supersedes often rides
+    with extends). Aspect source of truth: correction_improvement in
+    aspects_v1.json. Stub brains degrade quietly. (Noise relations never
+    reach here — get_node excludes them for every reader.)"""
     try:
         corr_rels = set(brain.aspects.relations_in(['correction_improvement']))
     except AttributeError:
@@ -379,10 +380,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
         (catalog_text, node_id_set) — formatted catalog + set of IDs rendered.
     """
     conn = getattr(brain, 'conn', brain)  # tests may pass raw conn
-    # Lived-arm gate, captured BEFORE the `or {}` normalization below: extra_ids
-    # is only ever non-None on the lived arm, and the noise-edge filter rides it
-    # (control arm renders unfiltered — byte-identical to the long-standing path).
-    lived_arm = extra_ids is not None
     # Node ids are 8-char hex (v29), so these match the full ids the trace
     # streams carry.
     surfaced_ids = surfaced_ids_of(judge_outputs)
@@ -465,8 +462,6 @@ def build_node_catalog(judge_outputs, brain, extra_ids=None,
     # each. brain.get_node(list) is the batch form.
     fetch_ids = list(catalog_ids) + assoc_order
     rich_map = brain.get_node(fetch_ids) if fetch_ids else {}
-    if lived_arm:
-        _filter_noise_relations(rich_map, brain)
     if view_policy:
         _dedup_correction_relations(rich_map, brain)
     # Loop-invariant: one scoped cfg per tier for the whole catalog (can be

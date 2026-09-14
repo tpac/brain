@@ -279,15 +279,19 @@ S2CE_NODE_FORMAT = {
     'metadata_limit': 150,      # Key metadata only
     'correction_render': 'balanced',  # relation verb + edge desc + 150-char excerpt; NOT heavy (the per-node correction firehose that blew the context to 217K)
     'time_format': 'relative',  # "2d ago" not "2026-04-09"
+    'communities': 'title',     # where a rep already sits — context for placement, no ids
     # An inspection can fetch a community too. Its creation-time lists must
     # not masquerade as live membership after the decision view omitted them.
     'extra_skip_keys': ('community_members', 'community_key_decisions'),
 }
 
-# Compact format for existing communities in the context listing.
-# Just enough for the encoder to check "does my proposal overlap with this?"
+# Existing communities in the context listing (the ~15 recall picks). The
+# encoder REVISES these — a merge rewrites the narrative, an add extends it —
+# so it reads each one whole: a 150-char gist cut 73% of them (community
+# content averages ~1,100 chars) and a rewrite from a gist loses the story.
+# ~15 × 1.1K chars per batch is the price; edges and metadata stay off.
 S2CE_COMMUNITY_FORMAT = {
-    'content_limit': 150,       # Brief narrative gist
+    'content_limit': None,      # the whole narrative — it is what gets revised
     'edge_limit': 0,            # No edges
     'metadata_limit': 0,        # No metadata — content is the narrative
     'time_format': 'relative',

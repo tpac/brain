@@ -44,54 +44,162 @@ from servers.loud_truncation import cap_text_at_boundary
 # with NO prose support (eval/mcp_variants/probe_v1_oneof_prefix.*); see
 # eval/mcp_batch_probe.py. Dict order = probed branch order — keep it.
 
-# Shared schema for revise's patch-mode content field — one source for the
-# revise/revise_batch tool schemas AND brain_batch's revise branch; two
-# hand-maintained copies of a wire contract drift.
-CONTENT_EDITS_SCHEMA = {
-    "type": "array",
-    "description": (
-        "Surgical content patches, applied in order: each item replaces ONE "
-        "exact occurrence of `old` with `new` in the stored content. `old` is "
-        "copied VERBATIM from the node's current content and must match "
-        "exactly once — a missing or ambiguous match fails this op loudly "
-        "with guidance. This is how a falsified claim gets fixed without "
-        "re-authoring — and risking — everything else the node holds. "
-        "Mutually exclusive with `content` (a full rewrite is for "
-        "restructures)."),
-    "items": {
-        "type": "object",
-        "required": ["old", "new"],
-        "properties": {
-            "old": {"type": "string", "description":
-                    "Exact, unique substring of the current content"},
-            "new": {"type": "string", "description": "Replacement text"},
-        },
+# The revise rule (docs/REVISE-SHAPE-SPEC.md §1): on revise a field takes
+# either its NEW VALUE — the whole field replaced — or a SWAP `{old, new}`
+# (a list of swaps for several spots) that changes only what is stale. One
+# source for the revise/revise_batch tool schemas AND brain_batch's revise
+# branch; two hand-maintained copies of a wire contract drift.
+REVISE_RULE = (
+    "On revise a field takes its NEW VALUE (the whole field replaced) or a "
+    "swap `{old, new}` — a list of swaps for several spots — that changes "
+    "only what is stale; `old` is copied VERBATIM from the node as shown and "
+    "must occur exactly once, or the op fails loudly with the count and "
+    "nothing is written. Fields not named are untouched. Edges ride as "
+    "`connect_to` exactly as on remember: on revise an entry changes the "
+    "edge this node already has to that `target` (its `why`, or its "
+    "`relation` — value or swap), or creates it if there is none.")
+
+# The swap item. No prose of its own: REVISE_RULE states the rule once per
+# op description, and this object is inlined at every swappable field, so a
+# sentence here would ride the tool blob many times over.
+SWAP_SCHEMA = {
+    "type": "object",
+    "required": ["old", "new"],
+    "properties": {
+        "old": {"type": "string", "description":
+                "Exact, unique span of the current value"},
+        "new": {"type": "string", "description": "Replacement text"},
     },
 }
 
+# The reference forms. A tool schema states each shared shape ONCE under its
+# root `$defs` and points at it from every field that takes it — forty inline
+# copies of the swap object cost ~8K chars per encoder round for information
+# the agent has after the first, and the generation-shape probe scores the
+# reference form identical to inline. attach_defs() (below, after the shapes
+# it registers) adds to a tool the definitions it actually references.
+REF_SWAP = {"$ref": "#/$defs/swap"}
+REF_SWAP_LIST = {"type": "array", "items": REF_SWAP}
+REF_CONNECT_TO_ITEM = {"$ref": "#/$defs/connect_to_item"}
+REF_REVISE_CONNECT_TO_ITEM = {"$ref": "#/$defs/revise_connect_to_item"}
+
+
+def is_swap(value):
+    """`{old, new}` — one in-place swap (REVISE_RULE)."""
+    return isinstance(value, dict) and set(value) == {'old', 'new'}
+
+
+def is_swap_list(value):
+    """A non-empty list of swaps."""
+    return (isinstance(value, list) and bool(value)
+            and all(is_swap(v) for v in value))
+
+
+def validate_swaps(value, field):
+    """Shape check for a swap or swap list on `field` — string `old`
+    (non-empty) and `new`, `old != new`. Returns (ok, error)."""
+    swaps = value if isinstance(value, list) else [value]
+    for i, e in enumerate(swaps):
+        if (not is_swap(e) or not isinstance(e['old'], str) or not e['old']
+                or not isinstance(e['new'], str)):
+            return False, ("%s swap[%d] must be {old: <non-empty string>, "
+                           "new: <string>}" % (field, i))
+        if e['old'] == e['new']:
+            return False, ("%s swap[%d]: old and new are identical — a no-op "
+                           "swap is a mistake, not a patch" % (field, i))
+    return True, None
+
+
+def apply_swaps(stored, value, field):
+    """Apply a swap or swap list to `field`'s stored value, in order, each
+    `old` matching exactly once against the running result (REVISE_RULE).
+    Zero or ambiguous matches fail loudly with the count — a swap that lands
+    in the wrong place silently corrupts a surface recall reads. Errors are
+    written to teach the calling agent the fix. Returns (new_value, None) or
+    (None, error)."""
+    ok, err = validate_swaps(value, field)
+    if not ok:
+        return None, err
+    swaps = value if isinstance(value, list) else [value]
+    current = stored
+    for i, e in enumerate(swaps):
+        old, new = e['old'], e['new']
+        n = current.count(old)
+        if n == 0:
+            return None, ("%s swap[%d]: `old` not found in the node's current "
+                          "%s (%d chars). `old` must be copied VERBATIM from "
+                          "the value as shown — if your view of this node was "
+                          "truncated or aged, expand it with get_nodes first, "
+                          "or send the field's full new value instead."
+                          % (field, i, field, len(current)))
+        if n > 1:
+            return None, ("%s swap[%d]: `old` matches %d places — extend it "
+                          "with surrounding context until it is unique."
+                          % (field, i, n))
+        current = current.replace(old, new, 1)
+    return current, None
+
+
+def swappable(prop):
+    """A text field's revise-time schema: `string | swap | swap[]`, keeping
+    the field's own description. Applied to every get_swap_fields() spec
+    wherever a revise surface is generated. The swap is a `$ref` — the tool
+    carrying the field gets the definition from attach_defs()."""
+    out = {"anyOf": [{"type": "string"}, REF_SWAP, REF_SWAP_LIST]}
+    if prop.get("description"):
+        out["description"] = prop["description"]
+    return out
+
+
+# `content_edits` is the ALIAS of `content: [swaps]` — the pre-rule name for
+# the swap list, content-only. Accepted and normalized at the write boundary;
+# retire (drop this schema + the alias handling, add the name to
+# tests/test_retired_fields.py) once the encoder's op dumps show zero uses
+# across a full A/B round.
+CONTENT_EDITS_SCHEMA = {
+    **REF_SWAP_LIST,
+    "description": ("Deprecated alias of `content: [{old, new}, ...]`; "
+                    "passing both is an error."),
+}
+# Deprecated revise-field aliases, alias → the field it stands for. The
+# vocabulary guardrail (tests/test_teaching_vocabulary_sync.py) exempts these
+# keys from the taught set — an alias is advertised and described as
+# deprecated, and taught nowhere on purpose; brain.revise carries the
+# write-side normalization of each (content_edits → content swaps). Retiring
+# one = drop its schema + its normalization + its entry here, and add the name
+# to tests/test_retired_fields.RETIRED_NODE_FIELDS.
+REVISE_FIELD_ALIASES = {'content_edits': 'content'}
+
 # Shared item schema for connect_to entries — one source for the
-# remember/remember_batch schemas AND brain_batch's remember branch
-# (BATCH_OP_SPECS below). Carries the {title, relation, why} shape and
-# the BAD/GOOD `why` examples; without it brain_batch callers had no
+# remember/remember_batch/revise schemas AND brain_batch's remember + revise
+# branches (BATCH_OP_SPECS below). Carries the {target, relation, why} shape
+# and the BAD/GOOD `why` examples; without it brain_batch callers had no
 # generation-time signal for entry shape (2026-06-12 review finding #1).
+# `target` is the key; `title` is its deprecated alias, accepted for one
+# window (the field is an id in the usual case — a name that says "title"
+# lies about its content, and on revise would be actively misleading).
 CONNECT_TO_ITEM_SCHEMA = {
     "type": "object",
-    "required": ["title"],
+    "anyOf": [{"required": ["target"]}, {"required": ["title"]}],
     "properties": {
-        "title": {
+        "target": {
             "type": "string",
             "description": (
-                "Target: for an EXISTING node, its exact 8-char hex id copied "
-                "verbatim from any visible id: surface (a hex-shaped value is "
-                "always treated as an id — never matched as a title — and on a "
-                "miss dropped loudly); for a node "
-                "created in this same batch, its exact title (siblings resolve "
-                "before catalog matches, any declaration order). NEW wins on "
-                "title collision — "
-                "to update an existing catalog node use `revise` on its id, not "
-                "a duplicate-title remember. Unresolved targets are logged and "
-                "skipped, never failing the batch."
+                "The other node: for an EXISTING node, its exact 8-char hex id "
+                "copied verbatim from any visible id: surface (a hex-shaped "
+                "value is always treated as an id — never matched as a title "
+                "— and on a miss dropped loudly). On remember only, a node "
+                "created in this same batch may be named by its exact title "
+                "(siblings resolve before catalog matches, any declaration "
+                "order; NEW wins on title collision — to update an existing "
+                "catalog node use `revise` on its id, not a duplicate-title "
+                "remember). On revise the target must be an id. Unresolved "
+                "targets are logged and skipped, never failing the batch."
             ),
+        },
+        "title": {
+            "type": "string",
+            "description": "Deprecated alias of `target`.",
         },
         "relation": {
             "type": "string",
@@ -134,6 +242,99 @@ CONNECT_TO_ITEM_SCHEMA = {
     },
 }
 
+def connect_to_target(entry):
+    """The target a connect_to entry names — `target`, or its deprecated alias
+    `title`. The one place the alias is known; every reader of an entry's
+    target goes through here, so dropping the alias is a one-line change."""
+    if not isinstance(entry, dict):
+        return entry
+    return entry.get('target') or entry.get('title', '')
+
+
+def connect_to_why(entry):
+    """The why a connect_to entry (or one of its `relations` items) carries —
+    `why`, or its alias `description` (the name the standalone `connect` op
+    and the edge table use). The one place the alias is known; the write
+    path and every scorer read it through here."""
+    if not isinstance(entry, dict):
+        return None
+    return entry.get('why', entry.get('description'))
+
+
+def _revise_connect_to_item_schema():
+    """connect_to on REVISE, derived from the remember item schema: same
+    keys, the same relation vocabulary and `why` exemplars, plus what revise
+    adds — `relation` and `why` take a swap (rename the relation in place /
+    patch the description) because the entry addresses an edge that may
+    already exist, and `target` must be an id (there are no siblings on a
+    revise). Built from CONNECT_TO_ITEM_SCHEMA so an edit there reaches both."""
+    base = CONNECT_TO_ITEM_SCHEMA["properties"]
+    props = dict(base)
+    props["target"] = {"type": "string", "description": (
+        "The other node's exact 8-char hex id — an existing node; sibling "
+        "titles are not valid on revise.")}
+    props["relation"] = swappable({"description": (
+        base["relation"]["description"] + " On revise a bare relation "
+        "identifies the edge row (required when the pair carries more than "
+        "one relation); a swap {old, new} renames it in place — weight and "
+        "history survive. Also the relation to create when the pair has no "
+        "edge yet.")})
+    props["why"] = swappable({"description": (
+        base["why"]["description"] + " On revise a bare string replaces the "
+        "description and a swap {old, new} patches it; required, bare, when "
+        "the edge is being created.")})
+    rel_items = base["relations"]["items"]
+    props["relations"] = {**base["relations"], "items": {
+        **rel_items, "properties": {k: swappable(v) for k, v in
+                                    rel_items["properties"].items()}}}
+    return {**CONNECT_TO_ITEM_SCHEMA, "properties": props}
+
+
+REVISE_CONNECT_TO_ITEM_SCHEMA = _revise_connect_to_item_schema()
+
+# The shapes a tool schema may point at with `$ref` — keyed by the name after
+# `#/$defs/`. The registry attach_defs() draws from; a pointer to a name not
+# here is a build-time error, never a dangling reference the model meets.
+SCHEMA_DEFS = {
+    "swap": SWAP_SCHEMA,
+    "connect_to_item": CONNECT_TO_ITEM_SCHEMA,
+    "revise_connect_to_item": REVISE_CONNECT_TO_ITEM_SCHEMA,
+}
+
+
+def referenced_defs(schema):
+    """Names of every `#/$defs/<name>` a schema points at, transitively
+    through the definitions themselves (revise_connect_to_item points at
+    swap). Raises on a pointer with no registry entry — a dangling `$ref`
+    would otherwise ship silently and leave the model a field it cannot
+    fill."""
+    found, todo = set(), [schema]
+    while todo:
+        node = todo.pop()
+        if isinstance(node, dict):
+            ref = node.get("$ref")
+            if isinstance(ref, str):
+                name = ref[len("#/$defs/"):] if ref.startswith("#/$defs/") else None
+                if name not in SCHEMA_DEFS:
+                    raise ValueError("schema points at an unregistered definition %r" % ref)
+                if name not in found:
+                    found.add(name)
+                    todo.append(SCHEMA_DEFS[name])
+            todo.extend(node.values())
+        elif isinstance(node, list):
+            todo.extend(node)
+    return found
+
+
+def attach_defs(schema):
+    """A tool's inputSchema with `$defs` holding exactly the shapes it
+    references — unchanged when it references none. Applied once per tool
+    when the tool list is built."""
+    names = referenced_defs(schema)
+    if not names:
+        return schema
+    return {**schema, "$defs": {n: SCHEMA_DEFS[n] for n in sorted(names)}}
+
 
 BATCH_OP_SPECS = {
     "remember": {
@@ -152,18 +353,16 @@ BATCH_OP_SPECS = {
             "content": {"type": "string", "description": "Rich content"},
             "connect_to": {"type": "array", "description":
                            "Typed edges to siblings/catalog — see tool description",
-                           "items": CONNECT_TO_ITEM_SCHEMA},
+                           "items": REF_CONNECT_TO_ITEM},
         },
     },
     "revise": {
         "required": ["node_id", "reason"],
-        "description": ("Update node fields. Any other key is a field update "
-                        "(content, situation, reasoning, ...) — specified "
-                        "fields are REPLACED. For content, prefer "
-                        "`content_edits` when fixing specific claims: "
-                        "surgical patches that leave the rest of the content "
-                        "untouched. A full `content` rewrite is for "
-                        "restructures; the two are mutually exclusive."),
+        "description": ("Update an existing node. Any other key is a field "
+                        "(content, title, situation, question, reasoning, "
+                        "...). " + REVISE_RULE + " Non-text fields "
+                        "(confidence, type, event_time, ...) take bare values. "
+                        "`content_edits` is the alias of `content: [swaps]`."),
         "properties": {
             "node_id": {"type": "string", "description": "Node to revise"},
             "reason": {"type": "string", "description":
@@ -171,6 +370,15 @@ BATCH_OP_SPECS = {
                        "events, NOT stored on the node. Distinct from the "
                        "node FIELD `reasoning`, which a revise op updates "
                        "like any other field."},
+            # One text field shown with the value-or-swap type so the batch
+            # schema carries the shape; every other swap field follows the
+            # same type (additionalProperties stays open).
+            "content": swappable({"description":
+                                  "New content, or swaps into the stored content"}),
+            "connect_to": {"type": "array", "description":
+                           "This node's edges to change or add — an entry per "
+                           "target; see the item shape",
+                           "items": REF_REVISE_CONNECT_TO_ITEM},
             "content_edits": CONTENT_EDITS_SCHEMA,
         },
     },
@@ -272,16 +480,29 @@ def normalize_connect_to(value):
 
 STRUCTURAL_FIELDS = {
     "id":         {"store": "nodes", "type": "str", "required": True, "immutable": True},
-    "type":       {"store": "nodes", "type": "str", "required": True,
+    # Every writable str field takes `{old, new}` swaps on revise (REVISE_RULE,
+    # get_swap_fields) — the same default an open KV key has. `bare_only`
+    # marks the exceptions: vocabulary and ISO-valued strings (type,
+    # evolution_status, event_time, emotion_label) and ids, where nothing is
+    # a span. Exclusion is the deliberate act, so a new text field is
+    # swappable without anyone remembering a flag.
+    "type":       {"store": "nodes", "type": "str", "required": True, "bare_only": True,
                    "description": "Node type (decision, lesson, mechanism, correction, moment, open, ... — open vocabulary, use what fits)."},
     "title":      {"store": "nodes", "type": "str", "required": True,
                    "description": "Specific and scannable — the title is itself an embedded recall vector; specificity is findability."},
     "content":    {"store": "nodes", "type": "str", "replace_on_revise": True, "history": "trace events (node_revised deltas); legacy _sys_revision_history blobs dropped by migration",
-                   "description": ("Rich content — reasoning, tradeoffs, specifics. On revise, "
-                                   "prefer content_edits (exact old→new patches) over full "
-                                   "replacement: a rewrite must re-author everything the node "
-                                   "holds, and dropped details are silent losses.")},
+                   "description": ("Rich content — reasoning, tradeoffs, specifics. On revise: "
+                                   "its new value, or `{old, new}` swaps into what is stored "
+                                   "(`content_edits` is the alias of the swap list) — a full "
+                                   "rewrite must re-author everything the node holds, and "
+                                   "dropped details are silent losses.")},
+    # encoder_summary=False: the field stays on the MCP write surface (Anchor
+    # sets it by hand) but is not advertised to the encoder in its field
+    # summary. No worked example exercises these, and an advertised field with
+    # no carrier is written as a constant — confidence 0.7 on every node in
+    # the V3.5 cell — so the encoder is not offered them at all.
     "confidence": {"store": "nodes", "type": "float", "range": (0.0, 1.0), "default": 1.0,
+                   "encoder_summary": False,
                    "description": ("0.0-1.0. Set below 1.0 when the claim is hedged, contested, "
                                    "or inferred — recall exposes it and filters select on it. "
                                    "Don't fabricate precision.")},
@@ -298,16 +519,17 @@ STRUCTURAL_FIELDS = {
     "critical":   {"store": "nodes", "type": "bool", "default": False, "agent_writable": False},
     "emotion":    {"store": "nodes", "type": "float",
                    "description": "Emotional charge of the moment — signed; recall reads the magnitude. Pair with emotion_label."},
-    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral",
+    "emotion_label": {"store": "nodes", "type": "str", "default": "neutral", "bare_only": True,
                       "description": "Name of the felt register ('satisfaction', 'frustration', ...)."},
     # `project` lives in PROMOTED_FIELDS (metadata_kv) — the nodes.project
     # column was dropped in schema v30. Provenance is system-stamped at the
     # write boundary, never agent-authored.
     "personal":   {"store": "nodes", "type": "str", "agent_writable": False},
     "personal_context": {"store": "nodes", "type": "str", "agent_writable": False},
-    "evolution_status":  {"store": "nodes", "type": "str",
+    "evolution_status":  {"store": "nodes", "type": "str", "bare_only": True, "encoder_summary": False,
                           "description": "Claim lifecycle once settled: active | resolved | validated | confirmed | disproven | dismissed."},
-    "source_turn_id":   {"store": "nodes", "type": "str", "description": "message_stream ID that produced this node (episode linkage)"},
+    "source_turn_id":   {"store": "nodes", "type": "str", "bare_only": True, "encoder_summary": False,
+                         "description": "message_stream ID that produced this node (episode linkage)"},
     # system_stamped: excluded from the agent-facing schemas — MCP writes
     # default to 'anchor' at the write boundary; scale agents get theirs
     # force-stamped by apply_encoder_attribution. Never agent-authored
@@ -375,11 +597,15 @@ PROMOTED_FIELDS = {
     "event_time": {
         "store": "metadata_kv",
         "type": "str",
+        "bare_only": True,
         "description": ("When the remembered thing HAPPENED — ISO 8601, "
                         "distinct from created_at (when it was written). "
-                        "Resolve relative dates to absolute; leave absent "
-                        "rather than guess. Read by the temporal lane at "
-                        "recall."),
+                        "Resolve relative and partial dates against the "
+                        "conversation's date: a bare month, weekday or season "
+                        "is the most recent one that fits, with the day marked "
+                        "approximate in content. Leave it absent only when no "
+                        "date can be established. Read by the temporal lane "
+                        "at recall."),
     },
     "reasoning": {
         "store": "metadata_kv",
@@ -426,6 +652,7 @@ PROMOTED_FIELDS = {
     "source_context": {
         "store": "metadata_kv",
         "type": "str",
+        "encoder_summary": False,
         "description": "Session/context when this was encoded.",
     },
 }
@@ -453,6 +680,16 @@ def get_writable_fields():
             and v.get("agent_writable", True)}
 
 
+def get_swap_fields():
+    """{name: spec} of the writable fields that take `{old, new}` swaps on
+    revise (REVISE_RULE): every str field not marked `bare_only`. Open KV keys
+    (not in ALL_FIELDS) are swappable too — callers treat an unknown key as
+    text. Same shape as get_writable_fields so a generator can `swappable(spec)`
+    straight from it."""
+    return {k: v for k, v in get_writable_fields().items()
+            if v.get("type") == "str" and not v.get("bare_only")}
+
+
 def get_remember_fields():
     """Fields that brain.remember() accepts — ALL writable fields.
     Structural fields go to nodes table, promoted fields go to their
@@ -460,8 +697,10 @@ def get_remember_fields():
     return get_writable_fields()
 
 
-def validate_field(name, value):
-    """Validate a field value against the contract. Returns (ok, error_msg)."""
+def validate_field(name, value, revising=False):
+    """Validate a field value against the contract. Returns (ok, error_msg).
+    `revising=True` admits the swap shape (REVISE_RULE) — swaps patch a stored
+    value, so they exist only on revise; on remember a swap is a type error."""
     if name not in ALL_FIELDS:
         return True, None  # Unknown field — free field, no validation
 
@@ -470,6 +709,13 @@ def validate_field(name, value):
         return True, None  # NULL is always valid
 
     expected_type = spec.get("type")
+    # Value-or-swap: a swap is valid on any text field that is not bare_only;
+    # on anything else it is a schema error, said plainly.
+    if revising and (is_swap(value) or is_swap_list(value)):
+        if expected_type == "str" and not spec.get("bare_only"):
+            return validate_swaps(value, name)
+        return False, ("%s takes a bare value, not a swap {old, new} — swaps "
+                       "are for text fields" % name)
     if expected_type == "float":
         try:
             value = float(value)
@@ -537,26 +783,16 @@ NODE_FORMAT_DEFAULTS = {
 }
 
 
-# ── get_nodes BATCH-AWARE FORMATTING ──
-# Prevents tool_result context explosion when encoders call get_nodes
-# on large batches of IDs (the community encoder bug: 30-50 nodes returned
-# as raw JSON dumps = 100-200K tokens, blowing past context window).
-#
-# Callers and their typical batch sizes:
-#   Anchor (MCP):           1-5 nodes   → want full detail
-#   S1E encoder:            5-15 nodes  → need content + edges for context
-#   S2 consolidation:       2-8 nodes   → per-cluster inspection
-#   S2 community encoder:   30-50 nodes → coherence check, gist > depth
-#
-# Strategy: render_rich_node() with scaled config. Small batches stay rich;
-# large batches compress content/edges/metadata but keep structure intact.
-
-# Threshold: below this, return raw JSON (no trimming) — preserves Anchor's
-# single-node drill-downs and targeted lookups.
-GET_NODES_SMALL_MAX = 3
-
-# Threshold: up to this, use balanced config — more room than S2CE but bounded.
-GET_NODES_MEDIUM_MAX = 10
+# ── NODE-FETCH RENDER: two views, one selector ──
+# Every tool that hands nodes back by id or by recall — MCP get_nodes, the
+# recall tool's results, an encoder's own get_nodes results — renders through
+# node_format_for(n, rich). Up to GET_NODES_DETAIL_MAX nodes get the DETAIL
+# view: the reader is going to act on these nodes. More get the SCAN view:
+# the reader is judging fit across many, and edges dominate the cost
+# (measured 2026-06: generous content is nearly free, an extra edge is not).
+# One selector for every door is what keeps a recall of three nodes and a
+# get_nodes of the same three reading identically.
+GET_NODES_DETAIL_MAX = 10
 
 # The agent-facing node-count cap for filter_nodes. The DAL read is unbounded
 # (limit=None → all matches — internal id-set scans need every row); this bound
@@ -568,47 +804,55 @@ NODE_QUERY_MAX_LIMIT = 200
 # Default page an agent gets when it names no limit (mirrors EPISODE_DEFAULT_LIMIT).
 NODE_QUERY_DEFAULT_LIMIT = 50
 
-# Balanced: for 4-10 node batches (S1E, consolidation, Anchor multi-node)
-GET_NODES_BALANCED_FORMAT = {
-    'content_limit': 600,       # full enough for encoding decisions
-    'edge_limit': 6,            # relations matter — keep top 6
-    'metadata_limit': 250,
-    'time_format': 'relative',
-}
-
-# Compact: for 11+ node batches (S2 community encoder coherence checks)
-GET_NODES_COMPACT_FORMAT = {
-    'content_limit': 400,       # gist only — enough to judge fit
-    'edge_limit': 4,
-    'metadata_limit': 200,
-    'time_format': 'relative',
-}
-
-# Small-batch default (<=3 nodes, rich=false): the de-stuffed drill view.
-# Content is the signal you fetched for, so it stays full; the edge tail
-# (40-76% of a well-connected node's payload, weight-sorted) and the heavy
-# correction K/V are what get bounded. This replaces the old <=3 raw-JSON
-# escape hatch — small pulls stay readable without the firehose.
-GET_NODES_SMALL_FORMAT = {
-    'content_limit': None,      # full content — content is signal, not stuffing
-    'edge_limit': 8,            # top-8 by weight: the meaningful constellation
+# DETAIL — the reader will act on these nodes (revise, link, answer from
+# them). Content whole: it is the signal the pull was for. The edge tail
+# (40-76% of a well-connected node's payload) and the heavy correction K/V
+# are what get bounded; the total says when the cut dropped edges.
+GET_NODES_DETAIL_FORMAT = {
+    'content_limit': None,
+    'edge_limit': 8,
     'metadata_limit': 300,
     'correction_render': 'balanced',
     'time_format': 'relative',
+    'communities': 'ref',       # Anchor follows ids: "title" (id:xxxxxxxx)
+    'show_edge_total': True,
 }
 
-# Full: the rich=true opt-in for get_node/get_nodes — the deliberate
-# "give me everything" drill. NOT the old raw dict dump: still curated
-# through render_rich_node (drops _sys_ fields and raw relation sub-dicts),
-# but uncapped on the dimensions that carry meaning — full content, all edges
-# (weight-sorted), and heavy correction K/V (reasoning + raw quotes).
-GET_NODES_FULL_FORMAT = {
-    'content_limit': None,      # full content
-    'edge_limit': None,         # all edges (None → no slice; see render_rich_node)
+# SCAN — the reader is judging fit across many nodes. 800 chars of content
+# is enough to judge a claim and costs little; the edges are the budget.
+GET_NODES_SCAN_FORMAT = {
+    'content_limit': 800,
+    'edge_limit': 5,
+    'metadata_limit': 200,
+    'correction_render': 'balanced',
+    'time_format': 'relative',
+    'communities': 'ref',
+    'show_edge_total': True,
+}
+
+# rich=True (the MCP opt-in on get_node/get_nodes): DETAIL lifted to every
+# edge and the heavy correction K/V (reasoning + raw quotes) — the deliberate
+# "give me everything" drill, still curated through render_rich_node.
+GET_NODES_RICH_LIFT = {
+    'edge_limit': None,
     'metadata_limit': 400,
     'correction_render': 'heavy',
-    'time_format': 'relative',
 }
+
+
+def node_format_for(n, rich=False, explicit=None):
+    """The render config for a fetch of `n` nodes — the one selector behind
+    MCP get_nodes, the recall tool's results and an encoder's get_nodes
+    results. An `explicit` caller config (run_llm_loop's get_nodes_config —
+    how a consumer declares its own representation) wins outright and is
+    never second-guessed; otherwise `rich` lifts DETAIL to the full view,
+    and the count picks DETAIL (act on these) or SCAN (judge across many)."""
+    if explicit is not None:
+        return explicit
+    if rich:
+        return {**GET_NODES_DETAIL_FORMAT, **GET_NODES_RICH_LIFT}
+    return (GET_NODES_DETAIL_FORMAT if n <= GET_NODES_DETAIL_MAX
+            else GET_NODES_SCAN_FORMAT)
 
 # The skinny node shape returned by NodeDAL.filter_nodes (dal.py:2038-2040)
 # when rich=False — id/title/type/confidence/created_at, plus the filtered
@@ -625,14 +869,14 @@ REDIRECTED_FROM_KEY = '_redirected_from'
 
 # What the canonical pull (Brain.get_node) attaches on top of the bare DB row:
 # the KV block, the two fields promoted out of it to top-level, the correction
-# chain, the edges, and — when the requested id was absorbed — the redirect
-# marker. `canonicalize_results` overlays exactly these onto a recall result,
-# so a result carries the same shape whichever recall door the caller came
-# through. Keep in sync with get_node's assembly — the parity test
-# (tests/test_recall_door_parity.py) fails if get_node grows an attachment
-# this tuple doesn't name.
+# chain, the edges, the community membership, and — when the requested id was
+# absorbed — the redirect marker. `canonicalize_results` overlays exactly
+# these onto a recall result, so a result carries the same shape whichever
+# recall door the caller came through. Keep in sync with get_node's assembly
+# — the parity test (tests/test_recall_door_parity.py) fails if get_node
+# grows an attachment this tuple doesn't name.
 CANONICAL_ATTACHMENT_KEYS = ('_metadata', 'situation', 'project',
-                             '_corrections', 'connections',
+                             '_corrections', 'connections', 'communities',
                              REDIRECTED_FROM_KEY)
 
 
@@ -968,6 +1212,85 @@ def scope_marks(node, scope, meta=None):
     return lines
 
 
+def _fmt_node_time(ts, cfg):
+    """A timestamp the way a render config asks for it: relative ('3w ago';
+    time_now = the as-of instant for replay-safe callers, time_fine = sub-day
+    steps for the encoder catalog) or the bare date. None when empty."""
+    if not ts:
+        return None
+    if cfg.get('time_format') == 'relative':
+        from servers.pipeline_contract import _relative_time
+        return _relative_time(ts, now=cfg.get('time_now'),
+                              fine=cfg.get('time_fine', False))
+    return str(ts)[:10]
+
+
+def relation_age(rel, conn=None):
+    """When a relation's CLAIM last changed — the one recency every reader
+    agrees on: `updated_at` (description, weight or verb repaired in place),
+    else `created_at` (never repaired), else the pair's `created_at`. The
+    edge line renders it and get_node's ordering ties break on it, so a
+    freshly repaired claim both reads as recent and sorts as recent."""
+    return (rel.get('updated_at') or rel.get('created_at')
+            or (conn or {}).get('edge_created_at') or '')
+
+
+def render_edge_lines(conn, cfg=None, indent='    '):
+    """The one edge render for LLM readers — the lines under a node's Edges.
+    Every reader that shows a node's edges (the encoder catalog, the recall
+    surface, Anchor's get_node, the S2 units) calls this, so the grammar
+    cannot drift between them.
+
+    `conn` is a get_connections_bulk entry — one neighbor, grouped: id, type,
+    title, direction, edge_created_at, relations: [{relation, description,
+    created_at}]. One line per relation:
+
+        [type id:xxxxxxxx <age>] this <relation> "<neighbor title>" — <description>
+        [type id:xxxxxxxx <age>] "<neighbor title>" <relation> this — <description>
+
+    the second form for an incoming edge (the neighbor is the actor). The age
+    is `relation_age` — when the RELATION's claim last changed — so a reader
+    can tell a fresh claim from one older than the node it hangs on. The
+    description is
+    never truncated: a reader may copy it verbatim as a swap's `old`, and a
+    cut copy fails the exactly-once match. The neighbor title is cut at 100
+    chars — it is the neighbor's own field, not something this line is for
+    editing.
+
+    `cfg` merges over NODE_FORMAT_DEFAULTS like render_rich_node's, so a
+    direct caller (the S2 units) and a rich-node render agree on defaults.
+    edge_style='oneline' is the selection-grade surface: direction, relation
+    and title only; no description or age, and the neighbor's id only when
+    `edge_ids` is set (the inject's seed render, so the reader can fetch it).
+    """
+    cfg = {**NODE_FORMAT_DEFAULTS, **(cfg or {})}
+    title = (conn.get('title') or '')[:100]
+    incoming = conn.get('direction') == 'incoming'
+    rels = conn.get('relations') or [{'relation': conn.get('relation', ''),
+                                      'description': conn.get('description', ''),
+                                      'created_at': None}]
+    if cfg.get('edge_style') == 'oneline':
+        r = rels[0]
+        rel = r.get('relation') or 'related'
+        short = title[:80]
+        # edge_ids (the inject): the neighbor's short id after the title, so
+        # the reader can fetch it. Off for the picker, whose lean render is
+        # ablation-measured without ids.
+        tail = ' (id:%s)' % (conn.get('id') or '?')[:8] if cfg.get('edge_ids') else ''
+        return [indent + ('"%s" %s this' % (short, rel) if incoming
+                          else 'this %s "%s"' % (rel, short)) + tail]
+    lines = []
+    tag_head = '[%s id:%s' % (conn.get('type', '?'), (conn.get('id') or '?')[:8])
+    for r in rels:
+        rel = r.get('relation') or 'related'
+        age = _fmt_node_time(relation_age(r, conn), cfg) or '?'
+        desc = r.get('description') or ''
+        head = ('"%s" %s this' % (title, rel)) if incoming else ('this %s "%s"' % (rel, title))
+        lines.append('%s%s %s] %s%s' % (indent, tag_head, age, head,
+                                        ' — %s' % desc if desc else ''))
+    return lines
+
+
 def render_rich_node(node, config=None):
     """Render a get_rich_node() dict as a formatted string.
 
@@ -979,17 +1302,6 @@ def render_rich_node(node, config=None):
     cfg = {**NODE_FORMAT_DEFAULTS, **(config or {})}
     nid = node.get('id', '?')
     use_relative = cfg.get('time_format') == 'relative'
-
-    def _fmt_time(ts):
-        if not ts:
-            return None
-        if use_relative:
-            from servers.pipeline_contract import _relative_time
-            # time_now: the as-of instant (replay-safe callers pass conversation
-            # time); time_fine: sub-day '3h ago' steps (the encoder catalog).
-            return _relative_time(ts, now=cfg.get('time_now'),
-                                  fine=cfg.get('time_fine', False))
-        return str(ts)[:10]
 
     # Header — individual parts are opt-out via cfg flags (defaults preserve
     # current behavior for callers that don't set them, e.g. Anchor's MCP queries).
@@ -1020,8 +1332,8 @@ def render_rich_node(node, config=None):
     if cfg.get('show_encoding_source', True):
         if node.get('encoding_source'):
             parts.append("src:%s" % node['encoding_source'])
-    created_rel = _fmt_time(node.get('created_at'))
-    revised_rel = _fmt_time(node.get('revised_at'))
+    created_rel = _fmt_node_time(node.get('created_at'), cfg)
+    revised_rel = _fmt_node_time(node.get('revised_at'), cfg)
     if revised_rel and created_rel and revised_rel != created_rel:
         parts.append("created %s, revised %s" % (created_rel, revised_rel))
     elif created_rel:
@@ -1170,17 +1482,29 @@ def render_rich_node(node, config=None):
         meta_limit_heavy=meta_limit,
         limit=cfg.get('correction_limit')))
 
-    # Edges — direction as natural language for contextless LLM understanding.
-    # Title gets 100 chars (was 60) — the "why" description is the load-bearing
-    # signal, and a 60-char title truncation often dropped the meaningful tail
-    # ("Always used together: 'operator correction: don't..." vs full).
+    # Community membership — its own line, never an edge line: community
+    # edges are noise-excluded from `connections` (they carry no claim and
+    # were taking 27% of top-5 slots). cfg `communities`: 'title' shows the
+    # placement as context (most readers), 'ref' adds the id for a reader
+    # that follows it with a pull (Anchor's tools), unset/off renders nothing
+    # (the consolidation block prints its own line; the picker is
+    # ablation-measured).
+    comm_mode = cfg.get('communities')
+    if comm_mode and node.get('communities'):
+        lines.append('  Communities: %s' % ', '.join(
+            ('"%s" (id:%s)' % ((c.get('title') or '?')[:100], (c.get('id') or '?')[:8])
+             if comm_mode == 'ref' else '"%s"' % (c.get('title') or '?')[:100])
+            for c in node['communities']))
+
+    # Edges — one grammar for every reader, owned by render_edge_lines.
     edge_limit = cfg.get('edge_limit', 5)
     all_conns = node.get('connections', [])
     connections = all_conns[:edge_limit]
-    # Edge-total indicator (opt-in via show_edge_total — encoder catalog): when
-    # the limit truncates, say so — '(5 of 23)' tells the reader how connected
-    # the node really is (the DAL pull is uncapped and noise-excluded, so the
-    # total is honest). Default off: legacy renders keep the bare header.
+    # Edge-total indicator (opt-in via show_edge_total — the encoder catalog
+    # and Anchor's small/balanced pulls): when the limit truncates, say so —
+    # '(5 of 23)' tells the reader how connected the node really is (the DAL
+    # pull is uncapped and noise-excluded, so the total is honest). Default
+    # off: legacy renders keep the bare header.
     edges_header = '  Edges:'
     if cfg.get('show_edge_total') and len(all_conns) > len(connections):
         edges_header = '  Edges (%d of %d):' % (len(connections), len(all_conns))
@@ -1191,54 +1515,10 @@ def render_rich_node(node, config=None):
         # reason to go look.
         lines.append('  Edges (%d, not shown — get_nodes for them):'
                      % len(all_conns))
-    if connections and cfg.get('edge_style') == 'oneline':
-        # Selection-grade edge render: direction + relation + target title only.
-        # No description, no id, no timestamps — those are injection payload
-        # (the full style below). One line per edge, top relation only.
-        lines.append(edges_header)
-        # edge_ids (inject): the neighbor's short id after the title, so
-        # the reader can fetch it. Off for the picker, whose lean render
-        # is ablation-measured without ids.
-        _with_id = bool(cfg.get('edge_ids'))
-        for e in connections:
-            title = e.get('title', '')[:80]
-            rels = e.get('relations') or []
-            rel = (rels[0].get('relation') if rels else e.get('relation', '')) or 'related'
-            tail = ' (id:%s)' % str(e.get('id', '?'))[:8] if _with_id else ''
-            if e.get('direction') == 'incoming':
-                lines.append('    "%s" %s this%s' % (title, rel, tail))
-            else:
-                lines.append('    this %s "%s"%s' % (rel, title, tail))
-    elif connections:
+    if connections:
         lines.append(edges_header)
         for e in connections:
-            target_id = e.get('id', '?')[:8]
-            time_str = _fmt_time(e.get('created_at')) or '?'
-            title = e.get('title', '')[:100]
-            ntype = e.get('type', '?')
-            incoming = e.get('direction') == 'incoming'
-
-            relations = e.get('relations', [])
-            if relations and len(relations) > 1:
-                rel_strs = []
-                for r in relations:
-                    rel = r.get('relation', '')
-                    desc = ' — %s' % r['description'] if r.get('description') else ''
-                    if incoming:
-                        rel_strs.append('"%s" %s this%s' % (title, rel, desc))
-                    else:
-                        rel_strs.append('this %s "%s"%s' % (rel, title, desc))
-                lines.append('    [%s id:%s %s] %s' % (
-                    ntype, target_id, time_str, ' | '.join(rel_strs)))
-            else:
-                rel = e.get('relation', '')
-                desc = ' — %s' % e.get('description', '') if e.get('description') else ''
-                if incoming:
-                    lines.append('    [%s id:%s %s] "%s" %s this%s' % (
-                        ntype, target_id, time_str, title, rel, desc))
-                else:
-                    lines.append('    [%s id:%s %s] this %s "%s"%s' % (
-                        ntype, target_id, time_str, rel, title, desc))
+            lines.extend(render_edge_lines(e, cfg))
 
     return '\n'.join(lines)
 
@@ -1266,10 +1546,22 @@ def render_skinny_node(node, extra_value_limit=120):
         (node.get('id') or '')[:8], ('  ' + extra) if extra else '')
 
 
+def encoder_summary_fields():
+    """The writable fields the ENCODER is offered — get_writable_fields minus
+    the ones marked encoder_summary=False (kept on the MCP write surface for
+    Anchor's own hand; hidden from the encoder because nothing teaches them
+    and an advertised field with no carrier is written as a constant)."""
+    return {k: v for k, v in get_writable_fields().items()
+            if v.get("encoder_summary", True)}
+
+
 def generate_field_summary():
-    """Generate a human-readable field summary for the encoding agent prompt."""
+    """Generate a human-readable field summary for the encoding agent prompt.
+    This is the encoder's field surface; the MCP schemas read
+    get_writable_fields directly, so a field can be writable by hand and
+    still absent here (encoder_summary_fields)."""
     lines = []
-    for name, spec in get_writable_fields().items():
+    for name, spec in encoder_summary_fields().items():
         parts = [name]
         parts.append("(%s)" % spec.get("type", "any"))
         if spec.get("required"):
@@ -1286,6 +1578,11 @@ def generate_field_summary():
     lines.append("source_refs  (array)  — 8-char hex trace ids anchoring the node "
                  "to its originating moments; sparse (1-3 load-bearing turns), "
                  "copied verbatim from the input's trace markers")
+    # The revise rule, once, in the contract's own words — this summary is
+    # injected after the prompt, so it is the surface that wins on a
+    # disagreement (E10); it must state the same rule the tools do.
+    lines.append("")
+    lines.append(REVISE_RULE)
     lines.append("")
     lines.append("RETURNS: every remember (single or batch) returns related_nodes — "
                  "the top 5 most similar existing nodes with full content. "

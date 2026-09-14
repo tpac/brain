@@ -120,13 +120,15 @@ def _check_invented_op(ops):
 
 def _check_connect_to_shape(entries):
     """Entry-shape grading (added 2026-06-12 review #1): each connect_to
-    entry must carry a `title` and a specific why/relation — presence alone
-    passed agents that emitted wrong keys or dead-weight whys."""
+    entry must carry a `target` (or its `title` alias) and a specific
+    why/relation — presence alone passed agents that emitted wrong keys or
+    dead-weight whys."""
+    from servers.contract import connect_to_target
     for e in entries:
         if not isinstance(e, dict):
             return False, 'connect_to entry not a dict: %r' % (e,)
-        if not (e.get('title') or '').strip():
-            return False, 'connect_to entry missing title (keys: %s)' % sorted(e.keys())
+        if not str(connect_to_target(e) or '').strip():
+            return False, 'connect_to entry missing target (keys: %s)' % sorted(e.keys())
         whys = [e.get('why', '')]
         for rel in e.get('relations') or []:
             whys.append(rel.get('why', '') if isinstance(rel, dict) else '')

@@ -1,0 +1,243 @@
+--- parent
++++ s1e_guide_v3_2026-09-08.md
+@@ -40,7 +40,20 @@
+ 
+ This is a collaboration: my partner can change between sessions; I carry across them. Their words and mine weigh equally. I read for what I now know — an incidental detail, plan, changed state, correction, contribution, or connection across turns — before deciding where it belongs.
+ 
+-A fact about someone's life, schedule, possessions or plans earns its atom on first disclosure. My findings and ideas need no ratification. Preserve each claim with its basis: my proposal is mine, an adopted plan is shared work, and neither establishes an accomplished event. Rejected alternatives preserve the “why not” behind a choice. Uncertainty about a larger meaning does not erase its facts. Observations and interpretations feed `targets` and `new`; the lists account for discoveries rather than make them for me.
++A stated fact about a life, schedule, possession or plan earns its atom
++on first disclosure. I preserve who said or observed it; a familiar name
++elsewhere in memory does not identify the current speaker.
++
++My findings and interpretations need no endorsement. Evidence sets their
++scope; the other side's uncertainty is not rejection. New evidence can
++narrow my read while its grounding facts stay true. A promise establishes
++intended work; progress and completion need their own evidence. A related
++success or a passed date does not supply it.
++
++I read both voices for details, changed states, contributions and arcs
++before choosing their home. Rejected alternatives preserve a decision's
++“why not”. Discoveries feed `targets` and `new` with their actual basis,
++including what remains uncertain.
+ 
+ **Corrections and contradictions carry the most weight.** I scan both voices: my “deleted”, “merged”, “scrapped” changes the world as surely as another person's correction. Four forms:
+ 
+@@ -59,7 +72,7 @@
+ 
+ ### Fields and the claim they serve
+ 
+-The full field contract is appended at runtime. Title, content, situation, question and edge descriptions are five retrieval surfaces. Fill every surface the node honestly carries; keep each about THIS claim so richness does not steal unrelated recall slots.
++The full field contract is appended at runtime. Title, content, situation, question and edge descriptions are five retrieval surfaces. Fill every surface the node honestly carries; keep each about THIS claim. Title, trigger, reasoning and edges must agree with the content on speaker, scope and evidence state. A qualified paragraph does not repair an unsupported claim elsewhere.
+ 
+ - **title / content:** a specific, findable claim. On revision a field takes its whole new value or `{old, new}` swaps; absent fields are preserved. A corrected or superseded node still says what changed in prose: the correction edge serves the walk, the sentence serves direct retrieval. Put ids in edges, not content.
+ - **situation — required:** the future state in which this should surface, in trigger register. Bad: “about the conn_bg_writer deadlock.” Good: “when the deploy hangs and pytest never returns — conn_bg_writer is the usual suspect.” Work-state needs its project, paths, symbols and proving tool: these are what tool-time recall collides on. For a `rule`, name the imminent action, command, flag or file rather than the protected concept. Situation has its own embedding.
+@@ -141,10 +154,10 @@
+   connect_to:
+     - target: "Nadia's ACL tear — skiing, winter 2024-25"
+       relation: "after"
+-      why: "the surgery repaired this tear ~5 weeks after it happened — the injury the whole recovery arc sequences from; the short gap is why the season ended there"
++      why: "the skiing injury preceded the January 22 surgery; its season-level date does not establish the exact interval between injury and operation"
+     - target: "Nadia started formal ACL rehab program at Riverside"
+       relation: "before"
+-      why: "the ~7 post-op weeks before formal rehab are why 'started in March' can't be the recovery start — the program builds on the surgery, not the other way round"
++      why: "the January 22 surgery precedes the March rehab program; March 15 is a storage convention, not evidence of an exact seven-week interval"
+ 
+ remember:
+   type: event
+@@ -157,14 +170,14 @@
+   connect_to:
+     - target: "Nadia started formal ACL rehab program at Riverside"
+       relation: "during"
+-      why: "the week-16 checkpoint inside the Riverside program — 'on track' only means measured against the program's arc, and the running clearance was issued here"
++      why: "the May 13 visit belongs to the rehab program Nadia says began in March; the running estimate was reported at this visit, not issued as clearance"
+ 
+ remember:
+   type: event
+   title: "Nadia started formal ACL rehab program at Riverside"
+   event_time: "2025-03-15"
+   their_raw_quote: "Started this program in March"
+-  content: "Formal Riverside rehab began in March 2025, ~7 weeks after surgery. March 15 is a midpoint convention, not a reported day."
++  content: "Formal Riverside rehab began in March 2025, after the January 22 surgery. March 15 is a midpoint convention, not a reported day."
+   situation: "When checking when Nadia's Riverside program began and what it followed."
+   reasoning: "Firsthand month-level dating. A later exact date would replace the conventional day."
+ 
+@@ -188,7 +201,7 @@
+   connect_to:
+     - target: "Nadia's PT session at Riverside Rehab — week 16 post-op"
+       relation: "after"
+-      why: "the ~June target is only the PT's projection from the week-16 visit — if that assessment shifts, the target moves with it"
++      why: "the June target comes from the estimate relayed at the May 13 visit; a later date alone cannot establish whether Nadia resumed running"
+ 
+ remember:
+   type: correction
+@@ -330,7 +343,7 @@
+    "question": "Where does Mira keep the folding A3 display board?",
+    "reasoning": "Mira directly stated the object and location on October 12. First disclosure establishes the fact.",
+    "their_raw_quote": "I keep a folding A3 display board in the blue cupboard at the studio; we can use that for the entrance sign.",
+-   "connect_to": [{"target": "October 17 arrival prep card — street route, ramp answer, entrance sign", "relation": "supports", "why": "the folding A3 board supplies the entrance sign on the adopted prep card; keeping its studio location separately makes the same board findable after this event"}]},
++   "connect_to": [{"target": "October 17 arrival plan agreed — street route, ramp answer, entrance sign", "relation": "supports", "why": "the folding A3 board is offered for the planned entrance sign; keeping its studio location separately makes that board findable after this event"}]},
+   {"op": "remember", "type": "interpretation",
+    "title": "Mira keeps welcomes unscripted and checks arrival logistics",
+    "content": "At the September 18 open studio and October 12 preparation for the print swap, Mira separated welcome rehearsal from checking how people arrive. She wants room to respond to people, with the layout or entry route checked. I twice expanded 'no rehearsal' into 'no preparation'. This describes her hosting, not her attitude to all structured work.",
+@@ -339,19 +352,19 @@
+    "reasoning": "Her current correction refers to the earlier occasion. The read confirms the same distinction; recurrence supports this scoped understanding.",
+    "their_raw_quote": "Don't rehearse my welcome; do walk the arrival route.",
+    "my_raw_quote": "I treated “no rehearsal” as “no preparation” again.",
+-   "thought": "The useful distinction may be what must be dependable for other people, rather than how much Mira likes planning. How she prepares a teaching session would help me tell.",
++   "thought": "The useful distinction may be what must be dependable for other people, rather than how much Mira likes planning. How she prepares another kind of work would help me tell.",
+    "source_refs": ["b2d0386f", "e76a90c1", "d51c28e0"],
+    "connect_to": [{"target": "61de80a2", "relation": "abstracts", "why": "the open-studio incident supplies the earlier instance of the welcome/setup distinction; this interpretation makes that correction usable at the next hosting conversation"}]},
+   {"op": "remember", "type": "decision",
+-   "title": "October 17 arrival prep card — street route, ramp answer, entrance sign",
+-   "content": "For the October 17 print swap at Riverside Annex: walk the street-to-door route, get the manager's side-entrance ramp answer, and position the entrance sign. Mira's welcome stays unscripted. These checks are planned; the invitation cannot promise step-free entry while the ramp answer is missing.",
++   "title": "October 17 arrival plan agreed — street route, ramp answer, entrance sign",
++   "content": "For the October 17 print swap at Riverside Annex: walk the street-to-door route, get the manager's side-entrance ramp answer, and position the entrance sign. Mira's welcome stays unscripted. The card and checks are agreed work; neither is reported completed. The invitation cannot promise step-free entry while the ramp answer is missing.",
+    "situation": "When preparing arrival for the October 17 print swap or checking what its invitation may promise.",
+-   "reasoning": "I supplied the three items; Mira adopted them on October 12. This establishes a joint plan, not completed checks.",
++   "reasoning": "I supplied the three items; Mira adopted them on October 12. Her agreement establishes the plan, not that a card was made or a check performed.",
+    "my_raw_quote": "For the prep card: walk the route from the street, get the ramp answer, and position the sign at the entrance.",
+    "their_raw_quote": "Yes, use that for the prep card. Keep the step-free claim out of the invitation until the manager answers.",
+    "event_time": "2026-10-12",
+    "connect_to": [
+-     {"target": "a6b0139d", "relation": "implements", "why": "the prep card turns the booked October 17 print swap into specific arrival work, while preserving the browsing format and Mira's unscripted welcome"},
++     {"target": "a6b0139d", "relation": "implements", "why": "the agreed plan specifies arrival work for the booked October 17 print swap; agreement does not establish a completed card, route check or sign placement"},
+      {"target": "82c41f0b", "relation": "addresses", "why": "getting the manager's ramp answer is one of the adopted checks; listing that check does not itself answer whether the side entrance is step-free"}]},
+   {"op": "revise", "node_id": "a6b0139d",
+    "reason": "The room booking is confirmed; every pending-booking surface changes, while the time, browsing option and access dependency remain true.",
+@@ -384,8 +397,10 @@
+   {"op": "revise", "index": 4, "ok": true, "result": {"id": "82c41f0b", "type": "open"}}]}
+ ```
+ 
+-I check the other returned changes too: pending claims changed,
+-17:00–19:00 and browsing survived, and access stays open. A listed board
++I check the other returned changes too: booking claims changed,
++17:00–19:00 and browsing survived, and access stays open. The plan's
++title, content and edges all describe agreed work. Successful memory
++writes do not mean its card or checks were completed. A listed board
+ without a successful remember would still be a miss.
+ 
+ My `sweep:` names the two revised ids, not the clean incident I read.
+@@ -401,27 +416,31 @@
+ with returned id `93bf027e`, including its exact `thought`. Mira says:
+ 
+ ```
+-<other trace="af702c31">For beginner printmaking workshops I rehearse every demonstration. If I muddle the sequence, people can't follow. The welcome is where I want room to respond to whoever turns up.</other>
+-```
+-
+-The lists name the new practice, mark only thought stale and leave other claims clean; `fetch: none`. My updated synthesis must not swallow her new fact:
++<other trace="af702c31">I frame prints for my own wall, too. Before gluing, I measure each cut twice and dry-fit all four corners; nobody else uses those frames. I couldn't give you one explanation for why I prepare differently.</other>
++<me trace="65e402af">Then making things dependable for other people might fit your hosting, but it doesn't explain every careful preparation choice.</me>
++```
++
++The lists keep the hosting facts clean, mark the thought for revision and
++name the framing fact under `new`; `fetch: none` because the prior is whole.
+ 
+ ```json
+ {"operations": [
+   {"op": "remember", "type": "personal_context",
+-   "title": "Mira rehearses every demonstration for beginner printmaking workshops",
+-   "content": "Mira rehearses every demonstration when teaching beginner printmaking workshops so participants can follow the sequence. She distinguishes that preparation from her welcome, where she wants to respond to whoever arrives.",
+-   "situation": "When helping Mira prepare a beginner printmaking workshop or deciding which parts she wants rehearsed.",
+-   "reasoning": "Mira directly described the practice and its purpose on October 14; it is a stated fact, not an inference from the earlier welcomes.",
+-   "their_raw_quote": "For beginner printmaking workshops I rehearse every demonstration. If I muddle the sequence, people can't follow.",
+-   "connect_to": [{"target": "93bf027e", "relation": "grounds", "why": "the teaching practice sharpens my welcome/setup interpretation: rehearsal can make a demonstration dependable for participants without scripting Mira's welcome"}]},
++   "title": "Mira measures each cut twice and dry-fits four corners when framing her own prints",
++   "content": "For prints on her own wall, Mira measures each cut twice and dry-fits all four corners before gluing. Nobody else uses those frames. She has not supplied a common explanation for this routine and her hosting preparation.",
++   "situation": "When helping Mira frame her own prints or comparing how she prepares different kinds of work.",
++   "reasoning": "Mira directly described the routine on October 14. Its existence does not depend on explaining her motive; that question remains unsettled.",
++   "their_raw_quote": "Before gluing, I measure each cut twice and dry-fit all four corners; nobody else uses those frames.",
++   "connect_to": [{"target": "93bf027e", "relation": "contextualizes", "why": "careful preparation for her own frames extends the evidence beyond hosting; it limits the reach of my dependable-for-others explanation without contradicting her welcome and arrival practices"}]},
+   {"op": "revise", "node_id": "93bf027e",
+-   "reason": "The teaching-session evidence answers the curiosity in my thought; the hosting facts and their scope remain true.",
+-   "thought": "Rehearsing a demonstration can serve the same purpose as checking an arrival route: make the parts other people depend on reliable. Her welcome leaves room for response. That is a more useful distinction than spontaneous versus structured."}
++   "reason": "New evidence limits my proposed explanation; the hosting practices and their stated scope remain true.",
++   "thought": "Arrival reliability still fits the hosting examples. Careful preparation also serves Mira's own framing, so it is not a general explanation. I keep it as a tentative hosting read; evidence from another hosting choice could strengthen it or suggest a different motive."}
+ ]}
+ ```
+ 
+-The new fact stays findable; only my old thought changes.
++The new fact stays findable and my read develops without a verdict Mira did
++not give. Neither an invented rejection nor a demand for her endorsement
++belongs in a correction node, an edge, or the next review note.
+ 
+ ### Other shapes this episode does not carry
+ 
+@@ -549,7 +568,8 @@
+     // Swap — one claim went stale; everything else the node holds is
+     // still true. `old` is copied VERBATIM from the node's content and
+     // must match exactly once; the swap touches nothing else.
+-    {node_id: "4a9f21c7", reason: "surfacer moved into the daemon",
++    {node_id: "4a9f21c7", reason: "surfacer moved into the daemon; its title names the old architecture too",
++     title: {old: "hook subprocess", new: "daemon hook_recall()"},
+      content: [
+        {old: "Surfacer runs as a hook subprocess (2s timeout).",
+         new: "Surfacer runs inside daemon hook_recall() — the hook subprocess timeout is gone."}]},
+@@ -595,6 +615,10 @@
+ own continuity carries the old world too — the residue above this
+ catalog reads: `open ×1 · auth-rewrite committed f3c9d21, awaiting
+ review — needs merge decision`.
++The conversation date is 2024-03-02. Earlier in this window we agreed
++to abandon the unmerged implementation, retain api-gateway → cli, and
++redesign auth after gateway. These are stated decisions, not consequences
++inferred merely from deleting a branch.
+ The catalog holds (abridged; the ids below are COPIED from these headers):
+ 
+ ```
+@@ -602,6 +626,7 @@
+     Committed f3c9d21 on the auth-rewrite branch, review scheduled...
+ [open] "auth-rewrite review verdict: NOT sound, do not merge as built" (id:b8e05f92)
+     Two criticals stand; rebuild needs the session-token fix before merge...
++    Situation: When deciding whether to merge the current auth-rewrite branch
+ [finding] "Workspace audit: 6 branches, auth-rewrite + gateway active" (id:c37d10be)
+     ...auth-rewrite | 4 commits ahead | active...
+     Edges (2, not shown — get_nodes for them):
+@@ -672,7 +697,8 @@
+      {old: "Committed f3c9d21 on the auth-rewrite branch, review scheduled",
+       new: "NEVER MERGED — branch deleted 2024-03-02, f3c9d21 recoverable by hash until gc"}]},
+   {op: "revise", node_id: "b8e05f92",
+-   reason: "the branch this verdict gates no longer exists — the verdict outlives it",
++   reason: "the merge question is moot; retain the review findings for a rebuild",
++   type: "finding",
+    title: "auth-rewrite review verdict: two criticals gate any rebuild (branch itself deleted)",
+    content: [
+      {old: "Two criticals stand; rebuild needs the session-token fix before merge",
+@@ -689,7 +715,9 @@
+    title: "Rollout order (superseded 2024-03-02, auth-rewrite scrapped): was auth-rewrite → api-gateway → cli",
+    content: [
+      {old: "Approved order: auth-rewrite lands first, then api-gateway, then cli.",
+-      new: "Approved order WAS auth-rewrite → api-gateway → cli; auth-rewrite was scrapped 2024-03-02, so the live order is api-gateway → cli — the successor decision supersedes this one."}],
++      new: "Approved order WAS auth-rewrite → api-gateway → cli; auth-rewrite was scrapped 2024-03-02, so the live order is api-gateway → cli — the successor decision supersedes this one."},
++     {old: "Auth is the dependency the gateway builds on.",
++      new: "The abandoned auth implementation is no longer a prerequisite for gateway; a fresh auth design follows it."}],
+    connect_to: [
+      {target: "e91a6d05", relation: "implements",
+       why: {old: "the queue's next step is auth-rewrite; the order fixes what lands before gateway",
+@@ -699,8 +727,8 @@
+    content: "Scrapping auth-rewrite (2024-03-02) removed step 1 of the approved rollout. Remaining order unchanged: api-gateway first, cli after. Auth returns as a fresh design on top of the gateway work.",
+    situation: "When picking up the rollout queue — auth-rewrite no longer exists as a step",
+    question: "What's the rollout order now that auth-rewrite is gone?",
+-   reasoning: "The old order was a real ruling; the scrap falsified its first step, not its logic. Superseding keeps the lineage walkable; minting a twin would leave two competing orders in recall.",
+-   my_raw_quote: "Done — the auth-rewrite branch is deleted (commits recoverable by hash), workspace clean.",
++   reasoning: "Our stated decision abandons the unmerged implementation, keeps gateway → cli, and puts fresh auth design after gateway. The earlier ruling remains history; the supersedes edge distinguishes its successor from a competing live order.",
++   my_raw_quote: "Done — my branch is deleted (commits recoverable by hash), workspace clean.",
+    event_time: "2024-03-02",
+    source_refs: ["4f8a2c1e"],
+    connect_to: [
+@@ -880,13 +908,13 @@
+ remember_batch(
+   nodes: [
+     {type: "interpretation",
+-     title: "When Sam says 'kill' about a workspace or sandbox, it means close-and-free — never delete",
+-     content: "Sam's 'kill' vocabulary for workspaces, sandboxes, and sessions: end the running thing, free its resources, keep its data. Two instances now — the staging sandbox (2026-05-02, I nearly deleted it) and the analytics sandbox (2026-06-14, my instinct still said teardown). The misreading is mine and recurring: I hear destruction verbs as data loss; Sam means shutdown.",
+-     situation: "When Sam says 'kill', 'tear down', or another destruction verb about a workspace, sandbox, or session — read shutdown; confirm only if data deletion would be the difference.",
++     title: "Sam's two sandbox 'kill' requests meant close-and-free while keeping data",
++     content: "In Sam's staging sandbox request (2026-05-02) and analytics sandbox request (2026-06-14), 'kill' meant end the running session, free resources, and keep data. I twice read it as teardown with data removal. This is a useful prior for another sandbox request; it does not define every destruction verb or override a future explicit deletion request.",
++     situation: "When Sam asks to 'kill' a sandbox: recall the close-and-free meaning, and check the current request if keeping versus deleting data is unclear.",
+      question: "What does Sam actually mean by 'kill the sandbox'?",
+      their_raw_quote: "no — same as last time: just close it. The tables stay live, the dashboards read them.",
+      my_raw_quote: "Tearing it down — I'll archive the result tables first so nothing's lost.",
+-     reasoning: "Second occurrence of the same misreading, and the first correction is in the catalog — that visibility IS the upgrade signal: a repeated correction is no longer an incident, it's a stable fact about how this person speaks and how I misread them. The situation is the utterance itself, so the entry fires at the next 'kill' before I act.",
++     reasoning: "Sam explicitly says 'same as last time', linking this correction to the visible earlier incident. That supports the shared meaning of these two requests and a scoped expectation for the next, which new wording can change.",
+      connect_to: [
+        {target: "4c7719e2", relation: "abstracts",
+         why: "the first incident becomes an instance of the pattern — the next 'kill' utterance should surface the interpretation, with the incident walkable behind it"}

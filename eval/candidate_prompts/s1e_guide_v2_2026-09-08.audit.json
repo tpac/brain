@@ -1,0 +1,42 @@
+{
+  "files": {
+    "s1e_guide_v1_2026-09-08.md": {
+      "characters": 112026,
+      "sha256": "0560ffe825b6bdf30634a627129a57e5bfa09871949d6f9281a34935886a1e64",
+      "revise_ops": 11,
+      "revise_fields": {
+        "connect_to": 1,
+        "content": 8,
+        "event_time": 1,
+        "reasoning": 1,
+        "situation": 3,
+        "title": 7,
+        "type": 1
+      }
+    },
+    "s1e_guide_v2_2026-09-08.md": {
+      "characters": 119926,
+      "sha256": "4637785918cab686ec9abd29096def0691fb9aaf443b63d893736c4883551edb",
+      "revise_ops": 13,
+      "revise_fields": {
+        "connect_to": 2,
+        "content": 11,
+        "event_time": 2,
+        "question": 1,
+        "reasoning": 4,
+        "situation": 6,
+        "thought": 1,
+        "title": 8,
+        "type": 1
+      }
+    }
+  },
+  "schemas": "branch _get_tool_schemas; structural constraints checked, not a third-party validator",
+  "new_json_calls": 7,
+  "new_json_operations": 14,
+  "quoted_spans_checked": 11,
+  "connect_to_edges_checked": 12,
+  "event_swap_preservation": "pass",
+  "preserved_guide_components": "round contract, targets, fetch, sweep exemplar, write mapping",
+  "gist_characters": 4372
+}

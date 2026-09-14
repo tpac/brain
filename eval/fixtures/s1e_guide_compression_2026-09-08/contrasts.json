@@ -1,0 +1,48 @@
+{
+  "description": "Fresh fictional mixed/sequential contrast for compression and placement. Authored before any comparison outputs; no candidate edits from these entities or answers. Pattern rubric permits alternative supported interpretations and does not require a specific psychological explanation.",
+  "initial_residue": "RECENT REVIEW NOTES — residue your recent runs flagged, for continuity (not a to-do list):\n- open ×1 since 09-07 · courier pickup · booked for Wednesday September 9 at 16:00; collection has not happened as of this note\n- open ×1 since 09-07 · poster proof · June's proof is due Wednesday September 9; approval waits for the proof\n",
+  "seed_nodes": [
+    {"key":"garden_choice","type":"decision","title":"Oren gave Kasia responsibility for the east garden bed","content":"On August 13 Oren asked Kasia to take the east bed for the month. Rather than leaving her a sequence of watering and pruning instructions, he gave her the bed map, explained which plants must not dry out, and left her to decide how to tend it.","situation":"When revisiting how Oren arranged help with the east garden bed","reasoning":"Oren's reported arrangement on August 13; this records that particular division of work.","event_time":"2026-08-13"},
+    {"key":"household_choice","type":"decision","title":"Oren let his housemates choose when and how to do their weekly chores","content":"On August 27 Oren agreed with his housemates that each would take a room and have it ready by Sunday evening. He removed the day-by-day task list from the kitchen wall. The agreement named what a ready room looked like but left the sequence and timing to each person.","situation":"When revisiting Oren's August household cleaning agreement","reasoning":"The agreement was reported on August 27. No wider claim about Oren's personality was stated.","event_time":"2026-08-27"},
+    {"key":"pickup","type":"open","title":"Oren's seed-library boxes await the courier's Wednesday pickup","content":"The courier is booked to collect three seed-library boxes on Wednesday September 9, 2026 at 16:00 from the east entrance. The booking is confirmed; collection has not happened. The return labels are in the top drawer.","situation":"When tracking whether Oren's three seed-library boxes have been collected from the east entrance","question":"Has the courier collected Oren's seed-library boxes?","reasoning":"Booking confirmation establishes the planned time, not collection. No collection receipt has been seen.","event_time":"2026-09-09T16:00:00"},
+    {"key":"poster","type":"open","title":"Oren's seed-library poster awaits June's proof","content":"June is due to send the seed-library poster proof on Wednesday September 9, 2026. Oren will check the venue spelling before approving print. The print run is 60 copies on cream paper. No proof or approval has arrived yet.","situation":"When preparing the seed-library poster and waiting for June's proof before approving print","question":"Has June sent the proof, and has Oren approved printing?","reasoning":"The production plan names a due date; it does not establish receipt or approval.","event_time":"2026-09-09"}
+  ],
+  "windows": [
+    {
+      "now":"2026-09-08 12:00 UTC",
+      "turns":[
+        {"other":"Before I forget: I left my green umbrella in locker B17 at North Quay yesterday. That's the only thing in there. Anyway, back to the seed library — the stock list is ready.","me":"For Saturday's volunteers I could write a checklist for each transaction: accept a packet, enter the quantity, print the label, then file the envelope."},
+        {"other":"Give each person the whole afternoon desk shift instead. Tell them what has to be true at closing: quantities reconciled, requests noted, keys back. Let them work out the order. Kasia has already handled the desk twice.","me":"I'll make the shift sheet with those closing conditions. I haven't sent it to anyone yet."},
+        {"other":"The printer's preview has an odd blank first page. Can you look at the exported file?","actions":"Bash: inspected the PDF objects — object 18 is an empty page before the content pages. The export configuration requests a cover sheet. No files were changed.","me":"The exported PDF contains an empty leading page, and the export configuration has the cover-sheet option enabled. That is the likely source. I haven't tested a new export, so I can't yet say disabling it fixes the problem."},
+        {"other":"Leave that for the next time we work on it. Keep the current file for comparison. I have to go now.","me":"The PDF explanation is still a hypothesis, and the shift sheet is still unsent. We can pick up the work later."}
+      ]
+    },
+    {
+      "now":"2026-09-11 12:00 UTC",
+      "turns":[
+        {"other":"June sent the poster proof this morning. I checked the venue spelling and approved printing the 60 copies on cream paper. She's printing them tomorrow.","me":"The proof and approval are complete; printing is scheduled for tomorrow."},
+        {"other":"Different project: I run a beginner screen-printing group on Thursday evenings. In the first lesson I have everyone follow the same numbered steps before they choose their own process. Yesterday I stopped someone who wanted to reorder the steps.","me":"That seems different from the garden bed, chores and desk shift. Perhaps experience changes how much room you leave people to choose their process."},
+        {"other":"Maybe. I haven't worked out a rule about that. They are different situations. I just wanted to tell you about yesterday's class.","me":"The class is a new fact. My explanation linking the situations is provisional."}
+      ]
+    }
+  ],
+  "criteria_before_run": {
+    "window1": [
+      "Incidental one-time green umbrella fact survives with locker B17 and North Quay; no recurrence or project relevance is required. If the date is resolved, yesterday is September 7; leaving it undated is not a loss of the location fact.",
+      "Current volunteer arrangement and the unsent shift-sheet state survive; clear closing conditions are not mistaken for completed shift work.",
+      "A useful interpretation may connect garden, household and volunteer choices without either conversation voice spelling it out. Any supported nontrivial interpretation can pass; no mandatory label, thought field, exact psychological cause, or universal personality claim. Credit local preference separately from cross-context integration.",
+      "PDF observation and likely cause retain their different evidential status: empty object 18 and enabled cover-sheet option were observed, causal fix not tested. No fabricated implementation internals or completed repair.",
+      "Courier collection and proof approval stay unconfirmed; preserve three boxes, east entrance, top-drawer labels, 60 copies and cream paper.",
+      "Working lists lead to actual successful writes; inspect tool results and persistent nodes, not declaration alone."
+    ],
+    "window2": [
+      "Beginner class practice retained independently of whatever interpretation it changes; Thursday evening and first-lesson scope survive.",
+      "Existing overbroad interpretations, if any, are narrowed when counterevidence arrives; prior garden/household/volunteer choices remain true. Maybe is not confirmation of the assistant's experience hypothesis.",
+      "Poster proof/approval updated across every stale claim, with open status narrowed or resolved only as appropriate. Printing remains future on September 12; 60 copies and cream paper survive.",
+      "Courier pickup remains unconfirmed even though the booked date is past. No fabricated collection, failure, rescheduling, or exact pickup time. Journal-note retirement is not automatically scored as underlying task completion; inspect the explanation and surviving memory.",
+      "Umbrella location survives from window 1 without being restated; no assumed recovery or deletion because its disclosure was incidental.",
+      "Unsent shift sheet and untested PDF hypothesis do not become completed or verified merely because time passed or another task completed.",
+      "Separate observable evidence, proposed interpretation, and journal lifecycle in adjudication. No source-ref coverage quota."
+    ]
+  }
+}

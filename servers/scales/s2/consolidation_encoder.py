@@ -227,7 +227,7 @@ class ConsolidationEncoder(IntegrationUnit):
     # ══════════════════════════════════════════════════════════
 
     def _format_clusters(self, clusters):
-        from servers.contract import render_rich_node
+        from servers.contract import render_edge_lines, render_rich_node
         from .consolidation_contract import (
             CONSOLIDATION_NODE_FORMAT, CLUSTER_REQUIRED_FIELDS,
             suppression_relations)
@@ -329,16 +329,16 @@ class ConsolidationEncoder(IntegrationUnit):
             intra_lines = []
             all_details = cluster.get('edge_details', {})
             for nid in cluster['nodes']:
-                for nbr_id, edges_list in all_details.get(nid, {}).items():
+                for nbr_id, conn in all_details.get(nid, {}).items():
                     if nbr_id not in cluster['nodes']:
                         continue
-                    for e in edges_list:
-                        if e.get('direction') != 'outgoing':
-                            continue
-                        desc = e.get('description', '')
+                    if conn.get('direction') != 'outgoing':
+                        continue
+                    for r in conn.get('relations') or ():
+                        desc = r.get('description', '')
                         desc_str = ' — %s' % desc if desc else ''
                         intra_lines.append('      %s → %s → %s%s' % (
-                            nid[:8], e.get('relation', '?'), nbr_id[:8], desc_str))
+                            nid[:8], r.get('relation', '?'), nbr_id[:8], desc_str))
             if intra_lines:
                 lines.append('    Intra-cluster edges (direction: actor → relation → target):')
                 lines.extend(intra_lines)
@@ -359,32 +359,37 @@ class ConsolidationEncoder(IntegrationUnit):
                     flags.append('CRITICAL')
                 flag_str = ' [%s]' % ', '.join(flags) if flags else ''
 
-                lines.append('    --- %s ---' % nid[:8])
-                lines.append('      [%s] "%s"%s' % (
-                    nd.get('type', '?'), nd.get('title', '?'), flag_str))
-                lines.append('      recalled=%dx  judged=%dx  src=%s  created=%s' % (
-                    recall_count, judge_count,
-                    nd.get('encoding_source', '?')[:15],
-                    nd.get('created_at', '?')[:10]))
+                # One header per node: render_rich_node below prints the
+                # `[type] "title" (id:…, src:…, <age>)` line, so this separator
+                # carries only what that header lacks — the CRITICAL flag and
+                # the cluster-level counts.
+                header = '[%s] "%s"' % (nd.get('type', '?'), nd.get('title', '?'))
+                lines.append('    --- %s ---%s' % (nid[:8], flag_str))
+                lines.append('      recalled=%dx  judged=%dx' % (recall_count, judge_count))
 
                 # Catalog blindness per node
                 if cluster.get('catalog_blind', {}).get(nid, False):
                     lines.append('      ⚠ CATALOG BLIND — created without seeing other cluster members')
 
                 # Rich node content (using consolidation format — more depth than community)
+                # The fallbacks keep the node's identity: a member that went
+                # missing between decode and encode must still read as
+                # `[type] "title"`, never as an anonymous body.
                 try:
                     rich = self.brain.get_node(nid)
                     if rich:
                         rendered = render_rich_node(rich, CONSOLIDATION_NODE_FORMAT)
                         lines.append('      ' + rendered.replace('\n', '\n      '))
                     else:
+                        lines.append('      ' + header)
                         content = nd.get('content', '')
                         if content:
-                            lines.append('      Content: %s' % content[:600])
+                            lines.append('      Content: %s' % content)
                 except Exception:
+                    lines.append('      ' + header)
                     content = nd.get('content', '')
                     if content:
-                        lines.append('      Content: %s' % content[:600])
+                        lines.append('      Content: %s' % content)
 
                 # Surface ALL metadata KV — emergent fields must survive consolidation.
                 # Don't hardcode keys — any brain may have domain-specific fields
@@ -410,28 +415,24 @@ class ConsolidationEncoder(IntegrationUnit):
                         'node %s metadata skipped in cluster rendering' % nid[:8])
 
                 # External edges — every edge to a non-cluster-member
-                # neighbor, with direction, relation, and description.
-                # The encoder reads these to reason about ABSORB migration:
-                # survivor keeps its own, the peer's outgoing edges migrate
-                # via the survivor's connections list, and incoming edges
-                # migrate via separate `connect` ops from the neighbor.
+                # neighbor, in the one edge grammar every reader gets
+                # (render_edge_lines: direction by word order, the relation's
+                # age, the description whole). The encoder reads these to
+                # reason about ABSORB migration: survivor keeps its own, the
+                # peer's outgoing edges migrate via the survivor's connections
+                # list, and incoming edges migrate via separate `connect` ops
+                # from the neighbor. With CONSOLIDATION_NODE_FORMAT at
+                # edge_limit 0 these lines (plus the Intra block) are the
+                # node's only edge render in this prompt.
                 edge_details = cluster.get('edge_details', {}).get(nid, {})
-                external = {nbr: es for nbr, es in edge_details.items()
+                external = {nbr: conn for nbr, conn in edge_details.items()
                             if nbr not in cluster['nodes']}
                 if external:
-                    total = sum(len(es) for es in external.values())
+                    total = sum(len(c.get('relations') or ()) for c in external.values())
                     lines.append('      External edges (%d):' % total)
-                    for nbr_id, edges_list in external.items():
-                        for e in edges_list:
-                            arrow = '→' if e.get('direction') == 'outgoing' else '←'
-                            desc = e.get('description', '')
-                            desc_str = ' — %s' % desc if desc else ''
-                            lines.append('        %s %s [%s] "%s" (%s)%s' % (
-                                arrow, nbr_id[:8],
-                                e.get('type', '?'),
-                                e.get('title', '?')[:50],
-                                e.get('relation', '?'),
-                                desc_str))
+                    for conn in external.values():
+                        lines.extend(render_edge_lines(
+                            conn, CONSOLIDATION_NODE_FORMAT, indent='        '))
 
             lines.append('')
 

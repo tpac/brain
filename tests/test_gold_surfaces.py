@@ -136,6 +136,27 @@ def test_rewriting_a_surface_that_still_asserts_the_stale_value_is_not_repair():
     assert not t['pass']
 
 
+def test_a_disconnect_on_the_pair_is_not_an_edge_assertion():
+    """A disconnect carries source_id+target_id but asserts nothing. Counted
+    as an edge it entered the pair with an empty why — and an empty why never
+    carries the stale token, so an UNREPAIRED edge scored as repaired."""
+    ops = [{'op': 'revise', 'node_id': 'd827d22f', 'title': 'now 9.7.2',
+            'content': 'now 9.7.2', 'situation': 'now 9.7.2',
+            'connect_to': [{'target': '15bbfd64', 'relation': 'gaps_in',
+                            'why': 'both manifests still say 9.6.0'}]},
+           {'op': 'disconnect', 'source_id': 'd827d22f', 'target_id': '15bbfd64',
+            'relation': 'noise'}]
+    t = score_gold(GOLD, _log(ops), CORR)['targets'][0]
+    assert t['surfaces']['edge:15bbfd64'] is False, t['surfaces']
+    # and on its own it writes no edge surface at all
+    alone = [{'op': 'revise', 'node_id': 'd827d22f', 'title': 't', 'content': 'c',
+              'situation': 's'},
+             {'op': 'disconnect', 'source_id': 'd827d22f', 'target_id': '15bbfd64',
+              'relation': 'gaps_in'}]
+    t = score_gold(GOLD, _log(alone), CORR)['targets'][0]
+    assert t['surfaces']['edge:15bbfd64'] is False and t['surface_score'] == '3/4'
+
+
 def test_content_may_keep_the_old_value_as_history():
     """E17: history rides in `content` and only there — a patch writing
     '9.7.2 (was 9.6.0)' is correct and must not be scored as unrepaired."""
@@ -148,6 +169,42 @@ def test_content_may_keep_the_old_value_as_history():
     assert t['surfaces']['content'] is True, t['surfaces']
     assert t['surface_score'] == '4/4'
     assert t['pass']
+
+
+def test_swapped_surfaces_score_on_the_new_text():
+    """Value-or-swap (REVISE_RULE): a swap whose `old` carries the stale token
+    and whose `new` does not is a repair on that surface — the removed text
+    must never be read as still asserted. Edge included: `connect_to` on the
+    revise, keyed `target`, its `why` a swap."""
+    ops = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+            'title': {'old': 'version stale (9.6.0)', 'new': 'version 9.7.2, short of 0.9.0'},
+            'content': [{'old': 'say `9.6.0`', 'new': 'say `9.7.2`'}],
+            'situation': [{'old': '9.6.0', 'new': '9.7.2'}],
+            'connect_to': [{'target': '15bbfd64', 'relation': 'gaps_in',
+                            'why': {'old': 'both manifests still say 9.6.0',
+                                    'new': 'manifests moved to 9.7.2 and still miss 0.9.0'}}]}]
+    t = score_gold(GOLD, _log(ops), CORR)['targets'][0]
+    assert t['surface_score'] == '4/4', t['surfaces']
+    assert t['pass']
+
+
+def test_swap_whose_new_text_still_asserts_the_stale_value_is_not_repair():
+    ops = [{'op': 'revise', 'node_id': 'd827d22f', 'reason': 'r',
+            'title': 'now 9.7.2', 'content': 'now 9.7.2',
+            'situation': {'old': 'x', 'new': 'still 9.6.0 in both manifests'},
+            'connect_to': [{'target': '15bbfd64', 'relation': 'gaps_in',
+                            'why': {'old': 'a', 'new': 'still 9.6.0'}}]}]
+    t = score_gold(GOLD, _log(ops), CORR)['targets'][0]
+    assert t['surfaces'] == {'title': True, 'content': True,
+                             'situation': False, 'edge:15bbfd64': False}
+
+
+def test_connect_to_target_key_counts_like_the_title_alias():
+    ops = [dict(V41_OPS[0], situation='fresh',
+                connect_to=[{'target': '15bbfd64', 'relation': 'gaps_in',
+                             'why': 'x' * 40}])]
+    t = score_gold(GOLD, _log(ops), CORR)['targets'][0]
+    assert t['surfaces']['edge:15bbfd64'] is True
 
 
 def test_specs_without_surfaces_required_are_unchanged():

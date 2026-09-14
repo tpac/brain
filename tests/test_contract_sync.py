@@ -292,6 +292,7 @@ class TestConnectToDescriptionContract(unittest.TestCase):
     def test_connect_to_load_bearing_strings(self):
         from servers.contract import CONNECT_TO_ITEM_SCHEMA
         relation_desc = CONNECT_TO_ITEM_SCHEMA['properties']['relation']['description']
+        target_desc = CONNECT_TO_ITEM_SCHEMA['properties']['target']['description']
         title_desc = CONNECT_TO_ITEM_SCHEMA['properties']['title']['description']
         # The never-use rule (the prompt's pointer target).
         self.assertIn('NEVER', relation_desc)
@@ -299,9 +300,11 @@ class TestConnectToDescriptionContract(unittest.TestCase):
         # A vocabulary list exists (spot-check two verbs the prompt cites).
         self.assertIn('grounds', relation_desc)
         self.assertIn('supersedes', relation_desc)
-        # Sibling resolution + collision rule.
-        self.assertIn('NEW wins', title_desc)
-        self.assertIn('8-char hex id', title_desc)
+        # Sibling resolution + collision rule live on `target` (the key);
+        # `title` is only its deprecated alias and must say so.
+        self.assertIn('NEW wins', target_desc)
+        self.assertIn('8-char hex id', target_desc)
+        self.assertIn('alias', title_desc)
 
     def test_connect_to_why_admission_floor(self):
         from servers.contract import CONNECT_TO_ITEM_SCHEMA

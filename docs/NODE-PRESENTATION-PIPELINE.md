@@ -55,13 +55,18 @@ Canonical: `render_rich_node(node, FORMAT)` — callers: `brain_mcp.py:867`,
 `brain_voice.py:89`, `consolidation_encoder.py:367`, `community_encoder.py:431`,
 `encode_contract.py:131`, `surface_contract.py:304/1796/1820`.
 
-Format configs (~10): `GET_NODES_BALANCED_FORMAT`, `GET_NODES_COMPACT_FORMAT`
-(`contract.py`); `SURFACE_SEED_FORMAT` (the inject's per-pick policy; content
-depth set per pick by the budget split), `SURFACE_BACKGROUND_FORMAT`,
-`HAIKU_FORMAT` (`surface_contract.py`);
-`S2CE_NODE_FORMAT`, `S2CE_COMMUNITY_FORMAT` (`community_contract.py`);
-`CONSOLIDATION_NODE_FORMAT` (`consolidation_contract.py`); `S1_NODE_CONFIG`
-(`encode_contract.py`); `MCP_FORMAT` (`brain_voice.py`).
+Format configs: the node-fetch views `GET_NODES_DETAIL_FORMAT` /
+`GET_NODES_SCAN_FORMAT` picked by `node_format_for(n, rich)` — one selector
+behind MCP `get_nodes`, the `recall` tool's results and an encoder's own
+`get_nodes` results (`contract.py`); `SURFACE_SEED_FORMAT` (the inject's
+per-pick policy; content depth set per pick by the budget split),
+`SURFACE_BACKGROUND_FORMAT`, `HAIKU_FORMAT`, `HAIKU_FORMAT_LEAN`
+(`surface_contract.py`); `S2CE_NODE_FORMAT`, `S2CE_COMMUNITY_FORMAT`
+(`community_contract.py`); `CONSOLIDATION_NODE_FORMAT`
+(`consolidation_contract.py`); `S1_NODE_CONFIG` + the aged view
+(`encode_contract.py`, `encoder_view.py`). The `communities` key is
+off / `'title'` / `'ref'` — titles for most readers, ids only where the reader
+follows them with a pull (Anchor's tools).
 
 **Bespoke inline render (the drift):**
 

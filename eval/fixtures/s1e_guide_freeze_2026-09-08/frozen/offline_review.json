@@ -1,0 +1,74 @@
+{
+  "status": "passed",
+  "model_calls": 0,
+  "database_instances": 0,
+  "network": "socket connections disabled",
+  "arm_reviews": {
+    "v2_revised": {
+      "json_call_blocks": 7,
+      "json_operations": 14,
+      "sweep_operations": 6,
+      "revision_ladder_operations": 3,
+      "revise_field_counts": {
+        "connect_to": 2,
+        "content": 10,
+        "event_time": 2,
+        "question": 1,
+        "reasoning": 4,
+        "situation": 6,
+        "thought": 1,
+        "title": 9,
+        "type": 2
+      },
+      "revise_operations": 12,
+      "checks": [
+        "contract field values and swap shapes",
+        "same-batch title targets",
+        "central before-state swaps and retained facts",
+        "thought-only update retains content/reasoning",
+        "sweep repairs both order and dependency claim",
+        "moot merge question leaves open type",
+        "architecture title and content change together"
+      ]
+    },
+    "v3": {
+      "json_call_blocks": 7,
+      "json_operations": 14,
+      "sweep_operations": 6,
+      "revision_ladder_operations": 3,
+      "revise_field_counts": {
+        "connect_to": 2,
+        "content": 10,
+        "event_time": 2,
+        "question": 1,
+        "reasoning": 4,
+        "situation": 6,
+        "thought": 1,
+        "title": 9,
+        "type": 2
+      },
+      "revise_operations": 12,
+      "checks": [
+        "contract field values and swap shapes",
+        "same-batch title targets",
+        "central before-state swaps and retained facts",
+        "thought-only update retains content/reasoning",
+        "sweep repairs both order and dependency claim",
+        "moot merge question leaves open type",
+        "architecture title and content change together"
+      ]
+    }
+  },
+  "negative_checks": [
+    "template substitution",
+    "suffix drift",
+    "closure placement",
+    "unmatched example swap",
+    "unresolved sibling target",
+    "frozen input hash mismatch",
+    "path outside worktree"
+  ],
+  "cues_preserve_parent_and_examples": true,
+  "shared_json_calls_sweep_and_ladder_equal_between_revised_bases": true,
+  "limitations": "Contract field checks, not a full JSON Schema validator or database dispatch. No behavioral claim."
+}

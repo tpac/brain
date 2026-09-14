@@ -91,9 +91,9 @@ Without conversation: infer from the node's connections. If it corrects another 
 ### Node with conversation context — needs question + situation
 
 NODE: "ALWAYS backup brain.db before destructive operations" [rule]
-CONNECTIONS:
-  [corrected_by] "Use MCP brain tools — not Python/bash"
-  [validates] "brain.db corruption overnight — recovery from SQLite .recover"
+CONNECTIONS (2):
+  [rule id:3c9d41aa 2mo ago] "Use MCP brain tools — not Python/bash" corrected_by this — the backup rule is the safe form of the bulk operation the tools rule forbids doing by hand
+  [event id:8e2f07b1 3mo ago] this validates "brain.db corruption overnight — recovery from SQLite .recover" — the corruption is the failure this rule exists to make recoverable
 CONVERSATION:
   [operator] "Let me clean up by deleting all the archived nodes"
   [assistant] "Before any bulk operation, let me backup the database first..."
@@ -110,9 +110,9 @@ Note:
 ### Node without conversation — needs all three fields
 
 NODE: "Synaptic fatigue: hub nodes self-throttle based on structural degree" [mechanism]
-CONNECTIONS:
-  [extends] "Edge fatigue: session-scoped rotation"
-  [extends] "Fatigue through traversal: not needed"
+CONNECTIONS (2):
+  [mechanism id:5b7e2c90 4mo ago] this extends "Edge fatigue: session-scoped rotation" — fatigue moves from the edge to the hub node: degree, not traversal count, decides the throttle
+  [decision id:a41f66d3 4mo ago] this extends "Fatigue through traversal: not needed" — the decision ruled out per-traversal counters; degree-based throttling is the form that survived it
 CONVERSATION: (not available — pre-trace node)
 NEEDS: question, situation, reasoning
 

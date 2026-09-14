@@ -1,0 +1,52 @@
+{
+  "status": "frozen_before_new_corpus_selection",
+  "arms": {
+    "v3_titles": {
+      "file": "v3_titles.json",
+      "arm_sha256": "679d6344138361b36336ba925f64ed618174280d2548e33aa275b1686a8d9688",
+      "system_chars": 94891,
+      "gist_chars": 4372,
+      "tools_chars": 31683
+    },
+    "v3_titles_new_tools": {
+      "file": "v3_titles_new_tools.json",
+      "arm_sha256": "c639c4d551ae1a249d66a31284b1ba4f95f676091d99481d894ab99503ea971b",
+      "system_chars": 94891,
+      "gist_chars": 4372,
+      "tools_chars": 26831
+    },
+    "v3_1_titles": {
+      "file": "v3_1_titles.json",
+      "arm_sha256": "041c17855275480da9a702a6eb92fa0f067d208ef23c6c1d481e653077afbcd6",
+      "system_chars": 96344,
+      "gist_chars": 5241,
+      "tools_chars": 26831
+    }
+  },
+  "files": {
+    "arms.py": "54f559c3dcf52ecf23c042ca95e68dda20751244b17a714a8c3c868ee2b0b165",
+    "template.md": "c7caa016fee3fe0ae0d70f2ef79d7bf6c4651bed8016a7324578c670070a24b0",
+    "gist.md": "806d5268c0fd38d9823a88509f5a68e07a6d97e7f089f541571e132874a6c574",
+    "strategy.md": "f5b26784925061c49ed64b8328611b31e2615ea257bd303948645f261d260e06",
+    "closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "v3_titles.json": "55fc9a24b0710b746bd2a4a422fab22b2ae61c182e72bfef53a892ae4c180659",
+    "v3_titles_new_tools.json": "ec8e6bb0b96b6cdb9f10bf8878e87325009c9588746da9e06df4d0ff4dcb44ed",
+    "v3_1_titles.json": "e84ddb63b1ffdf3c6ea80440b4ae7e382669166d56c64028d428091acbc885a6",
+    "system.diff": "cc37e5e9dbe6508767a69a660a93a784104b064e6007f6f78d0e2313589b79ed",
+    "gist.diff": "13aefbe240656ce54d9a158fe721da849a95d94ba556f1df306e080496a67dcf"
+  },
+  "scope": "eval-only assembled system/gist/tool snapshots; no shared runtime edits",
+  "target_mechanisms": [
+    "mistaken-clean verification",
+    "known repair deferred to later run"
+  ],
+  "no_changes": [
+    "JSON examples",
+    "schema mechanics",
+    "tool membership",
+    "field quotas",
+    "journal header/nudge",
+    "limits",
+    "source-reference policy"
+  ]
+}

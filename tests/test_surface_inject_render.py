@@ -78,7 +78,7 @@ def _node(i, content_chars, *, typ='decision', quote=True, corrections=0,
     }
 
 
-SCOPE = {'project': 'brain', 'counterpart': 'Tom'}
+SCOPE = {'project': 'brain', 'counterpart': 'Sam'}
 
 
 class TestSentenceCut(unittest.TestCase):
@@ -143,7 +143,7 @@ class TestSeedFieldPolicy(unittest.TestCase):
 
     def test_counterpart_quote_labeled_with_name(self):
         text = self._render(_node(1, 500))
-        self.assertIn('  Tom said: traces are the source of truth', text)
+        self.assertIn('  Sam said: traces are the source of truth', text)
         self.assertNotIn('Their Raw Quote', text)
 
     def test_quote_label_without_counterpart(self):
@@ -218,7 +218,7 @@ class TestSeedFieldPolicy(unittest.TestCase):
         text = self._render(node, cap=SURFACE_CONTENT_MIN_CHARS - 50)
         self.assertNotIn('  Content:', text)
         self.assertIn('  (content: %d chars — get_nodes)' % len(node['content']), text)
-        self.assertIn('Tom said:', text)
+        self.assertIn('Sam said:', text)
 
 
 class TestInjectBudget(unittest.TestCase):

@@ -1,0 +1,56 @@
+--- eval/s1e_guide_v2_sequence_probe.py
++++ run_sequence.py
+@@ -16,13 +16,15 @@
+ from pathlib import Path
+ from xml.sax.saxutils import escape
+ 
+-WT = Path(__file__).resolve().parents[1]
++from context_support import ReplayJournal
++
++WT = Path(__file__).resolve().parents[3]
+ for p in (WT, WT / 'tests', WT / 'eval'):
+     sys.path.insert(0, str(p))
+-OUT = WT / 'eval/results/s1e_guide_v2_2026-09-08/sequence'
+-FIXTURE = WT / 'eval/fixtures/s1e_guide_v2_2026-09-08/discovery_sequence.json'
++OUT = WT / 'eval/results/s1e_guide_context_v2_2026-09-08'
++FIXTURE = Path(__file__).resolve().parent / 'contrasts_three_windows.json'
+ CAP = Path('/Users/tpac/AgentsContext/s1e-field-coverage-gold/ab_2026-09-01_03/payloads_patched_guide/2026-08-31/s1e-5076cdc2-17/000-prompt.md')
+-SID = 'd15c0a72-v2-fresh-sequence'
++SID = 'e42ad630-context-v2-sequence'
+ PREAMBLE = "I'm encoding what I've just observed. I read everything below; my first reply opens with my four lists — changes, targets, fetch, new — and ends in the tool call they call for.\n"
+ SOURCE_BASELINE = None
+ RUN_ID = None
+@@ -144,7 +146,7 @@
+         brain = env.brain
+         assert Path(env.db_dir) != Path(pinned['baseline_dir'])
+         cfg = brain.get_interaction_config('s1e') or {}
+-        journal = _journal(brain, SID)
++        journal = ReplayJournal(_journal(brain, SID))
+         system = frozen['system_prompt'] if frozen else _build_system_prompt(prompt_instructions=tpl, lived=True, journal=journal)
+         assert system.startswith(tpl)
+         tools = _get_tool_schemas()
+@@ -181,13 +183,14 @@
+             'fixture_sha256':pinned['fixture_sha256'], 'background_sha256':sha(background),
+             'baseline_seed_ids':pinned['seed_ids'], 'system_chars':len(system),
+             'model':cfg.get('model') or 'claude-sonnet-4-6', 'effort':cfg.get('effort'),
+-            'dispatch':'real, isolated copy only', 'continuity':'real JournalBinding harvest/render after window 1',
++            'dispatch':'real, isolated copy only', 'continuity':'real JournalBinding lifecycle; displayed first_seen dates mapped to the producing fixture window',
+             'limits':'constructed context and covered catalog; no S1R or S2, no benchmark score; same shown background in each arm'})
+         ids = set(pinned['seed_ids'].values())
+         real = _make_local_dispatch(brain)
+         continuity = pinned['fixture']['initial_residue']
+         turn_number = 0
+         for wn, window in enumerate(pinned['fixture']['windows'], 1):
++            journal.set_window(window['now'])
+             d = folder / f'window{wn}'
+             d.mkdir()
+             cat, _ = build_node_catalog([], brain, extra_ids={'encoded':set(ids)})
+@@ -195,7 +198,7 @@
+             for turn in window['turns']:
+                 turn_number += 1
+                 parts = [f'<turn n="{turn_number}" age="just now" encoded="false">']
+-                parts.append(f'  <other trace="{turn["other_trace"]}">{escape(turn["other"])}</other>')
++                parts.append(f'  <other speaker="{escape(pinned["fixture"]["other_speaker"])}" trace="{turn["other_trace"]}">{escape(turn["other"])}</other>')
+                 if turn.get('actions'):
+                     parts.append(f'  <actions>{escape(turn["actions"])}</actions>')
+                 parts.append(f'  <me trace="{turn["me_trace"]}">{escape(turn["me"])}</me>')

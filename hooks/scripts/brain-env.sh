@@ -173,6 +173,16 @@ export BRAIN_RECALL_VARIANT="laf_v1"
 # takes effect at daemon restart. Enable: set to "1" and restart.
 export BRAIN_S1E_ASSOCIATED_STUBS="0"
 
+# S1 Scribe operating-guide preamble — ON swaps the lived arm's one-line
+# preamble for the lists-first sentence (the encoder's first reply carries
+# its fetch / changes / targets / new lists as text, then the tool call in the
+# same reply). Pairs with the guide s1e + s1e_gist candidates
+# (eval/candidate_prompts/s1e_guide_v1_*, s1e_gist_guide_v1_*); alone it asks
+# for lists the prompt never defines. Default OFF — an input change ships
+# flag-gated so the eval can A/B it. Read by the DAEMON's S1 Scribe at encode
+# time (encode._build_user_content). Enable: set to "1" and restart.
+export BRAIN_S1E_LISTS_PREAMBLE="0"
+
 # S1 Scribe lived-sequence input — ON activates the v28/v29 encoder rebuild:
 # XML lived-sequence timeline (<other>/<me> + tool actions + provenance),
 # widened catalog, `## Arc`/`## Review` residue. Paired with s1e active=v29 (medium

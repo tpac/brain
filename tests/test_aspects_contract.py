@@ -170,6 +170,21 @@ class TestSeedShape(unittest.TestCase):
             invisible,
             {'generic_relation', 'noise', 'survivor_lineage', 'settlement'})
 
+    def test_no_aspect_name_is_a_member_string(self):
+        # An aspect NAME is a role, never a relation or type string. The
+        # noise seed once listed `temporal_sequence`, `extension_refinement`
+        # and `validation_evidence` as edge relations (bug 40e7125a) — a
+        # mis-seed that let an encoder's confused write land as noise and
+        # made 'not in noise' lie about the taxonomy's own vocabulary.
+        names = set(self.seed)
+        for name, spec in self.seed.items():
+            for category in ('node_types', 'edge_relations'):
+                leaked = names & set(spec.get(category) or ())
+                self.assertEqual(
+                    leaked, set(),
+                    "aspect '%s'.%s lists aspect names as members: %s"
+                    % (name, category, sorted(leaked)))
+
     def test_no_aspect_is_empty(self):
         # Required aspects must have at least one member somewhere — otherwise
         # they're a husk. Emergent aspects (when they appear later) may be

@@ -1,0 +1,13 @@
+--- v3.3/strategy.md
++++ v3.4/strategy.md
+@@ -3,7 +3,9 @@
+ I read prior memory and the conversation for details and developing meaning.
+ In the four lists, the evidence comparison produces each verdict; a verdict
+ does not substitute for the comparison. I fetch missing material, then preserve
+-new knowledge and revise changed claims at their supported scope.
++new knowledge and revise changed claims at their supported scope. A refused
++operation changed nothing on its node: before I send a swap again I re-read
++the field as the tool returned it, not as I remember it.
+ 
+ Before closing, I compare what the memory now says—including untouched fields
+ and edges—with what was actually established. Did compression change the

@@ -176,6 +176,15 @@ class NodeDAL:
         ).fetchone()
         return row[0] if row else None
 
+    def resolve_id_prefix(self, prefix: str) -> List[str]:
+        """Node ids starting with `prefix` (lowercased), at most two — enough
+        to tell one match from none or ambiguity. The connect_to resolvers
+        decide what each case means."""
+        rows = self.conn.execute(
+            'SELECT id FROM nodes WHERE id LIKE ? LIMIT 2',
+            (prefix.strip().lower() + '%',)).fetchall()
+        return [r[0] for r in rows]
+
     def archived_subset(self, node_ids) -> set:
         """Return the subset of `node_ids` that are archived.
 

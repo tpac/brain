@@ -1,0 +1,38 @@
+{
+  "status": "frozen_after_author_and_static_checks_before_model_calls",
+  "parent_arm": "7c5730206c7c61891b4a2da56ed0dfefa3bbb27bdce47ad500844c80c81a116d",
+  "candidate_arm": "e3e2251524694fbb38d3eb49a790465ab65f0034d16b8302419acba910023027",
+  "attribution_arm": "8e3ec27a064ecb1f4e39a55a10256b80a46e557750143ef739ad4115af6177c2",
+  "tools_choice": "live",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/arms.py": "79d537a37c59c86ebb29a938046e07aba8383365d48d18d573e0910d358a2ca0",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/author.py": "23e4a4099a5ca36e1de564b5fbcf2cff4eed120645d5af69f754f7def06cb16d",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/author_log.json": "95b0b11d50b009f3ad0f7443aecfc305bb4298d1fedf436ca88f73c86bcb5547",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/static_checks.py": "12989a930b8964191034b4a8f0005f2ebf22e5cfb5652ee137418eaa1c9cec46",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/transfer_split.json": "84c8402807795a2adbef6c1e637744b8b8f249dd82d58ea5dca7b4dfd85017c6",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/v3_4_titles.json": "a8305d6bf78ff4153c153c9aaa113c778862998313faee5696c681e9d17b547e",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/v3_3_live_tools.json": "121293a048f8290c8a68007d21c7f84c8d25058e930de3eeb232ce0fcbeefa96",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/tools_live.json": "e6f0ae579c2d2c49bd6f8a2afa9242fb5bab1a8443ea9b5379c237b84969bb91",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/CHALLENGES.md": "7965ace9ce52f7bba38f7bd5a85989e1e9c1931668224bed8cacc3829748ddc7",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/template.md": "7b5c188acf8819e81d7c61605b4644dd88b478cc374f48786616d86fbbd8a653",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/gist.md": "78ead6c89de1f9d703630fa86380a0bfb84d587262da297dedc4bf0b10133fc4",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/strategy.md": "a4203826630984481943e5b58e31bfe7935fe7cd6007b342a3d9d9685d96c076",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/closure.md": "99deb6d543eb62445ed700cecfc49a704a97edcb7705766048ba428e32a37c1f",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/template.md.diff": "d16e07107165b108bbda2876ad66c49118745e432772e259218c1f4e4871a365",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/gist.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/strategy.md.diff": "7af1d580f3b7849436f30fdb7716c473aac26265489fc1fbcc54c84456afc6af",
+    "eval/fixtures/s1e_guide_v3_4_2026-09-12/closure.md.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "eval-only prompt candidate; tools = live branch encoder schemas (deploy path)",
+  "development_sources_already_seen": [
+    "creative_design",
+    "eace081b",
+    "b6019101",
+    "2133c1b5",
+    "80ec1f4f",
+    "2ebe6c92",
+    "conv_005_emotions"
+  ],
+  "transfer_split_recorded_before_authoring": true,
+  "generalization_claim": "none until the fresh transfer cell reports"
+}

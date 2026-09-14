@@ -202,14 +202,24 @@ def _archived_row(arch, archived_by, edge_relations):
 
 
 def _connect_to_rows(connect_to_result, encoding_source, reason='connect_to'):
-    """edges[] manifest rows from _apply_connect_to's made-list ({src_id,
-    target_id, relation, edge_id, deltas} entries). The emitter's _changed
-    gate drops idempotent re-connects (empty deltas), exactly as the legacy
-    batch emit did."""
-    made = (connect_to_result or {}).get('created') or []
+    """edges[] manifest rows from a connect_to result's made-list ({src_id,
+    target_id, relation, edge_id, deltas[, warnings]} entries) — a dict with
+    `created`, or the list itself. The emitter's _changed gate drops idempotent
+    re-connects (empty deltas), exactly as the legacy batch emit did."""
+    made = (connect_to_result if isinstance(connect_to_result, list)
+            else (connect_to_result or {}).get('created') or [])
     return [_edge_row(e, e.get('relation', ''), reason, encoding_source,
                       e.get('src_id', ''), e.get('target_id', ''))
             for e in made if isinstance(e, dict) and e.get('edge_id')]
+
+
+def _revise_edge_rows(connect_to_result, encoding_source, reason):
+    """edges[] manifest rows for connect_to on REVISE: created edges under the
+    connect_to reason (as on remember), revised ones under the revise's own
+    reason. Shared by the single and batch revise handlers."""
+    ct = connect_to_result or {}
+    return (_connect_to_rows(ct.get('created') or [], encoding_source)
+            + _connect_to_rows(ct.get('revised') or [], encoding_source, reason))
 
 
 def _affected(created=None, revised=None, archived=None):
@@ -323,6 +333,37 @@ def _handle_remember(brain, args, graph_changes):
                           "edges": edge_rows}}
 
 
+def _element_as_dict(element):
+    """A batch element as the dict it must be, or None.
+
+    Sonnet sometimes emits an element JSON-encoded as a string (seen in S2
+    community batches and in S1E remember_batch calls); a string that parses
+    to a dict is the intended spec. Anything else is a malformed element the
+    handler must refuse loudly — a raised AttributeError here aborts the
+    encoder's whole run (id:23a29491). Returns (dict or None, unwrapped).
+    """
+    if isinstance(element, dict):
+        return element, False
+    if isinstance(element, str):
+        try:
+            parsed = json.loads(element)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed, True
+    return None, False
+
+
+def _warn_string_element(brain, cmd, key, index):
+    try:
+        brain._log_warning(
+            'batch_string_element',
+            '%s.%s[%d] arrived JSON-encoded as a string — unwrapped to the intended spec' % (cmd, key, index),
+            'lossless recovery; the caller emitted a stringified element')
+    except Exception:
+        pass
+
+
 def _handle_remember_batch(brain, args, graph_changes):
     from .contract import validate_field
 
@@ -345,6 +386,12 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
+        spec, unwrapped = _element_as_dict(spec)
+        if spec is None:
+            return {"ok": False, "error": "nodes[%d] must be an object (a node spec), got %s — no nodes were written"
+                    % (i, type(nodes[i]).__name__)}
+        if unwrapped:
+            _warn_string_element(brain, 'remember_batch', 'nodes', i)
         # defensive: no identity key is a node field. _pop_session_ctx
         # already stripped the top-level args; this guards a spec that bundled
         # one per-node (so it can't cascade into node_metadata_kv).
@@ -453,14 +500,24 @@ def _handle_revise(brain, args, graph_changes):
     _maybe_warn_source_refs_hex_format(brain, refs, 'revise')
 
     for field, value in updates.items():
-        ok, err = validate_field(field, value)
+        ok, err = validate_field(field, value, revising=True)
         if not ok:
             return {"ok": False, "error": err}
 
     content = updates.pop("content", None)
-    result = brain.revise(node_id=node_id, content=content, reason=reason, updates=updates)
+    enc_src = args.get('encoding_source', '')
+    result = brain.revise(node_id=node_id, content=content, reason=reason,
+                          updates=updates, encoding_source=enc_src or None)
     if result.get('error'):
         return {"ok": False, "error": result['error']}
+
+    # connect_to on revise: one directional edge_relation_revised row per
+    # edge changed. Failures stay in the agent-facing connect_to_result.
+    edge_rows = _revise_edge_rows(result.get('connect_to_result'), enc_src, reason)
+    for e in edge_rows:
+        graph_changes.append("%s: %s -[%s]-> %s" % (
+            'CONNECT_TO' if e['reason'] == 'connect_to' else 'REVISE_EDGE',
+            e['source_id'][:8], e['relation'], e['target_id'][:8]))
 
     # Surface verification failures as warnings
     if not result.get('verified', True):
@@ -494,7 +551,7 @@ def _handle_revise(brain, args, graph_changes):
         result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=[node_id]),
-            "mutations": {"nodes": {"revised": [row]}}}
+            "mutations": {"nodes": {"revised": [row]}, "edges": edge_rows}}
 
 
 def _handle_revise_batch(brain, args, graph_changes):
@@ -513,6 +570,13 @@ def _handle_revise_batch(brain, args, graph_changes):
 
     # Validate each revision
     for i, spec in enumerate(revisions):
+        spec, unwrapped = _element_as_dict(spec)
+        if spec is None:
+            return {"ok": False, "error": "revisions[%d] must be an object (a revision spec), got %s — nothing was revised"
+                    % (i, type(revisions[i]).__name__)}
+        if unwrapped:
+            _warn_string_element(brain, 'revise_batch', 'revisions', i)
+            revisions[i] = spec
         if not spec.get("node_id"):
             return {"ok": False, "error": "revisions[%d]: node_id required" % i}
         if not spec.get("reason"):
@@ -529,7 +593,7 @@ def _handle_revise_batch(brain, args, graph_changes):
             brain, refs, 'revise_batch.revisions[%d]' % i)
         for field, value in spec.items():
             if field not in ("node_id", "reason"):
-                ok, err = validate_field(field, value)
+                ok, err = validate_field(field, value, revising=True)
                 if not ok:
                     return {"ok": False, "error": "revisions[%d].%s: %s" % (i, field, err)}
 
@@ -549,23 +613,26 @@ def _handle_revise_batch(brain, args, graph_changes):
     # attempted-but-rejected ops.
     revised_ids = []
     manifest_rows = []
+    edge_rows = []
     for row, spec in zip(result.get('results', []), resolved):
         if row.get('status') == 'revised':
             revised_ids.append(row['node_id'])
+            enc_src = spec.get('encoding_source', '') or top_encoding_source or ''
             manifest_rows.append({
                 "node_id": row['node_id'],
                 "reason": spec.get('reason', ''),
-                "encoding_source": (spec.get('encoding_source', '')
-                                    or top_encoding_source or ''),
+                "encoding_source": enc_src,
                 "deltas": row.get('deltas', []),
                 "warnings": list(row.get('warnings', [])),
             })
+            edge_rows.extend(_revise_edge_rows(
+                row.get('connect_to_result'), enc_src, spec.get('reason', '')))
 
     if scope_warnings and isinstance(result, dict):
         result.setdefault('warnings', []).extend(scope_warnings)
     return {"ok": True, "result": result,
             "affected": _affected(revised=revised_ids),
-            "mutations": {"nodes": {"revised": manifest_rows}}}
+            "mutations": {"nodes": {"revised": manifest_rows}, "edges": edge_rows}}
 
 
 def _op_archive(brain, op_spec, top_encoding_source, graph_changes):
@@ -902,22 +969,16 @@ def _handle_brain_batch(brain, args, graph_changes):
         transaction_started = True
 
         for i, op_spec in enumerate(operations):
-            if isinstance(op_spec, str):
-                # Same serialization quirk one level down: a string ELEMENT
-                # that parses to a dict is the intended op (seen in S2
-                # community batches). Unrecoverable elements
-                # keep the existing per-op error — fan-out is bounded by
-                # the element count the caller actually sent.
-                try:
-                    _parsed_el = json.loads(op_spec)
-                except ValueError:
-                    _parsed_el = None
-                if isinstance(_parsed_el, dict):
-                    op_spec = _parsed_el
-                    unwrapped_elements += 1
-            if not isinstance(op_spec, dict):
+            # Same serialization quirk one level down: a string ELEMENT that
+            # parses to a dict is the intended op. Unrecoverable elements keep
+            # the per-op error — fan-out is bounded by the element count the
+            # caller actually sent.
+            op_spec, unwrapped = _element_as_dict(op_spec)
+            if unwrapped:
+                unwrapped_elements += 1
+            if op_spec is None:
                 results.append({"op": "?", "index": i, "ok": False,
-                                "error": "operation must be a dict, got %s" % type(op_spec).__name__})
+                                "error": "operation must be a dict, got %s" % type(operations[i]).__name__})
                 continue
             op = op_spec.get("op", "")
 
@@ -1243,7 +1304,15 @@ def _handle_connect_batch(brain, args, graph_changes):
 
     created = 0
     failure_details = []  # [{source_id, target_id, relation, reason}]
-    for c in connections:
+    for i, c in enumerate(connections):
+        c, unwrapped = _element_as_dict(c)
+        if c is None:
+            failure_details.append({
+                "source_id": "", "target_id": "", "relation": "",
+                "reason": "connections[%d] must be an object, got %s" % (i, type(connections[i]).__name__)})
+            continue
+        if unwrapped:
+            _warn_string_element(brain, 'connect_batch', 'connections', i)
         relation = c.get("relation", "")
         src_raw = c.get("source_id", "")
         tgt_raw = c.get("target_id", "")

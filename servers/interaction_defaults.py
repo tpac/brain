@@ -45,7 +45,10 @@ from .recall_expansion_prompt import (
 from .pipeline_contract import (EDGE_CONTEXT_INTERACTION_DEFAULT,
                                 validate_edge_context_config)
 from .recall_laf import DEFAULT_CONFIG as _RECALL_LAF_DEFAULT
-from .scales.s1.encode_contract import S1E_INTERACTION_DEFAULT
+from .scales.s1.encode_contract import (
+    S1E_GIST_INTERACTION_DEFAULT, S1E_INTERACTION_DEFAULT,
+    validate_s1e_gist_config)
+from .scales.s1.encoding_gist_prompt import SYSTEM_PROMPT as _S1E_GIST_PROMPT
 from .scales.s1.encoding_prompt import SYSTEM_PROMPT as _S1E_PROMPT
 from .scales.s1.surface_contract import SURFACE_INTERACTION_DEFAULT
 from .scales.s1.surface_prompt import SYSTEM_PROMPT as _SURFACE_PROMPT
@@ -63,6 +66,7 @@ from .trace_contract import TRACE_RECORDING_NORMAL
 # name → (template, config). Config-only interactions carry '' templates.
 INTERACTION_DEFAULTS = {
     's1e':                   (_S1E_PROMPT, S1E_INTERACTION_DEFAULT),
+    's1e_gist':              (_S1E_GIST_PROMPT, S1E_GIST_INTERACTION_DEFAULT),
     'surface':               (_SURFACE_PROMPT, SURFACE_INTERACTION_DEFAULT),
     's2_community_enrichment':     (_COMMUNITY_PROMPT, COMMUNITY_ENRICHMENT),
     's2_consolidation_enrichment': (_CONSOLIDATION_PROMPT, CONSOLIDATION_ENRICHMENT),
@@ -88,6 +92,7 @@ INTERACTION_DEFAULTS = {
 # must never become the running K, and must never crash a read path.
 INTERACTION_VALIDATORS = {
     'scopes': validate_scopes_config,
+    's1e_gist': validate_s1e_gist_config,
     'edge_context': validate_edge_context_config,
 }
 
