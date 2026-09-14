@@ -35,7 +35,16 @@ GIST = INTERACTION_DEFAULTS['s1e_gist'][0]
 # relation verbs it teaches on purpose (relations are open vocabulary) and the
 # one type it names (types are open too; this one is load-bearing). Extend
 # when the gist does — one allowlist, not three.
-GIST_OPEN_VOCABULARY = {'resolves', 'partially_resolves', 'open'}
+GIST_OPEN_VOCABULARY = {
+    'resolves', 'partially_resolves', 'open',
+    # the gist's own procedure: its four list labels and the status words
+    # a target line carries (V3.6) — not fields, not ops, teaching on purpose
+    'changes', 'targets', 'fetch', 'stale', 'clean', 'unread', 'resolved',
+    # a node field the MCP schema adds beside the contract's writable set
+    # (brain_mcp._SOURCE_REFS_SCHEMA) and the field summary already names;
+    # it has no contract field spec of its own — that gap is a follow-on
+    'source_refs',
+}
 
 # The prose surfaces that teach the revise vocabulary, evaluated once — a
 # field is taught here when its name appears in the text.

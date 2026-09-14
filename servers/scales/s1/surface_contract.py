@@ -828,7 +828,7 @@ SURFACE_BACKGROUND_FORMAT = {
 
 def surface_voice_labels(scope):
     """The quote label for the inject: the counterpart's name from the
-    session scope ('Tom said'), or 'They said' when the session declares
+    session scope ('<counterpart> said'), or 'They said' when the session declares
     none. Only the counterpart's quote renders (my_raw_quote is a skip
     key); the label says whose words they are, in a form the reader reads
     through rather than parses."""

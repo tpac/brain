@@ -1,6 +1,8 @@
 """Decoder simulation applies overlapping decisions to current survivors."""
 from tests.brain_test_base import BrainTestBase
 from servers.scales.s2.community_decoder import CommunityDecoder
+from tests.eval_optional import require_eval  # noqa: E402
+require_eval()  # D-8: eval/ is absent from the public tree
 from eval.s2_community_decoder_eval import simulate_acceptance
 
 
