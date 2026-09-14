@@ -1,6 +1,6 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Current pickup — September 11: V3.3 authoring and broad evaluation
+## Current pickup — September 14: V3.6 IS the production default (merged 4d6ef90, deployed 2026-09-14); next is V3.7 in a fresh session on clean production — see [S1E eval protocol](S1E-EVAL-PROTOCOL.md) and [V3.6 results](S1E-V3-6-RESULTS-2026-09-13.md)
 
 **Pickup as of 2026-09-13:** read [HANDOFF-S1E-V3-5-2026-09-13.md](HANDOFF-S1E-V3-5-2026-09-13.md) first — where every
 V3.x artifact lives, the state of the evidence, the standing defect classes with carriers tried, and the rules.
@@ -26,7 +26,7 @@ built first: [authoring](S1E-V3-5-AUTHORING-2026-09-12.md),
 [results](S1E-V3-5-RESULTS-2026-09-12.md). V3.4 remains the candidate. The older
 walk/measurement heads below are historical. Nothing is merged or deployed.
 
-## Walk state — SHIPPED 2026-08-25: v-next.6 IS the production default ◀ ACTIVE ARC
+## Walk state — SHIPPED 2026-09-14: V3.6 full IS the production default (s1e 641a0d26, s1e_gist 76178044) ◀ ACTIVE ARC
 
 ## Measurement arc CLOSED 2026-09-03 — position is the lever, the revise shape is the next change ◀ HEAD
 
