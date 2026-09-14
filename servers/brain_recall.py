@@ -839,7 +839,8 @@ class BrainRecallMixin:
         print('[backfill_vectors] started (batch_size=%d)' % batch_size, flush=True)
 
         from .dal import VectorDAL
-        from .pipeline_contract import (EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
+        from .pipeline_contract import (EDGE_DESCRIPTIONS_FIELD,
+                                        EMBEDDING_GROUPS, EMBEDDING_SKIP_FIELDS,
                                         EMBEDDING_FIELD_CHAR_LIMIT,
                                         EMBEDDING_DEAD_HANDLER_MIN_CANDIDATES)
         from .dal_metadata import MetadataDAL
@@ -947,6 +948,8 @@ class BrainRecallMixin:
         from .contract import STRUCTURAL_FIELDS as _STRUCT_FIELDS
         nodes_table_fields = set(_STRUCT_FIELDS.keys())
 
+        # edge_context producer policy — one config read per pass, not per node.
+        edge_context_top_k = self.get_interaction_config('edge_context')['top_k']
         for group_name, group_config in EMBEDDING_GROUPS.items():
             vector_type = group_config.get('vector_type')
             if not vector_type or vector_type == '_primary':
@@ -963,13 +966,14 @@ class BrainRecallMixin:
             # edge_context's only source (_edge_descriptions) lives on edges,
             # not kv — gate find_missing on edge existence so edgeless nodes
             # don't clog the batch and starve the edged ones (see find_missing).
-            needs_edge_filter = '_edge_descriptions' in group_config.get('fields', [])
+            needs_edge_filter = EDGE_DESCRIPTIONS_FIELD in group_config.get('fields', [])
 
             try:
                 missing = vdal.find_missing(
                     vector_type, batch_size, model=model, node_ids=node_ids,
                     source_kv_keys=kv_source_keys if kv_source_keys else None,
-                    require_described_edge=needs_edge_filter)
+                    require_described_edge=needs_edge_filter,
+                    exclude_relations=self._edge_context_excluded())
                 if not missing:
                     continue
 
@@ -986,13 +990,14 @@ class BrainRecallMixin:
                         for field in group_config.get('fields', []):
                             if field == '_emergent':
                                 continue  # Emergent: any KV field not in other groups
-                            if field == '_edge_descriptions':
+                            if field == EDGE_DESCRIPTIONS_FIELD:
                                 # Edge context: descriptions live on edges, not the
-                                # node. Mirrors the write-time handler in
-                                # _compute_group_vectors (brain_remember.py) — same
-                                # helper, same defaults (both directions; noise/
-                                # archived/short-desc filtering centralized in the DAL).
-                                for desc in self._graph.get_edge_descriptions_for(node['id']):
+                                # node — the DAL producer ranks by edge weight
+                                # (both directions; noise/archived/short-desc
+                                # filtered there); how many is the `edge_context`
+                                # interaction's top_k.
+                                for desc in self._graph.get_edge_descriptions_for(
+                                        node['id'], limit=edge_context_top_k):
                                     parts.append(desc[:EMBEDDING_FIELD_CHAR_LIMIT])
                                 continue
                             val = field_values.get(field)

@@ -71,7 +71,6 @@ def _gold_str(item: dict) -> str:
 # occurrences in 30d) stays RED — unknown classes fail loud, per
 # Loud-by-Default.
 _BENIGN_CAPS = {
-    "haiku_id_outside_candidates": None,   # resolved= only, see below
     "surface_inject_overflow": None,       # deterministic byte-cap truncation
     "surface_malformed_tool_arg": None,    # designed drop-and-continue
     "revise_immutable": None,              # write-boundary rejection working
@@ -126,13 +125,12 @@ def _benign_cap_key(source: str) -> str:
     loud-logs without an explicit entry share the global designed cap."""
     if source.startswith("connect_to_"):
         return "connect_to_*"
-    if source in _BENIGN_CAPS or source in _BENIGN_MESSAGES \
-            or source == "haiku_id_outside_candidates":
+    if source in _BENIGN_CAPS or source in _BENIGN_MESSAGES:
         return source
     return "designed_loudlog"
 
 
-def _is_benign_build_error(source: str, context: str, error: str = "",
+def _is_benign_build_error(source: str, error: str = "",
                            traceback: str = "") -> bool:
     """Membership check only — the per-build cap is applied by the caller
     (_read_build_errors), which counts occurrences across the build.
@@ -146,8 +144,6 @@ def _is_benign_build_error(source: str, context: str, error: str = "",
     unless they're contamination alarms (_RED_OVERRIDE_PREFIXES)."""
     if any(source.startswith(p) for p in _RED_OVERRIDE_PREFIXES):
         return False
-    if source == "haiku_id_outside_candidates":
-        return "resolved=" in (context or "")
     if source in _BENIGN_MESSAGES:
         return (error or "").startswith(_BENIGN_MESSAGES[source])
     if _benign_cap_key(source) in _BENIGN_CAPS:
@@ -182,7 +178,7 @@ def _read_build_errors(brain) -> dict:
         except Exception:
             meta = {}
         context = (meta.get("context") or "")[:120]
-        benign = _is_benign_build_error(source, context, meta.get("error") or "",
+        benign = _is_benign_build_error(source, meta.get("error") or "",
                                         meta.get("traceback") or "")
         cap_key = _benign_cap_key(source)
         cap = (_DESIGNED_LOUDLOG_CAP if cap_key == "designed_loudlog"

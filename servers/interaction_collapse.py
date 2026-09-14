@@ -93,6 +93,7 @@ COLLAPSE_POLICY = {
     's2_consolidation_enrichment':  COMPARE,
     'scopes':                       COMPARE,
     'recall_query_expansion':       COMPARE,
+    'edge_context':                 COMPARE,
 
     's2_community':                 ADOPT,
 

@@ -34,7 +34,8 @@ WHAT NOT TO DO:
 import sqlite3
 from datetime import datetime, timezone
 
-BRAIN_VERSION = 32  # v32: drop dead edges columns — relation/edge_type/description/stability/decay_rate (v22 leftovers: constant or NULL on every row, zero readers; live relation data incl. decay_rate is edge_relations) plus index idx_edges_type. _migrate_v32_drop_dead_edge_columns converges drifted installs to the declared 7-column edges shape. See v31 note below for prior version.
+BRAIN_VERSION = 33  # v33: delete every edge_context vector — re-queued at boot, rebuilt by the embed worker. The text definition changed (noise excluded, top-15) and nothing invalidated edge_context on edge writes before this version (GraphDAL.on_edge_text_changed). One-shot rebuild; the write-side hook stops the leak. See v32 note below for prior version.
+# v32: drop dead edges columns — relation/edge_type/description/stability/decay_rate (v22 leftovers: constant or NULL on every row, zero readers; live relation data incl. decay_rate is edge_relations) plus index idx_edges_type. _migrate_v32_drop_dead_edge_columns converges drifted installs to the declared 7-column edges shape. See v31 note below for prior version.
 # v31: voice-quote fields renamed — user_raw_quote → their_raw_quote, anchor_raw_quote → my_raw_quote. _migrate_v31_voice_fields relabels both node_metadata_kv.key and node_enrichments.vector_type (the per-field embedding lane); no re-embed, field names never enter the embedded text.
 # v30: drop nodes.project column — project is now system-stamped kv provenance (node_metadata_kv['project']), not a nodes column. _migrate_v30_project_to_kv moves values (slug map: every legacy value → brain) then DROP COLUMN. See v29 note below for prior version.
 BRAIN_VERSION_KEY = 'brain_schema_version'
@@ -1357,6 +1358,24 @@ def _migrate_v32_drop_dead_edge_columns(conn):
             raise
 
 
+def _migrate_v33_edge_context_rebuild(conn):
+    """v33: delete every edge_context vector so the embed worker rebuilds it.
+
+    Two reasons every row is stale at once. The text definition changed:
+    noise-aspect relations are excluded and the top-15 (was top-5, with only
+    community_member excluded) descriptions are embedded, so no existing row
+    matches its node's text. And until v33 no edge write invalidated
+    edge_context (GraphDAL.on_edge_text_changed), so ~44% of rows embedded an
+    outdated graph snapshot anyway. Deleting makes them missing; the daemon
+    re-queues them at boot (_enqueue_vector_backfill_gaps) and the embed
+    worker rebuilds in its batches. Idempotent.
+    """
+    cur = conn.execute(
+        "DELETE FROM node_enrichments WHERE vector_type = 'edge_context'")
+    print("[brain] v33: %d edge_context vectors deleted — re-queued at daemon "
+          "boot, rebuilt by the embed worker" % cur.rowcount)
+
+
 # Numbered structural migrations for brain.db, for the runner to apply.
 # The declarative TABLES diff and the _backfill_data ladder both stay; this is
 # for changes neither can express. A v33+ change adds (33, _migrate_v33) here
@@ -1364,6 +1383,7 @@ def _migrate_v32_drop_dead_edge_columns(conn):
 MAIN_MIGRATIONS = [
     (31, _migrate_v31_voice_fields),
     (32, _migrate_v32_drop_dead_edge_columns),
+    (33, _migrate_v33_edge_context_rebuild),
 ]
 
 

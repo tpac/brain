@@ -54,7 +54,8 @@ class TestFindMissingDescribedEdgeFilter(BrainTestBase):
 
         # WITH the filter: only A and B (the qualifying described edge).
         filtered = {r['id'] for r in vdal.find_missing(
-            'edge_context', limit=50, require_described_edge=True)}
+            'edge_context', limit=50, require_described_edge=True,
+            exclude_relations=self.brain._edge_context_excluded())}
         self.assertIn(a, filtered, 'source of a described edge must qualify')
         self.assertIn(b, filtered, 'target of a described edge must qualify (both directions)')
         for nid, why in [(c, 'noise relation only'), (d, 'noise relation only'),

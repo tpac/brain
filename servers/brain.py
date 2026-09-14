@@ -340,6 +340,16 @@ class Brain(
         else:
             from .dal_vector_cached import CachedVectorDAL
             self._vec_dal = CachedVectorDAL(self.conn)
+        # Edge writes report changed endpoints; the brain invalidates their
+        # edge_context through the revise() path. Registered after _vec_dal
+        # exists — the handler deletes through it.
+        self._graph.on_edge_text_changed = self._edge_text_changed
+        # edge_context policy: the DAL is the mechanism (text producer,
+        # eligibility fragment, write-side reports); which relations are
+        # excluded is the brain's to derive, from the noise aspect. Installed
+        # as a callable so the DAL reads it live — the registry rebinds the
+        # set on every adopt.
+        self._graph._edge_context_excluded_fn = self._edge_context_excluded
 
         # Init rate limiter for error logging (DDoS protection)
         self._init_rate_limiter()
