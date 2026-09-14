@@ -35,8 +35,7 @@ from .clock import iso_now
 
 # v29 trace-id shape — the write boundary's gate in add/replace_source_refs.
 _TRACE_ID_HEX = re.compile(r'[0-9a-f]{8}')
-from .dal_graph import (EDGE_CONTEXT_EXCLUDED_RELATIONS,
-                        EDGE_CONTEXT_MIN_DESC_LENGTH)
+from .dal_graph import edge_context_relation_sql
 from .db_backends.sqlite import commit_unless_batched
 
 
@@ -1155,7 +1154,8 @@ class VectorDAL:
                      node_ids: Optional[set] = None,
                      require_kv_keys_any: Optional[List[str]] = None,
                      source_kv_keys: Optional[List[str]] = None,
-                     require_described_edge: bool = False) -> List[Dict[str, Any]]:
+                     require_described_edge: bool = False,
+                     exclude_relations=()) -> List[Dict[str, Any]]:
         """Find active nodes whose vector for `vector_type` is missing or stale.
 
         A row is "present" only if it has a non-null embedding AND (if `model`
@@ -1224,21 +1224,16 @@ class VectorDAL:
             # lives on edges, not node_metadata_kv — so require_kv_keys_any can't
             # gate it. Without this clause the edgeless nodes (no described edge,
             # never get a vector) sit at the front of the last_accessed queue
-            # forever and starve the edged nodes. Mirror
-            # GraphDAL.get_edge_descriptions_for's eligibility filter EXACTLY
-            # (same exclusions, same min length) so "eligible" ⇔ "yields text".
-            excl = sorted(EDGE_CONTEXT_EXCLUDED_RELATIONS)
-            excl_ph = ','.join('?' * len(excl))
+            # forever and starve the edged nodes. Same fragment as the text
+            # producer (edge_context_relation_sql) so "eligible" ⇔ "yields text";
+            # `exclude_relations` is the noise set the caller reads from aspects.
+            frag, frag_params = edge_context_relation_sql(exclude_relations, 'er')
             where.append(
                 'EXISTS (SELECT 1 FROM edges e '
                 'JOIN edge_relations er ON er.edge_id = e.edge_id '
                 'WHERE (e.source_id = n.id OR e.target_id = n.id) '
-                'AND er.archived = 0 '
-                'AND er.relation NOT IN (%s) '
-                'AND er.description IS NOT NULL '
-                'AND length(er.description) > ?)' % excl_ph)
-            params.extend(excl)
-            params.append(EDGE_CONTEXT_MIN_DESC_LENGTH)
+                'AND er.archived = 0 AND ' + frag + ')')
+            params.extend(frag_params)
 
         sql = ('SELECT n.id, n.title, n.content FROM nodes n '
                'WHERE ' + ' AND '.join(where) +

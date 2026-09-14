@@ -179,7 +179,8 @@ class CachedVectorDAL:
                      node_ids: Optional[set] = None,
                      require_kv_keys_any: Optional[List[str]] = None,
                      source_kv_keys: Optional[List[str]] = None,
-                     require_described_edge: bool = False) -> List[Dict[str, Any]]:
+                     require_described_edge: bool = False,
+                     exclude_relations=()) -> List[Dict[str, Any]]:
         """Delegate — backfill path, cold, needs node.title/content.
 
         Mirrors VectorDAL.find_missing's full signature so the canonical
@@ -192,7 +193,8 @@ class CachedVectorDAL:
                                             model=model, node_ids=node_ids,
                                             require_kv_keys_any=require_kv_keys_any,
                                             source_kv_keys=source_kv_keys,
-                                            require_described_edge=require_described_edge)
+                                            require_described_edge=require_described_edge,
+                                            exclude_relations=exclude_relations)
 
     def get_coverage_stats(self) -> Dict[str, Any]:
         """Delegate — cold path, used by dashboard."""

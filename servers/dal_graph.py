@@ -57,15 +57,42 @@ EDGE_ROW_SHAPE = {
     'content_preview':    'str — substr of content when caller requests',
 }
 
-# Minimum edge-description length to feed the edge_context embedding. Single
-# source of truth shared by GraphDAL.get_edge_descriptions_for (the text
-# producer) and VectorDAL.find_missing (the backfill candidate filter) — the
-# two MUST agree, or find_missing queues edgeless/short-desc nodes that yield
-# no text, and they starve the edged nodes out of the backfill batch forever.
+# Minimum edge-description length to feed the edge_context embedding — a
+# mechanism threshold (shorter than this is not a description). WHICH
+# relations are excluded is policy and is not owned here: the brain hands
+# GraphDAL the noise aspect (aspects.structural_exclusions) at construction.
 EDGE_CONTEXT_MIN_DESC_LENGTH = 10
-# Relations excluded from the edge_context text (structural, not semantic
-# text) — the OTHER half of the same producer/backfill parity contract.
-EDGE_CONTEXT_EXCLUDED_RELATIONS = frozenset({'community_member'})
+
+
+def edge_context_relation_sql(exclude_relations, alias='er'):
+    """THE one SQL expression of "this edge_relations row feeds edge_context":
+    a WHERE fragment (no leading AND) plus its params. Consumed by the text
+    producer (get_edge_descriptions_for), the backfill candidate filter
+    (VectorDAL.find_missing) and the write-side reports here — one shape, so
+    producer and invalidator cannot drift. Archive state is deliberately NOT
+    part of it: callers add `<alias>.archived = 0` when they mean live text.
+    Python twin: feeds_edge_context.
+    """
+    sql = ('%s.description IS NOT NULL AND length(%s.description) > ?'
+           % (alias, alias))
+    params = [EDGE_CONTEXT_MIN_DESC_LENGTH]
+    excl = sorted(exclude_relations or ())
+    if excl:
+        sql += ' AND %s.relation NOT IN (%s)' % (alias, ','.join('?' * len(excl)))
+        params += excl
+    return sql, params
+
+
+def feeds_edge_context(relation, description, exclude_relations) -> bool:
+    """Python twin of edge_context_relation_sql, for rows already in hand.
+    Too loose re-embeds identical text (an S2 community pass writes hundreds
+    of community_member edges, every encode writes co_anchored); too tight
+    leaves a stale vector. Noise-aspect relations are excluded from the
+    text, so writing one never changes it.
+    """
+    return (relation not in exclude_relations
+            and bool(description)
+            and len(description) > EDGE_CONTEXT_MIN_DESC_LENGTH)
 
 # Ordinary node absorption cannot assign the survivor to a community:
 # placement belongs to S2's judgment. Merging two communities is itself that
@@ -114,6 +141,67 @@ class GraphDAL:
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        # Set by Brain at construction (Brain._edge_text_changed). Called with
+        # a node id whenever a write here changed the edge descriptions that
+        # node's edge_context vector is embedded from — add/update/revive,
+        # rename across the excluded set, soft-archive. The DAL only REPORTS
+        # the storage fact it alone can see (it owns the text producer and its
+        # eligibility constants); invalidating the vector is a brain-level
+        # concern and runs through the same path revise() uses. Every edge
+        # write passes through this class, so no caller has to remember —
+        # the direct add_relation callers outside brain_connections are
+        # covered without a door of their own. None = standalone DAL (tests,
+        # tools, evals): reports to nobody, and says so once on stderr — a
+        # described edge written through a hookless DAL leaves its endpoints'
+        # edge_context stale, which is the leak this hook exists to close.
+        self.on_edge_text_changed = None
+        self._warned_no_hook = False
+        # Relations that never feed edge_context — policy, resolved through a
+        # zero-arg callable Brain installs (Brain._edge_context_excluded), not
+        # a set copied in. AspectRegistry rebinds structural_exclusions on
+        # every adopt and the S2 aspect encoder adopts at runtime, so a
+        # snapshot taken here would silently disagree with the backfill
+        # filter, which reads live: the write side would keep invalidating a
+        # relation the read side had stopped considering eligible, deleting
+        # vectors nothing would rebuild. A derived copy of another entity's
+        # state needs an invalidation owner; reading live needs none.
+        # None = standalone DAL: exclude nothing.
+        self._edge_context_excluded_fn = None
+
+    @property
+    def edge_context_excluded(self) -> frozenset:
+        """Relations that never feed edge_context, resolved at read time."""
+        fn = self._edge_context_excluded_fn
+        return fn() if fn is not None else frozenset()
+
+    def _notify_edge_text_changed(self, node_ids):
+        """Report each distinct endpoint whose edge_context text changed."""
+        nids = list(dict.fromkeys(n for n in node_ids if n))
+        if not nids:
+            return
+        hook = self.on_edge_text_changed
+        if hook is None:
+            if not self._warned_no_hook:
+                self._warned_no_hook = True
+                import sys as _sys
+                print('[GraphDAL] edge text changed on %d node(s) but no '
+                      'on_edge_text_changed hook is set — edge_context not '
+                      'invalidated (standalone DAL; use brain._graph)'
+                      % len(nids), file=_sys.stderr)
+            return
+        for nid in nids:
+            hook(nid)
+
+    def _edge_feeds_edge_context(self, edge_id) -> bool:
+        """Does this edge carry any ACTIVE relation that feeds edge_context?
+        The aggregate-weight case: a write to a relation that feeds nothing
+        can still move edges.weight, and the text is the top-5 by that
+        weight — so if a described sibling rides the same edge, it moved."""
+        frag, params = edge_context_relation_sql(self.edge_context_excluded, 'er')
+        return self.conn.execute(
+            'SELECT 1 FROM edge_relations er WHERE er.edge_id = ? '
+            'AND er.archived = 0 AND ' + frag + ' LIMIT 1',
+            [edge_id, *params]).fetchone() is not None
 
     # --- Reads ---
 
@@ -455,15 +543,20 @@ class GraphDAL:
               (survivor_lineage: absorbed_into).
 
         archived_at is ISO-T via clock.iso_now() — the one write-side format.
-        Does NOT commit: callers own commit_unless_batched (decay calls this
-        per-relation inside one pass; a commit here would split its batch).
+        Does NOT commit: callers own commit_unless_batched. The edge_context
+        report below rides that same commit — the hook's vector delete runs
+        under a forced in_batch envelope so this primitive stays commit-free.
         """
         exempt_clause, exempt = _relation_not_in_clause(exempt_relations)
         base = 'archived = 0 AND (%s) %s' % (where_sql, exempt_clause)
         bind = list(params) + exempt
-        flipped = [[r[0], r[1]] for r in self.conn.execute(
-            'SELECT edge_id, relation FROM edge_relations WHERE ' + base,
-            bind).fetchall()]
+        # LEFT JOIN keeps an orphan relation (no edges row) in `flipped` —
+        # the return must be exactly what the UPDATE flips.
+        rows = self.conn.execute(
+            'SELECT edge_relations.edge_id, relation, description, '
+            'source_id, target_id FROM edge_relations '
+            'LEFT JOIN edges USING (edge_id) WHERE ' + base, bind).fetchall()
+        flipped = [[r[0], r[1]] for r in rows]
         if not flipped:
             return flipped
         embed_cols = (', embedding = NULL, embedding_model = NULL'
@@ -476,6 +569,26 @@ class GraphDAL:
         if recompute_weight:
             for eid in {f[0] for f in flipped}:
                 self._update_aggregate_weight(eid)
+        # An archived description leaves both endpoints' edge_context text;
+        # archiving a relation that fed nothing can still lower edges.weight
+        # and reorder a described sibling's rank. Report through the same
+        # hook as add_relation — this is THE flip, so disconnect, node
+        # archive and the dangling sweep are all covered. The hook deletes
+        # vectors; forcing in_batch makes that delete ride the caller's
+        # commit instead of committing this flip mid-primitive.
+        if self.on_edge_text_changed is not None:
+            endpoints = []
+            for eid, rel, desc, src, tgt in rows:
+                if (feeds_edge_context(rel, desc, self.edge_context_excluded)
+                        or self._edge_feeds_edge_context(eid)):
+                    endpoints += [src, tgt]
+            if endpoints:
+                prior = self.conn.in_batch
+                self.conn.in_batch = True
+                try:
+                    self._notify_edge_text_changed(endpoints)
+                finally:
+                    self.conn.in_batch = prior
         return flipped
 
     # The dangling selection: every ACTIVE relation on an edge whose source
@@ -805,48 +918,25 @@ class GraphDAL:
         return dict(membership)
 
 
-    def get_edge_descriptions_for(self, node_id: str,
-                                  min_length: int = EDGE_CONTEXT_MIN_DESC_LENGTH,
-                                  exclude_relations=None,
-                                  include_archived: bool = False,
-                                  limit: int = 5):
-        """Return meaningful edge descriptions for a node's edges.
-
-        Feeds edge_context embedding in _compute_group_vectors. Filters
-        out short/empty descriptions (below min_length) and noise relations.
-        Default exclusion: 'community_member' (structural, not semantic text).
+    def get_edge_descriptions_for(self, node_id: str, limit: int):
+        """The edge_context text producer: a node's top-`limit` edge
+        descriptions by edge weight, active rows only, eligibility from
+        edge_context_relation_sql (min length, noise relations excluded).
+        `limit` is policy — the caller reads it from the `edge_context`
+        interaction config. Read by backfill_vectors; every write-side report
+        mirrors this.
 
         Returns list[str] of descriptions. Raises ValueError if node_id empty.
         """
         if not node_id:
             raise ValueError("get_edge_descriptions_for: node_id required")
-        if exclude_relations is None:
-            exclude_relations = EDGE_CONTEXT_EXCLUDED_RELATIONS
-
-        archived_clause = '' if include_archived else 'AND er.archived = 0'
-        rel_clause = ''
-        if exclude_relations:
-            rel_ph = ','.join('?' * len(exclude_relations))
-            rel_clause = 'AND er.relation NOT IN (%s)' % rel_ph
-
-        sql = """
-            SELECT er.description FROM edges e
-            JOIN edge_relations er ON er.edge_id = e.edge_id
-            WHERE (e.source_id = ? OR e.target_id = ?)
-              %s
-              %s
-              AND er.description IS NOT NULL
-              AND length(er.description) > ?
-            ORDER BY e.weight DESC
-            LIMIT ?
-        """ % (archived_clause, rel_clause)
-
-        params = [node_id, node_id]
-        if exclude_relations:
-            params += list(exclude_relations)
-        params += [min_length, limit]
-
-        rows = self.conn.execute(sql, params).fetchall()
+        frag, params = edge_context_relation_sql(self.edge_context_excluded, 'er')
+        rows = self.conn.execute(
+            'SELECT er.description FROM edges e '
+            'JOIN edge_relations er ON er.edge_id = e.edge_id '
+            'WHERE (e.source_id = ? OR e.target_id = ?) AND er.archived = 0 '
+            'AND ' + frag + ' ORDER BY e.weight DESC LIMIT ?',
+            [node_id, node_id, *params, limit]).fetchall()
         return [r[0] for r in rows if r[0]]
 
     def count_node_edges(self, node_id: str, min_weight: float = 0.1,
@@ -976,6 +1066,16 @@ class GraphDAL:
         edge_ids = [r[0] for r in self.conn.execute(
             'SELECT edge_id FROM edges WHERE source_id = ? OR target_id = ?',
             (node_id, node_id)).fetchall()]
+        # Neighbors whose edge_context text loses a description with this
+        # delete — read before the rows are gone; reported after.
+        neighbors = []
+        if self.on_edge_text_changed is not None:
+            frag, params = edge_context_relation_sql(self.edge_context_excluded, 'er')
+            neighbors = [r[0] for r in self.conn.execute(
+                'SELECT CASE WHEN e.source_id = ? THEN e.target_id ELSE e.source_id END '
+                'FROM edges e JOIN edge_relations er ON er.edge_id = e.edge_id '
+                'WHERE (e.source_id = ? OR e.target_id = ?) AND er.archived = 0 '
+                'AND ' + frag, [node_id, node_id, node_id, *params]).fetchall()]
         if edge_ids:
             ph = ','.join('?' * len(edge_ids))
             self.conn.execute(
@@ -984,6 +1084,7 @@ class GraphDAL:
             'DELETE FROM edges WHERE source_id = ? OR target_id = ?',
             (node_id, node_id)).rowcount
         commit_unless_batched(self.conn)
+        self._notify_edge_text_changed(neighbors)
         return n
 
     # --- edge_relations (multi-relation semantic layer via edge_id) ---
@@ -1162,7 +1263,7 @@ class GraphDAL:
                                 + _birth_deltas())
 
         # Update aggregate weight + last_strengthened on physical edge
-        self._update_aggregate_weight(edge_id)
+        agg_changed = self._update_aggregate_weight(edge_id)
         self.conn.execute(
             'UPDATE edges SET last_strengthened = ? WHERE edge_id = ?', (ts, edge_id))
         commit_unless_batched(self.conn)
@@ -1182,6 +1283,22 @@ class GraphDAL:
                     'WHERE edge_id = ? AND relation = ?', (edge_id, relation))
                 commit_unless_batched(self.conn)
             self._enqueue_edge_embed(edge_id, 'add_relation')
+
+        # Report the endpoints whose edge_context text this write moved: a
+        # described row created/revived/edited/reweighted (the text is the
+        # top-5 by edge weight, so a reorder counts), or a row that feeds
+        # nothing but moved the edge's aggregate weight under a described
+        # sibling. No deltas → nothing changed → no report.
+        if result['deltas']:
+            old_active = (existing[0] if existing is not None and existing[3] == 0
+                          else None)
+            final_desc = (desc_value if result['created']
+                          else (description if desc_specified else old_active))
+            excl = self.edge_context_excluded
+            if (feeds_edge_context(relation, old_active, excl)
+                    or feeds_edge_context(relation, final_desc, excl)
+                    or (agg_changed and self._edge_feeds_edge_context(edge_id))):
+                self._notify_edge_text_changed((source_id, target_id))
 
         return result
 
@@ -1282,9 +1399,22 @@ class GraphDAL:
             (new_relation, encoding_source, edge_id, old_relation))
         commit_unless_batched(self.conn)
         self._enqueue_edge_embed(edge_id, 'rename_relation')
+        # The relation NAME is not in the edge_context text, so a rename only
+        # moves the endpoints' text when it crosses the excluded set.
+        excl = self.edge_context_excluded
+        if (old_relation in excl) != (new_relation in excl):
+            row = self.conn.execute(
+                'SELECT e.source_id, e.target_id, er.description '
+                'FROM edge_relations er JOIN edges e ON e.edge_id = er.edge_id '
+                'WHERE er.edge_id = ? AND er.relation = ? AND er.archived = 0',
+                (edge_id, new_relation)).fetchone()
+            live = old_relation if new_relation in excl else new_relation
+            if row and feeds_edge_context(live, row[2], excl):
+                self._notify_edge_text_changed((row[0], row[1]))
 
-    def _update_aggregate_weight(self, edge_id):
+    def _update_aggregate_weight(self, edge_id) -> bool:
         """Set edges.weight to max weight across ACTIVE relation rows.
+        Returns True when the stored weight actually moved.
 
         Archived relations do not contribute — they're history, not signal.
         When all relations on an edge are archived, edges.weight is
@@ -1302,6 +1432,7 @@ class GraphDAL:
             (edge_id,)
         ).fetchone()
         new_weight = row[0] if row and row[0] is not None else 0.0
-        self.conn.execute(
-            'UPDATE edges SET weight = ? WHERE edge_id = ?',
-            (new_weight, edge_id))
+        cur = self.conn.execute(
+            'UPDATE edges SET weight = ? WHERE edge_id = ? AND weight IS NOT ?',
+            (new_weight, edge_id, new_weight))
+        return bool(cur.rowcount)

@@ -13,9 +13,13 @@ import sys
 sys.path.insert(0, '.')
 
 from servers.pipeline_contract import (
+    EDGE_DESCRIPTIONS_FIELD,
     EMBEDDING_GROUPS,
     EMBEDDING_SCORING_METHOD,
     EMBEDDING_SKIP_FIELDS,
+    INVALIDATED_BY_EDGE_WRITE,
+    INVALIDATED_BY_REVISE,
+    vectors_affected_by,
     get_group_weight,
     format_candidate_for_surface,
     build_surface_prompt,
@@ -85,6 +89,28 @@ class TestEmbeddingGroups(unittest.TestCase):
                           EMBEDDING_GROUPS['high_meta']['weight'])
         self.assertGreater(EMBEDDING_GROUPS['high_meta']['weight'],
                           EMBEDDING_GROUPS['other_meta']['weight'])
+
+    def test_every_group_declares_who_keeps_it_fresh(self):
+        # `fields` says what a vector is MADE OF; `invalidated_by` says which
+        # write path deletes it when a source changes. edge_context carried a
+        # correct `fields` entry with no consumer for months — this is the
+        # assertion that would have failed the day it was added.
+        for name, group in EMBEDDING_GROUPS.items():
+            self.assertIn(group.get('invalidated_by'),
+                          {INVALIDATED_BY_REVISE, INVALIDATED_BY_EDGE_WRITE},
+                          '%s must declare an invalidation owner' % name)
+
+    def test_edge_write_owner_matches_the_edge_field_dependency(self):
+        # The declaration and the dependency map must agree: exactly the
+        # groups built from edge descriptions are invalidated by edge writes,
+        # and no revise-owned group depends on the edge field.
+        edge_owned = {g['vector_type'] for g in EMBEDDING_GROUPS.values()
+                      if g['invalidated_by'] == INVALIDATED_BY_EDGE_WRITE}
+        self.assertEqual(edge_owned, vectors_affected_by(EDGE_DESCRIPTIONS_FIELD))
+        self.assertEqual(edge_owned, {'edge_context'})
+        for name, g in EMBEDDING_GROUPS.items():
+            if g['invalidated_by'] == INVALIDATED_BY_REVISE:
+                self.assertNotIn(EDGE_DESCRIPTIONS_FIELD, g['fields'], name)
 
     def test_title_always_computed(self):
         self.assertTrue(EMBEDDING_GROUPS['title']['always_compute'])

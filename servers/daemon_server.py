@@ -671,6 +671,16 @@ class BrainDaemon:
             self._enqueue_temporal_backfill_gaps()
         except Exception as e:
             self._log("temporal backfill enqueue failed: {}".format(e))
+        # Cold-start vector re-queue: a versioned migration can delete
+        # vectors (the schema layer has no queue), and a gap that exists at
+        # boot is known, not leaked. Routing it through the enqueue path
+        # keeps the coverage sweep's `embed_coverage_gap` alarm meaning what
+        # it says — a writer bypassed the hooks — and drains at the worker's
+        # batch size instead of the sweep's.
+        try:
+            self._enqueue_vector_backfill_gaps()
+        except Exception as e:
+            self._log("vector backfill enqueue failed: {}".format(e))
 
     def _enqueue_temporal_backfill_gaps(self):
         """Find entities without entity_dates rows and enqueue them."""
@@ -684,6 +694,19 @@ class BrainDaemon:
         if node_ids or edge_ids:
             self._log("Temporal backfill enqueued {} nodes + {} edges".format(
                 len(node_ids), len(edge_ids)))
+
+    def _enqueue_vector_backfill_gaps(self):
+        """Enqueue nodes whose edge_context vector is missing though a
+        described edge exists — the group a migration deletes (v33)."""
+        from servers import embed_queue
+        rows = self.brain._vec_dal.find_missing(
+            'edge_context', limit=100000, require_described_edge=True,
+            exclude_relations=self.brain._edge_context_excluded())
+        for row in rows:
+            embed_queue.enqueue(row['id'])
+        if rows:
+            self._log("Vector backfill enqueued {} nodes missing edge_context".format(
+                len(rows)))
 
     def _serve(self):
         """Main event loop — accept connections, dispatch to thread pool."""

@@ -103,6 +103,46 @@ class BrainConnectionsMixin:
             self._maybe_commit()
         return written
 
+    def _edge_context_excluded(self) -> frozenset:
+        """Relations the edge_context text and its invalidation both ignore —
+        the noise aspect. THE one reader of that policy: GraphDAL resolves its
+        eligibility through this (installed as a callable, never copied), the
+        backfill candidate filter passes it to find_missing, and the daemon's
+        boot re-queue uses it. Read live, because AspectRegistry rebinds
+        structural_exclusions on every adopt.
+
+        frozenset() when the registry failed to load: excluding nothing keeps
+        the producer and the filter agreeing (both then see every described
+        relation), where an AttributeError here would take down the whole
+        vector backfill, not just this group.
+        """
+        aspects = getattr(self, 'aspects', None)
+        return aspects.structural_exclusions if aspects is not None else frozenset()
+
+    def _edge_text_changed(self, node_id: str) -> None:
+        """GraphDAL.on_edge_text_changed target — an edge write changed the
+        descriptions `node_id`'s edge_context vector is embedded from.
+
+        The symmetry with revise(): a node's kv write owns both the field and
+        the vector, so revise() invalidates inline. Edge descriptions live on
+        a DIFFERENT entity, so no edge writer owns the node's vector — the
+        DAL, which every edge write passes through, reports the endpoint and
+        this brain-level handler runs the one invalidation path. Registered
+        once in Brain.__init__; never called by hand.
+        """
+        # Fires inside the DAL write — nothing may escape, or a write that
+        # already committed reports failure. invalidate_source_fields logs
+        # its own failures; this guards the logger itself.
+        try:
+            from .pipeline_contract import fields_invalidated_by, INVALIDATED_BY_EDGE_WRITE
+            self.invalidate_source_fields(
+                node_id, fields_invalidated_by(INVALIDATED_BY_EDGE_WRITE),
+                origin='edge_write')
+        except Exception as e:
+            import sys
+            print('[brain] edge_write invalidation failed for %s: %s'
+                  % (node_id[:8], e), file=sys.stderr)
+
     def connect(self, source_id: str, target_id: str, relation: str = 'related', weight: float = 0.5):
         """Add a relation between two nodes (idempotent upsert).
 
@@ -125,8 +165,9 @@ class BrainConnectionsMixin:
         # description omitted so add_relation's sentinel default kicks in
         # (preserves existing on update; defaults to '' on create).
         result = graph_dal.add_relation(source_id, target_id, relation, weight=weight)
-        # Embedding is async: add_relation invalidates + enqueues; the embed_queue
-        # worker re-embeds via backfill_edge_embeddings. No sync embed here.
+        # Embedding is async: add_relation NULLs + enqueues the EDGE row, and
+        # reports changed endpoints to _edge_text_changed (their edge_context);
+        # the embed_queue worker re-embeds both. No sync embed here.
         return result
 
     def connect_typed(self, source_id: str, target_id: str, relation: str = 'related',
@@ -181,7 +222,8 @@ class BrainConnectionsMixin:
         if encoding_source is not None:
             kwargs['encoding_source'] = encoding_source
         result = graph_dal.add_relation(source_id, target_id, relation, **kwargs)
-        # Embedding is async (add_relation invalidates + enqueues; worker re-embeds).
+        # Embedding is async: the edge row is NULLed + enqueued, the endpoints'
+        # edge_context invalidated via _edge_text_changed; the worker re-embeds.
         return result
 
     def revise_edge(self, source_id, target_id, relation,
@@ -198,6 +240,9 @@ class BrainConnectionsMixin:
             method does no embedding work — embedding is a brain-layer concern).
           - description / weight: field-preserving update via add_relation
             (which likewise invalidates + enqueues on a description change).
+          - endpoints' edge_context: GraphDAL reports a changed endpoint to
+            _edge_text_changed, which deletes the vector the way revise()
+            does. Not this method's job either — same one path.
 
         Loud (ok=False) on a missing edge / missing relation / rename collision,
         rather than a silent no-op. Returns {ok, edge_id, relation, deltas}.
@@ -232,6 +277,9 @@ class BrainConnectionsMixin:
             if _owned_batch:
                 self.conn.in_batch = False
                 self.conn.rollback()
+                # The edge_context hook dropped cache rows eagerly inside the
+                # envelope; the rollback restored the DB rows, not the cache.
+                self._resync_vector_cache('revise_edge rollback')
             raise
         if _owned_batch:
             self.conn.in_batch = False

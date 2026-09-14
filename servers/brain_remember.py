@@ -1510,6 +1510,51 @@ class BrainRememberMixin:
     # v8: revise() — Encoding IS updating existing knowledge
     # ═══════════════════════════════════════════════════════════════
 
+    def invalidate_source_fields(self, node_id, fields, origin) -> bool:
+        """THE vector-invalidation path: a node's source `fields` changed, so
+        delete every vector whose text depends on them (pipeline_contract.
+        vectors_affected_by) and mark the node for re-embed; the embed_queue
+        worker's backfill recreates the rows as missing. Two callers, one
+        mechanism: revise() for node kv/columns (INVALIDATED_BY_REVISE) and
+        _edge_text_changed for edge descriptions (INVALIDATED_BY_EDGE_WRITE).
+
+        WITHOUT the delete, VectorDAL.find_missing() skips the row (it
+        exists) and the vector keeps encoding outdated text indefinitely.
+        The delete is ONE call — typed DB delete + exactly-mirrored cache drop
+        (CachedVectorDAL) or DB-only (plain VectorDAL); the old two-call shape
+        (raw SQL + whole-node cache drop) was the 2026-07-17 healer-
+        invisibility bug.
+
+        Failure is a CORRECTNESS issue (recall serves stale embeddings until
+        the next backfill cycle): logged loudly under `<origin>_vector_
+        invalidate`, never raised — a failed invalidation must not fail the
+        write that caused it. Returns True when the delete failed so revise()
+        can surface partial success in its return dict.
+        """
+        failed = False
+        try:
+            from .pipeline_contract import vectors_affected_by
+            invalidated = set()
+            for field in fields:
+                invalidated |= vectors_affected_by(field)
+            if invalidated:
+                self._vec_dal.delete_for_node(node_id, vector_types=invalidated)
+        except Exception as e:
+            failed = True
+            self._log_error('%s_vector_invalidate' % origin, e,
+                            'invalidating vectors for %s — STALE EMBEDDINGS '
+                            'will be served by recall until next backfill '
+                            'cycle catches up' % node_id[:8])
+        # (Re)computation is the embed_queue worker's — the node is marked
+        # dirty so the stale text→vector pair refreshes within ~5s.
+        try:
+            from . import embed_queue
+            embed_queue.enqueue(node_id)
+        except Exception as e:
+            self._log_error('embed_enqueue_%s' % origin, e,
+                            'enqueue %s' % node_id[:12])
+        return failed
+
     def revise(self, node_id: str, content: str = None, reason: str = '',
                updates: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
         """Update fields on an existing node. Per-field replace semantics.
@@ -1726,46 +1771,12 @@ class BrainRememberMixin:
         if writable:
             self._store_node_metadata(node_id, writable, caller='revise')
 
-        # Vector invalidation: when a source field changes, the corresponding
-        # embedding vector becomes stale. Delete the affected rows so the
-        # embed_queue's backfill scan re-embeds from the updated text.
-        # WITHOUT this, VectorDAL.find_missing() skips the row (it exists)
-        # and the vector keeps encoding outdated text indefinitely. Title
-        # changes invalidate the title slot too — collected via SQL UPDATE
-        # above and added to the field set here.
-        #
-        # Failure here is a CORRECTNESS issue (recall serves stale embeddings
-        # until next backfill cycle). We log loudly AND surface the failure
-        # in the return dict so callers can detect partial-success — silent
-        # swallow would hide drift indefinitely.
-        vector_invalidation_failed = False
-        try:
-            from .pipeline_contract import vectors_affected_by
-            invalidated_vectors = set()
-            for field in fields_changed_for_invalidation:
-                invalidated_vectors |= vectors_affected_by(field)
-            if invalidated_vectors:
-                # ONE call: typed DB delete + exactly-mirrored cache drop
-                # (CachedVectorDAL) or DB-only (plain VectorDAL) — same
-                # signature, structural parity. The old two-call shape here
-                # (raw SQL + separate whole-node cache drop) was the
-                # 2026-07-17 healer-invisibility bug.
-                self._vec_dal.delete_for_node(
-                    node_id, vector_types=invalidated_vectors)
-        except Exception as e:
-            vector_invalidation_failed = True
-            self._log_error('revise_vector_invalidate', e,
-                            'invalidating vectors for %s — STALE EMBEDDINGS '
-                            'will be served by recall until next backfill '
-                            'cycle catches up' % node_id[:8])
-
-        # Vector (re)computation handled by the embed_queue worker — revisions
-        # mark the node dirty so stale text→vector pairs get refreshed within ~5s.
-        try:
-            from . import embed_queue
-            embed_queue.enqueue(node_id)
-        except Exception as e:
-            self._log_error('embed_enqueue_revise', e, 'enqueue %s' % node_id[:12])
+        # Vector invalidation + re-embed mark. Title changes invalidate the
+        # title slot too — collected via the SQL UPDATE above and added to the
+        # field set. The failure flag is surfaced in the return dict so callers
+        # can detect partial success.
+        vector_invalidation_failed = self.invalidate_source_fields(
+            node_id, fields_changed_for_invalidation, origin='revise')
 
         # Re-index TF-IDF from title + new_content.
         try:

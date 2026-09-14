@@ -42,6 +42,8 @@ import json
 from .recall_expansion_prompt import (
     SYSTEM_PROMPT as _RECALL_EXPANSION_PROMPT,
     RECALL_EXPANSION_INTERACTION_DEFAULT)
+from .pipeline_contract import (EDGE_CONTEXT_INTERACTION_DEFAULT,
+                                validate_edge_context_config)
 from .recall_laf import DEFAULT_CONFIG as _RECALL_LAF_DEFAULT
 from .scales.s1.encode_contract import S1E_INTERACTION_DEFAULT
 from .scales.s1.encoding_prompt import SYSTEM_PROMPT as _S1E_PROMPT
@@ -69,6 +71,8 @@ INTERACTION_DEFAULTS = {
     'recall_query_expansion': (_RECALL_EXPANSION_PROMPT,
                                RECALL_EXPANSION_INTERACTION_DEFAULT),
     'recall_laf':            ('', _RECALL_LAF_DEFAULT),
+    # edge_context producer policy (top_k); backfill_vectors reads it per pass.
+    'edge_context':          ('', EDGE_CONTEXT_INTERACTION_DEFAULT),
     'trace_recording':       ('', TRACE_RECORDING_NORMAL),
     'scopes':                ('', SCOPES_CONFIG_V1),
     # Decoder parameters (not an LLM template); CommunityDecoder/Encoder
@@ -84,6 +88,7 @@ INTERACTION_DEFAULTS = {
 # must never become the running K, and must never crash a read path.
 INTERACTION_VALIDATORS = {
     'scopes': validate_scopes_config,
+    'edge_context': validate_edge_context_config,
 }
 
 
