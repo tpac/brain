@@ -1,0 +1,137 @@
+{
+  "revision": "6406a72",
+  "model": "nomic-ai/nomic-embed-text-v1.5-Q",
+  "cutoff": "2026-05-11",
+  "n_cues": 792,
+  "n_nodes": 11605,
+  "live_config": {
+    "top_k": 15
+  },
+  "noise_aspect": [
+    "co_anchored",
+    "co_member",
+    "community_member",
+    "correction_improvement",
+    "dream_observation",
+    "dreamed_from",
+    "extension_refinement",
+    "member",
+    "temporal_sequence",
+    "validation_evidence"
+  ],
+  "base_groups": [
+    "title",
+    "_primary",
+    "high_meta",
+    "other_meta",
+    "question"
+  ],
+  "db_dir": "/var/folders/p8/v9_c_hfj0pzbyj2shlzjsj1c0000gq/T/brain_test_o2hv6xbv",
+  "arms": [
+    {
+      "arm": "B_old  (k=5,  cm-only)",
+      "top_k": 5,
+      "n_excluded": 1,
+      "eligible_nodes": 9479,
+      "vectors": 9479,
+      "mean_chars": 541,
+      "reach": {
+        "1": 15.025252525252524,
+        "5": 33.83838383838384,
+        "10": 47.34848484848485,
+        "25": 69.57070707070707
+      },
+      "median_rank": 11.5,
+      "secs": 525.0,
+      "delta5": {
+        "d": 0.0,
+        "lo": 0.0,
+        "hi": 0.0
+      }
+    },
+    {
+      "arm": "A_new  (k=15, noise)",
+      "top_k": 15,
+      "n_excluded": 10,
+      "eligible_nodes": 9331,
+      "vectors": 9331,
+      "mean_chars": 738,
+      "reach": {
+        "1": 15.025252525252524,
+        "5": 33.83838383838384,
+        "10": 47.474747474747474,
+        "25": 69.94949494949495
+      },
+      "median_rank": 12.0,
+      "secs": 868.5,
+      "delta5": {
+        "d": 0.0,
+        "lo": -0.7575757575757569,
+        "hi": 0.6313131313131326
+      }
+    },
+    {
+      "arm": "C      (k=5,  noise)",
+      "top_k": 5,
+      "n_excluded": 10,
+      "eligible_nodes": 9331,
+      "vectors": 9331,
+      "mean_chars": 556,
+      "reach": {
+        "1": 14.772727272727273,
+        "5": 34.090909090909086,
+        "10": 47.22222222222222,
+        "25": 69.6969696969697
+      },
+      "median_rank": 12.0,
+      "secs": 33.3,
+      "delta5": {
+        "d": 0.2525252525252486,
+        "lo": 0.0,
+        "hi": 0.6313131313131326
+      }
+    },
+    {
+      "arm": "D      (k=15, cm-only)",
+      "top_k": 15,
+      "n_excluded": 1,
+      "eligible_nodes": 9479,
+      "vectors": 9479,
+      "mean_chars": 742,
+      "reach": {
+        "1": 15.025252525252524,
+        "5": 33.83838383838384,
+        "10": 47.474747474747474,
+        "25": 69.82323232323232
+      },
+      "median_rank": 12.0,
+      "secs": 256.1,
+      "delta5": {
+        "d": 0.0,
+        "lo": -0.7575757575757569,
+        "hi": 0.7575757575757569
+      }
+    },
+    {
+      "arm": "Z_no_lane (control)",
+      "top_k": null,
+      "n_excluded": null,
+      "eligible_nodes": 0,
+      "vectors": 0,
+      "mean_chars": 0,
+      "reach": {
+        "1": 14.772727272727273,
+        "5": 33.58585858585859,
+        "10": 48.358585858585855,
+        "25": 70.07575757575758
+      },
+      "median_rank": 11.0,
+      "secs": 0,
+      "delta5": {
+        "d": -0.25252525252525415,
+        "lo": -1.2626262626262652,
+        "hi": 0.7575757575757625
+      }
+    }
+  ]
+}

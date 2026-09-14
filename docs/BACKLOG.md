@@ -332,6 +332,27 @@ aspect-exclusion policy table (ASPECT-OWNERSHIP Step 6).
 
 ---
 
+### 16. `edge_context` moved nothing — is the lane structurally inert?
+
+The v33 producer change (top_k 5→15 + noise-aspect exclusion) benchmarked as a 2×2 over
+792 corpus_v2 cues: **Δreach@5 +0.00pp, CI [−0.76, +0.63]** — neither knob moves anything,
+separately or together (brain `1e1c9465`, probe `eval/laf/edge_context_arms.py`). Removing
+the lane *entirely* costs 0.25pp and is numerically best at r@10/@25. A view at weight 0.55
+covering 9,331 nodes should not be that invisible.
+
+Hypothesis, untested: MaxSim is `nanmax` over six views, so `edge_context` only changes a
+node's score when its cosine beats title/_primary/high_meta/other_meta/question. Edge
+descriptions are a different text distribution from node content and may lose the max almost
+always — inert regardless of what text we put in it. Same failure *class* as the LAF graph
+operator (`54777ca7`): present, weighted, and numerically unable to act.
+
+The cheap test, before any further tuning: per cue, how often is `edge_context` the argmax
+view — overall, and for the gold specifically? If ~never, text policy is untunable and the
+real question is per-view normalization or removal. The probe already builds the matrices;
+add an argmax histogram.
+
+Also open: r@10/@25 carry no CIs (the saved JSON predates rank persistence; re-run is ~28 min).
+
 ## Decisions needed
 
 These aren't builds — they gate other work. Each needs the operator.
