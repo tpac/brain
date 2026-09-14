@@ -1,0 +1,44 @@
+[
+ {
+  "label": "G1 L39 the gloss: covered means seen, not held; read covered text against the entries the run kept",
+  "old_chars": 334,
+  "new_chars": 559,
+  "delta": 225
+ },
+ {
+  "label": "G2 L21 continuity: the arc line is evidence too, and a no-mint verdict is not a ruling",
+  "old_chars": 95,
+  "new_chars": 171,
+  "delta": 76
+ },
+ {
+  "label": "G3 L273 skip: coverage is not a reason to skip",
+  "old_chars": 90,
+  "new_chars": 111,
+  "delta": 21
+ },
+ {
+  "label": "G4 L289: the arc is named beside residue",
+  "old_chars": 74,
+  "new_chars": 85,
+  "delta": 11
+ },
+ {
+  "label": "E1 a worked window with covered turns: the covering run kept nothing from the changed value",
+  "old_chars": 47,
+  "new_chars": 8815,
+  "delta": 8768
+ },
+ {
+  "label": "W1 targets: the reverse pass, catalog entry \u2192 the covered turns it came from",
+  "old_chars": 108,
+  "new_chars": 516,
+  "delta": 408
+ },
+ {
+  "label": "W2 new: covered turns included",
+  "old_chars": 54,
+  "new_chars": 146,
+  "delta": 92
+ }
+]
