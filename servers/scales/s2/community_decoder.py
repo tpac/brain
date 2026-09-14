@@ -1368,8 +1368,21 @@ class CommunityDecoder(IntegrationUnit):
         # Sanctioned raw-SQL exception: internal-edge rendering with
         # descriptions. The shape is close to has_edge_between but returns
         # metadata, not a bool. Raw with archived=0 until a second caller.
+        #
+        # Skips what the disconnected check skips: this is the EVIDENCE for
+        # cohesion, so it must not show an edge that does not count as
+        # cohesion. Reads the one named source (`non_cohesion_relations`), the
+        # way _community_disconnected does — the literal that used to sit here
+        # was a third, narrower spelling of the same concept and missed the
+        # dream verbs.
+        non_cohesion = list(self.config.get('non_cohesion_relations', ()))
         placeholders = ','.join('?' * len(ms))
         id_list = list(ms)
+        excl = ''
+        params = id_list * 2
+        if non_cohesion:
+            excl = ' AND er.relation NOT IN (%s)' % ','.join('?' * len(non_cohesion))
+            params = params + non_cohesion
         rows = self.brain.conn.execute("""
             SELECT ns.title, nt.title, er.relation, er.description
             FROM edges e
@@ -1377,13 +1390,11 @@ class CommunityDecoder(IntegrationUnit):
             JOIN nodes ns ON ns.id = e.source_id
             JOIN nodes nt ON nt.id = e.target_id
             WHERE e.source_id IN (%s) AND e.target_id IN (%s)
-            AND er.archived = 0
-            AND er.relation NOT IN (
-                'community_member', 'related_to', 'related')
+            AND er.archived = 0%s
             AND er.description IS NOT NULL AND er.description != ''
             ORDER BY e.weight DESC LIMIT ?
-        """ % (placeholders, placeholders),
-            id_list * 2 + [limit]).fetchall()
+        """ % (placeholders, placeholders, excl),
+            params + [limit]).fetchall()
         return [{'source': r[0][:50], 'target': r[1][:50],
                  'relation': r[2], 'description': r[3][:100]}
                 for r in rows]

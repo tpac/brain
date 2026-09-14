@@ -513,14 +513,14 @@ additive-only stays correct — it *widens* what additive can express).
 > operator contradiction the body warns about was resolved 2026-07-28; membership reaches readers as
 > a `Communities:` line, not as edge lines.
 
-**Problem.** Three frozen verb lists still answer "which relations does this consumer ignore" without
-reading the registry, and they do not agree with each other:
+**Problem.** Frozen verb lists answer "which relations does this consumer ignore" without reading
+the registry, and they do not agree with each other. Two remain after item B:
 
 | site | contents | note |
 |---|---|---|
 | `community_contract.py:99` `non_cohesion_relations` | 5 verbs | the auto-archive set — **deliberately narrow, see ruling** |
 | `community_contract.py:164` `ADJACENCY_EXCLUDED_RELATIONS` | 1 verb | narrowed from 3; redundant with the aspect tuple beside it — **see ruling** |
-| `community_decoder.py:1381-1382` | 3 verbs, inline SQL | a third spelling of non-cohesion, matching neither of the other two |
+| ~~`community_decoder.py:1381-1382`~~ | ~~3 verbs, inline SQL~~ | **fixed 2026-09-14 (item B)** — now reads `non_cohesion_relations` |
 
 Alongside them sit four registry reads that each resolve their own way (`relations_in([…])` inline at
 `community.py:121` and `community_decoder.py:223`, two registry attributes, and a zero-arg callable
@@ -589,8 +589,17 @@ constant, absent from `INTERACTION_DEFAULTS`. This also clears the Step 7 collis
   which `community_structural.py:11-16` says is impossible. `tests/test_community_structural.py:132`
   cannot see it: it builds the same last-claimant map for both sides, over single-homed fixtures.
   **⚠ OWNED BY ANOTHER STREAM as of 2026-09-14 — check before touching.** Brain `id:61f24059`.
-- **B — collapse the third non-cohesion spelling.** `community_decoder.py:1381-1382` reads
-  `self.config['non_cohesion_relations']`. Depends on nothing.
+- ~~**B — collapse the third non-cohesion spelling.**~~ **SHIPPED 2026-09-14.**
+  `_sample_internal_edges` (`community_decoder.py`) read a frozen
+  `('community_member','related_to','related')`; it now reads
+  `self.config['non_cohesion_relations']`, the same source `_community_disconnected` uses, with the
+  conditional-clause shape that function already had. Behaviour change: the two dream verbs are now
+  excluded from the evidence sample — before this, a `dreamed_from` edge with a description could be
+  shown to the encoder as evidence of cohesion for a community that the disconnected check would not
+  have counted it toward. New test
+  `tests/test_s2_community.py::test_sample_internal_edges_skips_non_cohesion_relations` pins it
+  (verified fail-before/pass-after; the old code surfaced `dreamed_from`). The only prior coverage
+  was a key-presence assertion, so the query itself had been untested.
 - **C — pin the adjacency prefilter invariant** (the test named in the ruling above). Depends on A,
   so both sides share one map.
 - **D — the four-entry table.** Depends on A–C.
