@@ -12,7 +12,7 @@ against the frozen manifest is verified on the way.
     ./dev python3 deploy_defaults.py --arm v3_6_full --check
     ./dev python3 deploy_defaults.py --arm v3_6_full --write
 """
-import argparse, difflib, importlib, importlib.util, sys
+import argparse, difflib, importlib, importlib.util, json, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -25,10 +25,21 @@ CLOSE = '"""'
 
 
 def load_arm(name):
+    """The frozen arm from its own record, identity-checked against the manifest.
+
+    Not the fixture loader: that one pins the runtime files (trace_contract.py,
+    encode.py, contract.py) the arm was built with and refuses once main moves
+    them — correct for re-running the cell, wrong for this question, which is
+    exactly whether TODAY's runtime still assembles the measured prompt."""
     spec = importlib.util.spec_from_file_location('_arms', HERE / 'arms.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.load_arm(name)
+    arm = json.loads((HERE / (name + '.json')).read_text())
+    manifest = json.loads((HERE / 'manifest.json').read_text())
+    identity = {k: arm[k] for k in ('system_prompt', 'gist', 'tools', 'settings')}
+    if module.digest(identity) != arm['arm_sha256'] or arm['arm_sha256'] != manifest['arms'][name]:
+        raise ValueError('Arm identity mismatch: ' + name)
+    return arm
 
 
 def replace_literal(path, body):
