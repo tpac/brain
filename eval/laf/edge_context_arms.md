@@ -1,15 +1,15 @@
 # edge_context producer arms
 
-- revision `6406a72` · model `nomic-ai/nomic-embed-text-v1.5-Q` · isolated copy `/var/folders/p8/v9_c_hfj0pzbyj2shlzjsj1c0000gq/T/brain_test_o2hv6xbv`
-- corpus corpus_v2 valid, cutoff 2026-05-11 → **792 cues**, 11605 embedded nodes
+- revision `78ce34e` · model `nomic-ai/nomic-embed-text-v1.5-Q` · sqlite `3.47.1` · positive control reach@1 100.0%
+- corpus corpus_v2 valid, cutoff 2026-05-11 → **792 cues**, 11645 embedded nodes
 - live `edge_context` config on the copy: `{'top_k': 15}`
 - noise aspect (10): co_anchored, co_member, community_member, correction_improvement, dream_observation, dreamed_from, extension_refinement, member, temporal_sequence, validation_evidence
 - MaxSim base views: title, _primary, high_meta, other_meta, question (+ edge_context per arm)
 
-| arm | top_k | excl | eligible | vectors | chars | r@1 | r@5 | r@10 | r@25 | med rank | Δr@5 vs OLD [95% CI] |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| B_old  (k=5,  cm-only) | 5 | 1 | 9479 | 9479 | 541 | 15.03 | 33.84 | 47.35 | 69.57 | 12 | +0.00 [+0.00, +0.00] |
-| A_new  (k=15, noise) | 15 | 10 | 9331 | 9331 | 738 | 15.03 | 33.84 | 47.47 | 69.95 | 12 | +0.00 [-0.76, +0.63] |
-| C      (k=5,  noise) | 5 | 10 | 9331 | 9331 | 556 | 14.77 | 34.09 | 47.22 | 69.70 | 12 | +0.25 [+0.00, +0.63] |
-| D      (k=15, cm-only) | 15 | 1 | 9479 | 9479 | 742 | 15.03 | 33.84 | 47.47 | 69.82 | 12 | +0.00 [-0.76, +0.76] |
-| Z_no_lane (control) | — | — | 0 | 0 | 0 | 14.77 | 33.59 | 48.36 | 70.08 | 11 | -0.25 [-1.26, +0.76] |
+| arm | top_k | excl | eligible | chars | r@1 | r@5 | r@10 | r@25 | SOLO r@5 | Δr@5 vs OLD [95% CI] | b/c | McNemar p |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| B_old  (k=5,  cm-only) | 5 | 1 | 9512 | 542 | 15.15 | 33.46 | 46.97 | 70.08 | 15.66 | +0.00 [+0.00, +0.00] | 0/0 | 1.000 |
+| A_new  (k=15, noise) | 15 | 10 | 9363 | 740 | 15.03 | 33.46 | 47.10 | 69.82 | 18.56 | +0.00 [-0.76, +0.76] | 5/5 | 1.000 |
+| C      (k=5,  noise) | 5 | 10 | 9363 | 557 | 15.03 | 33.46 | 46.72 | 70.45 | 16.67 | +0.00 [-0.38, +0.38] | 1/1 | 1.000 |
+| D      (k=15, cm-only) | 15 | 1 | 9512 | 743 | 15.03 | 33.21 | 47.10 | 69.82 | 18.06 | -0.25 [-1.01, +0.38] | 3/5 | 0.727 |
+| Z_no_lane (control) | — | — | 0 | 0 | 14.77 | 33.59 | 48.36 | 70.08 | — | +0.13 [-0.88, +1.14] | 9/8 | 1.000 |
