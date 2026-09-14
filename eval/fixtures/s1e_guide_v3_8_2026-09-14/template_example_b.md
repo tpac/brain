@@ -639,14 +639,14 @@ provenance line says so. Turns 7 and 8 are today and covered too — a run stopp
 </turn>
 ```
 
-Three Bad moves, each one I have made. Bad: “turns 4–8 are covered; turn 9 is routine; `new: none`” —
+Four Bad moves, each one I have made. Bad: “turns 4–8 are covered; turn 9 is routine; `new: none`” —
 the flag says a run saw turn 8, the catalog shows that run kept nothing from it, and the eight minutes
 on the page has no node. Bad: an `open`, “plume e-folding — 12 minutes (turn 4) vs 8 minutes (turn 8),
 which is correct?” — two fits by the same person on the same flume, three months apart, are a changed
 parameter, not an in-window contradiction; rule 3, dated, not rule 4; the catalog's 12 minutes is true
 as of January, at 18 °C. Bad: `thought` only — “the plume came up again; the single-exponential read is
 stable” — turn 7 confirms the shape of the decay, turn 8 moves its constant, and reading covered text
-for what confirms the node is how the change slipped past the run before this one.
+for what confirms the node is how the change slipped past the run before this one. Bad: reconcile — “eight minutes is what the students will see on a coarse demo fit; the research value stays twelve” — a reading that keeps the node by supplying a mechanism Nour did not state. The words say the plume e-folds in eight minutes now. When the only way to keep a node is a cause I invented, the node moves, not the words.
 
 ```
 changes: the flume's e-folding time — 12 minutes at 18 °C (2026-01-15) → “about eight minutes” at 24 °C (2026-04-20), same speaker, three months on: a refitted parameter, not a contradiction; the covering run kept nothing from turn 8 — no encoded(me, …) names it — so the change is mine now

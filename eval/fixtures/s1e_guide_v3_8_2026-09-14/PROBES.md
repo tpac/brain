@@ -96,3 +96,53 @@ revisable evidence") did not stop it. Turn 11 itself is routine in every arm's r
   read by hand).
 - Neither the position pass nor the gist procedure moved the value on these windows alone.
 - Run-to-run variance is large: V3.7's original run 3 wrote nothing; five of six V3.6 replays of the same request wrote.
+
+## Transfer probe — the decontaminated example (flume tracer decay, re-authored by an Opus agent; EXAMPLE-REVERSE-PASS.md)
+
+Same three windows, same V3.6 system with the new example inserted (`system_example2.txt`, 129,471 chars), 3 repeats each.
+
+| window | wrote | gym node touched | supersede | contradict | bent | thought-only | zero-write |
+|---|---|---|---|---|---|---|---|
+| r2 | 3/3 | 2 | **0** | 0 | 3 | 0 | 0 |
+| r3 | 1/3 | 1 (plan/decision content only) | 0 | 0 | 0 | 0 | 2 |
+| r3b | 2/3 | 2 | **0** | 1 | 0 | 1 | 1 |
+
+**0 of 9.** The flume example does not transfer to the gym windows; the gym example's 6 of 6 was item similarity.
+On r2 all three replies read the 6 pm as a departure buffer ("the user is saying they need to leave *for* the gym by
+6pm (to arrive at 7pm), not that the gym session changed"; "'done by 6pm' not 'gym at 6pm'"). On r3b: one `open`
+"7:00 pm (Feb 2023) vs. 6:00 pm (May 2023) — which is current?", one thought-only revise, one zero-write.
+
+What this says about the class: the example teaches "a refitted parameter months later is a change, not a
+contradiction", and that lesson never engages here because the encoder does not see a changed value at all — it
+resolves the sentence toward the node by supplying a mechanism the speaker never stated (travel time, departure).
+That reconciliation move is the anchoring flavour proper, and no Bad in the prompt or in the new example depicts it;
+the new example's Bad 3 depicts the thought-only outcome, not the reading that produces it. Recorded as the
+variant to measure next (item 4 of the brief).
+
+## Variant probes (item 4 of the brief) — `example_b` and `stack`, r2 and r3b, 3 repeats each (12 calls ≈ $1.50)
+
+`example_b` = the flume example plus a fourth Bad naming the reconciliation move ("a reading that keeps the node by
+supplying a mechanism Nour did not state … when the only way to keep a node is a cause I invented, the node moves,
+not the words"). `stack` = the gloss text pass (G1–G4) plus the flume example — lane 2's ship condition.
+
+| arm | window | wrote | supersede | contradict | bent | thought-only | zero-write |
+|---|---|---|---|---|---|---|---|
+| example_b | r2 | 3/3 | **0** | 3 | 0 | 0 | 0 |
+| example_b | r3b | 1/3 | **0** | 0 | 1 (thought + "buffer") | 0 | 2 |
+| stack | r2 | 3/3 | **0** | 1 | 2 | 0 | 0 |
+| stack | r3b | 2/3 | **0**⁴ | 0 | 1 | 1 | 1 |
+
+⁴ the scorer credited stack r3b repeat 3 as supersede because its content swap mentions 6 pm; by hand the new content
+says "this may mean departure time rather than session start, as 7 pm was the primary stated time" — bent.
+
+**What moved and what did not.** The reconciliation Bad did stop the bending on r2 — every example_b reply named the
+6 pm as a direct statement ("This is a direct statement of a 6:00 pm gym time, contradicting the 7:00 pm in the
+catalog") — and then every one of them filed rule 4: an `open` "7:00 pm vs 6:00 pm — which is correct?", one with
+the schedule node retitled "(time contested: 7 pm vs. 6 pm)" and the method's alert "pending gym-time resolution".
+So the anchoring flavour has two layers: first the words are bent to fit the node (Bad 4 dislodges that), then the
+now-visible difference is filed as a contradiction because both texts are on one page (the temporal flavour the
+flume example's rule-3 lesson was meant to carry — and did not, on this domain). The stack did nothing the example
+alone did not: the gloss's covered-means-seen change is not the binding sentence on these windows.
+
+**Whole-probe tally, supersede on the two changed-value windows (r2 + r3b), of 6 per arm:** V3.6 0 (two samples,
+0 of 12) · gloss 1 · walk 0 · example (gym-shaped, contaminated) 6 · example2 (flume) 0 · example_b 0 · stack 0.

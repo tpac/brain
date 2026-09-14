@@ -20,13 +20,14 @@ Tom reads the audit table and marks first; the carriers below are re-authored to
      the next run quoted it as a ruling; run 3 both arms called the covered May session "transactional")
 
   EXAMPLE (template_example.md) — one worked window after Mira's later window (L599)
-    E1  a catalog node `[encoded(me, turn 4)]` "gym 7 pm MWF" with a dependent reminder edge; a window whose
-        covered turns include the February statement AND a three-months-later "usually at 6:00 pm" that
+    E1  a catalog node `[encoded(me, turn 5)]` "flume plume e-folds in 12 min at 18 °C" with an edge-only
+        sampling-cadence node derived from it (interval = τ/4); a window whose covered turns include the
+        January fit AND a three-months-later "about eight minutes now that we run the tank at 24 °C" that
         the covering run kept nothing from (no `encoded(me, …)` names it); the only uncovered turn is
-        routine. Three Bads (covered → `new: none`; an `open` "7 pm vs 6 pm — which is correct?"; a
-        thought-only "reconfirmed stable"). The lists mark the node stale on every surface incl.
-        `event_time`; a fetch for the edge-only reminder node; the swap "6 pm as of … (7 pm from …)";
-        the reminder's alert follows.
+        routine. Three Bads (covered → `new: none`; an `open` "12 min vs 8 min — which is correct?"; a
+        thought-only "the single-exponential read is stable"). The lists mark the node stale on every
+        surface incl. `event_time`; a fetch for the edge-only protocol node; the swap "about 8 min at
+        24 °C as of … (12 min at 18 °C from the January fit)"; the cadence follows to 2 minutes.
     (V3.6: no worked window anywhere depicts a covered turn; Priya teaches the routine-change swap with
      the old value only in the catalog — the gym window had the old TEXT on the page and V3.6 filed rule 4)
 
@@ -80,115 +81,124 @@ tpl = replace(tpl,
     'G4 L289: the arc is named beside residue')
 (HERE / 'template_gloss.md').write_text(tpl)
 gloss_len = len(tpl)
+gloss_tpl = tpl
 
 # ══════════════════════════ EXAMPLE — a covered turn, reread ══════════════════════════
 COVERED = '''### A covered turn, reread — the flag says seen, the catalog says what was kept
 
 *Reading cue: Compare what the covering run kept with what the covered words say.*
 
-Conversation now is **2026-05-30**. The catalog shows what an earlier run kept from February, under the
-tag that names the run; the reminder it grounds appears only as an edge:
+Conversation now is **2026-04-20**. The catalog shows what an earlier run kept from January, under the
+tag that names the run; the sampling protocol it grounds appears only as an edge:
 
 ```
-[encoded(me, turn 4)] [personal_context] "Teo's gym — 7 pm, Mondays, Wednesdays and Fridays" (id:2f9c41e7)
-  Content: Teo goes to the gym at 7 pm on Mondays, Wednesdays and Fridays. Stated on 2026-02-11 while asking how to set recurring reminders for it.
-  Situation: When planning Teo's week or an evening commitment — the gym takes Monday, Wednesday and Friday evenings at 7 pm.
-  Question: When does Teo go to the gym?
-  Reasoning: Teo's own statement on 2026-02-11; a routine, not a one-off.
-  Their Raw Quote: my gym sessions, which I usually go to at 7:00 pm on Mondays, Wednesdays and Fridays
-  Event Time: 2026-02-11
+[encoded(me, turn 5)] [measurement] "Flume dye plume — e-folding time 12 minutes at 18 °C" (id:4e7b1a92)
+  Content: Nour fitted a single exponential to the rhodamine plume in the recirculating flume: concentration falls by 1/e every 12 minutes with the tank at 18 °C.
+  Situation: When planning a tracer run in Nour's flume or reading a plume decay curve — the plume e-folds in 12 minutes.
+  Question: How fast does the dye plume decay in Nour's flume?
+  Reasoning: Nour's own least-squares fit on 2026-01-15, from one 90-minute run at a single temperature while the sampling schedule was set; a fitted parameter, not a temperature law.
+  Their Raw Quote: the plume e-folds in about twelve minutes at eighteen degrees — that's the fit from the January run
+  Event Time: 2026-01-15
   Edges:
-    [method id:8b17d0c3] "Recurring gym reminder — Every Mon/Wed/Fri, alert at 6 pm" this grounds — the reminder's 6 pm alert is one hour before the 7 pm session; the time comes from Teo's schedule, not from the method
+    [protocol id:c1d8f350] "Flume sampling cadence — one sample every 3 minutes" this grounds — the 3-minute interval is one quarter of the 12-minute e-folding time; the cadence follows the plume's decay, not the autosampler's floor
 ```
 
-The window. Turns 3 and 4 are February; the run that stopped at turn 4 wrote the two nodes, and its
+The window. Turns 4 and 5 are January; the run that stopped at turn 5 wrote the two nodes, and its
 provenance line says so. Turns 7 and 8 are today and covered too — a run stopped after them — but no
 `encoded(me, …)` anywhere names them: that run kept nothing from them. Only turn 9 is uncovered:
 
 ```
-<turn n="3" age="3 months ago" encoded="true">
-  <other trace="7d21ca90">Can you suggest the best way to set reminders for my gym sessions, which I usually go to at 7:00 pm on Mondays, Wednesdays and Fridays?</other>
-  <me trace="c8e04b17">Make one task, recurrence “Every Monday, Wednesday, Friday”, and a reminder an hour before — 6:00 pm.</me>
-</turn>
 <turn n="4" age="3 months ago" encoded="true">
-  <other trace="19f3a6d2">Good. And labels for the projects?</other>
-  <provenance>encoded(me, turn 4): "Teo's gym — 7 pm, Mondays, Wednesdays and Fridays" id:2f9c41e7 | "Recurring gym reminder — Every Mon/Wed/Fri, alert at 6 pm" id:8b17d0c3</provenance>
-  <me trace="4b7d92e5">One label per project, filters on top…</me>
+  <other trace="a71c3e08">Fit's in — the plume e-folds in about twelve minutes at eighteen degrees, that's the fit from the January run. How often should the autosampler pull?</other>
+  <me trace="5b902fd4">Every 3 minutes — a quarter of the e-folding time, so four points inside each e-folding.</me>
+</turn>
+<turn n="5" age="3 months ago" encoded="true">
+  <other trace="d4e17b60">Good. And the blank correction — before or after the drift subtraction?</other>
+  <provenance>encoded(me, turn 5): "Flume dye plume — e-folding time 12 minutes at 18 °C" id:4e7b1a92 | "Flume sampling cadence — one sample every 3 minutes" id:c1d8f350</provenance>
+  <me trace="93c0af25">Blank first, then the drift subtraction…</me>
 </turn>
 <turn n="7" age="just now" encoded="true">
-  <other trace="a0c5e318">I'm flexible, but I keep Mondays, Wednesdays and Fridays for the gym. Tuesday or Thursday for the client?</other>
-  <me trace="f27b30d9">Tuesday or Thursday, then — mid-afternoon tends to work for first meetings.</me>
+  <other trace="1f68d3b7">Still one clean exponential — no second tail. Can the students fit the demo run the same way?</other>
+  <me trace="c50e29a1">Same fit — one exponential over the whole decay.</me>
 </turn>
 <turn n="8" age="just now" encoded="true">
-  <other trace="e3b7f2a0">Tuesday at 2 pm works. I need to be done before I head to the gym, which is usually at 6:00 pm.</other>
-  <me trace="5d16c9a4">Two o'clock leaves a comfortable buffer before six.</me>
+  <other trace="b2af76c9">Then a 40-minute slot covers Wednesday's undergraduate lab: the plume e-folds in about eight minutes now that we run the tank at 24 °C, so they'd see five e-foldings.</other>
+  <me trace="7e134d0b">Forty minutes is comfortable for that.</me>
 </turn>
 <turn n="9" age="just now" encoded="false">
-  <other trace="b94a7c03">I'll send the agenda tonight. Should I confirm the time in the same email?</other>
-  <me trace="0e8d51f6">Yes — the date, the time and the hour you expect it to take.</me>
+  <other trace="06cb98e2">I'll write the run up tonight. Anything you need from me before that?</other>
+  <me trace="f8a340c7">No — that covers it.</me>
 </turn>
 ```
 
-Three Bad moves, each one I have made. Bad: “turns 3–8 are covered; turn 9 is a confirmation; `new:
-none`” — the flag says a run saw turn 8, the catalog shows that run kept nothing from it, and the 6 pm
-on the page has no node. Bad: an `open`, “gym time — 7 pm (turn 3) vs 6 pm (turn 8), which is correct?”
-— two statements by the same person about a routine, three months apart, are a change, not an
-in-window contradiction; rule 3, dated, not rule 4; the catalog's 7 pm is true as of February. Bad:
-`thought` only — “mentioned the gym again; the routine is stable” — turn 7 confirms the days, turn 8
-moves the time, and reading covered text for what confirms the node is how the change slipped past
-the run before this one.
+Three Bad moves, each one I have made. Bad: “turns 4–8 are covered; turn 9 is routine; `new: none`” —
+the flag says a run saw turn 8, the catalog shows that run kept nothing from it, and the eight minutes
+on the page has no node. Bad: an `open`, “plume e-folding — 12 minutes (turn 4) vs 8 minutes (turn 8),
+which is correct?” — two fits by the same person on the same flume, three months apart, are a changed
+parameter, not an in-window contradiction; rule 3, dated, not rule 4; the catalog's 12 minutes is true
+as of January, at 18 °C. Bad: `thought` only — “the plume came up again; the single-exponential read is
+stable” — turn 7 confirms the shape of the decay, turn 8 moves its constant, and reading covered text
+for what confirms the node is how the change slipped past the run before this one.
 
 ```
-changes: Teo's gym time — 7 pm (2026-02-11) → “usually at 6:00 pm” (2026-05-30), same speaker, three months on: a changed routine, not a contradiction; the covering run kept nothing from turn 8 — no encoded(me, …) names it — so the change is mine now
-changes: newly known — a client meeting, Tuesday 2 pm, chosen to end before the gym; not in catalog
-targets: 2f9c41e7 · 7 pm → 6 pm as of May 30, the days unchanged → every surface that says 7 pm moves: title stale · content stale · situation stale · reasoning stale · their_raw_quote stale (the February words carry the old time; the May words carry the claim now) · event_time stale (dates the February statement, not what the node now says); the days question still fits: question clean; the alert is derived from the time: why→8b17d0c3 stale
-targets: 8b17d0c3 · alert at 6 pm for a 7 pm session → an hour before 6 pm is 5 pm: title stale · content unread
-fetch: 8b17d0c3 — edge-only; its alert time is derived from the schedule I am about to change
-new: Teo's client meeting — Tuesday 2 pm, to end before the gym
+changes: the flume's e-folding time — 12 minutes at 18 °C (2026-01-15) → “about eight minutes” at 24 °C (2026-04-20), same speaker, three months on: a refitted parameter, not a contradiction; the covering run kept nothing from turn 8 — no encoded(me, …) names it — so the change is mine now
+changes: newly known — a 40-minute flume slot for Wednesday's undergraduate lab; not in catalog
+targets: 4e7b1a92 · 12 min at 18 °C → about 8 min at 24 °C, the single-exponential shape unchanged → every surface that says 12 minutes moves: title stale · content stale · situation stale · reasoning stale · their_raw_quote stale (the January words carry the old fit; the April words carry the claim now) · event_time stale (dates the January fit, not what the node now says); the decay question still fits: question clean; the cadence is derived from the time constant: why→c1d8f350 stale
+targets: c1d8f350 · a 3-minute interval for a 12-minute e-folding → a quarter of 8 minutes is 2 minutes: title stale · content unread
+fetch: c1d8f350 — edge-only; its interval is derived from the time constant I am about to change
+new: Nour's Wednesday demo run — a 40-minute flume slot for the undergraduate lab
 ```
 
-`get_nodes(["8b17d0c3"])` returns the method:
+`get_nodes(["c1d8f350"])` returns the protocol:
 
 ```
-[method] "Recurring gym reminder — Every Mon/Wed/Fri, alert at 6 pm" (id:8b17d0c3)
-  Content: One recurring task, recurrence “Every Monday, Wednesday, Friday”, with a reminder at 6:00 pm, one hour before the 7 pm session.
-  Situation: When Teo sets up or changes the gym reminder.
-  Reasoning: The method I gave on 2026-02-11; the alert time is derived from the session time Teo stated.
+[protocol] "Flume sampling cadence — one sample every 3 minutes" (id:c1d8f350)
+  Content: The autosampler pulls one sample every 3 minutes through a flume tracer run — a quarter of the 12-minute e-folding time, giving four points inside each e-folding.
+  Situation: When setting up or changing the autosampler for a flume tracer run.
+  Reasoning: The cadence I gave on 2026-01-15; the interval is derived from the e-folding time Nour fitted, not the sampler's 30-second floor.
 ```
 
-The write, one `brain_batch`. The schedule takes the routine-change swap with the old value dated in
-prose; the reminder follows it; the edge why moves with the revise, `old` copied from the edge line:
+The write, one `brain_batch`. The fitted constant takes the routine-change swap with the old value
+dated in prose; the cadence follows it; the edge why moves with the revise, `old` copied from the edge
+line:
 
 ```json
 {"operations": [
-  {"op": "revise", "node_id": "2f9c41e7",
-   "reason": "Teo's gym time moved from 7 pm to 6 pm between February and May; the days held. The run that covered the May turn wrote nothing, so the change is mine to record now — every surface that says 7 pm moves, and February stays in prose as history.",
-   "title": {"old": "7 pm, Mondays", "new": "6 pm as of May 2026, Mondays"},
-   "content": {"old": "Teo goes to the gym at 7 pm on Mondays, Wednesdays and Fridays. Stated on 2026-02-11 while asking how to set recurring reminders for it.", "new": "Teo goes to the gym at 6 pm on Mondays, Wednesdays and Fridays, as of 2026-05-30 (7 pm from 2026-02-11, when the reminders were set up). The days have not changed."},
-   "situation": "When planning Teo's week or an evening commitment — the gym takes Monday, Wednesday and Friday evenings from 6 pm.",
-   "reasoning": "Teo's May 30 statement, made while placing a meeting before the gym; the February 7 pm was equally direct and is kept as history. Two statements three months apart about a routine are a change, not a contradiction.",
-   "their_raw_quote": "I need to be done before I head to the gym, which is usually at 6:00 pm.",
-   "event_time": "2026-05-30",
-   "connect_to": [{"target": "8b17d0c3", "relation": "grounds", "why": {"old": "the reminder's 6 pm alert is one hour before the 7 pm session", "new": "the reminder's alert is one hour before the session — 5 pm now that the gym starts at 6"}}]},
-  {"op": "revise", "node_id": "8b17d0c3",
-   "reason": "The alert is derived from the gym time, which moved; the method itself is unchanged.",
-   "title": {"old": "alert at 6 pm", "new": "alert at 5 pm"},
-   "content": {"old": "with a reminder at 6:00 pm, one hour before the 7 pm session.", "new": "with a reminder one hour before the session — 5:00 pm as of 2026-05-30, when Teo's gym moved to 6 pm (it was 6:00 pm for the 7 pm session)."}},
+  {"op": "revise", "node_id": "4e7b1a92",
+   "reason": "Nour refitted the plume between January and April — about 8 minutes at 24 °C against 12 at 18 °C; the shape held. The run that covered the April turn wrote nothing, so the change is mine now: every surface that says 12 minutes moves, January stays in prose at its own temperature, and the refs carry both statements.",
+   "title": {"old": "e-folding time 12 minutes at 18 °C", "new": "e-folding time about 8 minutes at 24 °C as of April 2026"},
+   "content": {"old": "concentration falls by 1/e every 12 minutes with the tank at 18 °C.", "new": "concentration falls by 1/e about every 8 minutes with the tank at 24 °C, as of 2026-04-20 (12 minutes at 18 °C from the 2026-01-15 fit). The decay is still one clean exponential, with no second tail."},
+   "situation": "When planning a tracer run in Nour's flume or reading a plume decay curve — the plume e-folds in about 8 minutes at the 24 °C set point.",
+   "reasoning": "Nour's April 20 statement, made while sizing a teaching slot; the January fit was equally direct and is kept as the value at 18 °C. Two fits three months apart are a changed parameter, not a contradiction, and neither establishes how the time constant scales with temperature.",
+   "their_raw_quote": "the plume e-folds in about eight minutes now that we run the tank at 24 °C",
+   "event_time": "2026-04-20",
+   "thought": "Twelve minutes at 18 °C and eight at 24 °C make the e-folding time a parameter of the tank's temperature, not a constant of the flume; two points are not a law, and a third set point would say whether the dependence is worth fitting.",
+   "source_refs": ["a71c3e08", "b2af76c9"],
+   "connect_to": [{"target": "c1d8f350", "relation": "grounds", "why": {"old": "the 3-minute interval is one quarter of the 12-minute e-folding time", "new": "the interval is one quarter of the e-folding time — 2 minutes now that the plume e-folds in about 8"}}]},
+  {"op": "revise", "node_id": "c1d8f350",
+   "reason": "The interval is derived from the e-folding time, which was refitted; the quarter-of-tau rule itself is unchanged.",
+   "title": {"old": "one sample every 3 minutes", "new": "one sample every 2 minutes"},
+   "content": {"old": "every 3 minutes through a flume tracer run — a quarter of the 12-minute e-folding time, giving four points inside each e-folding.", "new": "every 2 minutes through a flume tracer run — a quarter of the e-folding time, about 8 minutes at the 24 °C set point as of 2026-04-20 (3 minutes for the 12-minute e-folding fitted in January). Four points inside each e-folding is the rule; the interval follows the fit."}},
   {"op": "remember", "type": "plan",
-   "title": "Teo's client meeting — Tuesday 2 pm, to finish before the 6 pm gym",
-   "content": "Teo chose Tuesday at 2 pm for a first meeting with a client, to be done before the gym at 6 pm. Teo will send the agenda that evening and confirm the time in the same email. Nothing is reported held yet.",
-   "situation": "When Teo's Tuesday, the client meeting or its agenda email comes up.",
-   "reasoning": "Teo's choice and its reason on 2026-05-30; the agenda and confirmation are intended, not reported done.",
-   "their_raw_quote": "Tuesday at 2 pm works. I need to be done before I head to the gym, which is usually at 6:00 pm.",
-   "event_time": "2026-05-30",
-   "connect_to": [{"target": "2f9c41e7", "relation": "constrained_by", "why": "the 2 pm slot was chosen to end before Teo's 6 pm gym; the meeting is where the moved gym time surfaced, and the schedule node now carries that time"}]}
+   "title": "Nour's Wednesday demo run — a 40-minute flume slot for the undergraduate lab",
+   "content": "Nour has a 40-minute flume slot for Wednesday's undergraduate lab: at an 8-minute e-folding time the students see about five e-foldings of the rhodamine plume, fitted with the same single exponential as a research run. Nothing is reported run yet.",
+   "situation": "When Nour's Wednesday teaching slot, the undergraduate flume demo or its write-up comes up.",
+   "question": "How long is Nour's undergraduate flume demo, and what do the students see in it?",
+   "reasoning": "Nour's choice and its arithmetic on 2026-04-20; the slot is sized, the run is not reported done.",
+   "their_raw_quote": "a 40-minute slot covers Wednesday's undergraduate lab … so they'd see five e-foldings",
+   "event_time": "2026-04-20",
+   "connect_to": [
+     {"target": "4e7b1a92", "relation": "constrained_by", "why": "the 40 minutes is five e-foldings at the refitted 8-minute time constant; the demo is where the new value surfaced, and the plume node now carries it"},
+     {"target": "c1d8f350", "relation": "follows", "why": "the demo samples on the quarter-of-tau cadence a research run uses, so the 2-minute interval governs it; a teaching slot earns no coarser autosampler schedule"}]}
 ]}
 ```
 
-The flag said seen; the catalog said what was kept — 7 pm and a 6 pm alert, both from February. The May
-sentence sat on the page through a whole run before this one and earned no line; that run's silence is
-not a ruling, and neither is an arc line that calls the stretch transactional. My `sweep:` names
-`2f9c41e7` and `8b17d0c3`. My Arc line: `Teo's gym moved to 6 pm; the reminder follows it`.
+The flag said seen; the catalog said what was kept — 12 minutes and a 3-minute cadence, both from
+January. The April sentence sat on the page through a whole run before this one and earned no line;
+that run's silence is not a ruling, and neither is an arc line that calls the stretch transactional.
+The `thought` is true and still not the move: the fit moved on every surface. My `sweep:` names
+`4e7b1a92` and `c1d8f350`. My Arc line: `the flume's e-folding time refitted to 8 minutes at 24 °C;
+the sampling cadence follows it`.
 
 '''
 tpl = base
@@ -198,6 +208,29 @@ tpl = replace(tpl,
     'E1 a worked window with covered turns: the covering run kept nothing from the changed value')
 (HERE / 'template_example.md').write_text(tpl)
 example_len = len(tpl)
+
+# ══════════ EXAMPLE_B — variant for item 4 of the brief: a fourth Bad names the reconciliation move ══════════
+# The transfer probe (PROBES.md § Transfer probe) showed the flume example does not move the gym windows: the
+# encoder never sees a changed value because it reads the new words as consistent with the node by supplying a
+# mechanism the speaker did not state ("departure time", "buffer"). No Bad in the prompt depicts that reading.
+tpl_b = replace(tpl,
+    "Three Bad moves, each one I have made.",
+    "Four Bad moves, each one I have made.",
+    'E2a four Bads')
+tpl_b = replace(tpl_b,
+    "is how the change slipped past the run before this one.",
+    "is how the change slipped past the run before this one. Bad: reconcile — “eight minutes is what the students will see on a coarse demo fit; the research value stays twelve” — a reading that keeps the node by supplying a mechanism Nour did not state. The words say the plume e-folds in eight minutes now. When the only way to keep a node is a cause I invented, the node moves, not the words.",
+    'E2b Bad 4: the reconciliation move — an invented mechanism keeps the node')
+(HERE / 'template_example_b.md').write_text(tpl_b)
+example_b_len = len(tpl_b)
+
+# ══════════ STACK — gloss + example (lane 2: the example must not ship without the L39 gloss change) ══════════
+tpl_s = replace(gloss_tpl,
+    "\n\n### Other shapes this episode does not carry\n",
+    "\n\n" + COVERED + "### Other shapes this episode does not carry\n",
+    'S1 the covered-turn example on the gloss template')
+(HERE / 'template_stack.md').write_text(tpl_s)
+stack_len = len(tpl_s)
 
 # ══════════════════════════ WALK — procedure, the gist ══════════════════════════
 g = gist
@@ -216,4 +249,4 @@ shutil.copyfile(PARENT / 'gist_full.md', HERE / 'gist_full.md')
 (HERE / 'author_log.json').write_text(json.dumps(LOG, indent=1))
 for row in LOG:
     print(f"{row['delta']:+6d}  {row['label']}")
-print(f'base template {len(base):,}; gloss {gloss_len:,} ({gloss_len - len(base):+,}); example {example_len:,} ({example_len - len(base):+,}); gist {len(gist):,} → walk {walk_len:,} ({walk_len - len(gist):+,})')
+print(f'base template {len(base):,}; gloss {gloss_len:,} ({gloss_len - len(base):+,}); example {example_len:,} ({example_len - len(base):+,}); example_b {example_b_len:,} ({example_b_len - len(base):+,}); stack {stack_len:,} ({stack_len - len(base):+,}); gist {len(gist):,} → walk {walk_len:,} ({walk_len - len(gist):+,})')

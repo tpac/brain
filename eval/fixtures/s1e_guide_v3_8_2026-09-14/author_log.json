@@ -26,8 +26,26 @@
  {
   "label": "E1 a worked window with covered turns: the covering run kept nothing from the changed value",
   "old_chars": 47,
-  "new_chars": 8815,
-  "delta": 8768
+  "new_chars": 10563,
+  "delta": 10516
+ },
+ {
+  "label": "E2a four Bads",
+  "old_chars": 38,
+  "new_chars": 37,
+  "delta": -1
+ },
+ {
+  "label": "E2b Bad 4: the reconciliation move \u2014 an invented mechanism keeps the node",
+  "old_chars": 55,
+  "new_chars": 390,
+  "delta": 335
+ },
+ {
+  "label": "S1 the covered-turn example on the gloss template",
+  "old_chars": 47,
+  "new_chars": 10563,
+  "delta": 10516
  },
  {
   "label": "W1 targets: the reverse pass, catalog entry \u2192 the covered turns it came from",
