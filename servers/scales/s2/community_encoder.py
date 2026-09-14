@@ -449,9 +449,6 @@ class CommunityEncoder(IntegrationUnit):
         dispatch_fn = self._make_dispatch()
         client = make_client()
 
-        # Residue continuity — the last few runs' review notes, rendered by base.
-        journal_prefix = self.journal.residue()
-
         # Batch proposals
         batch_size = self.config.get('max_proposals_per_call', 15)
         context_limit = self.config['max_batch_context_chars']
@@ -476,7 +473,7 @@ class CommunityEncoder(IntegrationUnit):
         proposal_offset = 0
         batch_idx = 0
         while proposal_offset < len(proposals):
-            continuity = journal_prefix + self.journal.messages()
+            continuity = self.journal.continuity(chain_id=self.chain_id())
             batch = proposals[proposal_offset:proposal_offset + batch_size]
             # Largest contiguous prefix that fits. Shared targets are rendered
             # once, so count-based halving can needlessly repeat their evidence.

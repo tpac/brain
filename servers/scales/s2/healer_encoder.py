@@ -81,11 +81,6 @@ class HealerEncoder(IntegrationUnit):
         model = ''   # the LLM the batches called — set from the first successful call
         _t0 = time.time()
 
-        # Residue continuity — read ONCE before the loop (a per-batch read
-        # would echo batch 1's just-written notes into batch 2), prepended to
-        # every batch's content, mirroring the loop encoders.
-        journal_prefix = self.journal.residue()
-
         batch_size = self.config['max_nodes_per_call']
         for batch_start in range(0, len(proposals), batch_size):
             batches += 1
@@ -95,7 +90,7 @@ class HealerEncoder(IntegrationUnit):
             # any unsolicited fields Haiku regenerates).
             by_full = {p['node_id']: p for p in batch}
 
-            user_content = (journal_prefix + self.journal.messages()
+            user_content = (self.journal.continuity(chain_id=self.chain_id())
                             + self._format_batch(batch))
             result, call_tel = self._call_llm('s2_healer', user_content,
                                               journal=True)

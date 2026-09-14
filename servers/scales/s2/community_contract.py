@@ -125,7 +125,6 @@ COMMUNITY_DETECTION = {
         'drift': 2,
     },
     'max_rounds': 2,                # LLM rounds per batch — get_nodes then brain_batch, done
-    'journal_max_chars': 14000,
 
     # ── Idle-run gating (Phase 1, 2026-05-29) ──
     # The decode is a pure function of graph state — re-running it on an

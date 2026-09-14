@@ -731,7 +731,9 @@ def _build_user_content(brain, messages, counter, session_id, lived_sequence=Non
     # runs in THIS conversation; never carries across sessions). Old arm = the
     # legacy `### Encoding Journal` blob. self-labeled block either way.
     if lived:
-        journal_block = (journal or _journal(brain, session_id)).continuity()
+        from servers.session_context import SessionContext
+        journal_block = (journal or _journal(brain, session_id)).continuity(
+            chain_id=SessionContext(session_id, stop_counter=counter).s1e_chain())
     else:
         blob = (brain.get_config('encoding_journal_%s' % session_id, '')
                 or 'First run — no previous encoding in this session.')

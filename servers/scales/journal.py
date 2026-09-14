@@ -58,6 +58,10 @@ class JournalBinding:
         self.arc = arc
         self.source = source
         self.addressed = bool(source)
+        self._run_chain = None
+        self._view = None
+        self._selection_failed = False
+        self.stats = {}
 
     # Error-log keys preserve the pre-component vocabulary so log continuity
     # survives the refactor (s1e_* for the Scribe, s2_{unit}_* for S2 units).
@@ -66,34 +70,58 @@ class JournalBinding:
             return 's1e_journal_notes_%s' % op
         return 's2_%s_journal_%s' % (self.unit, op)
 
-    def continuity(self):
-        """Current residue and message feedback for a single request."""
-        return self.residue() + self.messages()
+    def continuity(self, *, chain_id=None):
+        """Prepare current continuity before each independent request.
 
-    def residue(self):
-        """The READ side: last K note-bearing runs' notes rendered as the
-        self-labeled RECENT REVIEW NOTES block ('' when there are none — a
-        clean history adds nothing). Failure-isolated: a transient logs.db
-        read error must never abort an otherwise-valid encode — degrade to
-        no continuity, log loud."""
-        from servers.trace_contract import render_journal_notes_prefix
+        A chain identifies an invocation, not a batch. Freeze its private
+        selection, refresh committed lifecycle state and message outcomes.
+        A new chain resets the selection; omission of chain_id is the
+        single-request convenience used by standalone readers.
+        """
+        from servers.trace_contract import render_journal_view
+        if chain_id is None or chain_id != self._run_chain:
+            self._run_chain, self._view = chain_id, None
+            self._selection_failed = False
         try:
-            notes = self.brain.journal_notes(
-                scale=self.scale, unit=self.unit, session_id=self.session_id)
-            out = render_journal_notes_prefix(notes)
+            if not self._selection_failed:
+                self._view = self.brain.journal_view(
+                    scale=self.scale, unit=self.unit, session_id=self.session_id,
+                    previous=self._view)
+            view = self._view or {'selection_failed': True}
         except Exception as e:
+            # No initial snapshot means there is no safe private selection
+            # to recover mid-run: a later load would echo this run's notes.
+            # Retry on the next invocation; live messages remain independent.
+            self._selection_failed = self._view is None
             self.brain._log_error(
                 self._log_key('read'), e,
-                'residue continuity read failed — encoding without it')
-            out = ''
-        return out
+                'journal continuity read failed — retaining last known state')
+            view = dict(self._view or {}, stale=True,
+                        selection_failed=self._selection_failed)
+        try:
+            text, stats = render_journal_view(view)
+        except Exception as e:
+            self.brain._log_error(self._log_key('render'), e,
+                                  'journal rendering failed — encoding without residue')
+            text, stats = render_journal_view({'render_failed': True})
+        messages = self.messages()
+        self.stats = dict(stats, message_chars=len(messages),
+                          continuity_chars=len(text) + len(messages))
+        try:
+            self.brain.log_debug('journal_continuity', 'JournalBinding',
+                                 chain_id=chain_id or '',
+                                 cursor=view.get('cursor', 0), **self.stats)
+        except Exception as e:
+            self.brain._log_error(self._log_key('telemetry'), e,
+                                  'journal continuity telemetry failed')
+        return text + messages
 
     def messages(self):
-        """Live outcomes, read for EACH batch even when residue is frozen.
+        """Live outcomes, read for EACH request by continuity().
 
         Earlier batches can file or resolve an item. Reusing their input
         snapshot lets a later batch overwrite the newer message or miss an
-        answer. Residue stays separate so a run doesn't echo its own notes.
+        answer. Thalamus remains the owner of delivery state.
         """
         if not self.addressed:
             return ''

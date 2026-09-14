@@ -71,12 +71,12 @@ class TestHarvest(BrainTestBase):
     def test_continuity_failure_isolated(self):
         """A broken notes read degrades to no continuity, never raises."""
         b = self._binding()
-        orig = self.brain.journal_notes
-        self.brain.journal_notes = None       # any call → TypeError
+        orig = self.brain.journal_view
+        self.brain.journal_view = None       # any call → TypeError
         try:
-            self.assertEqual(b.continuity(), '')
+            self.assertIn('Latest journal read failed', b.continuity())
         finally:
-            self.brain.journal_notes = orig
+            self.brain.journal_view = orig
 
     def test_continuity_round_trip(self):
         b = self._binding(unit='community_detection')

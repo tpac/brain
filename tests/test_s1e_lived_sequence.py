@@ -191,7 +191,8 @@ def _assembly_brain():
     assembled body is the gist and the timeline section."""
     from servers.interaction_defaults import INTERACTION_DEFAULTS
     brain = _StubBrain(EPISODES)
-    brain.journal_notes = lambda **kw: []
+    brain.journal_view = lambda **kw: {'notes': []}
+    brain.log_debug = lambda *args, **kw: None
     brain.session_context_for = lambda sid: ''
     brain.query_traces = lambda **kw: {'events': []}
     brain.get_interaction_prompt = lambda name: INTERACTION_DEFAULTS[name][0]

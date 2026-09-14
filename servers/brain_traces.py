@@ -282,15 +282,27 @@ class BrainTracesMixin:
         Subject→title resolution is left to the render layer — it avoids a
         heavy get_node per note here, and the consumer already holds the node.
         """
+        events = self.query_traces(
+            ref_type='journal_note', scale=scale, ref_id=subject,
+            session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
+        ).get('events', [])
+        return self._journal_notes_from_events(
+            events, subject=subject, scale=scale, session_id=session_id,
+            unit=unit, k=k)
+
+    def _journal_notes_from_events(self, events, *, subject='', scale='',
+                                   session_id='', unit='', k=None,
+                                   compact=False):
+        """One lifecycle reducer for history and working continuity.
+
+        Input is newest-first. Compaction affects only the working read;
+        explicit subject history and the legacy notes API retain every row.
+        """
         from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
                                       JOURNAL_CONTINUITY_RUNS_DEFAULT,
                                       JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
                                       JOURNAL_OPEN_PIN_CAP, resolve_target,
                                       journal_key)
-        events = self.query_traces(
-            ref_type='journal_note', scale=scale, ref_id=subject,
-            session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
-        ).get('events', [])
         open_meta = {}   # id(event) → {'open_runs': N, 'first_seen': iso}
         if not subject:  # continuity: resolve-filter + K runs + open pins
             if k is None:
@@ -390,6 +402,29 @@ class BrainTracesMixin:
                         JOURNAL_OPEN_PIN_CAP))
 
             events = window + pinned
+        if compact:
+            # One current lifecycle per subject, including INSIDE K. Keep
+            # distinct ordinary observations; a subject is not one thought.
+            lifecycle_seen, observations, compacted = set(), set(), []
+            for e in events:
+                tag = journal_key((e.get('metadata') or {}).get('tag'))
+                subj = journal_key(e.get('ref_id'))
+                if tag in JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS:
+                    target = (resolve_target(subj, _note(e), known_subjects)
+                              if tag in JOURNAL_RESOLVE_TAGS else subj)
+                    if target in lifecycle_seen:
+                        continue
+                    lifecycle_seen.add(target)
+                    if target != subj:
+                        e = dict(e, ref_id=target)
+                else:
+                    key = (tag, subj, _note(e),
+                           (e.get('metadata') or {}).get('undelivered', ''))
+                    if key in observations:
+                        continue
+                    observations.add(key)
+                compacted.append(e)
+            events = compacted
         return [{
             'tag': (e.get('metadata') or {}).get('tag', ''),
             'note': (e.get('metadata') or {}).get('note', ''),
@@ -397,8 +432,78 @@ class BrainTracesMixin:
             'subject': e.get('ref_id', ''),
             'chain_id': e.get('chain_id', ''),
             'created_at': e.get('created_at', ''),
+            **({'event_id': e['id']} if compact else {}),
             **open_meta.get(id(e), {}),
         } for e in events]
+
+    def journal_view(self, *, scale, unit='', session_id='', previous=None):
+        """Current scoped continuity, with frozen private selection in a run.
+
+        The binding owns invocation lifetime; this door owns event reads and
+        lifecycle reduction. `previous` is a read receipt, never a second
+        writable journal. Only committed lifecycle events affecting its
+        selected subjects enter later requests. New observations wait for a
+        fresh invocation. History remains available through journal_notes.
+        """
+        from .trace_contract import (
+            JOURNAL_VIEW_HISTORY_LIMIT, JOURNAL_VIEW_PAGE_SIZE,
+            JOURNAL_VIEW_MAX_PAGES, JOURNAL_LIFECYCLE_TAGS,
+            JOURNAL_RESOLVE_TAGS, journal_key, resolve_target)
+        if (scale == 's1' and (not session_id or unit)
+                or scale == 's2' and (not unit or session_id)
+                or scale not in ('s1', 's2')):
+            raise ValueError('journal view requires an S1 session or S2 unit')
+        scope = (scale, unit, session_id)
+        if previous is not None and previous['scope'] != scope:
+            raise ValueError('journal view receipt belongs to another scope')
+        if previous is None:
+            page = self._trace_dal.journal_page(
+                scale=scale, unit=unit, session_id=session_id,
+                limit=JOURNAL_VIEW_HISTORY_LIMIT)
+            events = page['events']
+            notes = self._journal_notes_from_events(
+                events, scale=scale, unit=unit, session_id=session_id,
+                compact=True)
+            return {'scope': scope, 'events': events, 'notes': notes,
+                    'cursor': page['cursor'],
+                    'admitted': {n['event_id'] for n in notes},
+                    'subjects': {journal_key(n['subject']) for n in notes},
+                    'history_truncated': page['truncated'],
+                    'changes_pending': False}
+
+        # Build a new receipt; a read failure leaves the binding's last
+        # committed view and cursor intact, including partially read pages.
+        events = list(previous['events'])
+        admitted = set(previous['admitted'])
+        cursor = previous['cursor']
+        subjects = previous['subjects']
+        for _ in range(JOURNAL_VIEW_MAX_PAGES):
+            page = self._trace_dal.journal_page(
+                scale=scale, unit=unit, session_id=session_id,
+                after=cursor, limit=JOURNAL_VIEW_PAGE_SIZE)
+            for e in page['events']:
+                meta = e.get('metadata') or {}
+                tag = journal_key(meta.get('tag'))
+                subj = journal_key(e.get('ref_id'))
+                target = (resolve_target(subj, meta.get('note'), subjects)
+                          if tag in JOURNAL_RESOLVE_TAGS else subj)
+                if tag in JOURNAL_LIFECYCLE_TAGS and target in subjects:
+                    events.append(e)
+                    admitted.add(e['id'])
+            cursor = page['cursor']
+            if not page['truncated']:
+                break
+        events.sort(key=lambda e: e['journal_cursor'], reverse=True)
+        notes = self._journal_notes_from_events(
+            events, scale=scale, unit=unit, session_id=session_id,
+            k=len(events), compact=True)
+        # K chose the private notes at invocation start, not anew per batch.
+        # Only admitted post-cursor updates can extend that selection;
+        # supporting history must not become newly eligible context.
+        notes = [n for n in notes if n['event_id'] in admitted]
+        return dict(previous, events=events, notes=notes, cursor=cursor,
+                    admitted=admitted,
+                    changes_pending=page['truncated'])
 
     def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):
         """Write door — the mirror of journal_notes (read). Extract the
