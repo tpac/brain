@@ -19,7 +19,7 @@ import re
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 CELLS = {
-    'carriers': {'out': ROOT / 'eval/results/s1e_v37_carriers_2026-09-14', 'arms': ['v3_4_live', 'v3_6_full', 'v3_7_advice', 'v3_7_quote', 'v3_7_event']},
+    'carriers': {'out': ROOT / 'eval/results/s1e_v37_carriers_2026-09-14', 'arms': ['v3_6_full', 'v3_7_advice', 'v3_7_quote']},
 }
 RUBRIC = '''# How to review
 

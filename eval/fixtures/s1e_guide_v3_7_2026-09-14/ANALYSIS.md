@@ -110,3 +110,18 @@ one real encoding trace.
   the swatch being done); carrier 2 replaces a quote that asserts a superseded value. The two are consistent
   and are read together in Cell 2 if both pass; a rise in stale quotes on the event arm alone is a finding
   against carrier 3, not against carrier 2.
+
+## Trim before the run (Tom, 2026-09-14, before any model call)
+
+Tom cut the cell to three arms: `v3_6_full`, `v3_7_advice`, `v3_7_quote`. `v3_4_live` goes as a cost saving —
+the fresh six are read against production only, and a corpus effect is read from the baseline's own per-repeat
+spread. `v3_7_event` goes as overkill ("I prefer brain power than date marker"); it stays authored, frozen and
+diffed in this fixture for a later round, and the class-(a) event_time readout stays on the ledger as a
+finding, not a target. 3 arms × 3 repeats × 15 windows = 135 encodes, ≈ $15. Targets, guards, the spread rule and
+the ship rule above are unchanged for the two carriers that run.
+
+On Tom's question whether the advice guard helps class F: only on its own sub-class. The V3.6 "My … advice"
+method nodes carried adoption stated as confirmed where the source held an intention; the guard's condition —
+"a method or threshold I delivered AND they took up" — is that very claim, so the readout to watch is
+owner-not-kept and overclaimed on the surviving `method` nodes (both registered above). The main F class,
+intentions stored as adopted and trials as decisions, ran at ~16% in every arm and has no carrier in this round.

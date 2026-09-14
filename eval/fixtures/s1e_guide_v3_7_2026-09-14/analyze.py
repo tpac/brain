@@ -25,7 +25,7 @@ FIELDS, TEXT_FIELDS, field, words, get_edges, authored_fields, summary = (
 REFINE = ROOT / 'eval/results/s1e_v37_carriers_2026-09-14'
 REGRESSION = ROOT / 'eval/results/s1e_v37_regression_v36_2026-09-14'
 SAVED36 = ROOT / 'eval/results/s1e_v36_refine_2026-09-13'
-ARMS = ('v3_4_live', 'v3_6_full', 'v3_7_advice', 'v3_7_quote', 'v3_7_event')
+ARMS = ('v3_6_full', 'v3_7_advice', 'v3_7_quote')
 
 
 def _pinned_arms(out):

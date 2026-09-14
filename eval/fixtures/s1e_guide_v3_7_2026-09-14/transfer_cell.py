@@ -1,4 +1,7 @@
-"""Five arms on fresh material: V3.4 live and V3.6 full frozen from the V3.6 cell (V3.6 full is production, the baseline), three V3.7 carrier arms.
+"""Three arms on fresh material: V3.6 full frozen from the V3.6 cell (production, the baseline) and two V3.7 carrier arms.
+
+Trimmed before any model call (Tom, 2026-09-14): v3_4_live dropped as a cost saving; v3_7_event dropped
+("I prefer brain power than date marker") — it stays authored and frozen in this fixture for a later round.
 
 The V3.7 round (Tom, 2026-09-14: "Start the S1E V3.7 round"): one carrier per arm against the
 deployed V3.6 full. Sources come from transfer_split.json (selected by id before authoring): six
@@ -27,7 +30,7 @@ OUT = ROOT / 'eval/results/s1e_v37_carriers_2026-09-14'
 sys.path.insert(0, str(HERE))
 import sequence  # noqa: E402
 digest, save, pairs = sequence.digest, sequence.save, sequence.pairs
-ARMS = ('v3_4_live', 'v3_6_full', 'v3_7_advice', 'v3_7_quote', 'v3_7_event')
+ARMS = ('v3_6_full', 'v3_7_advice', 'v3_7_quote')
 SUBSAMPLE_ARMS = ()
 MAX_LIVE = 6
 

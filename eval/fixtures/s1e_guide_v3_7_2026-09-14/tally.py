@@ -5,7 +5,7 @@ key = json.load(open(here.parent / 'key.json'))
 t = json.load(open(here / 'tally.json'))
 DIMS = ['1 Facts and concrete detail', '2 Decisions and arcs', '3 Revision and preservation',
         '4 Evidence, ownership, scope', '5 Voice and synthesis', '6 Recall usefulness', "7 Receiver's view", '8 Content and field quality']
-ORDER = ['v3_4_live', 'v3_6_full', 'v3_7_advice', 'v3_7_quote', 'v3_7_event']
+ORDER = ['v3_6_full', 'v3_7_advice', 'v3_7_quote']
 ARMS = [a for a in ORDER if any(a in labels.values() for labels in key.values())]
 per_dim = {a: [0]*8 for a in ARMS}
 per_pack = collections.defaultdict(dict)
