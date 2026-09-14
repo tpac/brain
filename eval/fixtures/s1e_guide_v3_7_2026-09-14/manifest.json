@@ -1,0 +1,42 @@
+{
+  "status": "frozen_after_author_and_static_checks_before_model_calls",
+  "branch_commit": "6406a72059ed0606943712ac9f1a7dc9c1ba43de",
+  "baseline_arm": "2d2a068aa1e59d36cec1f3590f96e690bac2e266d6810bdf884c5e4f24639178",
+  "frozen_from_parent": {
+    "v3_4_live": "786e01735861bd672fdc18b9bb07258eb9fc60a8248a19d8702c304c74981852",
+    "v3_6_full": "2d2a068aa1e59d36cec1f3590f96e690bac2e266d6810bdf884c5e4f24639178"
+  },
+  "arms": {
+    "v3_7_advice": "e1bc5cad8835456ee0cbe83e1076b46110cb29de79a3a99109f030b1ebcfa4b4",
+    "v3_7_quote": "61d71f894adf2583d0847d311fb1a137cbeef9db218d22ce17d91688bd3c0be1",
+    "v3_7_event": "09603b6e317b303c96433210d4acf927d6dc88a14c77ba177ee7e1ff1c14d6c3"
+  },
+  "assembly": "encode._build_system_prompt(template, lived=True) on branch_commit; gist_full.md unchanged from v3_6_full",
+  "files": {
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/arms.py": "9cb5f3a68191b941b86a349793c96f8108c04492f80c43ec25497997a30f1b42",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/author.py": "459dc5a7a60bd6fab692dd38f3285ae49c196f3c1cd693a4a7b12f2da3cd4237",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/author_log.json": "706710f88e52a9c288e995745c94b97f579f50277f13b7c81b06a484c1931eae",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/static_checks.py": "eb32c95a2f70c9e31802da051667db5ac906c8e4dbd95f62e88b212797410b19",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/transfer_split.json": "d71372120221c8dfa952d09a755446fc82aa7683f9837d9844a3cc11bfc40cf2",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/ANALYSIS.md": "ac541914c9874ea90bdee5e216a5e653c7215fded2061dc3b03076857049a037",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/tools_live.json": "d166456c0da624c71314f87d1877873d29669f31db554d4973de19807c0ffa05",
+    "servers/contract.py": "82f2d795243a73daeebaa02057e9e9439f52e6b5eb8bf9879d76c28ac5c08251",
+    "servers/trace_contract.py": "e352979e5b0fa178918fb9c67b6ab0b440878b8cd463c953a31bc3d56a0d05da",
+    "servers/scales/s1/encode.py": "ac1ece42d514fb44306d66fc4f68a28fa15b62a6e4c2d696b5c3119f56021ce7",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_4_live.json": "091e8fabd7e0ddeb5b4e4b0da468a26b04e1ea62c4fbcadf3a0f8b25c22469ef",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/v3_6_full.json": "bf0dc17cc68091f51298b02d4dbed2dee8b82cada459c20d72d23f89b24d34f3",
+    "eval/fixtures/s1e_guide_v3_6_2026-09-13/manifest.json": "b2b5ab03b6c8fb6ae7c299d39a507d93077e1e6bbf71af9c292169ee20f5de71",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_advice.md": "7143134bb6d722148650f109bfc5c1704accf56d95e786bb0d2fd24d41ebaf9c",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_quote.md": "4acf85e86cfbd235555f752b55ea2cd1cacbab15a9496eef840e6f4795c4298b",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_event.md": "0f0d8b8c5bbb7d5ecffc017663b9fbb70eeaacab37c802480b5fe964cafcf1dc",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/gist_full.md": "aad53d14d949d6719f31a3fd9793517ad93a38084646059f1d7957ad9ea70b45",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/v3_7_advice.json": "8aeb38e616828dac54d4fa7710a7eb4b7f31091d16dde695b0bd65c5a0517409",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/v3_7_quote.json": "4c5fcce617b7e05d14d081bd2081fa2c0835962382e6d5f65a79e0ea30892c7c",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/v3_7_event.json": "1bdd0e6b03a9ccf08de48b93b87982b956a2a18191d09c695789873c03de4506",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_advice.md.diff": "0c6f7d10e92fd3cbf89decf067efad0a74a1d18bf3da4e2d5d4e35352cd0a6a2",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_quote.md.diff": "086c60ce82f7c6d1d8fef717e88a7dd814b2654a8c84265aa696c42412035309",
+    "eval/fixtures/s1e_guide_v3_7_2026-09-14/template_event.md.diff": "7f3bf368cee07adf53922c449cbaa1e6ae5d10f8a14c57f2e16cf7b3092bdea4"
+  },
+  "transfer_split_recorded_before_authoring": true,
+  "generalization_claim": "none until the fresh cell reports"
+}

@@ -1,0 +1,52 @@
+{
+ "recorded_at": "2026-09-14T02:05:00+00:00",
+ "recorded_before": "any V3.7 authoring; no item content, question or answer read — ids, session counts and haystack dates only",
+ "rule": "the V3.5 rule unchanged: LongMemEval oracle items ordered by sha256('s1e-v33-transfer:'+question_id) within question_type; feasible = 2-4 haystack sessions, <=8 user/assistant pairs per session, <=24 pairs total; the V3.6 split's reserve_in_order ids come first in their type (as V3.6 took V3.5's), then the next feasible ids in the recorded order; excluded: every id in the V3.3, V3.4, V3.5 and V3.6 splits (inspected, primary, reserve, rejected_exposed, development). Mention scan under eval/, docs/, ~/AgentsContext/{eval-corpus,s1e-field-coverage-gold,brain}, excluding the oracle file, .db/.onnx/.bin/.safetensors/.zip binaries, venv and the kept-brain caches final_brain/, fastembed_cache/, seed_baseline/: each primary id appears only in the V3.5 and V3.6 split records and the V3.5 handoff — id-only listings, no item content. Two reserve candidates were exposed by the scan and are rejected below.",
+ "fresh_primary": {
+  "knowledge-update": [
+   "07741c44",
+   "89941a94"
+  ],
+  "multi-session": [
+   "88432d0a",
+   "e56a43b9"
+  ],
+  "temporal-reasoning": [
+   "gpt4_e414231f",
+   "gpt4_2655b836"
+  ]
+ },
+ "fresh_primary_shapes": {
+  "07741c44": {"sessions": 2, "pairs": [6, 6], "dates": ["2023/08/11", "2023/11/30"]},
+  "89941a94": {"sessions": 2, "pairs": [6, 6], "dates": ["2023/05/26", "2023/05/29"]},
+  "88432d0a": {"sessions": 4, "pairs": [6, 6, 6, 6], "dates": ["2023/05/20", "2023/05/23", "2023/05/23", "2023/05/24"]},
+  "e56a43b9": {"sessions": 2, "pairs": [6, 6], "dates": ["2023/05/26", "2023/05/29"]},
+  "gpt4_e414231f": {"sessions": 2, "pairs": [5, 6], "dates": ["2023/03/15", "2023/03/19"]},
+  "gpt4_2655b836": {"sessions": 3, "pairs": [6, 6, 6], "dates": ["2023/04/10", "2023/04/10", "2023/04/10"], "note": "three haystack sessions on one calendar day — three windows on the same clock"}
+ },
+ "windows_per_arm_per_repeat": 15,
+ "rejected_exposed": {
+  "41698283": "knowledge-update, third in order — appears in ~/AgentsContext/eval-corpus/0a9baa (July 2026 encoding-prompt corpus: pooled prompts, surface captures, leg_b results)",
+  "4f54b7c9": "multi-session, third in order — same corpus 0a9baa"
+ },
+ "reserve_in_order": {
+  "knowledge-update": ["618f13b2", "4d6b87c8"],
+  "multi-session": ["d905b33f", "d23cf73b"],
+  "temporal-reasoning": ["gpt4_fa19884c", "gpt4_1d80365e"],
+  "note": "618f13b2, d905b33f, gpt4_fa19884c and gpt4_1d80365e were in this round's scan and are clean; 4d6b87c8 and d23cf73b are the next in order and were not scanned — scan before use"
+ },
+ "development_regression": {
+  "corpora": ["7e974930", "0e4e4c46", "ef9cf60a", "gpt4_2f91af09", "4dfccbf7", "gpt4_4cd9eba1"],
+  "against": "the saved v3_6_full and v3_4_live brains of eval/results/s1e_v36_refine_2026-09-13 (V3.6's fresh six — development data now)"
+ },
+ "arms": {
+  "v3_4_live": "the V3.6 cell's frozen v3_4_live arm (V3.4 on the branch runtime) — continuity with the V3.6 measurements",
+  "v3_6_full": "the V3.6 cell's frozen v3_6_full arm == production (s1e fingerprint 641a0d269583, s1e_gist 7617804462cd; deploy_defaults --check OK on main 6406a72) — the baseline",
+  "v3_7_advice": "v3_6_full template + carrier 1: the advice-node scope guard inside the thin worked window (example)",
+  "v3_7_quote": "v3_6_full template + carrier 2: a quote before-state depicted in the Priya revise excerpt and replaced whole (example)",
+  "v3_7_event": "v3_6_full template + carrier 3: a second Wren window — the plan comes due and event_time moves with its state (example)"
+ },
+ "branch": "claude/s1e-v3-7-eval-63d861 at 6406a72 (level with main; production runs this revision)",
+ "windows": "one window per haystack session on the session's own clock; three independent repeats per arm, sequential windows inside a repeat; every arm on every corpus",
+ "no_prompt_edits_after_outputs": true
+}
