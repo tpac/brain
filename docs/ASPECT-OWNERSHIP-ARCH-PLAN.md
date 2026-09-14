@@ -582,13 +582,15 @@ constant, absent from `INTERACTION_DEFAULTS`. This also clears the Step 7 collis
 
 **Order.** The first two do not depend on the table and should not wait for it.
 
-- **A — fix the stamper's relation→family map.** `community_structural.py:78-82` hand-rolls a
-  **last-claimant** map where `community_decoder.py:370` uses `primary_edge_map()`. Measured
-  2026-09-14: the two skip-sets are 140 vs 98 relations, **disagreeing on 42**, `similar_to` among
-  them (1,314 live rows) — so stamped `community_internal_fraction` can disagree with the decoder's,
-  which `community_structural.py:11-16` says is impossible. `tests/test_community_structural.py:132`
-  cannot see it: it builds the same last-claimant map for both sides, over single-homed fixtures.
-  **⚠ OWNED BY ANOTHER STREAM as of 2026-09-14 — check before touching.** Brain `id:61f24059`.
+- ~~**A — fix the stamper's relation→family map.**~~ **SHIPPED 2026-09-14 (`c310734`).**
+  `community_structural.py` hand-rolled a **last-claimant** map where `community_decoder.py` uses
+  `primary_edge_map()`. Measured before the fix: the two skip-sets were 140 vs 98 relations,
+  **disagreeing on 42**, `similar_to` among them (1,314 live rows) — so stamped
+  `community_internal_fraction` could disagree with the decoder's, which
+  `community_structural.py:11-16` says is impossible. The parity test could not see it: it built the
+  same last-claimant map for both sides, over single-homed fixtures. Brain `id:61f24059`.
+  **Stamped values written before this commit are unreliable for communities holding any of the 42
+  divergent relations** — they correct themselves on the next encode's stamp.
 - ~~**B — collapse the third non-cohesion spelling.**~~ **SHIPPED 2026-09-14.**
   `_sample_internal_edges` (`community_decoder.py`) read a frozen
   `('community_member','related_to','related')`; it now reads
