@@ -690,11 +690,11 @@ Conversation now is **2026-06-19**. The catalog holds nothing on Wren. The windo
 
 ```
 <other trace="8c1f42d9">Quick one — a cardigan pattern calls for DK weight and all I have is worsted. Can I substitute?</other>
-<me trace="3e9a70b6">Usually, yes: knit a swatch in the worsted, then go up half a needle size and check the stitch count against the pattern's gauge — worsted at 4.5 mm often lands within a stitch of DK at 4 mm. If it doesn't, the fabric will be denser and the cardigan a size larger.</me>
+<me trace="3e9a70b6">Usually, yes: knit a swatch in the worsted, then go up half a needle size and check the stitch count against the pattern's gauge — worsted at 4.5 mm often lands within a stitch of DK at 4 mm. If it doesn't, the fabric will be denser and the cardigan a size larger. And block the pieces before seaming, whatever the yarn — it evens the stitches out.</me>
 <other trace="51d0be27">Thanks — it's for my sister's wedding in October, so I have time to swatch. I moved to Tromsø in March and the yarn shop here only stocks worsted, which is why I'm asking.</other>
 ```
 
-Bad: `new: none` with a verdict — “a routine knitting question; nothing here earns a node.” The verdict names what it drops: a wedding with a month, a move with a month, a project with a deadline, and a method I stated with a number in it. None is in the catalog; each is a first disclosure. Written first, the fact lines settle the verdict before it is made:
+Bad: `new: none` with a verdict — “a routine knitting question; nothing here earns a node.” The verdict names what it drops: a wedding with a month, a move with a month, a project with a deadline, and a method I stated with a number in it. None is in the catalog; each is a first disclosure. Bad, from the other side: `new: my blocking advice — block before seaming`. That tip has no number of mine in it, Wren did not take it up, and it says nothing about Wren; any knitter could have said it. A list of general tips I produced on request is not knowledge about anyone — what I keep of such a list is the person's pick from it, on the person's node. Written first, the fact lines settle the verdict before it is made:
 
 ```
 changes: newly known — Wren's sister marries in October 2026; Wren moved to Tromsø in March 2026; Wren is knitting a cardigan for that wedding; the shop there stocks only worsted; none in catalog
@@ -742,7 +742,7 @@ fetch: none
 ]}
 ```
 
-Four nodes from three turns: three of Wren's, one of mine. The wedding is an `open` with a dated target, not an event; the move and the shop are one fact because a reader asks for them together; the method stands on its own because the next substitution question is not about Wren. My `sweep:` is `none — no state changes this window`.
+Four nodes from three turns: three of Wren's, one of mine. The wedding is an `open` with a dated target, not an event; the move and the shop are one fact because a reader asks for them together; the method stands on its own because it carries a threshold I delivered and Wren took up — half a needle size, 4.5 mm against 4 mm — and the next substitution question is not about Wren; the blocking tip earns nothing. My `sweep:` is `none — no state changes this window`.
 
 ### Detail and meaning — same topic, two nodes
 
