@@ -305,6 +305,24 @@ fingerprint work has a number behind it. Note when running it that descriptions 
 capped at `EMBEDDING_FIELD_CHAR_LIMIT` before embedding, so a containment check must
 allow for that or it reports ~170 false misses.
 
+### 15. One typed-adjacency builder for the community pipeline
+`CommunityDecoder._build_typed_adjacency` and `community_structural.build_member_adjacency`
+carry the same SELECT, the same `ADJACENCY_EXCLUDED_RELATIONS` / `ADJACENCY_SKIP_ASPECTS`
+filters, and the same `primary_edge_map()` load; `structural_metrics` is already shared.
+The module docstring promises the stamped `community_internal_fraction` can never
+disagree with the decoder's — today `test_parity_with_decoder_adjacency` enforces that,
+not the code. The copies have drifted twice: the filter literals (June 2026, lifted into
+the contract) and the relation→family map (2026-09-14, decoder on the first-claimant
+accessor, stamper on a last-claimant comprehension — 42 relations apart, `similar_to`
+counted on one side; fixed `c310734`). **The cut:** `_decode` calls
+`build_member_adjacency(self.brain)` unscoped and derives `typed_neighbors` from it;
+the decoder's private SQL and the `rel_to_fam`/`skip_fams` plumbing go. Behaviour-
+preserving — decoder proposals must match before/after on isolated data
+(`eval/s2_community_decoder_eval.py` + the community test files). The parity test then
+shrinks to a regression test of the one builder; keep its multi-homed fixture. Plan and
+watch-outs: id:294e48bb. Separate from the aspect-exclusion policy table
+(ASPECT-OWNERSHIP Step 6) and from the one-time stale-stamp backfill.
+
 ---
 
 ## Decisions needed
