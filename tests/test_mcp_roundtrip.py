@@ -91,6 +91,36 @@ class TestMCPRoundTrip(BrainTestBase):
         self.assertIn("nodes_created", result)
         self.assertEqual(result["nodes_created"], 2)
 
+    def test_remember_batch_refuses_a_non_object_entry_loudly(self):
+        """A string where a node spec belongs is a whole-call error naming the
+        index — never a raised AttributeError, which aborts the encoder's whole
+        run (id:23a29491)."""
+        raw = dispatch_command(self.brain, "remember_batch", {"nodes": [
+            {"type": "concept", "title": "Good entry", "content": "A well-formed node"},
+            "not an object"]}, [])
+        self.assertIs(raw.get("ok"), False)
+        self.assertIn("nodes[1]", raw["error"])
+        self.assertIn("got str", raw["error"])
+
+    def test_remember_batch_unwraps_a_json_encoded_entry(self):
+        """A string element that parses to a dict is the intended spec — the
+        serialization quirk brain_batch already tolerates, one level down."""
+        import json as _json
+        result = self._dispatch("remember_batch", {"nodes": [
+            _json.dumps({"type": "concept", "title": "Stringified entry", "content": "Arrived JSON-encoded"})]})
+        self.assertEqual(result["nodes_created"], 1)
+
+    def test_revise_batch_refuses_a_non_object_entry_loudly(self):
+        raw = dispatch_command(self.brain, "revise_batch", {"revisions": ["not an object"]}, [])
+        self.assertIs(raw.get("ok"), False)
+        self.assertIn("revisions[0]", raw["error"])
+
+    def test_connect_batch_reports_a_non_object_entry_per_item(self):
+        result = self._dispatch("connect_batch", {"connections": ["not an object"]})
+        self.assertEqual(result["edges_created"], 0)
+        self.assertEqual(result["failures"], 1)
+        self.assertIn("connections[0]", result["failure_details"][0]["reason"])
+
     def test_revise(self):
         """revise updates an existing node."""
         n = self._dispatch("remember", {

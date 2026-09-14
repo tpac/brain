@@ -333,6 +333,37 @@ def _handle_remember(brain, args, graph_changes):
                           "edges": edge_rows}}
 
 
+def _element_as_dict(element):
+    """A batch element as the dict it must be, or None.
+
+    Sonnet sometimes emits an element JSON-encoded as a string (seen in S2
+    community batches and in S1E remember_batch calls); a string that parses
+    to a dict is the intended spec. Anything else is a malformed element the
+    handler must refuse loudly — a raised AttributeError here aborts the
+    encoder's whole run (id:23a29491). Returns (dict or None, unwrapped).
+    """
+    if isinstance(element, dict):
+        return element, False
+    if isinstance(element, str):
+        try:
+            parsed = json.loads(element)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed, True
+    return None, False
+
+
+def _warn_string_element(brain, cmd, key, index):
+    try:
+        brain._log_warning(
+            'batch_string_element',
+            '%s.%s[%d] arrived JSON-encoded as a string — unwrapped to the intended spec' % (cmd, key, index),
+            'lossless recovery; the caller emitted a stringified element')
+    except Exception:
+        pass
+
+
 def _handle_remember_batch(brain, args, graph_changes):
     from .contract import validate_field
 
@@ -355,6 +386,12 @@ def _handle_remember_batch(brain, args, graph_changes):
     cleaned_nodes = []
     reason_warnings = []  # reason/reasoning confusion — see _handle_remember
     for i, spec in enumerate(nodes):
+        spec, unwrapped = _element_as_dict(spec)
+        if spec is None:
+            return {"ok": False, "error": "nodes[%d] must be an object (a node spec), got %s — no nodes were written"
+                    % (i, type(nodes[i]).__name__)}
+        if unwrapped:
+            _warn_string_element(brain, 'remember_batch', 'nodes', i)
         # defensive: no identity key is a node field. _pop_session_ctx
         # already stripped the top-level args; this guards a spec that bundled
         # one per-node (so it can't cascade into node_metadata_kv).
@@ -533,6 +570,13 @@ def _handle_revise_batch(brain, args, graph_changes):
 
     # Validate each revision
     for i, spec in enumerate(revisions):
+        spec, unwrapped = _element_as_dict(spec)
+        if spec is None:
+            return {"ok": False, "error": "revisions[%d] must be an object (a revision spec), got %s — nothing was revised"
+                    % (i, type(revisions[i]).__name__)}
+        if unwrapped:
+            _warn_string_element(brain, 'revise_batch', 'revisions', i)
+            revisions[i] = spec
         if not spec.get("node_id"):
             return {"ok": False, "error": "revisions[%d]: node_id required" % i}
         if not spec.get("reason"):
@@ -925,22 +969,16 @@ def _handle_brain_batch(brain, args, graph_changes):
         transaction_started = True
 
         for i, op_spec in enumerate(operations):
-            if isinstance(op_spec, str):
-                # Same serialization quirk one level down: a string ELEMENT
-                # that parses to a dict is the intended op (seen in S2
-                # community batches). Unrecoverable elements
-                # keep the existing per-op error — fan-out is bounded by
-                # the element count the caller actually sent.
-                try:
-                    _parsed_el = json.loads(op_spec)
-                except ValueError:
-                    _parsed_el = None
-                if isinstance(_parsed_el, dict):
-                    op_spec = _parsed_el
-                    unwrapped_elements += 1
-            if not isinstance(op_spec, dict):
+            # Same serialization quirk one level down: a string ELEMENT that
+            # parses to a dict is the intended op. Unrecoverable elements keep
+            # the per-op error — fan-out is bounded by the element count the
+            # caller actually sent.
+            op_spec, unwrapped = _element_as_dict(op_spec)
+            if unwrapped:
+                unwrapped_elements += 1
+            if op_spec is None:
                 results.append({"op": "?", "index": i, "ok": False,
-                                "error": "operation must be a dict, got %s" % type(op_spec).__name__})
+                                "error": "operation must be a dict, got %s" % type(operations[i]).__name__})
                 continue
             op = op_spec.get("op", "")
 
@@ -1266,7 +1304,15 @@ def _handle_connect_batch(brain, args, graph_changes):
 
     created = 0
     failure_details = []  # [{source_id, target_id, relation, reason}]
-    for c in connections:
+    for i, c in enumerate(connections):
+        c, unwrapped = _element_as_dict(c)
+        if c is None:
+            failure_details.append({
+                "source_id": "", "target_id": "", "relation": "",
+                "reason": "connections[%d] must be an object, got %s" % (i, type(connections[i]).__name__)})
+            continue
+        if unwrapped:
+            _warn_string_element(brain, 'connect_batch', 'connections', i)
         relation = c.get("relation", "")
         src_raw = c.get("source_id", "")
         tgt_raw = c.get("target_id", "")
