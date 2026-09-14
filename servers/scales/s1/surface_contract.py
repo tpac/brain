@@ -1576,17 +1576,12 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
     norm_q = float(np.linalg.norm(blended))
 
     # Aspect map — single source of truth via brain.aspects.
-    # rel_to_family (single-valued, last-writer-wins) labels each edge with a
-    # family for convergence tagging. lineage_relations is the UNION of
-    # relations across the structural-lineage aspects — used for the
-    # lineage/semantic split so a multi-aspect verb (e.g. `revises`) still
-    # rides as lineage even when its single family label is non-lineage.
-    rel_to_family = {}
+    # lineage_relations is the UNION of relations across the structural-lineage
+    # aspects — used for the lineage/semantic split so a multi-aspect verb
+    # (e.g. `revises`) still rides as lineage even when a later aspect also
+    # claims it.
     lineage_relations = frozenset()
     try:
-        for name, aspect in brain.aspects.all().items():
-            for r in aspect.edge_relations:
-                rel_to_family[r] = name
         lineage_relations = brain.aspects.lineage_relations
     except Exception as _e:
         brain._log_error('cluster_spread_aspect_config', _e,
@@ -1608,7 +1603,7 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         field_activation[nid] = field_cos
         node_activation[nid] = max(field_cos.values()) if field_cos else 0.0
 
-    # Spread loop with distribution-gated narrowing + family-aware lineage
+    # Spread loop with distribution-gated narrowing + lineage ride-along
     # + convergence tagging
     trace_steps = []
     cached_edge_coeffs = {}
@@ -1626,17 +1621,16 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         if not edges:
             break
 
-        # Classify: lineage = ride-along by family; semantic = subject to
-        # distribution-derived gate.
+        # Classify: lineage = ride-along by aspect membership; semantic =
+        # subject to distribution-derived gate.
         lineage = []
         semantic = []
         for src, tgt, coeff, edge in edges:
             relation = (edge.get('relation') or '').strip()
-            family = rel_to_family.get(relation, '')
             if relation in lineage_relations:
-                lineage.append((src, tgt, coeff, edge, family))
+                lineage.append((src, tgt, coeff, edge))
             else:
-                semantic.append((src, tgt, coeff, edge, family))
+                semantic.append((src, tgt, coeff, edge))
 
         # Distribution-derived gate on semantic edges. Compute mean+std
         # from this hop's coefficients and require coeff > μ + k·σ.
@@ -1644,12 +1638,12 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         # which is fine, those are the cluster's coherent fringe. If σ is
         # wide (mixed quality), the cut is harder.
         if semantic:
-            sem_coeffs = np.array([c for _, _, c, _, _ in semantic])
+            sem_coeffs = np.array([c for _, _, c, _ in semantic])
             mu = float(np.mean(sem_coeffs))
             sigma = float(np.std(sem_coeffs))
             k = _CLUSTER_K_SCHEDULE[min(step, len(_CLUSTER_K_SCHEDULE) - 1)]
             cut = mu + k * sigma
-            transmitting_sem = [(s, t, c, e, f) for s, t, c, e, f in semantic
+            transmitting_sem = [(s, t, c, e) for s, t, c, e in semantic
                                 if c >= cut]
         else:
             mu = sigma = 0.0
@@ -1657,14 +1651,14 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
 
         # Distribution-derived floor for lineage: per-hop p25 of all edge
         # coefficients (semantic + lineage). Lineage with raw coeff below
-        # this floor transmits AT the floor — the family carries the
-        # meaning. With no semantic edges, lineage transmits at its own
+        # this floor transmits AT the floor — the lineage relation carries
+        # the meaning. With no semantic edges, lineage transmits at its own
         # coeff or a nominal small value, whichever is greater.
         all_coeffs = [e[2] for e in edges]
         floor = float(np.percentile(all_coeffs, 25)) if all_coeffs else 0.0
         transmitting_lin = [
-            (s, t, max(c, floor), e, f)
-            for s, t, c, e, f in lineage
+            (s, t, max(c, floor), e)
+            for s, t, c, e in lineage
         ]
 
         # Outer halt: if neither path will transmit anything meaningful,
@@ -1686,14 +1680,11 @@ def spread_activation_cluster(seed_ids, query_vec, brain, prior_vecs=None):
         # convergence tagging (NOT amplification).
         contributions = {}
         sources_per_target = {}
-        families_per_target = {}
-        for src, tgt, coeff, _edge, family in transmitting:
+        for src, tgt, coeff, _edge in transmitting:
             source_act = node_activation.get(src, 0)
             transferred = source_act * coeff
             contributions[tgt] = contributions.get(tgt, 0.0) + transferred
             sources_per_target.setdefault(tgt, set()).add(src)
-            if family:
-                families_per_target.setdefault(tgt, set()).add(family)
 
         # Convergence: count distinct sources reaching each target. Tag,
         # don't amplify — render layer reads this map.

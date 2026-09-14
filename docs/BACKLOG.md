@@ -269,6 +269,60 @@ escalation for healthy-but-stale (its predecessor was proven dead code for month
 authority. Keep: KeepAlive, the singleton flock, `recover_daemon`'s corpse test, the
 startup lock. Expected to delete more lines than the reload change added.
 
+### 14. A vector cannot prove it matches the source it was built from
+`edge_context` invalidation (shipped v33, 2026-09-13) closed the write-side leak:
+`GraphDAL` reports changed endpoints through `on_edge_text_changed`, `Brain.
+invalidate_source_fields` deletes and re-queues. Post-deploy validation found the
+lane exact — 9,323 vectors for 9,323 eligible nodes, zero older than a qualifying
+relation, down from 3,683 stale. Then a content comparison found one row the
+timestamp check passes and is still wrong.
+
+**The hole:** the store can resurrect stale text. A drain computes a node's text,
+an edge write lands before the store, the hook's `delete_for_node` no-ops because
+no row exists yet, and the store then writes pre-edge content stamped *newer* than
+the edges it is missing. `find_missing` sees a row, the coverage sweep only repairs
+missing rows, the timestamp predicate passes it. Permanent, and it accumulates.
+Pre-existing and generic — `revise()` has the same window for every kv-sourced
+group; it was invisible on `edge_context` only because nothing invalidated that lane
+at all. Reasoning and the worked timeline: id:46b91efd.
+
+**This corrects an open item, not just adds one.** The runtime invariant probe
+previously specified as *"no vector older than its source"* would pass this row.
+Clocks cannot express the invariant. **Store a fingerprint of the source text
+alongside the vector** (`node_enrichments`, written by `VectorDAL.store` /
+`store_batch`, compared by `find_missing`). Then "this vector matches the source it
+was built from" is one comparison, a mismatch is self-healing because the row can
+simply be dropped, and the probe becomes trivial. It subsumes the timestamp probe
+and outranks the new `edge_relations.updated_at` column for this purpose.
+
+**Not urgent, and gated on evidence.** Steady-state exposure is the seconds a small
+drain batch takes between computing and storing (13–55 vectors in under 6s observed);
+the one occurrence was found in 4,265 checkable rows during a two-hour bulk rebuild
+with minutes-long batches. **Detector before fix:** the content-comparison query in
+id:46b91efd, which counts rows whose stored text lacks an eligible description —
+count was 1 on 2026-09-14. Re-run it; if it climbs out of single digits the
+fingerprint work has a number behind it. Note when running it that descriptions are
+capped at `EMBEDDING_FIELD_CHAR_LIMIT` before embedding, so a containment check must
+allow for that or it reports ~170 false misses.
+
+### 15. One typed-adjacency builder for the community pipeline
+`CommunityDecoder._build_typed_adjacency` and `community_structural.build_member_adjacency`
+carry the same SELECT, the same `ADJACENCY_EXCLUDED_RELATIONS` / `ADJACENCY_SKIP_ASPECTS`
+filters, and the same `primary_edge_map()` load; `structural_metrics` is already shared.
+The module docstring promises the stamped `community_internal_fraction` can never
+disagree with the decoder's — today `test_parity_with_decoder_adjacency` enforces that,
+not the code. The copies have drifted twice: the filter literals (June 2026, lifted into
+the contract) and the relation→family map (2026-09-14, decoder on the first-claimant
+accessor, stamper on a last-claimant comprehension — 42 relations apart, `similar_to`
+counted on one side; fixed `c310734`). **The cut:** `_decode` calls
+`build_member_adjacency(self.brain)` unscoped and derives `typed_neighbors` from it;
+the decoder's private SQL and the `rel_to_fam`/`skip_fams` plumbing go. Behaviour-
+preserving — decoder proposals must match before/after on isolated data
+(`eval/s2_community_decoder_eval.py` + the community test files). The parity test then
+shrinks to a regression test of the one builder; keep its multi-homed fixture. Plan and
+watch-outs: id:294e48bb. Separate from the aspect-exclusion policy table
+(ASPECT-OWNERSHIP Step 6) and from the one-time stale-stamp backfill.
+
 ---
 
 ## Decisions needed
