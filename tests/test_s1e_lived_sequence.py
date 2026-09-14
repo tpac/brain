@@ -189,7 +189,8 @@ def _assembly_brain():
     renderer (continuity notes, session arc, failed-encode residue), all empty
     — so the assembled body is the timeline section alone."""
     brain = _StubBrain(EPISODES)
-    brain.journal_notes = lambda **kw: []
+    brain.journal_view = lambda **kw: {'notes': []}
+    brain.log_debug = lambda *args, **kw: None
     brain.session_context_for = lambda sid: ''
     brain.query_traces = lambda **kw: {'events': []}
     return brain

@@ -169,8 +169,9 @@ trains reflex-deferral; at boot there is no thread to protect.
   inline. **No journal notes are written back**: they would evict real residue
   (`JOURNAL_CONTINUITY_RUNS = 3`), go stale as snapshots (id:defbdf8b), and put
   machine-authored lines in the encoder's own voice.
-  Multi-batch encoders freeze residue at run start and refresh this live
-  feedback before each batch. Feedback uses separate `Message:` and `Status:`
+  Multi-batch encoders keep their initial private-note selection while the
+  journal refreshes committed lifecycle changes and this live feedback before
+  each batch. Feedback uses separate `Message:` and `Status:`
   lines, so copying a read block cannot become a writable `ask · subject · body`
   with its status accidentally appended to the body.
 

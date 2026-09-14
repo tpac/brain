@@ -155,7 +155,6 @@ CONSOLIDATION = {
     'max_tokens': 32768,
     'max_proposals_per_call': 10,       # Clusters per Sonnet call
     'max_rounds': 2,                    # Tool-use rounds per call — read then write, done
-    'journal_max_chars': 14000,
 
     # ── Cold start / run cap ──
     # (suppression_relations fallback above; live derivation is

@@ -29,8 +29,9 @@ This cut is narrower than the historical phases below.
   demonstrates the semantic revision alongside the edge. The healer's role is
   stated accurately. Legacy stored member lists are absent from both initial
   decision evidence and subsequent S2CE inspections.
-- Community, consolidation, and healer freeze residue per run but read live
-  Thalamus feedback per batch. Producer feedback has separate message/status
+- Community, consolidation, and healer use the shared journal preparation per
+  batch: private selection stays fixed, committed lifecycle changes and
+  Thalamus feedback stay current. Producer feedback has separate message/status
   lines, so copying it cannot refile a message with `— open` in its body.
 
 **Why the compact view existed:** commit `6f88395` introduced the 150-character,

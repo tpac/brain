@@ -127,9 +127,6 @@ class ConsolidationEncoder(IntegrationUnit):
         tools = self._get_tool_schemas()
         client = make_client()
 
-        # Residue continuity — the last few runs' review notes.
-        journal_prefix = self.journal.residue()
-
         # Batch clusters
         batch_size = self.config.get('max_proposals_per_call', 10)
         total_result = {
@@ -163,7 +160,7 @@ class ConsolidationEncoder(IntegrationUnit):
             dispatch_fn = self._make_dispatch(valid_archive_ids=valid_archive_ids)
 
             # Format this batch
-            user_content = (journal_prefix + self.journal.messages()
+            user_content = (self.journal.continuity(chain_id=self.chain_id())
                             + self._format_clusters(batch))
 
             # Record this batch's prompt (full content — the old tmp file
