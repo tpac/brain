@@ -75,11 +75,12 @@ def build_member_adjacency(brain, member_ids=None):
     whole-graph scan runs (the one-time fill). Extra non-member adjacency is
     harmless — structural_metrics only walks member nodes' lists.
     """
-    rel_to_fam = {
-        relation: name
-        for name, aspect in brain.aspects.all().items()
-        for relation in aspect.edge_relations
-    }
+    # PRIMARY (first-claimant) family per relation — the registry's reverse
+    # lookup, same map the decoder loads. A comprehension over aspects.all()
+    # lets the LAST claimant win and flips multi-homed verbs (similar_to:
+    # generic_relation → settlement), so the stamp would count edges the
+    # decoder skips.
+    rel_to_fam = brain.aspects.primary_edge_map()
 
     excl = ','.join('?' * len(ADJACENCY_EXCLUDED_RELATIONS))
     sql = """

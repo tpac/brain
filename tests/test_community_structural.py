@@ -18,6 +18,7 @@ from servers.scales.s2.community_structural import (
     structural_metrics, compute_community_structural)
 from servers.scales.s2.community_decoder import CommunityDecoder
 from servers.scales.s2.community_encoder import CommunityEncoder
+from servers.scales.s2.community_contract import ADJACENCY_SKIP_ASPECTS
 
 
 class TestCommunityStructural(BrainTestBase):
@@ -116,6 +117,17 @@ class TestCommunityStructural(BrainTestBase):
     # ── parity: stamp must equal the decoder's fresh computation ──
 
     def test_parity_with_decoder_adjacency(self):
+        # The fixture carries a MULTI-HOMED verb on purpose: similar_to is
+        # claimed by generic_relation (first, skipped) and settlement (last,
+        # counted). A stamper that builds its relation→family map as a
+        # last-claimant comprehension counts these edges while the decoder
+        # skips them, and this test must fail on that regression. Guard the
+        # premise so a taxonomy change can't silently defuse the test.
+        registry = self.brain.aspects
+        self.assertEqual(registry.primary_edge_map()['similar_to'],
+                         'generic_relation')
+        self.assertIn('similar_to', registry.settlement.edge_relations)
+
         cid = self._community()
         ms = [self._node('p%d' % i) for i in range(5)]
         for m in ms:
@@ -124,20 +136,25 @@ class TestCommunityStructural(BrainTestBase):
         self._connect(ms[1], ms[2], 'extends')
         for i in range(3):
             self._connect(ms[0], self._node('q%d' % i), 'extends')
+        # Internal similar_to edges: counted by a last-claimant stamper
+        # (int_frac 2/5 → 5/8), skipped by the decoder.
+        self._connect(ms[2], ms[3], 'similar_to')
+        self._connect(ms[3], ms[4], 'similar_to')
+        self._connect(ms[1], ms[4], 'similar_to')
 
         helper = compute_community_structural(self.brain, [cid])[cid]
 
-        # Build the decoder's OWN whole-graph adjacency and compute fresh.
+        # Build the decoder's OWN whole-graph adjacency from the SAME
+        # registry accessor _decode() uses and compute fresh.
         dec = CommunityDecoder(self.brain)
-        rel_to_fam = {rel: name
-                      for name, asp in self.brain.aspects.all().items()
-                      for rel in asp.edge_relations}
         edges_by_node, _ = dec._build_typed_adjacency(
-            rel_to_fam, {'generic_relation', 'noise'})
+            registry.primary_edge_map(), set(ADJACENCY_SKIP_ASPECTS))
         dec_metrics = structural_metrics(set(ms), edges_by_node)
 
+        self.assertEqual(dec_metrics['internal'], 2)   # similar_to skipped
         self.assertEqual(helper['community_internal_fraction'],
                          round(dec_metrics['internal_fraction'], 3))
+        self.assertEqual(helper['community_internal_fraction'], 0.4)
         self.assertEqual(helper['community_is_corridor'],
                          dec_metrics['is_corridor'])
 
