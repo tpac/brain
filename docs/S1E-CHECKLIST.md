@@ -442,6 +442,9 @@ above is not the status of the completed V3.2 sanity.
    → eval (run-44 staleness set + longmem sweep, multiple reps — no single-run
    conclusions) → Tom approves → the candidate replaces `SYSTEM_PROMPT` in
    `encoding_prompt.py`.
+8. **Measure a candidate by the protocol** — [S1E eval protocol](S1E-EVAL-PROTOCOL.md): corpora by id and the
+   win pre-registered before authoring, arms as separate carriers through the runtime assembly, the
+   instrument order, the sealed blind read, the regression of the shipping rung, the readout shape.
 
 ## T. Tom's fundamentals (the frame — 2026-08-21)
 

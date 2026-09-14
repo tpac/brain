@@ -2,6 +2,9 @@
 
 **Last updated:** 2026-07-29 — LAF walker section added (the recall-lane offline substrate now has a documented home here; role-expansion artifacts included). Prior: 2026-05-30 — Frozen Corpus matured: sweep now **scores every item** with a **recall-conditional** rate (the gate stopped hard-excluding composed answers), **`--interaction-override`** added for DORMANT-version A/B, first 20-item baseline run. Prior: 2026-05-29 Frozen Corpus two-stage architecture; 2026-05-10 artifacts/analyzer/run-diff/harness reliability.
 
+Encoder-prompt candidates (S1E) are measured by their own protocol — fixture-local cells, pre-registered wins, a
+sealed blind read: [S1E-EVAL-PROTOCOL.md](S1E-EVAL-PROTOCOL.md).
+
 Originally built 2026-04-25/26 as the bias-detection broader eval. Now expanded into a deeper diagnostic platform with per-item artifact bundles for post-hoc analysis without re-running.
 
 ---
