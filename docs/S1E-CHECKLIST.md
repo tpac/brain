@@ -1,6 +1,6 @@
 # S1E Prompt Checklist — the boxes every revision must check
 
-## Current pickup — September 14: V3.6 IS the production default (merged 4d6ef90, deployed 2026-09-14); next is V3.7 in a fresh session on clean production — see [S1E eval protocol](S1E-EVAL-PROTOCOL.md) and [V3.6 results](S1E-V3-6-RESULTS-2026-09-13.md)
+## Current pickup — September 14: V3.6 full stays the production default; V3.7 (the advice-node scope guard) was measured, ruled ship, then HELD after the regression on the advice-heavy corpora showed question fill −18 points, fabricated 3% → 8% and zero-write windows — see [V3.7 results](S1E-V3-7-RESULTS-2026-09-14.md). Next is V3.8: a revision of V3.6 on the covered-turn miss class (`encoded="true"` turns whose facts have no node are treated as done; a miss in run N is never revisited) — pickup in [HANDOFF-S1E-V3-8-2026-09-14.md](HANDOFF-S1E-V3-8-2026-09-14.md); method in [S1E eval protocol](S1E-EVAL-PROTOCOL.md)
 
 **Pickup as of 2026-09-13:** read [HANDOFF-S1E-V3-5-2026-09-13.md](HANDOFF-S1E-V3-5-2026-09-13.md) first — where every
 V3.x artifact lives, the state of the evidence, the standing defect classes with carriers tried, and the rules.

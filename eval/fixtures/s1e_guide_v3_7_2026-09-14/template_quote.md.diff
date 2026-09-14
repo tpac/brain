@@ -1,0 +1,22 @@
+--- v3.6/template_full.md
++++ v3.7/template_quote.md
+@@ -783,6 +783,7 @@
+ [fact] "Priya's yoga practice — twice a week" (id:97b1f24e)
+     Priya practices yoga twice a week, started 2023-08-11. She says it
+     helps her feel grounded and centered.
++    Their Raw Quote: I do yoga twice a week — it helps me feel grounded and centered.
+ ```
+ 
+ ```
+@@ -816,6 +817,11 @@
+         new: "practices yoga three times a week as of 2023-11-30 (was twice a week from 2023-08-11)"},
+        {old: "helps her feel grounded and centered.",
+         new: "helps her feel grounded and centered, especially on anxious days, and supports her work focus."}],
++     // The stored quote asserts the old value beside the new title. A quote is
++     // evidence for the claim it sits next to, so it takes her new words whole —
++     // never a span swap inside someone's sentence, never the old sentence left
++     // contradicting the claim.
++     their_raw_quote: "I'm up to three times a week now — it gets me through the anxious days and keeps me focused at work.",
+      situation: "When Priya's week is being planned or her anxiety comes up — yoga is part of how she manages both.",
+      reasoning: "Priya's own account (2023-11-30) — the new frequency and the anxiety link are her report, direct and current.",
+      event_time: "2023-11-30"}

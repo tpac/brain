@@ -1,0 +1,56 @@
+--- v3.6/template_full.md
++++ v3.7/template_event.md
+@@ -737,6 +737,53 @@
+ ```
+ 
+ Four nodes from three turns: three of Wren's, one of mine. The wedding is an `open` with a dated target, not an event; the move and the shop are one fact because a reader asks for them together; the method stands on its own because the next substitution question is not about Wren. My `sweep:` is `none — no state changes this window`.
++
++### The plan comes due — a state moves, and its date moves with it
++
++*Reading cue: Date a node by what it now records, not by when it was first said.*
++
++On **2026-07-02** the catalog shows the plan under the id the batch returned:
++
++```
++[plan] "Wren's cardigan for the wedding — a DK pattern knit in worsted, gauge to be swatched" (id:e2b7c9a4)
++  Content: Wren is knitting a cardigan from a DK-weight pattern in worsted yarn for the sister's October wedding, and will swatch first. Nothing is reported knit yet.
++  Situation: When Wren reports swatch results or asks about the cardigan's fit or timing.
++  Reasoning: Wren's stated project and intention on 2026-06-19; the swatch is planned, not done.
++  Their Raw Quote: so I have time to swatch
++  Event Time: 2026-06-19
++  Edges:
++    [open id:5f0d83c1] "Wren's sister's wedding — October 2026" this prepares_for — the cardigan exists for this wedding, so the October date is the project's deadline; the plan does not say how far along the knitting is
++```
++
++The window:
++
++```
++<other trace="9a4e12f7">Swatched last night: worsted on 4.5 mm came out a stitch over, 5 mm matched the pattern's gauge. Cast on the back this morning.</other>
++<me trace="2c8b61d0">Then 5 mm is your needle for the whole thing — keep the swatch to check against as you go.</me>
++```
++
++Bad: content rewritten to "gauge matched at 5 mm, back cast on" with `event_time` left at 2026-06-19 — the node now records what happened on July 1 and 2, dated to the day the plan was stated. A plan is dated to when it was stated for as long as it is a plan; when its state moves, the date moves to what the node now records, and the planning date lives on in reasoning.
++
++```
++changes: cardigan — swatch planned → swatch done 2026-07-01, gauge matched at 5 mm; knitting begun 2026-07-02 (the back cast on)
++targets: e2b7c9a4 · to be swatched, nothing knit → gauge matched, back cast on → the plan is under way: title stale · content stale · situation stale · reasoning stale · event_time stale (2026-06-19 dates the plan, not what the node now records) · their_raw_quote clean (her June words say why she swatched first; nothing in them went false); deadline edge still holds: why→5f0d83c1 clean
++fetch: none
++new: none — 5 mm as her needle is the swatch's result and lives on the plan
++```
++
++```json
++{"operations": [
++  {"op": "revise", "node_id": "e2b7c9a4",
++   "reason": "The swatch is done and knitting has begun; every planned-state surface moves, and the date moves to what the node now records — the planning date stays in reasoning.",
++   "title": {"old": "gauge to be swatched", "new": "gauge matched at 5 mm, back cast on 2026-07-02"},
++   "content": {"old": "and will swatch first. Nothing is reported knit yet.", "new": "Swatched on 2026-07-01: worsted on 4.5 mm came out a stitch over and 5 mm matched the pattern's gauge, so 5 mm is the needle for the whole garment. The back was cast on 2026-07-02."},
++   "situation": "When Wren reports progress on the cardigan or asks about its fit, needle or timing against the October wedding.",
++   "reasoning": "Wren stated the project on 2026-06-19 and reported the swatch result and the cast-on on 2026-07-02; the needle size is her measured result, not my estimate.",
++   "event_time": "2026-07-02"}
++]}
++```
++
++One node, five surfaces, and the date among them. The quote stays: her words about swatching first are why the gauge is known, and nothing in them went false. My `sweep:` names `e2b7c9a4`.
+ 
+ ### Detail and meaning — same topic, two nodes
+ 

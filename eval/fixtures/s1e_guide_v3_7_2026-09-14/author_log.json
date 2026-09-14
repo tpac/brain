@@ -1,0 +1,38 @@
+[
+ {
+  "label": "A1 the <me> turn gains one general tip Wren does not take up",
+  "old_chars": 77,
+  "new_chars": 161,
+  "delta": 84
+ },
+ {
+  "label": "A2 the Bad paragraph names why the general tip earns no node",
+  "old_chars": 119,
+  "new_chars": 478,
+  "delta": 359
+ },
+ {
+  "label": "A3 the closing sentence states the scope of a method node of mine",
+  "old_chars": 140,
+  "new_chars": 272,
+  "delta": 132
+ },
+ {
+  "label": "Q1 the Priya excerpt renders the quote with the old value",
+  "old_chars": 176,
+  "new_chars": 262,
+  "delta": 86
+ },
+ {
+  "label": "Q2 the revise replaces the quote whole, with the reason",
+  "old_chars": 427,
+  "new_chars": 829,
+  "delta": 402
+ },
+ {
+  "label": "E1 a second Wren window: the plan comes due, event_time moves with its state",
+  "old_chars": 189,
+  "new_chars": 3633,
+  "delta": 3444
+ }
+]
