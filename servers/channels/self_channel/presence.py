@@ -74,12 +74,12 @@ def build_presence(brain, my_session_id='', limit=None, rich=False,
     live, lost = [], []
     for r in raw:
         sid = r.get('session_id', '')
-        state = self_contract.classify_liveness(_age_min(r.get('updated_at', '')))
+        state = self_contract.classify_liveness(_age_min(r.get('last_turn', '')))
         entry = {
             'session_id': sid,
             'short': sid[:8],
             'focus': _first_line(r.get('focus', '')),
-            'updated_at': r.get('updated_at', ''),
+            'updated_at': r.get('last_turn', ''),
             'turn_count': r.get('turn_count', 0),
             'state': state,
         }

@@ -1040,8 +1040,12 @@ class BrainTracesMixin:
         window relaunched under a new sid would linger forever). Traces only
         record actual turns, so the signal is honest.
 
-        Returns [{'session_id': str, 'updated_at': iso, 'focus': str}], newest
-        first. `updated_at` is the last real-turn time; `focus` is that
+        Returns [{'session_id': str, 'last_turn': iso, 'focus': str}], newest
+        first. `last_turn` is the DAL's own name for the value and is the
+        PRESENCE_LIVE_REF_TYPES clock — heartbeats included, so it answers "can
+        this stream be reached", not "has it gone quiet". It is deliberately NOT
+        called `updated_at`: that is a session_state column this value is not.
+        `focus` is that
         session's latest conversational turn — user_message OR assistant_message
         per trace_contract.OPERATOR_DIALOGUE_REF_TYPES, excluding the wake-envelope
         marker (raw — render layer trims it).
@@ -1051,7 +1055,7 @@ class BrainTracesMixin:
             rows = self._trace_dal.active_sessions_by_turn(
                 iso_cutoff(minutes=window_min),
                 exclude_session=exclude_session, limit=limit, sort_by=sort_by)
-            return [{'session_id': r['session_id'], 'updated_at': r['last_turn'],
+            return [{'session_id': r['session_id'], 'last_turn': r['last_turn'],
                      'focus': r['focus'], 'turn_count': r.get('turn_count', 0)}
                     for r in rows]
         except Exception as e:

@@ -31,6 +31,12 @@ Step 1 (name the set)  — independent, may land any time, do NOT bundle with St
 Step 4 (rename key)    — independent, cosmetic-but-clarifying
 ```
 
+**Steps 1 and 4 LANDED** (`PRESENCE_LIVE_REF_TYPES` in `trace_contract.py`, both DAL sites importing
+it; projection key renamed, `presence.py` keeps `updated_at` as its own PUBLIC output key so the MCP
+surface is unchanged). Steps 2 and 3 are stood down by the Step 0 result — Step 3 (`clock.py`) was
+handed to the stream owning `daemon_server.py`, whose own census of wall-clock interval comparisons
+justifies it independently of this plan.
+
 Step 1 and Step 4 are independent of everything and of each other. Step 2 must not start before
 Step 0 returns a positive result. Step 3 edits a line Step 2 also edits — sequence it after.
 
@@ -105,7 +111,7 @@ rule against a second live writer.
 
 ---
 
-## Step 1 — Name the presence-liveness ref-type set in the contract
+## Step 1 — Name the presence-liveness ref-type set in the contract  ✅ LANDED
 
 **Problem.** `live_types = OPERATOR_DIALOGUE_REF_TYPES + ('heartbeat',)` is composed **inline, twice**,
 inside SQL-building code (`servers/dal_logs.py:1418` and `:1493`). The parts route through the
@@ -317,7 +323,7 @@ shape to this plan — send them the resolved signature rather than letting a se
 
 ---
 
-## Step 4 — Rename the projection key `updated_at` → `last_turn`
+## Step 4 — Rename the projection key `updated_at` → `last_turn`  ✅ LANDED
 
 **Problem.** `servers/brain_traces.py:1054` projects the key as `updated_at` — named after the
 `session_state` column its own docstring explicitly says it is *not* ("Liveness is sourced from

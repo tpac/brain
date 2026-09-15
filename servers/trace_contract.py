@@ -314,6 +314,16 @@ ENVELOPE_EXTRACT_PREFIX = 'extract:'
 # 'thalamus_delivery' — the same opt-in convention as tool_result).
 OPERATOR_DIALOGUE_REF_TYPES = ("user_message", "assistant_message")
 
+# Presence LIVENESS — operator dialogue PLUS heartbeat. A watch listener living
+# purely on heartbeats is the most reachable stream there is, so a heartbeat
+# proves this session can be reached (B2, 2026-06-04).
+#
+# It does NOT prove work happened, so this set answers "can it be reached", never
+# "has it gone quiet". A gate asking the second question wants the row set its own
+# counter uses — see conversational_turns_since — not this one. Named here rather
+# than assembled inline so a consumer inherits it visibly.
+PRESENCE_LIVE_REF_TYPES = OPERATOR_DIALOGUE_REF_TYPES + ("heartbeat",)
+
 # The "said + did" timeline: conversation plus tool activity. What the S1
 # encoder's lived timeline reads and what the embed queue eagerly embeds —
 # the two must stay in lockstep (an unembedded timeline row can't anchor

@@ -1411,11 +1411,10 @@ class TraceDAL(_LogsWriteBase):
         # PINNED to operator dialogue (not the dial): presence focus and
         # ranking must show WORK even after a delivery correspondent flips on
         # in S0_CONVERSATIONAL_INCOMING — a brain notice is not a focus.
-        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
+        from .trace_contract import (OPERATOR_DIALOGUE_REF_TYPES,
+                                     PRESENCE_LIVE_REF_TYPES, WAKE_ENVELOPE_MARKER)
         conv_ph = ','.join('?' * len(OPERATOR_DIALOGUE_REF_TYPES))
-        # Presence (liveness) also counts heartbeats — a watch listener living
-        # purely on heartbeats is the most reachable stream (B2, 2026-06-04).
-        live_types = OPERATOR_DIALOGUE_REF_TYPES + ('heartbeat',)
+        live_types = PRESENCE_LIVE_REF_TYPES
         live_ph = ','.join('?' * len(live_types))
         # scale='s0' is a behavior-preserving predicate (every conversational +
         # heartbeat ref_type is s0-only per trace_contract.REF_TYPES) that lets
@@ -1488,9 +1487,10 @@ class TraceDAL(_LogsWriteBase):
                            truncates. Read-only.
         """
         # PINNED to operator dialogue — see active_sessions_by_turn.
-        from .trace_contract import OPERATOR_DIALOGUE_REF_TYPES, WAKE_ENVELOPE_MARKER
+        from .trace_contract import (OPERATOR_DIALOGUE_REF_TYPES,
+                                     PRESENCE_LIVE_REF_TYPES, WAKE_ENVELOPE_MARKER)
         conv_ph = ','.join('?' * len(OPERATOR_DIALOGUE_REF_TYPES))
-        live_types = OPERATOR_DIALOGUE_REF_TYPES + ('heartbeat',)
+        live_types = PRESENCE_LIVE_REF_TYPES
         live_ph = ','.join('?' * len(live_types))
         agg = self.conn.execute(
             "SELECT "

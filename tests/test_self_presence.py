@@ -325,10 +325,10 @@ class TestPresenceCountsWatchers(BrainTestBase):
         self.assertLess(dal_row['conv_recency'], iso_cutoff(minutes=10),
                         "the reply must not bump conv_recency — that is what "
                         "outranked the operator's own session")
-        # `updated_at` (= last_turn) still counts the envelope, so the stream keeps
+        # `last_turn` still counts the envelope, so the stream keeps
         # reading `active`. DELIBERATE: a watch-mode stream is the most reachable
         # thing there is. Only the ranking key is corrected here.
-        self.assertGreater(row['updated_at'], iso_cutoff(minutes=10),
+        self.assertGreater(row['last_turn'], iso_cutoff(minutes=10),
                            "liveness must still reflect reachability")
 
     def test_peek_keeps_wake_reply_but_never_the_envelope(self):

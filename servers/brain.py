@@ -1153,7 +1153,7 @@ class Brain(
             # session's backlog at once.
             try:
                 idle = now - _datetime.fromisoformat(
-                    stream.get('updated_at', '')).timestamp()
+                    stream.get('last_turn', '')).timestamp()
             except (ValueError, TypeError):
                 idle = 0.0
             five_plus = turns >= ENCODE_EVERY and idle < SCRIBE_ACTIVE_WINDOW_SECONDS
