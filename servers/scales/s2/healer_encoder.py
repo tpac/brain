@@ -1,7 +1,7 @@
 """S2 Healer Encoder — generates missing fields via Haiku, stores via revise().
 
 Takes proposals from decoder, calls Haiku to generate question/situation/reasoning,
-parses JSON response, writes fields through brain's standard write path.
+receives submit_healings arguments, writes fields through brain's standard write path.
 
 Uses the s2_healer interaction (learnable prompt in interactions table).
 """
@@ -12,19 +12,20 @@ import time
 from servers.trace_contract import build_delta_metadata
 
 from .base import IntegrationUnit, read_usage, sum_usage
-from .healer_contract import HEALER
+from .healer_contract import HEALER, HEALER_RESULT_TOOL
 
 
 class HealerEncoder(IntegrationUnit):
     NAME = 'healer'
     SCALE = 's2'
+    RESULT_TOOL = HEALER_RESULT_TOOL
     ENCODING_SOURCE = 's2:healer'
 
     O_SOURCES = ['healer_proposals']
     K_SOURCES = ['llm_healer', 'journal_notes']
 
     # Residue flows to journal_note trace rows via the journal binding on
-    # _call_llm (decorate → harvest), read back via continuity() — the note
+    # _call_llm (native tool dispatch), read back via continuity() — the note
     # contract, same as the loop encoders. The synthesized journal_entry
     # counter-string below is the TRACE record (what happened), orthogonal
     # to residue (what the actions don't capture).

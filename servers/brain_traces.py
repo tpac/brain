@@ -11,7 +11,7 @@ read-only dashboard.
 
 Sections:
 - Generic door   — query_traces, get_trace, get_traces, count_traces
-- Journal + arc  — journal_notes, write_journal_notes, write_session_arc
+- Journal + arc  — journal_notes, write_journal_operations, write_session_arc
 - Episodic       — recall_episodes (decode-over-traces sibling of recall)
 - Conversation   — get_conversation, turns_since_last_encode,
                    get_conversation_around (context grouped by session)
@@ -264,374 +264,220 @@ class BrainTracesMixin:
 
     # ── Journal + arc (encoder residue) ──
 
-    def journal_notes(self, *, subject: str = '', scale: str = '',
-                      session_id: str = '', unit: str = '',
-                      k=None, limit: int = 200):
-        """Read encoder journal notes — through the trace API, never raw SQL.
+    def journal_notes(self, *, subject='', scale='', session_id='', unit='', limit=200):
+        """Read append-only journal history; current continuity uses journal_view.
 
-        Composes query_traces(ref_type='journal_note', ...) — the public door;
-        TraceDAL stays underneath it. Two modes:
-        • subject set → every note ABOUT that subject (ref_id), newest first
-          (the hotspot view: N notes on one subject).
-        • else → continuity: notes from the last K note-bearing RUNS of an
-          encoder, scoped by scale + (session_id for S1 | unit for S2). K
-          defaults to JOURNAL_CONTINUITY_RUNS[encoder] (s1e / unit) → DEFAULT.
-
-        Runs group by chain_id (per-run-unique at both scales). Returns note
-        dicts {tag, note, subject, chain_id, created_at}, newest first.
-        Subject→title resolution is left to the render layer — it avoids a
-        heavy get_node per note here, and the consumer already holds the node.
+        Subject filters match the subject recorded on each version, preserving
+        the history of renames. No label is interpreted as a live operation.
         """
         events = self.query_traces(
             ref_type='journal_note', scale=scale, ref_id=subject,
             session_id=session_id, chain_suffix=unit, hours=None, limit=limit,
         ).get('events', [])
-        return self._journal_notes_from_events(
-            events, subject=subject, scale=scale, session_id=session_id,
-            unit=unit, k=k)
+        return [dict(
+            tag=(event.get('metadata') or {}).get('tag', ''),
+            note=(event.get('metadata') or {}).get('note', ''),
+            undelivered=(event.get('metadata') or {}).get('undelivered', ''),
+            subject=event['ref_id'], chain_id=event['chain_id'],
+            created_at=event['created_at'], event_id=event['id']) for event in events]
 
-    def _journal_notes_from_events(self, events, *, subject='', scale='',
-                                   session_id='', unit='', k=None,
-                                   compact=False):
-        """One lifecycle reducer for history and working continuity.
-
-        Input is newest-first. Compaction affects only the working read;
-        explicit subject history and the legacy notes API retain every row.
-        """
-        from .trace_contract import (JOURNAL_CONTINUITY_RUNS,
-                                      JOURNAL_CONTINUITY_RUNS_DEFAULT,
-                                      JOURNAL_RESOLVE_TAGS, JOURNAL_OPEN_TAGS,
-                                      JOURNAL_OPEN_PIN_CAP, resolve_target,
-                                      journal_key)
-        open_meta = {}   # id(event) → {'open_runs': N, 'first_seen': iso}
-        if not subject:  # continuity: resolve-filter + K runs + open pins
-            if k is None:
-                key = 's1e' if scale == 's1' else unit
-                k = JOURNAL_CONTINUITY_RUNS.get(key, JOURNAL_CONTINUITY_RUNS_DEFAULT)
-
-            def _tag(e):
-                return journal_key((e.get('metadata') or {}).get('tag'))
-
-            def _subj(e):
-                return journal_key(e.get('ref_id'))
-
-            def _note(e):
-                return (e.get('metadata') or {}).get('note') or ''
-
-            # Every subject actually written in this fetch — the guard that
-            # keeps resolve_target from inventing a retire target.
-            known_subjects = {_subj(e) for e in events if _subj(e)}
-
-            # Pass 1 — resolve-filtering, newest→oldest across ALL fetched
-            # events: a `resolved`/`retire` note retires every strictly-older
-            # note with the same (normalized) subject. Read-time only; the
-            # trace rows are untouched. The resolve note itself stays until it
-            # ages out — it documents the resolution.
-            resolved_seen, alive = set(), []
-            for e in events:                       # created_at DESC
-                s = _subj(e)
-                if s and s in resolved_seen:
-                    continue
-                if s and _tag(e) in JOURNAL_RESOLVE_TAGS:
-                    # The slot the encoder filled may be the referenced note's
-                    # TAG rather than its subject; recover the real target.
-                    resolved_seen.add(
-                        resolve_target(s, _note(e), known_subjects))
-                alive.append(e)
-
-            # Pass 2 — the K-run window over surviving notes.
-            seen, window = [], []
-            for e in alive:
-                ch = e.get('chain_id') or ''
-                if ch not in seen:
-                    if len(seen) >= k:
-                        break
-                    seen.append(ch)
-                window.append(e)
-
-            # Pass 3 — open pins: the newest surviving `open`-tagged note per
-            # subject stays visible beyond the window until resolved (capped).
-            # ×N persistence = distinct runs mentioning the subject, computed
-            # over the post-resolve SURVIVORS — a resolve closes the epoch, so
-            # a re-opened subject starts at ×1 with a fresh first_seen. The
-            # reader does the bumping, never the encoder.
-            # Horizon note: everything here operates within the `limit` newest
-            # fetched events (~dozens of runs). That bound is the backstop of
-            # last resort — the ×N nudge fires at JOURNAL_OPEN_NUDGE_RUNS,
-            # long before any pin could age past the horizon.
-            runs_by_subj, first_seen = {}, {}
-            for e in alive:
-                s = _subj(e)
-                if not s:
-                    continue
-                if _tag(e) in JOURNAL_RESOLVE_TAGS:
-                    continue  # a resolve closes an epoch; it doesn't open one
-                ch = e.get('chain_id')
-                if ch:
-                    runs_by_subj.setdefault(s, set()).add(ch)
-                c = e.get('created_at') or ''
-                if c and (s not in first_seen or c < first_seen[s]):
-                    first_seen[s] = c
-
-            in_window = {id(e) for e in window}
-            pinned, pinned_subjects, pins_dropped = [], set(), 0
-            for e in alive:                        # newest first
-                if _tag(e) not in JOURNAL_OPEN_TAGS:
-                    continue
-                s = _subj(e)
-                if not s or s in pinned_subjects:
-                    continue
-                pinned_subjects.add(s)
-                open_meta[id(e)] = {
-                    'open_runs': len(runs_by_subj.get(s, ())) or 1,
-                    'first_seen': first_seen.get(s, ''),
-                }
-                if id(e) not in in_window:
-                    if len(pinned) < JOURNAL_OPEN_PIN_CAP:
-                        pinned.append(e)
-                    else:
-                        pins_dropped += 1
-            if pins_dropped:
-                # Loud by default: a dropped pin is an unresolved open item
-                # silently leaving the encoder's sight.
-                self._log_warning(
-                    'journal_open_pin_overflow',
-                    '%s/%s: %d open item(s) beyond the %d-pin cap dropped from '
-                    'continuity — resolve or promote some' % (
-                        scale, unit or session_id, pins_dropped,
-                        JOURNAL_OPEN_PIN_CAP))
-
-            events = window + pinned
-        if compact:
-            # One current lifecycle per subject, including INSIDE K. Keep
-            # distinct ordinary observations; a subject is not one thought.
-            lifecycle_seen, observations, compacted = set(), set(), []
-            for e in events:
-                tag = journal_key((e.get('metadata') or {}).get('tag'))
-                subj = journal_key(e.get('ref_id'))
-                if tag in JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS:
-                    target = (resolve_target(subj, _note(e), known_subjects)
-                              if tag in JOURNAL_RESOLVE_TAGS else subj)
-                    if target in lifecycle_seen:
-                        continue
-                    lifecycle_seen.add(target)
-                    if target != subj:
-                        e = dict(e, ref_id=target)
-                else:
-                    key = (tag, subj, _note(e),
-                           (e.get('metadata') or {}).get('undelivered', ''))
-                    if key in observations:
-                        continue
-                    observations.add(key)
-                compacted.append(e)
-            events = compacted
-        return [{
-            'tag': (e.get('metadata') or {}).get('tag', ''),
-            'note': (e.get('metadata') or {}).get('note', ''),
-            'undelivered': (e.get('metadata') or {}).get('undelivered', ''),
-            'subject': e.get('ref_id', ''),
-            'chain_id': e.get('chain_id', ''),
-            'created_at': e.get('created_at', ''),
-            **({'event_id': e['id']} if compact else {}),
-            **open_meta.get(id(e), {}),
-        } for e in events]
-
-    def journal_view(self, *, scale, unit='', session_id='', previous=None):
-        """Current scoped continuity, with frozen private selection in a run.
-
-        The binding owns invocation lifetime; this door owns event reads and
-        lifecycle reduction. `previous` is a read receipt, never a second
-        writable journal. Only committed lifecycle events affecting its
-        selected subjects enter later requests. New observations wait for a
-        fresh invocation. History remains available through journal_notes.
-        """
-        from .trace_contract import (
-            JOURNAL_VIEW_HISTORY_LIMIT, JOURNAL_VIEW_PAGE_SIZE,
-            JOURNAL_VIEW_MAX_PAGES, JOURNAL_LIFECYCLE_TAGS,
-            JOURNAL_RESOLVE_TAGS, journal_key, resolve_target)
+    def journal_view(self, *, scale, unit='', session_id='', previous=None, invocation=None):
+        """Stable current items from append-only snapshots; one shared run clock."""
+        from .trace_contract import (JOURNAL_CHECKPOINT, JOURNAL_INVOCATION,
+                                     JOURNAL_CONTINUITY_RUNS, JOURNAL_CONTINUITY_RUNS_DEFAULT,
+                                     JOURNAL_PERSIST_PIN_CAP, JOURNAL_REVIEW_DUE_RUNS,
+                                     JOURNAL_ADOPTION_PAGE_SIZE, JOURNAL_ITEM_PREFIX,
+                                     legacy_journal_items)
+        scope = (scale, unit, session_id)
+        if previous is not None and previous['scope'] != scope:
+            raise ValueError('journal view receipt belongs to another scope')
         if (scale == 's1' and (not session_id or unit)
                 or scale == 's2' and (not unit or session_id)
                 or scale not in ('s1', 's2')):
             raise ValueError('journal view requires an S1 session or S2 unit')
-        scope = (scale, unit, session_id)
-        if previous is not None and previous['scope'] != scope:
-            raise ValueError('journal view receipt belongs to another scope')
+        k = JOURNAL_CONTINUITY_RUNS.get('s1e' if scale == 's1' else unit,
+                                       JOURNAL_CONTINUITY_RUNS_DEFAULT)
+        state = self._trace_dal.journal_item_state(
+            scale=scale, unit=unit, session_id=session_id, recent_runs=k)
+        if state['checkpoint'] is None:
+            # One authoritative legacy fold, not a moving 200-event horizon.
+            events, cursor = [], 0
+            while True:
+                page = self._trace_dal.journal_page(
+                    scale=scale, unit=unit, session_id=session_id, after=cursor, limit=JOURNAL_ADOPTION_PAGE_SIZE)
+                events.extend(page['events'])
+                cursor = page['cursor']
+                if not page['truncated']:
+                    break
+            initial = legacy_journal_items(reversed(events))
+            if invocation:
+                self._trace_dal.append_batch([dict(
+                    chain_id=invocation, scale=scale, session_id=session_id,
+                    event_type='delta', ref_type=JOURNAL_CHECKPOINT,
+                    metadata={'items': initial}, summary='Journal item identity checkpoint')],
+                    journal_guard=(*scope, cursor),
+                    journal_once=(*scope, JOURNAL_CHECKPOINT, ''))
+                state = self._trace_dal.journal_item_state(
+                    scale=scale, unit=unit, session_id=session_id, recent_runs=k)
+            else:
+                state['checkpoint'] = {'items': initial}
+        if invocation:
+            self._trace_dal.append_batch([dict(
+                chain_id=invocation, scale=scale, session_id=session_id,
+                event_type='delta', ref_type=JOURNAL_INVOCATION,
+                metadata={}, summary='Journal invocation')],
+                journal_once=(*scope, JOURNAL_INVOCATION, invocation))
+            state = self._trace_dal.journal_item_state(
+                scale=scale, unit=unit, session_id=session_id, recent_runs=k)
+        ordinal = state['run_count']
+        current = {n['journal_id']: dict(n) for n in (state['checkpoint'] or {}).get('items', [])}
+        for event in reversed(state['snapshots']):
+            meta = event['metadata']
+            current[meta['journal_id']] = dict(
+                meta, subject=event['ref_id'], text=meta['note'], label=meta.get('tag', ''),
+                chain_id=event['chain_id'], version=event['id'])
+        # Snapshot ordering is explicit; checkpoint is already newest-first.
+        snapshot_order = {e['metadata']['journal_id']: i for i, e in enumerate(state['snapshots'])}
+        ordered = sorted(current.values(), key=lambda n: snapshot_order.get(n['journal_id'], len(snapshot_order)))
         if previous is None:
-            page = self._trace_dal.journal_page(
-                scale=scale, unit=unit, session_id=session_id,
-                limit=JOURNAL_VIEW_HISTORY_LIMIT)
-            events = page['events']
-            notes = self._journal_notes_from_events(
-                events, scale=scale, unit=unit, session_id=session_id,
-                compact=True)
-            return {'scope': scope, 'events': events, 'notes': notes,
-                    'cursor': page['cursor'],
-                    'admitted': {n['event_id'] for n in notes},
-                    'subjects': {journal_key(n['subject']) for n in notes},
-                    'history_truncated': page['truncated'],
-                    'changes_pending': False}
+            # Edits count as note-bearing runs even after their versions are superseded.
+            recent_chains = state['recent_chains']
+            selected = [n for n in ordered if n['chain_id'] in recent_chains]
+            pins = [n for n in ordered if n['persist'] and n['chain_id'] not in recent_chains]
+            selected += pins[:JOURNAL_PERSIST_PIN_CAP]
+            selected_ids = {n['journal_id'] for n in selected}
+        else:
+            selected_ids = previous['item_ids']
+            selected = [n for n in ordered if n['journal_id'] in selected_ids]
+        notes = []
+        for item in selected:
+            count = item.get('carried_runs', 0)
+            if item['persist']:
+                count += max(0, ordinal - item.get('start_run', 1) + 1)
+            notes.append(dict(item, id=JOURNAL_ITEM_PREFIX + item['journal_id'],
+                              runsPersisted=count,
+                              reviewDue=item['persist'] and count >= JOURNAL_REVIEW_DUE_RUNS))
+        return dict(scope=scope, notes=notes, item_ids=selected_ids,
+                    cursor=state['cursor'], run_number=ordinal,
+                    outside_selection=len(current) - len(selected))
 
-        # Build a new receipt; a read failure leaves the binding's last
-        # committed view and cursor intact, including partially read pages.
-        events = list(previous['events'])
-        admitted = set(previous['admitted'])
-        cursor = previous['cursor']
-        subjects = previous['subjects']
-        for _ in range(JOURNAL_VIEW_MAX_PAGES):
-            page = self._trace_dal.journal_page(
-                scale=scale, unit=unit, session_id=session_id,
-                after=cursor, limit=JOURNAL_VIEW_PAGE_SIZE)
-            for e in page['events']:
-                meta = e.get('metadata') or {}
-                tag = journal_key(meta.get('tag'))
-                subj = journal_key(e.get('ref_id'))
-                target = (resolve_target(subj, meta.get('note'), subjects)
-                          if tag in JOURNAL_RESOLVE_TAGS else subj)
-                if tag in JOURNAL_LIFECYCLE_TAGS and target in subjects:
-                    events.append(e)
-                    admitted.add(e['id'])
-            cursor = page['cursor']
-            if not page['truncated']:
-                break
-        events.sort(key=lambda e: e['journal_cursor'], reverse=True)
-        notes = self._journal_notes_from_events(
-            events, scale=scale, unit=unit, session_id=session_id,
-            k=len(events), compact=True)
-        # K chose the private notes at invocation start, not anew per batch.
-        # Only admitted post-cursor updates can extend that selection;
-        # supporting history must not become newly eligible context.
-        notes = [n for n in notes if n['event_id'] in admitted]
-        return dict(previous, events=events, notes=notes, cursor=cursor,
-                    admitted=admitted,
-                    changes_pending=page['truncated'])
-
-    def write_journal_notes(self, *, final_text, chain_id, scale, session_id=''):
-        """Write door — the mirror of journal_notes (read). Extract the
-        encoder's `## Review` fenced block, parse it, and write each note as its
-        own journal_note trace row (event_type='delta', ref_id=subject), all
-        sharing the run's chain_id.
-
-        The JOURNAL_ADDRESSED_TAGS notes (tell/ask) are NOT written — they are
-        messages to the people working, not residue for the next run — and
-        come back under 'addressed' for the caller to route; this run's
-        resolve-verb lines come back under 'resolved' ({subject, note}) so the
-        caller can close what they name. The traces layer only partitions; it
-        never imports a channel and holds no routing policy.
-
-        Returns a structured result so the caller (and the trace) can see what
-        happened: `{'written': int, 'malformed': int, 'status': str,
-        'addressed': [...], 'resolved': [...]}` where status is one of:
-          • 'ok'                 — a non-empty review processed (counts tell the rest)
-          • 'salvaged'           — no `## Review` heading, but a heading-less fence
-                                   of valid notes was harvested (drift, logged loud)
-          • 'empty_review'       — a fenced review that was empty (a legit clean run)
-          • 'no_review_section'  — the encoder emitted no `## Review` at all
-          • 'no_review_extracted'— `## Review` present but no parseable fence (drift)
-          • 'error'              — an unexpected failure (isolated; see below)
-
-        LOUD BY DEFAULT — nothing is dropped silently. The encoder is expected
-        to ALWAYS emit a `## Review` section (empty fence on a clean run), so a
-        missing section or a broken fence is real drift and gets a warning. A
-        malformed line, a subject-less note, or unbuildable metadata each logs
-        loud and is skipped — one bad note never sinks the rest. If notes parsed
-        but none survived, that's an accidental full drop → loud. The whole body
-        is failure-isolated: any unexpected error is logged loud and swallowed —
-        a journal write must never break or roll back the encoder's actual run.
-        """
-        from .trace_contract import (extract_review_block, parse_journal_notes,
-                                      salvage_review_fence,
-                                      JOURNAL_REVIEW_MARKER, is_addressed,
-                                      JOURNAL_RESOLVE_TAGS, journal_key)
-
-        def _result(written, malformed, status, addressed=(), resolved=()):
-            return {'written': written, 'malformed': malformed,
-                    'status': status, 'addressed': list(addressed),
-                    'resolved': list(resolved)}
-
-        try:
-            salvaged = False
-            block = extract_review_block(final_text)
-            if block is None:
-                # Drift salvage: the encoder sometimes writes a valid notes
-                # fence but drops the heading — harvest it (strict gate in
-                # salvage_review_fence) rather than lose the batch's residue.
-                # Still a warning: drift stays visible, just no longer lossy.
-                block = salvage_review_fence(final_text)
-                if block is not None:
-                    salvaged = True
-                    self._log_warning(
-                        'journal_note_review_salvaged',
-                        'chain=%s: no %r heading, but a valid heading-less notes '
-                        'fence was found — salvaged (format drift)'
-                        % (chain_id, JOURNAL_REVIEW_MARKER))
-                elif JOURNAL_REVIEW_MARKER in (final_text or ''):
-                    self._log_warning(
-                        'journal_note_no_review_extracted',
-                        'chain=%s: %r present but no parseable fenced block'
-                        % (chain_id, JOURNAL_REVIEW_MARKER))
-                    return _result(0, 0, 'no_review_extracted')
-                else:
-                    self._log_warning(
-                        'journal_note_no_review_section',
-                        'chain=%s: encoder final_text (%d chars) has no %r section'
-                        % (chain_id, len(final_text or ''), JOURNAL_REVIEW_MARKER))
-                    return _result(0, 0, 'no_review_section')
-            if block == '':
-                # Fenced review present but empty — the legit "clean run, nothing
-                # to note" case. Visible (debug), not an alarm.
-                self.log_debug('journal_note_empty_review', 'write_journal_notes',
-                               chain_id=chain_id)
-                return _result(0, 0, 'empty_review')
-
-            notes, malformed = parse_journal_notes(block)
-            for raw in malformed:
-                self._log_warning('journal_note_malformed',
-                                  'chain=%s: %s' % (chain_id, raw[:200]))
-
-            # One pass partitions the parsed notes (parse_journal_notes
-            # already strips every field and rejects empty subjects):
-            # addressed lines go back to the caller, the rest are residue,
-            # and resolve lines are also named so the caller can close items.
-            residue, addressed, resolved = [], [], []
-            for n in notes:
-                if is_addressed(n.get('tag')):
-                    addressed.append(n)
+    def write_journal_operations(self, operations, *, chain_id, scale, unit='', session_id='', context=None):
+        """Apply partial JSON edits to shown versions, then append full snapshots."""
+        from .trace_contract import (parse_journal_operations, build_journal_note_metadata,
+                                     JOURNAL_ITEM_FIELDS, JOURNAL_ITEM_PREFIX)
+        from .dal_logs import JournalWriteConflict
+        operations, failures = parse_journal_operations(operations)
+        if (scale == 's2' and (not unit or session_id or not chain_id.endswith('-' + unit))
+                or scale == 's1' and (not session_id or unit)):
+            raise ValueError('journal operations require the attributed encoder scope')
+        scope = (scale, unit, session_id)
+        addressed, withdrawn, events = [], [], []
+        matching = (context and context.get('view')
+                    and context['view']['scope'] == scope
+                    and context['chain_id'] in (None, chain_id)
+                    and (scale != 's2' or chain_id.endswith('-' + unit)))
+        fresh, ordinal = None, None
+        if any(op['op'] in ('note', 'edit') for op in operations):
+            try:
+                if matching:
+                    fresh = self.journal_view(
+                        scale=scale, unit=unit, session_id=session_id,
+                        previous=context['view'], invocation=None)
+                ordinal = (fresh['run_number'] if fresh else self._trace_dal.journal_item_state(
+                    scale=scale, unit=unit, session_id=session_id)['run_count'])
+            except Exception as exc:
+                failures.append('Cannot read journal state; private changes not applied: ' + str(exc))
+        latest = {n['id']: n for n in fresh['notes']} if fresh else {}
+        for operation in operations:
+            op = operation['op']
+            if op in ('tell', 'ask', 'withdraw'):
+                if operation['subject'].strip().startswith(JOURNAL_ITEM_PREFIX):
+                    failures.append('Live messages require a subject, not a journal id')
                     continue
-                residue.append(n)
-                if journal_key(n.get('tag')) in JOURNAL_RESOLVE_TAGS:
-                    resolved.append(n)
-        except Exception as e:
-            self._log_error('journal_note_write_failed', e, 'chain=%s' % chain_id)
-            return _result(0, 0, 'error')
-        # The row write is isolated on its own: a failed batch must not take
-        # the addressed lines down with it — those are messages to a person,
-        # and the caller still routes them (and can keep them as residue).
-        try:
-            written = self.write_journal_note_rows(
-                residue, chain_id=chain_id, scale=scale, session_id=session_id)
-        except Exception as e:
-            self._log_error('journal_note_write_failed', e,
-                            'chain=%s: %d residue row(s) lost; addressed lines '
-                            'handed back' % (chain_id, len(residue)))
-            return _result(0, len(malformed), 'error', addressed, resolved)
-        if residue and not written:
-            self._log_warning(
-                'journal_note_all_dropped',
-                'chain=%s: parsed %d notes but wrote 0 (all failed subject/build)'
-                % (chain_id, len(residue)))
-        return _result(written, len(malformed),
-                       'salvaged' if salvaged else 'ok', addressed, resolved)
+                row = dict(tag=op, subject=operation['subject'],
+                           note=operation.get('text', operation.get('reason', '')))
+                (withdrawn if op == 'withdraw' else addressed).append(row)
+                continue
+            if ordinal is None:
+                continue
+            if op == 'edit':
+                identity = operation['id']
+                presented = (context or {}).get('references', {}).get(identity)
+                current = latest.get(identity)
+                if not presented or not current or presented['version'] != current['version']:
+                    failures.append(identity + ': not shown or changed since presentation')
+                    continue
+                item = dict(current)
+                changes = {key: operation[key] for key in JOURNAL_ITEM_FIELDS if key in operation}
+                if all(item.get(key, '') == value for key, value in changes.items()):
+                    continue
+                item.update(changes)
+                if item['persist'] != current['persist']:
+                    item['carried_runs'] = current['runsPersisted']
+                    if current['persist']:
+                        item['counted_through'] = ordinal
+                    item['start_run'] = max(ordinal, item.get('counted_through', 0) + 1)
+            else:
+                # Creation uses an independent item id; every version is a trace event.
+                item = dict(journal_id='', subject=operation['subject'],
+                            text=operation['text'], persist=operation.get('persist', False),
+                            label=operation.get('label', ''), start_run=max(1, ordinal), carried_runs=0, counted_through=0)
+            try:
+                meta = build_journal_note_metadata(note=item['text'], tag=item.get('label', ''),
+                                                   undelivered=item.get('undelivered', ''))
+                meta.update(journal_id=item['journal_id'], persist=item['persist'],
+                            start_run=item['start_run'], carried_runs=item['carried_runs'],
+                            counted_through=item.get('counted_through', 0))
+                events.append(dict(chain_id=chain_id, scale=scale, session_id=session_id,
+                                   event_type='delta', ref_type='journal_note', ref_id=item['subject'],
+                                   summary=meta['note'][:80], metadata=meta))
+                if op == 'edit':
+                    # Later edits see pending fields, retaining the presented version.
+                    item['runsPersisted'] = item['carried_runs'] + (
+                        max(0, ordinal - item['start_run'] + 1) if item['persist'] else 0)
+                    latest[identity] = item
+            except (TypeError, ValueError) as exc:
+                failures.append('Journal operation rejected: ' + str(exc))
+        written = 0
+        if events:
+            try:
+                try:
+                    ids = self._trace_dal.append_batch(events,
+                        journal_guard=(*scope, fresh['cursor']) if fresh else None)
+                except JournalWriteConflict:
+                    failures.append('Journal changed concurrently; edits not applied, refresh required')
+                    # Independent additions do not depend on any presented version.
+                    additions = [e for e in events if not e['metadata']['journal_id']]
+                    ids = self._trace_dal.append_batch(additions) if additions else []
+                written = len(ids)
+            except Exception as exc:
+                self._log_error('journal_note_write_failed', exc, 'JSON journal write')
+                failures.append('Journal storage failed; changes not applied')
+        if failures:
+            message = '; '.join(failures)
+            self._log_warning('journal_operation_rejected', message)
+            # Existing trace writer provides durable feedback; no additional model round.
+            try:
+                self.write_journal_note_rows(
+                    [dict(note=message, tag='failure', subject='journal-operation-error')],
+                    chain_id=chain_id, scale=scale, unit=unit, session_id=session_id)
+            except Exception as exc:
+                self._log_error('journal_feedback_failed', exc, message)
+        return dict(written=written, malformed=len(failures), status='ok' if not failures else 'error',
+                    addressed=addressed, withdrawn=withdrawn)
 
-    def write_journal_note_rows(self, notes, *, chain_id, scale, session_id=''):
-        """Write notes ({tag, subject, note[, undelivered]} dicts) as
-        journal_note rows on `chain_id` — the row-writing half of
-        write_journal_notes, also the door a binding uses to keep an
-        addressed line as residue when the Thalamus rejected it
-        (`undelivered` = the door's reason). Notes here may be hand-built, so
-        the per-note guards stay: a subject-less or unbuildable note is
-        skipped and warned, never sinks the batch. Returns the number of rows
-        written."""
+    def write_journal_note_rows(self, notes, *, chain_id, scale, session_id='',
+                                unit=''):
+        """Append system notes and undelivered feedback as new journal items.
+
+        Rows carry {tag, subject, note[, undelivered]}. Reject and log invalid
+        rows independently; return the number committed. All items use the
+        current snapshot shape, including before historical adoption.
+        """
         from .trace_contract import build_journal_note_metadata
+        state = self._trace_dal.journal_item_state(
+            scale=scale, unit=unit or (chain_id.rsplit('-', 1)[-1] if scale == 's2' else ''),
+            session_id=session_id)
         events = []
         for n in notes:
             subject = (n.get('subject') or '').strip()
@@ -647,22 +493,25 @@ class BrainTracesMixin:
                 self._log_warning('journal_note_build_failed',
                                   'chain=%s: %s | %s' % (chain_id, e, str(n)[:160]))
                 continue
+            meta.update(journal_id='', persist=False,
+                        start_run=max(1, state['run_count']), carried_runs=0, counted_through=0)
             events.append({
                 'chain_id': chain_id, 'scale': scale, 'event_type': 'delta',
                 'ref_type': 'journal_note', 'ref_id': subject,
                 'summary': meta['note'][:80], 'metadata': meta,
                 'session_id': session_id,
             })
+        ids = []
         if events:
-            self._trace_dal.append_batch(events)
-        return len(events)
+            ids = self._trace_dal.append_batch(events)
+        return len(ids)
 
     def write_thalamus_filed(self, *, chain_id, session_id, item_id, source,
                              body, target_session='', needs_answer=False,
                              dedup_key='', route='queue', filing='new'):
         """Write door for a Thalamus filing made from a producer's RUN — one
         `thalamus_filed` delta row on the run's chain (ref_id = item id), the
-        sibling of write_journal_notes' rows. The scale is the chain's
+        sibling of write_journal_operations' rows. The scale is the chain's
         (trace_contract.scale_for_chain); the payload shape is the contract's
         (build_thalamus_filed_metadata, validated at the write boundary).
 

@@ -10,40 +10,42 @@ fired spurious zero-row warnings) — the shared WHERE builder landed instead.
 ## Current journal continuity contract
 
 Journal events remain append-only. `journal_notes(subject=...)` exposes bounded
-subject history; its existing continuity mode retains its historical behavior.
-Modern encoders use `JournalBinding.continuity(chain_id=...)` before each
-independent request. The binding reads `brain.journal_view`, refreshes Thalamus
-outcomes, and owns invocation lifetime. A new chain selects private residue;
-later requests on that chain receive committed lifecycle changes to selected
-subjects without recursively importing fresh private observations. All five
-encoders share this operation; S1 retains session scope and S2 retains unit scope.
+raw history; `journal_view` is the single current-state reader. Modern encoders
+use `JournalBinding.continuity(chain_id=...)` before each independent request.
+S1 scopes items to the full session; S2 scopes them to the integration unit.
 
-`brain_traces` owns one lifecycle reducer for both reads. The working view
-compacts repeated lifecycle assertions inside and outside the K-run window,
-retains distinct ordinary observations, and carries closures into subsequent
-batches. A later open can start a new epoch. Matching remains normalized exact
-subject matching with existing slot-inversion recovery; no fuzzy typo recovery,
-new reference syntax, or stale-write arbitration is implied.
+Each item has a stable `journal_` ID rooted in its creation trace. Edits append
+full snapshots under that identity, including subject changes. A presentation
+receipt authorizes edits only to the versions actually shown in that request.
+The DAL checks concurrent journal writes under its existing writer lock.
 
-`TraceDAL.journal_page` supplies invocation-local append cursors, so equal
-timestamps and paged updates cannot skip a resolution. Cursors are not durable
-trace identities and must not survive database maintenance. Initial reads use
-the newest 200 scoped events; updates drain oldest-first in bounded pages.
-Incomplete history/catch-up is explicit. State is derived from committed rows,
-never from a parsed resolution whose write failed. A refresh failure retains
-the last view and cursor. An initial read failure leaves private continuity
-unavailable until the next invocation, avoiding a late snapshot that would
-echo same-run notes; message feedback remains independent.
+A new invocation selects latest items from K note-bearing chains (S1=5, S2=3),
+plus up to ten older persistent items. The DAL derives those chains from trace
+history, including superseded edits. Later requests refresh the selected IDs
+without importing new same-invocation observations. Persistence is explicit;
+`runsPersisted` counts invocations, including omitted entries, and `reviewDue`
+invites reconsideration after five without expiring or resolving anything.
 
-The contract owns K (S1=5, S2=3), pin limits, pagination, rendering, and the
-8,000-character working-residue ceiling. Whole rows are selected, lifecycle
-first; omission counts and partial coverage are visible. Persistence appears
-outside the copyable lifecycle tag. Thalamus keeps its separate message budget
-and delivery state. The Scribe's legacy blob branch and Arc remain separate.
-Every preparation logs version, cursor, row counts, character counts, and
-coverage/error flags via `journal_continuity` debug telemetry. See
-`tests/test_journal_continuity.py` and `tests/test_journal_binding_guardrail.py`
-for shared behavior and caller coverage.
+The trace owner folds historical text notes once into an authoritative identity
+checkpoint, reading all pages before selection. Runtime writes use native `journal` tool calls only.
+Checkpoint, current versions, recent chains, run clock and cursor share one
+SQLite read snapshot. Cursors order writes; trace IDs identify versions/items.
+Read-only inspection creates neither checkpoints nor invocation markers.
+
+The contract renders complete JSON objects within 8,000 characters and reports
+omissions and coverage failures. A refresh failure retains the last view. An
+initial read failure freezes an unavailable selection until the next invocation.
+Only shown IDs authorize edits; rejected operations generate logged feedback.
+
+Private persistence and live message delivery are independent. Explicit
+`tell`, `ask`, and `withdraw` use Thalamus; private edits never withdraw messages.
+S1 Arc remains separate. Healer and Aspect return task submissions and journal
+operations as separate native tool calls in one response. The runtime processes
+them without another model call, preserving task results when journaling fails.
+
+Every preparation logs version, cursor, row/character counts and failure flags
+through `journal_continuity`. See `docs/JOURNAL-REFERENCE-PLAN.md` for the approved
+contract, encoder audit, migration details, and current validation limits.
 
 ## Current conversation contract
 

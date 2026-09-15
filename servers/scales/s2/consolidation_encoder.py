@@ -25,7 +25,7 @@ class ConsolidationEncoder(IntegrationUnit):
     O_SOURCES = ['consolidation_proposals']
     K_SOURCES = ['llm_enrichment', 'journal_notes']
 
-    # Residue flows to journal_note trace rows via brain.write_journal_notes,
+    # Residue flows to journal_note trace rows via brain.write_journal_operations,
     # read back via the journal binding's continuity() (the note contract).
 
     def __init__(self, brain, dispatch_fn=None, config=None):
@@ -178,8 +178,7 @@ class ConsolidationEncoder(IntegrationUnit):
                         max_rounds=self.config.get('max_rounds', 4),
                         system_prompt=system_prompt,
                         user_content=user_content,
-                        tools=tools,
-                        dispatch_fn=dispatch_fn,
+                        **self.journal.bind_tools(tools, dispatch_fn, self.chain_id()),
                         log_fn=lambda msg: print('[s2-consolidation] %s' % msg, flush=True),
                         record_round_fn=self.brain.round_recorder(
                             self.chain_id(), seq_base=batch_num * 100)),

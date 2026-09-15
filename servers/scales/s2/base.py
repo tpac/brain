@@ -32,7 +32,7 @@ from datetime import datetime, timezone, timedelta
 # Provider mechanics (client construction, single-shot call, retry, JSON
 # envelope parsing) live behind the runner seam — see scales/runner.py.
 from ..runner import (read_usage, sum_usage,  # noqa: F401 — re-export for callers
-                      make_client, run_llm_once, extract_json)
+                      make_client, run_llm_once)
 from ..dispatch import (ATTRIBUTED_WRITE_COMMANDS, OPERATOR_ONLY_COMMANDS,
                         stamp_scope_provenance)
 
@@ -477,25 +477,12 @@ class IntegrationUnit:
 
     def _fold_batch_result(self, total, result, batch_num, trunc_source,
                            trunc_detail='tool call likely corrupted'):
-        """Process one batch's run_llm_loop result for a multi-batch encoder:
-        accumulate it into `total` (via _accumulate_run), append this batch's
-        final_text, persist its review notes as journal_note rows PER BATCH, and
-        log any max_tokens truncation. The shared per-batch body for the
-        consolidation + community encoders, so the loop logic lives in one place;
-        per-unit steps (state refresh, progress traces) stay in each loop.
+        """Fold task outcomes and telemetry, preserving completion failures.
 
-        A batch outcome is also a completion boundary: an explicit error or
-        zero completed rounds leaves the aggregate failed, even if other
-        batches succeeded. Consumers may retain writes and telemetry, but
-        must not settle proposals or advance a scan past a failed run.
-        Returns whether this batch completed.
-
-        Per-batch journal write (not post-loop): extract_review_block keys on the
-        FIRST `## Review` fence, so a single post-loop write over the accumulated
-        final_text would drop every batch's notes but the first. Writing per
-        batch, all sharing this run's chain_id, groups them as one run's notes.
-        The journal write is failure-isolated inside harvest (a journal hiccup
-        never aborts the run)."""
+        Journal tools execute during the model response, independently of
+        graph-action accounting. Per-unit state refresh stays in the caller.
+        An error or zero completed rounds prevents proposal settlement.
+        """
         self._accumulate_run(total, result)
         error = result.get('error')
         if not error and not result.get('rounds'):
@@ -506,7 +493,6 @@ class IntegrationUnit:
         batch_text = result.get('final_text', '')
         if batch_text:
             total['final_text'] += '\n--- batch %d ---\n%s' % (batch_num, batch_text)
-            self.journal.harvest(batch_text, self.chain_id())
         for trunc in result.get('truncations', []):
             self.brain._log_error(
                 trunc_source,
@@ -533,95 +519,57 @@ class IntegrationUnit:
         return client
 
     def _call_llm(self, interaction_name, user_content, journal=False):
-        """Call LLM with a learnable prompt from interactions table.
+        """One tool-bearing response; domain validation stays in the encoder.
 
-        Loads system prompt from interaction template.
-        Loads config (model, max_tokens) from interaction parameters.
-        Handles JSON extraction from response.
-
-        Args:
-            interaction_name: Key in interactions table (e.g. 's2_community_enrichment')
-            user_content: String content for the user message
-            journal: When True, this call carries the unit's journal binding —
-                the review block decorates the system tail (single-shot: no
-                closure, no arc) and the response is harvested (residue notes
-                written on this run's chain, journal sections stripped BEFORE
-                extract_json — a `]`/`}` inside a fence after the payload
-                would corrupt its rfind-based scan). The single wiring point
-                for single-shot units (healer, aspect); continuity is the
-                caller's to prepare before each request (see
-                scales/journal.py placement rules). Decoration is
-                deterministic, so the 1h system-prompt cache stays byte-stable.
-
-        Returns:
-            (parsed_json, telemetry): parsed_json is the JSON parsed from the
-            LLM response (None on failure); telemetry is a dict
-            {elapsed_ms, input_tokens, output_tokens, cache_read_tokens,
-            cache_creation_tokens} for the call — zeros when the call never ran
-            or failed before a usage report. Single-shot encoders (healer,
-            aspect) thread this into their delta trace via build_delta_metadata,
-            so their production deltas stop recording elapsed_ms=0/output_tokens=0
-            (this is run_llm_loop's per-call telemetry, hand-built here because
-            this path uses the runner's single-shot entry, not the loop).
+        The result tool carries task data; the scoped journal tool carries
+        residue. No tool result is sent back for another model round.
         """
         from ..dispatch import load_env
+        from servers.trace_contract import journal_tool_schema, JOURNAL_TOOL_NAME
 
-        # Load learnable prompt and config — resolved through the override
-        # model (DB override overlaid on the code default; total by
-        # construction, unknown names raise in the resolver).
         system_prompt = self.brain.get_interaction_prompt(interaction_name)
         config = self.brain.get_interaction_config(interaction_name)
-        model = config['model']
-        max_tokens = config['max_tokens']
-
+        model, max_tokens = config['model'], config['max_tokens']
+        tools = [self.RESULT_TOOL]
         if journal:
-            system_prompt = self.journal.decorate_system(
-                system_prompt, multi_round=False)
-
-        # read_usage(None) is the all-zero token baseline — reused on the
-        # pre-usage failure path.
+            system_prompt = self.journal.decorate_system(system_prompt, multi_round=False)
+            tools.append(journal_tool_schema())
         telemetry = {'elapsed_ms': 0, 'model': model, **read_usage(None)}
-
-        # Ensure API key
         if not os.environ.get('ANTHROPIC_API_KEY'):
             load_env()
-
         t0 = time.time()
         try:
-            # Transport + caching live behind the runner seam (run_llm_once:
-            # 1h cache_control on the byte-stable system prompt, read_usage
-            # telemetry). This method keeps only the unit concerns: the
-            # interaction-table prompt/config load above, the JSON envelope
-            # expectation, and the log-and-return-None failure policy below.
-            raw, telemetry = run_llm_once(
-                self._llm_client(), model, max_tokens, system_prompt, user_content)
+            calls, telemetry = run_llm_once(
+                self._llm_client(), model, max_tokens, system_prompt, user_content, tools=tools)
         except Exception as e:
-            print('[%s] LLM call failed: %s' % (self.NAME, e), flush=True)
             self.brain._log_error(self.NAME, e, 'LLM call for %s' % interaction_name)
             telemetry['elapsed_ms'] = int((time.time() - t0) * 1000)
             return None, telemetry
-
-        # Truncation is loud on the single-shot path too — the loop path
-        # checks stop_reason in _track_usage; without this, a response that
-        # hit the output ceiling read as a generic parse failure.
         if telemetry.get('stop_reason') == 'max_tokens':
-            self.brain._log_error(
-                's2_%s_truncation' % self.NAME,
-                'max_tokens truncation: %s/%s output tokens' % (
-                    telemetry.get('output_tokens', 0), max_tokens),
-                '%s response truncated — payload likely unparseable'
-                % interaction_name)
-
-        if journal:
-            # Residue notes out, journal sections off the payload — the
-            # strip-before-extract ordering is enforced here by construction.
-            # Outside the transport try, in its own guard: a journal-layer
-            # fault must never discard a successful, paid response (degrade
-            # to the unstripped raw — extract_json is fence-robust).
-            try:
-                raw = self.journal.harvest(raw, self.chain_id())
-            except Exception as e:
-                self.brain._log_error(
-                    's2_%s_journal_harvest' % self.NAME, e,
-                    'harvest failed — parsing the unstripped response')
-        return extract_json(raw), telemetry
+            self.brain._log_error('s2_%s_truncation' % self.NAME,
+                                  'Tool response exceeded output limit', interaction_name)
+        payloads = []
+        for call in calls:
+            if journal and call['name'] == JOURNAL_TOOL_NAME:
+                try:
+                    self.journal.apply(call['input'], self.chain_id())
+                except Exception as e:
+                    self.brain._log_error('s2_%s_journal_tool' % self.NAME, e,
+                                          'task result preserved')
+            elif call['name'] == self.RESULT_TOOL['name']:
+                arguments = call['input']
+                key = self.RESULT_TOOL['input_schema']['required'][0]
+                if not isinstance(arguments, dict) or set(arguments) != {key} or not isinstance(arguments[key], list):
+                    self.brain._log_warning('s2_%s_result_invalid' % self.NAME,
+                                            'Expected a %s array' % key)
+                else:
+                    payloads.append(arguments)
+            else:
+                self.brain._log_warning('s2_%s_unknown_tool' % self.NAME, call['name'])
+        if len(payloads) != 1:
+            self.brain._log_warning('s2_%s_result_count' % self.NAME,
+                                    'Expected exactly one valid result call; got %d' % len(payloads))
+            return None, telemetry
+        # The field name belongs to the result schema, not a second mapping.
+        key = self.RESULT_TOOL['input_schema']['required'][0]
+        return payloads[0][key], telemetry

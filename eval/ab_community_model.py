@@ -281,9 +281,8 @@ def main():
         backfills, invalid_ops = _log_deltas(brain, log_mark)
 
         run_chain = encoder.chain_id()
-        journal_rows = [r for r in brain.journal_notes(
-            scale='s2', unit='community_detection', k=1)
-            if r.get('chain_id') == run_chain]
+        journal_rows = [r['metadata'] for r in brain.query_traces(chain_id=run_chain)['chain']
+                        if r['ref_type'] == 'journal_note']
 
         report.update({
             'calls': calls,

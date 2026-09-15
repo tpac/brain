@@ -4,7 +4,7 @@ The healer and aspect units ran mute for months — no journal binding, so no
 residue, and nothing failed (the silence was only visible in a corpus-level
 audit, finding 78677e17). This holds the line structurally: any `._call_llm(`
 call site in an S2 unit module must opt into the journal (`journal=True` as a
-top-level argument), and the loop-encoder path must decorate + harvest.
+top-level argument), and the loop-encoder path must decorate + native tool binding.
 A deliberate journal-exempt call would edit this test — which is the point:
 exemption becomes a reviewed decision, not a default.
 """
@@ -129,9 +129,8 @@ class TestJournalBindingGuardrail(unittest.TestCase):
             'runs must carry the journal binding (or edit this test with the '
             'reason for the exemption)' % offenders))
 
-    def test_every_run_llm_loop_encoder_decorates_and_harvests(self):
-        """Loop encoders bind via decorate_system + journal.harvest (the
-        harvest call may live in the shared _fold_batch_result). Classified
+    def test_every_run_llm_loop_encoder_decorates_and_binds_tools(self):
+        """Loop encoders bind via decorate_system + bind_tools. Classified
         by CODE calls, not by prose mentions in comments/docstrings."""
         for fname, src in _s2_sources():
             if fname == 'base.py':
@@ -144,25 +143,22 @@ class TestJournalBindingGuardrail(unittest.TestCase):
                 '%s runs the LLM loop without decorating the system prompt '
                 'with the journal blocks' % fname)
             self.assertTrue(
-                any('.journal.harvest(' in line
-                    or '_fold_batch_result(' in line for line in code),
-                '%s runs the LLM loop without harvesting residue' % fname)
+                any('.journal.bind_tools(' in line for line in code),
+                '%s runs the LLM loop without binding journal tools' % fname)
 
-    def test_fold_batch_result_still_harvests(self):
-        """The loop encoders satisfy the harvest check via
-        _fold_batch_result — so the shared body must actually harvest, or
-        both loop encoders go mute while this guardrail stays green."""
+    def test_fold_batch_result_does_not_reparse_journal_prose(self):
+        """Native tools execute before outcome folding; prose is never replayed."""
         from servers.scales.s2.base import IntegrationUnit
         src = inspect.getsource(IntegrationUnit._fold_batch_result)
-        self.assertIn('.journal.harvest(', src)
+        self.assertNotIn('.journal.harvest(', src)
 
-    def test_call_llm_journal_path_still_harvests(self):
-        """journal=True must keep meaning decorate + harvest inside
+    def test_call_llm_journal_path_executes_native_tools(self):
+        """journal=True must decorate and execute the scoped native tool inside
         _call_llm — the single-shot units' whole binding rides on it."""
         from servers.scales.s2.base import IntegrationUnit
         src = inspect.getsource(IntegrationUnit._call_llm)
         self.assertIn('.decorate_system(', src)
-        self.assertIn('.journal.harvest(', src)
+        self.assertIn('.journal.apply(', src)
 
 
 if __name__ == '__main__':

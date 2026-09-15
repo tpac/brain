@@ -59,3 +59,16 @@ HEALER_INTERACTION_DEFAULT = {
 #       → 'corrects/improves'
 # Healer prompts that want the labels back should iterate brain.aspects.all()
 # and read each aspect's metadata.
+
+
+HEALER_RESULT_TOOL = {
+    'name': 'submit_healings',
+    'description': 'Submit all proposed field fills once. Include only flagged fields for nodes in this batch. The runtime validates and applies them after this response; do not claim they have already succeeded.',
+    'input_schema': {
+        'type': 'object', 'additionalProperties': False, 'required': ['healings'],
+        'properties': {'healings': {'type': 'array', 'items': {
+            'type': 'object', 'additionalProperties': False, 'required': ['node_id'],
+            'properties': {'node_id': {'type': 'string'}, **{
+                field: {'type': 'string'} for field in HEALER['fields_required']}}}}},
+    },
+}

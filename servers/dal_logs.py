@@ -45,6 +45,10 @@ from .clock import iso_cutoff, iso_now
 from .db_backends.sqlite import commit_unless_batched, rollback_unless_batched
 
 
+class JournalWriteConflict(RuntimeError):
+    """The scoped journal advanced between validation and append."""
+
+
 class _LogsWriteBase:
     """Shared read/write plumbing for the brain_logs.db DAL classes.
 
@@ -829,7 +833,7 @@ class TraceDAL(_LogsWriteBase):
             'metadata': metadata, 'session_id': session_id,
             'interaction_id': interaction_id}])[0]
 
-    def append_batch(self, events: list) -> List[str]:
+    def append_batch(self, events: list, *, journal_guard=None, journal_once=None) -> List[str]:
         """Append multiple trace events in a single transaction.
 
         Reduces WAL lock contention — one commit instead of N.
@@ -865,6 +869,28 @@ class TraceDAL(_LogsWriteBase):
         now = iso_now()
         ids = []
         with self._wlock:
+            if journal_once is not None:
+                scale, unit, session_id, ref_type, chain = journal_once
+                where, params = self._event_where(scale=scale, chain_suffix=unit,
+                    session_id=session_id, ref_type=ref_type, hours=None)
+                if chain:
+                    where += ' AND te.chain_id = ?'
+                    params.append(chain)
+                if self.wconn.execute('SELECT 1 FROM trace_events te WHERE ' + where + ' LIMIT 1', params).fetchone():
+                    return []
+            if journal_guard is not None:
+                # Optimistic append guard: the owner validated these events
+                # against this scoped cursor. Check on wconn under the same
+                # lock as insertion; no owner callback under the leaf lock.
+                scale, unit, session_id, cursor = journal_guard
+                where, params = self._event_where(
+                    scale=scale, chain_suffix=unit, session_id=session_id,
+                    ref_type='journal_note', hours=None)
+                changed = self.wconn.execute(
+                    'SELECT 1 FROM trace_events te WHERE %s AND te.rowid > ? LIMIT 1'
+                    % where, params + [cursor]).fetchone()
+                if changed:
+                    raise JournalWriteConflict('journal changed after reference validation')
             try:
                 for ev in events:
                     # Non-blocking by design: shape drift warns (stderr) and the
@@ -881,6 +907,11 @@ class TraceDAL(_LogsWriteBase):
                     # snapshot cannot); single-step lookup, cursor discarded —
                     # the safe wconn read pattern (module docstring).
                     trace_id = _new_trace_id(self.wconn)
+                    if metadata is not None and metadata.get('journal_id') == '':
+                        # The creation event is the stable root; existing trace IDs
+                        # (including checkpoint roots) participate in collision checks.
+                        metadata['journal_id'] = trace_id
+                        meta_json = json.dumps(metadata)
                     self.wconn.execute(
                         'INSERT INTO trace_events '
                         '(id, chain_id, scale, event_type, ref_type, ref_id, summary, metadata, session_id, interaction_id, created_at) '
@@ -1328,6 +1359,36 @@ class TraceDAL(_LogsWriteBase):
             params + [limit]).fetchall()
 
         return [self._row_to_event(r) for r in rows]
+
+    def journal_item_state(self, *, scale, unit='', session_id='', recent_runs=0):
+        """Read clock, checkpoint, versions and guard cursor in ONE SQLite snapshot."""
+        from .trace_contract import JOURNAL_CHECKPOINT, JOURNAL_INVOCATION
+        where, params = self._event_where(scale=scale, chain_suffix=unit,
+                                         session_id=session_id, hours=None)
+        rows = self.conn.execute(
+            "WITH scoped AS (SELECT %s, te.rowid AS journal_cursor FROM trace_events te "
+            "WHERE %s AND ref_type IN ('journal_note', ?, ?)), "
+            "latest AS (SELECT MAX(journal_cursor) AS cursor FROM scoped "
+            "WHERE ref_type = 'journal_note' AND json_extract(metadata, '$.journal_id') IS NOT NULL "
+            "GROUP BY json_extract(metadata, '$.journal_id')), "
+            "state AS (SELECT "
+            "(SELECT metadata FROM scoped WHERE ref_type = ? ORDER BY journal_cursor DESC LIMIT 1) AS checkpoint, "
+            "(SELECT COUNT(DISTINCT chain_id) FROM scoped WHERE ref_type = ?) AS runs, "
+            "(SELECT COALESCE(MAX(journal_cursor), 0) FROM scoped WHERE ref_type = 'journal_note') AS cursor, "
+            "(SELECT json_group_array(chain_id) FROM (SELECT chain_id FROM scoped "
+            "WHERE ref_type = 'journal_note' GROUP BY chain_id "
+            "ORDER BY MAX(journal_cursor) DESC LIMIT ?)) AS recent_chains) "
+            "SELECT CASE WHEN ROW_NUMBER() OVER (ORDER BY scoped.journal_cursor DESC) = 1 "
+            "THEN state.checkpoint END, state.runs, state.cursor, state.recent_chains, scoped.* FROM state "
+            "LEFT JOIN scoped ON scoped.journal_cursor IN (SELECT cursor FROM latest) "
+            "ORDER BY scoped.journal_cursor DESC" % (self._CANON_COLS_TE, where),
+            params + [JOURNAL_CHECKPOINT, JOURNAL_INVOCATION, JOURNAL_CHECKPOINT,
+                      JOURNAL_INVOCATION, recent_runs]).fetchall()
+        checkpoint, count, cursor, recent_chains = rows[0][:4]
+        return dict(checkpoint=json.loads(checkpoint) if checkpoint else None,
+                    run_count=count, cursor=cursor, recent_chains=json.loads(recent_chains),
+                    snapshots=[dict(self._row_to_event(r[4:-1]), journal_cursor=r[-1])
+                               for r in rows if r[4] is not None])
 
     def journal_page(self, *, scale, session_id='', unit='', after=None,
                      limit):

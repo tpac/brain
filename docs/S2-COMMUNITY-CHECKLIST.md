@@ -619,7 +619,7 @@ for a ~90K-char prompt. **S2CE is 8,160 chars with five decision branches.**
         completion / edge-omission / journal / discipline / quality / cost.
         **This is the P1/P3 prompt-A/B chassis** (arms differ by
         `override_interaction` instead of model).
-      - `sim_community_structural.py` + `sim_community_journal.py` — the
+      - `sim_community_structural.py` (and the retired `sim_community_journal.py`) — the
         **`make_vN()` house pattern**: candidate prompt derived from the live
         one via exact-anchor edits, each anchor asserted unique (drift fails
         loudly), the same transform reused verbatim at landing. **P1's edits

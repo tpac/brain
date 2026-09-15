@@ -171,8 +171,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             system_prompt=system_prompt,
             user_content=user_content,
             user_preamble=user_preamble,
-            tools=tools,
-            dispatch_fn=dispatch_fn,
+            **journal.bind_tools(tools, dispatch_fn, enc_chain),
             log_fn=_log,
             record_round_fn=brain.round_recorder(enc_chain),
             deadline_seconds=SCRIBE_RUN_DEADLINE_SECONDS)
@@ -198,8 +197,7 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
         # from the trace row + one file, in normal mode. The traces layer
         # owns the payload shape and caps; round-0 failures arrive unwrapped
         # (no msgs) and record nothing — the prompt kind is that half.
-        from servers.trace_contract import (build_failed_run_metadata,
-                                            build_journal_note_metadata)
+        from servers.trace_contract import build_failed_run_metadata
         failed_ptr = brain.record_failed_run(enc_chain, e)
         with brain.loud('s1e_failed_trace_write', 'recording encoding_run_failed delta'):
             dispatch_fn('trace_append', {
@@ -215,21 +213,16 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
             })
         # Reflective residue (docs/TRACE-MODES-DESIGN.md §Failed-run residue):
         # a dead run must leave a journal note so the retry's continuity
-        # window shows the failure instead of amnesia. Same journal_note
-        # shape write_journal_notes emits — the read door needs no change.
+        # window shows the failure. Use the journal owner so the note joins
+        # the current item state, including after legacy history is adopted.
         with brain.loud('s1e_failed_journal_note',
                         'recording failure journal note'):
-            dispatch_fn('trace_append', {
-                'chain_id': enc_chain, 'scale': 's1', 'event_type': 'delta',
-                'ref_type': 'journal_note', 'ref_id': 'encoding-run-failure',
-                'summary': 'run FAILED before finishing',
-                'metadata': build_journal_note_metadata(
-                    note='stop %d run FAILED: %s — turns stay unencoded and '
-                         'retry; writes from completed rounds (if any) were '
-                         'kept' % (counter, str(e)[:200]),
-                    tag='failure'),
-                'session_id': session_id,
-            })
+            brain.write_journal_note_rows([dict(
+                subject='encoding-run-failure', tag='failure',
+                note='stop %d run FAILED: %s — turns stay unencoded and '
+                     'retry; writes from completed rounds (if any) were '
+                     'kept' % (counter, str(e)[:200]))],
+                chain_id=enc_chain, scale='s1', session_id=session_id)
         return {"error": str(e), "profile": profile}
 
     _step("done")
@@ -267,26 +260,9 @@ def run_encoding(brain, dispatch_fn, counter, session_id, log_fn=None,
                     'continuing to delta trace; session=%s stop=%d'
                     % (session_id[:8], counter)):
         if lived:
-            # New residue (Piece 4): the `## Review` note contract, SESSION-BOUND.
-            # write_journal_notes extracts the fence + writes one journal_note
-            # trace per note, all sharing enc_chain (this run); session_id walls
-            # continuity to this conversation. Replaces the legacy blob. The arc
-            # is a SEPARATE object with its own journal component: the encoder
-            # emits a `## Arc` fenced one-liner (render_journal_arc_block) and
-            # write_session_arc accumulates it into session_context_{sid} —
-            # replacing the legacy SESSION_CONTEXT:-line parse, which v26's
-            # prompt no longer emits (the A/B arc-regression fix). Both write
-            # doors are failure-isolated internally.
-            #
-            # INTENTIONAL flag-on side effect: not writing the blob leaves the
-            # Frame's `## Recent moves` (which reads the legacy encoding_journal
-            # blob) empty. That's the deferred Frame-slot cut previewing — the cut
-            # lands at activation (replacement-before-removal). No eval confound:
-            # the Frozen-Corpus sweep queries with a FRESH session_id, so Recent
-            # moves is empty in BOTH arms there regardless of this flag.
-            journal.harvest(
-                final_text, enc_chain,
-                arc_limit=ENCODING_AGENT.get('session_context_limit', 800))
+            # Journal tools have already executed; Arc is independent session context.
+            journal.harvest_arc(
+                final_text, arc_limit=ENCODING_AGENT.get('session_context_limit', 800))
             journal_entry = ''
         else:
             journal_entry = _save_journal(brain, dispatch_fn, session_id, counter, final_text) or ''

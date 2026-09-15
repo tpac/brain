@@ -110,41 +110,28 @@ def make_client():
         max_retries=1)
 
 
-def run_llm_once(client, model, max_tokens, system_prompt, user_content):
-    """Single-shot LLM call — the degenerate (no tools, one round) runner entry.
+def run_llm_once(client, model, max_tokens, system_prompt, user_content, *, tools):
+    """Return all tool calls from one response, without a follow-up model round.
 
-    The single-shot counterpart to run_llm_loop, behind the same provider
-    seam: 1h cache_control on the byte-stable system prompt (mirrors the
-    loop's BP1; a no-op below the model's cacheable floor — s2_healer ~2.5K
-    tok sits under Haiku 4.5's 4096 floor, s2_aspects on Sonnet clears it),
-    telemetry via read_usage. Returns the RAW response text — envelope
-    parsing (extract_json, journal harvest) is the caller's/contract's
-    concern, so the text surface stays available to both.
-
-    Exceptions propagate — failure policy (log-and-skip, retry) belongs to
-    the caller, mirroring run_llm_loop.
-
-    Returns:
-        (raw_text, telemetry): telemetry is {'elapsed_ms', 'stop_reason',
-        **USAGE_FIELDS}. stop_reason rides along so single-shot callers can
-        surface max_tokens truncation loudly (the loop path checks it in
-        _track_usage; without this the single-shot path reported a truncated
-        response as a generic parse failure). raw_text is '' when the stop
-        produced no content block, never an IndexError.
+    Five-minute breakpoints cover tools/system and the full user prompt.
+    The stable breakpoint can be reused even when batch content changes.
+    Execution and domain validation belong to the caller.
     """
     t0 = time.time()
     response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
+        model=model, max_tokens=max_tokens, tools=tools,
+        tool_choice={"type": "any"},
         system=[{"type": "text", "text": system_prompt,
-                 "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
-        messages=[{"role": "user", "content": user_content}])
+                 "cache_control": {"type": "ephemeral", "ttl": "5m"}}],
+        messages=[{"role": "user", "content": [
+            {"type": "text", "text": user_content,
+             "cache_control": {"type": "ephemeral", "ttl": "5m"}}]}])
     telemetry = {'elapsed_ms': int((time.time() - t0) * 1000),
                  'stop_reason': getattr(response, 'stop_reason', None),
-                 'model': model,   # rides with the usage → build_delta_metadata
-                 **read_usage(response)}
-    raw = response.content[0].text.strip() if response.content else ''
-    return raw, telemetry
+                 'model': model, **read_usage(response)}
+    calls = [dict(id=b.id, name=b.name, input=b.input)
+             for b in response.content if b.type == 'tool_use']
+    return calls, telemetry
 
 
 def _roll_cache_breakpoint(api_messages):
@@ -384,7 +371,8 @@ def run_unit_in_background(unit, name, lock, on_complete=None, on_release=None):
 def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                  user_content, tools, dispatch_fn, log_fn=None,
                  user_preamble=None, get_nodes_config=None,
-                 record_round_fn=None, effort=None, deadline_seconds=None):
+                 record_round_fn=None, effort=None, deadline_seconds=None,
+                 terminal_tools=()):
     """Generic LLM tool loop — call model, process tool_use, dispatch, repeat.
 
     Used by all scale encode agents. Scale-specific logic is in what
@@ -430,6 +418,9 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             gates the kind off). Replaces the retired BRAIN_PROMPT_CAPTURE_DIR
             env machinery (docs/TRACE-MODES-DESIGN.md, rollout step 2).
 
+        terminal_tools: Auxiliary tools excluded from task-action accounting.
+            A reply containing only these tools ends after dispatch, without a
+            follow-up model call. They also execute on the final budgeted reply.
         deadline_seconds: Optional wall-clock ceiling for the whole loop
             (all rounds + SDK retries + the stream fallback). Checked before
             each round and before the fallback re-issue; past it the loop
@@ -602,11 +593,12 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     round_texts = []
     last_seen = None
 
-    def _dispatch_tool_uses(response_obj):
+    def _dispatch_tool_uses(response_obj, allowed_tools=None):
         """Dispatch every tool_use block in response. Append to actions.
         Returns a tool_results list usable as a user-role message block.
         """
-        tool_uses = [b for b in response_obj.content if b.type == "tool_use"]
+        tool_uses = [b for b in response_obj.content if b.type == "tool_use"
+                     and (allowed_tools is None or b.name in allowed_tools)]
         tool_results = []
         for tu in tool_uses:
             _tu_t0 = time.time()
@@ -741,10 +733,19 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
                 for b in response.content]})
             tool_results, _ = _dispatch_tool_uses(response)
             api_messages.append({"role": "user", "content": tool_results})
+            # A terminal-only response is executed, with no model call just
+            # to acknowledge its results. Mixed task calls still receive feedback.
+            if all(tu.name in terminal_tools for tu in tool_uses):
+                break
             _roll_cache_breakpoint(api_messages)
             response, ttft_ms, total_ms = _create_message(api_messages, rounds + 1)
             _track_usage(response, rounds + 1, ttft_ms=ttft_ms, total_ms=total_ms)
             _step("llm_r%d" % (rounds + 1))
+        if response is not last_seen:
+            # The final response may carry terminal tools at the round limit.
+            # Execute those without opening another model round or granting
+            # additional task-tool rounds beyond the caller's budget.
+            _dispatch_tool_uses(response, allowed_tools=terminal_tools)
     except Exception as e:
         # Mid-run failure loses the actions accumulated so far — exactly the
         # forensics the failure path needs (the 1M-token 400s left no record
@@ -753,14 +754,15 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
         # The original type name rides the message — error logs and trace
         # summaries grep by anthropic class names, not by the wrapper.
         raise RunLoopError('%s: %s' % (type(e).__name__, e),
-                           partial_actions=actions,
+                           partial_actions=[a for a in actions if a['tool'] not in terminal_tools],
                            msgs=api_messages) from e
 
     final_text = "".join(b.text for b in response.content if b.type == "text")
     if response is not last_seen:   # max_rounds exhausted: the last reply never reached the loop head
         round_texts.append(final_text)
     write_actions = [a for a in actions if a['tool'] in WRITE_TOOLS]
-    read_calls = [a for a in actions if a['tool'] not in WRITE_TOOLS]
+    read_calls = [a for a in actions if a['tool'] not in WRITE_TOOLS and a['tool'] not in terminal_tools]
+    task_actions = [a for a in actions if a['tool'] not in terminal_tools]
 
     # Total "billed as fresh input" = uncached input. cache_read_input_tokens
     # is read from cache at 0.1× cost; cache_creation_input_tokens is written
@@ -769,7 +771,7 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
     total_cache_pool = usage_total['cache_creation_tokens'] + usage_total['cache_read_tokens']
     hit_rate = (usage_total['cache_read_tokens'] / total_cache_pool * 100) if total_cache_pool else 0.0
     _log("Rounds: %d | Actions: %d (writes: %d, reads: %d) | Tokens: %d fresh / %d cached-read / %d cached-write / %d out | hit=%.0f%% | Profile: %s" % (
-        rounds + 1, len(actions), len(write_actions), len(read_calls),
+        len(per_round_stats), len(task_actions), len(write_actions), len(read_calls),
         usage_total['input_tokens'], usage_total['cache_read_tokens'],
         usage_total['cache_creation_tokens'], usage_total['output_tokens'],
         hit_rate,
@@ -796,8 +798,8 @@ def run_llm_loop(client, model, max_tokens, max_rounds, system_prompt,
             rd.get('cache_creation_tokens') or 0))
 
     return {
-        "rounds": rounds + 1,
-        "actions": len(actions),
+        "rounds": len(per_round_stats),
+        "actions": len(task_actions),
         "write_actions": len(write_actions),
         "action_details": write_actions,
         "read_calls": read_calls,

@@ -7,6 +7,8 @@ All trace readers can rely on these guarantees.
 Architecture: docs/ARCHITECTURE-FRACTAL.md
 """
 
+import re
+
 from servers.loud_truncation import (cap_text_loud, cap_list_loud,
                                      compose_block_loud, one_line)
 
@@ -120,6 +122,7 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the trace is
                                                     # the only surviving record of the node
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
+                         "journal_invocation", "journal_checkpoint",
                          "journal_note",            # S1 Scribe residue — one note (subject=ref_id) per row
                          REF_THALAMUS_FILED],       # S1 Scribe filed a Thalamus item (ref_id = item id)
 
@@ -161,6 +164,7 @@ REF_TYPES = {
                          "node_deleted",            # node HARD-deleted (emitter) — the retired
                                                     # junk purge wrote these; the trace is the only record
                          "node_lock_changed",       # lock flip (emitter; scale derived per row)
+                         "journal_invocation", "journal_checkpoint",
                          "journal_note",            # S2 unit residue (consolidation, community) — one note per row
                          REF_THALAMUS_FILED],       # S2 unit filed a Thalamus item (ref_id = item id)
 
@@ -921,50 +925,20 @@ def build_journal_note_metadata(*, note, tag='', undelivered=''):
 
 
 # ── JOURNAL REVIEW BLOCK + PARSER (single source for all journaling encoders) ──
-# §7.1/§7.3: one shared instruction block (roles-free — a bar to clear, not
-# buckets to fill); each encoder appends ONLY its own examples + subject
-# vocabulary via render_journal_review_block(). The encoder emits one note per
-# line as `tag · subject · note`; the write path calls parse_journal_notes() to
-# split them into rows. Single source here so the five encoders can't re-diverge
-# into the five reinventions this redesign is removing.
+# Shared JSON operations and display; encoder-specific purpose is separate.
 
 JOURNAL_NOTE_DELIMITER = '·'
 
-# ── Journal lifecycle verbs (2026-07-28, audit finding #6) ──
-# Read-time only — traces stay append-only. `resolved`/`retire` drops older
-# same-subject notes from the continuity prefix; `open` pins the newest note
-# per subject beyond the K-run window until resolved. Matching is normalized
-# (casefold+strip) subject equality — the corpus showed paraphrase references
-# never match. Encoders reference a prior note by echoing its rendered head,
-# so the slot they fill is recovered at read time by `resolve_target` rather
-# than demanded of the prompt (an instruction costs encoder attention; a
-# tolerant reader costs nothing).
-JOURNAL_RESOLVE_TAGS = ('resolved', 'retire')
-JOURNAL_OPEN_TAGS = ('open', 'still-open')   # still-open: pre-existing wild alias
-# Verbs whose payload is (tag, subject) — the trailing `why` is optional, so a
-# two-field line is a complete lifecycle note rather than a malformed one.
-JOURNAL_LIFECYCLE_TAGS = JOURNAL_RESOLVE_TAGS + JOURNAL_OPEN_TAGS
-# ── Addressed verbs ──
-# Notes written to the LIVE SESSION, not to the next run: `tell` (a notice)
-# and `ask` (needs an answer). Same `tag · subject · note` line, same parser;
-# the write door hands them back to a binding that has a source, which files
-# each as a Thalamus item — directed to its session when it has one (the
-# Scribe, delivered at Stop), broadcast when it has none (an S2 unit,
-# delivered at boot). A binding without a source writes them as plain notes
-# and warns — no reader exists for them there.
+# Legacy vocabulary is used only when adopting stored pre-JSON journal rows.
+LEGACY_JOURNAL_RESOLVE_TAGS = ('resolved', 'retire')
+LEGACY_JOURNAL_OPEN_TAGS = ('open', 'still-open')
 JOURNAL_TELL_TAG = 'tell'
 JOURNAL_ASK_TAG = 'ask'
-JOURNAL_ADDRESSED_TAGS = (JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
-JOURNAL_RUN_SUBJECT = 'run'   # the subject a two-field addressed line gets —
-                              # "the run itself", the instruction's third kind
+JOURNAL_RUN_SUBJECT = 'run'  # display fallback for older subjectless live messages
 
 
 def journal_key(value):
-    """The comparison form of a journal tag or subject — stripped and
-    casefolded. Every match against the JOURNAL_*_TAGS vocabulary and every
-    subject-equality test (parser, read door, resolve targets, dedup and
-    withdraw keys) goes through this one normalizer, so no two doors can
-    disagree on what "the same subject" means."""
+    """Normalize legacy subjects and live-message keys; item identity uses IDs."""
     return (value or '').strip().casefold()
 
 
@@ -975,107 +949,159 @@ def journal_subject_refs(subject):
     from servers.contract import looks_like_node_id
     key = journal_key(subject)
     return [key] if looks_like_node_id(key) else []
-JOURNAL_OPEN_PIN_CAP = 10        # max pinned subjects carried beyond the window
-JOURNAL_OPEN_NUDGE_RUNS = 5      # open ×N at/past this → render the hand-it-up nudge
 
-# Working continuity, shared by every modern encoder. Storage and hotspot
-# history are unaffected. Limits bound context and per-request catch-up work.
+
+JOURNAL_PERSIST_PIN_CAP = 10  # older persistent items beyond the recent window
+JOURNAL_REVIEW_DUE_RUNS = 5  # reconsideration, never automatic resolution
+JOURNAL_ADOPTION_PAGE_SIZE = 1000
+
+# One working view across encoders. Storage remains append-only.
 JOURNAL_VIEW_MAX_CHARS = 8000
-JOURNAL_VIEW_HISTORY_LIMIT = 200
-JOURNAL_VIEW_PAGE_SIZE = 200
-JOURNAL_VIEW_MAX_PAGES = 10
-JOURNAL_VIEW_VERSION = 1
+JOURNAL_VIEW_VERSION = 3
 
-# Self-grounding by design (no `brain`/`trace`/`operator`/agent-verb/identity
-# tokens): the block means the same dropped into any host prompt or standing
-# alone, so a host-prompt edit can't silently shift the journal, and the block
-# is testable in isolation. EAGER by intent: no value-filter
-# gate — capture residue freely; dedupe/mine later. The earlier "two tests"
-# (reconstruction/successor) were removed as over-correction against the OLD
-# journal's restatement disease, not an evidenced need. Iterate from LIVE
-# results, not synthetic probes (which can't reproduce the encoder's lived run).
-_REVIEW_HEAD = (
-    "A review — a short note to the next run of this work, about anything "
-    "noticed here that won't be visible in the actions taken.\n"
-    "The changes made are already recorded automatically; don't restate them. "
-    "This note is only for what the actions don't capture — a doubt, a "
-    "friction, a surprise, a pattern forming.\n\n"
-    "`tag` — one word for the kind of thing (friction, doubt, surprise, "
-    "dead-end — examples, not a list).\n"
-    "`subject` — what the note is about: the specific thing touched (its id), "
-    "a tool or input handed in, or the run itself.\n\n"
-    "To clear a handled note, write `resolved %s <its exact subject> %s why` "
-    "— one line per subject.\n"
-    "Mark a persisting item once: `open %s subject %s note` — it stays "
-    "visible until resolved; don't re-assert it each run.\n\n"
-) % ((JOURNAL_NOTE_DELIMITER,) * 4)
-
-_REVIEW_TAIL = (
-    "Put the notes under a `## Review` heading, inside a fenced code block — "
-    "one note per line as `tag %s subject %s note`. A clean run is an empty "
-    "fence — leave it empty rather than saying there's nothing to note.\n\n"
-    "Time is precious — actions are already logged automatically; no need "
-    "to rephrase. Stay sharp."
-) % ((JOURNAL_NOTE_DELIMITER,) * 2)
-
-# ── The addressed verbs, as the encoder reads them ──
-# One text for every encoder (same instructions; delivery differs by
-# audience — the door does the routing). Sits between the `open` line and
-# the output-format close. The flag is the one switch for every journaling
-# encoder at once: off, and the block is residue-only again — the exit if
-# the measurement says noise.
-JOURNAL_ADDRESSED_LIVE = True
-JOURNAL_ADDRESSED_INSTRUCTION = (
-    "Two notes go to the live work, not to your next run:\n"
-    "`%(tell)s %(d)s subject %(d)s note` — the \"wait, one thing\" that "
-    "surfaces while you encode and bears on what they're doing now.\n"
-    "`%(ask)s %(d)s subject %(d)s note` — the \"what about…?\" only they can "
-    "settle.\n"
-    "Interrupt only when it touches the present work, would change it, and "
-    "is worth the stop; otherwise it's a plain note.\n"
-    "Plain words, for a reader with none of your context. One line per "
-    "subject — repeating a subject updates it, no subject means the run "
-    "itself, `resolved %(d)s subject %(d)s why` withdraws it. Next run, "
-    "YOUR MESSAGES shows how each ended.\n\n"
-) % {'tell': JOURNAL_TELL_TAG, 'ask': JOURNAL_ASK_TAG,
-     'd': JOURNAL_NOTE_DELIMITER}
-
-# THE review block every encoder reads — one text, assembled once from the
-# flag. Readers compare prompts against this constant (or the render, which
-# returns it); the head/tail halves are assembly detail.
-JOURNAL_REVIEW_INSTRUCTION = (
-    _REVIEW_HEAD + (JOURNAL_ADDRESSED_INSTRUCTION if JOURNAL_ADDRESSED_LIVE
-                    else '') + _REVIEW_TAIL)
+# Purpose varies by continuity horizon; operations and delivery stay shared.
+JOURNAL_S1_INSTRUCTION = (
+    "I can sense how the conversation is progressing, but it can end abruptly. "
+    "I can’t assume there will be another turn, or another chance to encode.")
+JOURNAL_S2_INSTRUCTION = (
+    "My journal carries observations across runs of this work. Each run can "
+    "develop, change, or settle what earlier runs noticed.")
+JOURNAL_INSTRUCTION = (
+    "Keep observations the recorded actions don’t capture. The journal shows "
+    "existing state; call `journal` only for additions or changes. Silence leaves "
+    "entries unchanged. Journal observations reflect what you know when you call; "
+    "a proposed action is not yet a confirmed outcome.")
+JOURNAL_TOOL_NAME = 'journal'
+JOURNAL_TOOL_DESCRIPTION = (
+    "Record private observations or reach live work. Batch operations in one call "
+    "when finishing; no changes means no call. note creates an entry (persist defaults "
+    "false); edit changes only supplied fields of a journal_ id shown in this request. "
+    "The id survives subject changes and is never a graph node id. persist carries an "
+    "entry beyond the recent-note window; false allows aging, not automatic resolution. "
+    "Labels are optional, in your own words; label=\"\" clears one. The displayed view "
+    "is capped at 8,000 characters. runsPersisted counts invocations carried, including "
+    "when omitted; reviewDue invites reconsideration without deciding the outcome. "
+    "Both are runtime-owned. tell/ask reach live work; write for someone without your "
+    "context. withdraw retracts your live message by subject independently of private "
+    "persistence. YOUR MESSAGES carries delivery outcomes.")
+JOURNAL_ITEM_PREFIX = 'journal_'
+JOURNAL_ITEM_FIELDS = {'subject': str, 'text': str, 'persist': bool, 'label': str}
+JOURNAL_OPERATION_FIELDS = {
+    'note': ({'subject', 'text'}, set(JOURNAL_ITEM_FIELDS)),
+    'edit': ({'id'}, {'id', *JOURNAL_ITEM_FIELDS}),
+    'tell': ({'subject', 'text'}, {'subject', 'text'}),
+    'ask': ({'subject', 'text'}, {'subject', 'text'}),
+    'withdraw': ({'subject', 'reason'}, {'subject', 'reason'}),
+}
+JOURNAL_INVOCATION = 'journal_invocation'
+JOURNAL_CHECKPOINT = 'journal_checkpoint'
 
 
-def is_addressed(tag):
-    """True when a note's tag is one of the addressed verbs — a Thalamus
-    item, not a journal row. The one predicate the write door, the eval
-    harnesses and the binding share."""
-    return journal_key(tag) in JOURNAL_ADDRESSED_TAGS
+def parse_journal_operations(operations):
+    """Validate native tool arguments independently; no guessed or coerced fields."""
+    if not isinstance(operations, list):
+        return [], ['Journal review must be a JSON array']
+    valid, errors = [], []
+    for index, operation in enumerate(operations):
+        try:
+            if not isinstance(operation, dict):
+                raise ValueError('expected an operation object')
+            op = operation.get('op')
+            if not isinstance(op, str) or op not in JOURNAL_OPERATION_FIELDS:
+                raise ValueError('unknown journal operation')
+            required, allowed = JOURNAL_OPERATION_FIELDS[op]
+            fields = set(operation) - {'op'}
+            if not required <= fields or not fields <= allowed:
+                raise ValueError('missing required or unknown/read-only fields')
+            if op == 'edit' and not fields & JOURNAL_ITEM_FIELDS.keys():
+                raise ValueError('edit requires a changed field')
+            for key in fields:
+                expected = JOURNAL_ITEM_FIELDS.get(key, str)
+                if type(operation[key]) is not expected:
+                    raise ValueError(key + ' has the wrong type')
+                if expected is str and key != 'label' and not operation[key].strip():
+                    raise ValueError(key + ' must not be empty')
+            if op == 'edit' and not re.fullmatch(JOURNAL_ITEM_PREFIX + r'[0-9a-f]{8}', operation['id']):
+                raise ValueError('copy the displayed journal id')
+            valid.append(dict(operation))
+        except ValueError as exc:
+            errors.append('Operation %d: %s' % (index + 1, exc))
+    return valid, errors
 
 
-def render_journal_review_block():
-    """The shared review block — self-contained (output structure + close folded
-    in), identical for every encoder: JOURNAL_REVIEW_INSTRUCTION."""
-    return JOURNAL_REVIEW_INSTRUCTION
+def journal_item_json(note):
+    """The model-facing state, excluding internal trace/version bookkeeping."""
+    result = {key: note[key] for key in
+              ('id', 'persist', 'runsPersisted', 'reviewDue', 'subject', 'text')}
+    if note.get('label'):
+        result['label'] = note['label']
+    if note.get('undelivered'):
+        result['undelivered'] = note['undelivered']
+    return result
 
 
-# The arc — the SECOND closing act (§7.2: Encode → Arc → Review), a journal-
-# mechanism component distinct from the review: the review is residue notes
-# (traces, per-note rows); the arc is ONE line of session orientation
-# (accumulated onto a running per-session digest that downstream readers rank
-# and orient against). Never merged into the review — different shape,
-# different reader. Self-grounding like the review block (no host-coupled
-# tokens); placement is stated HERE, not in the closure, so the closure stays
-# shared with encoders that never emit an arc. Per-encoder opt-in: injected
-# only by encoders that write a session arc (S1 Scribe today).
+def render_journal_view(view):
+    """Whole JSON objects within the existing cap; receipt grants shown versions only."""
+    import json
+    notes = sorted(view.get('notes', []), key=lambda n: not n['persist'])
+    flags = {key: bool(view.get(key)) for key in
+             ('stale', 'selection_failed', 'render_failed')}
+    def render(rows):
+        if not notes and not view.get('outside_selection') and not any(flags.values()):
+            return ''
+        envelope = {'items': rows, 'omitted': len(notes) - len(rows),
+                    'outsideSelection': view.get('outside_selection', 0)}
+        if any(flags.values()):
+            envelope['coverage'] = {k: v for k, v in flags.items() if v}
+        return 'JOURNAL — existing state\n' + json.dumps(envelope, ensure_ascii=False, indent=2) + '\n\n'
+    shown, references = [], {}
+    for note in notes:
+        candidate = shown + [journal_item_json(note)]
+        if len(render(candidate)) <= JOURNAL_VIEW_MAX_CHARS:
+            shown = candidate
+            references[note['id']] = dict(note)
+    text = render(shown)
+    # Extremely small test/config budgets must still respect the cap.
+    if len(text) > JOURNAL_VIEW_MAX_CHARS:
+        text, references, shown = '', {}, []
+    stats = dict(journal_view_version=JOURNAL_VIEW_VERSION, selected_rows=len(notes),
+                 rendered_rows=len(shown), omitted_rows=len(notes) - len(shown),
+                 residue_chars=len(text), **flags)
+    return text, stats, references
+
+
+def journal_tool_schema():
+    """One schema for every encoder; operation variants derive from the contract."""
+    properties = {
+        key: {'type': 'boolean' if kind is bool else 'string'}
+        for key, kind in JOURNAL_ITEM_FIELDS.items()}
+    properties.update(id={'type': 'string', 'pattern': '^journal_[0-9a-f]{8}$'},
+                      reason={'type': 'string', 'minLength': 1})
+    for key in ('subject', 'text'):
+        properties[key]['minLength'] = 1
+    variants = []
+    for op, (required, allowed) in JOURNAL_OPERATION_FIELDS.items():
+        variant = dict(type='object', additionalProperties=False,
+                       properties={'op': {'type': 'string', 'enum': [op]},
+                                   **{key: properties[key] for key in sorted(allowed)}},
+                       required=['op', *sorted(required)])
+        if op == 'edit':
+            variant['anyOf'] = [{'required': [key]} for key in JOURNAL_ITEM_FIELDS]
+        variants.append(variant)
+    return dict(name=JOURNAL_TOOL_NAME, description=JOURNAL_TOOL_DESCRIPTION,
+                input_schema=dict(type='object', additionalProperties=False,
+                                  properties={'operations': {'type': 'array', 'items': {'oneOf': variants}}},
+                                  required=['operations']))
+
+
+# Arc is session orientation, independent of private journal state. Only
+# S1 binds it; its existing fenced prose accumulates into the session digest.
 JOURNAL_ARC_INSTRUCTION = (
     "The arc — ONE line: what progressed in this stretch of work, this run.\n"
     "It accumulates onto a running digest of the whole conversation, so write "
     "only the new movement — never a recap of what the digest already says.\n\n"
     "Put it under a `## Arc` heading, inside a fenced code block — a single "
-    "line, on the same final reply as the review, just before it. If nothing "
+    "line, on the final reply alongside any journal tool call. If nothing "
     "meaningfully progressed, leave the fence empty.\n\n"
     "Example: `judge reliability crisis found — 85% timeout rate`"
 )
@@ -1091,145 +1117,13 @@ def render_journal_arc_block():
 
 
 def render_prompt_closure():
-    """The run's CLOSURE — separate concern from the review block. Defines the
-    terminal turn the way the runner does (a reply with no tool call IS the
-    final one), places the review on it whether the encoder acted or not, and
-    carries the `DONE` stop signal. Injected as the LAST block of the prompt,
-    independent of the review block — so removing or relocating the review never
-    drags the closure with it. References the `## Review` artifact by name; it
-    does NOT define it (that's render_journal_review_block's job).
-
-    The no-tool-call branch is the fix for the no-action batch: an all-reject /
-    nothing-to-change reply terminates the loop on its first turn, and that turn
-    must still carry the review (an empty fence on a clean run).
-    """
+    """Finish without requesting another model round solely for journal results."""
     return (
         "## Finishing\n\n"
-        "The run is done when a reply makes no tool call — that final reply is the "
-        "only place the review goes. Two ways to get there, both ending the same:\n"
-        "- After tool calls: the run closes on the first reply that makes no tool call — "
-        "a read's results are followed by the write; the write's results by the final reply.\n"
-        "- A reply with no tool call at all (nothing needed changing): that reply is "
-        "already the final one.\n\n"
-        'End the final reply with the `## Review`, then write "DONE".'
-    )
-
-
-JOURNAL_NOTES_HEADER = ('%s — residue your recent runs flagged, for continuity '
-                        '(not a to-do list):')
-
-
-def render_journal_notes_prefix(notes, label='RECENT REVIEW NOTES', *,
-                                annotate_tag=True):
-    """Render journal_notes() output into a prompt prefix — the READ side of
-    the journal (residue continuity). Shared single source so every encoder
-    (S2 units now, S1E later) feeds continuity the same way.
-
-    `notes` is the list of {tag, subject, note, ...} dicts journal_notes()
-    returns (newest first, already bounded to the last K note-bearing runs).
-    Returns '' when there are none, so a clean history adds nothing to the
-    prompt — no "first run, no notes" filler. Each line mirrors the write
-    format `tag · subject · note`.
-    """
-    if not notes:
-        return ''
-    lines = [JOURNAL_NOTES_HEADER % label]
-    lines.extend(_render_journal_note(n, annotate_tag=annotate_tag) for n in notes)
-    return '\n'.join(lines) + '\n\n'
-
-
-def _render_journal_note(n, *, annotate_tag):
-    """Render one complete note, including persistence and delivery feedback."""
-    tag = (n.get('tag') or '').strip()
-    line = _journal_line(tag, n.get('subject', ''), n.get('note', ''))
-    # Open items render their persistence: the loader computed ×N (distinct
-    # runs mentioning the subject) and pins the newest note beyond the
-    # window. Past the threshold, the nudge appears ON the item, in the run
-    # that should act — zero standing prompt cost.
-    runs = n.get('open_runs') or 0
-    if runs:
-        since = (n.get('first_seen') or '')[5:10]
-        persistence = '×%d%s' % (runs, (' since %s' % since) if since else '')
-        if annotate_tag:
-            line = '- %s %s · %s · %s' % (
-                tag or 'open', persistence,
-                n.get('subject', ''), n.get('note', ''))
-        else:
-            # Keep the copyable lifecycle tag intact. Persistence is
-            # read-side context, never a new encoder-authored tag.
-            line += '\n  Persistence: %s' % persistence
-    if n.get('undelivered'):
-        # The line was addressed to the people working and the door
-        # refused it — the reason is what the encoder reads next run.
-        line += ' — not delivered: %s' % n['undelivered']
-    if runs >= JOURNAL_OPEN_NUDGE_RUNS:
-        # A note that has persisted this long is a question for the live
-        # work, not residue — hand it up through the addressed verb; the
-        # door delivers it, budgets it, expires it, and carries the
-        # answer back (YOUR MESSAGES).
-        line += (
-            "\n  ⚠ long-lived — resolve it, or hand it up: "
-            "`%(ask)s %(d)s %(s)s %(d)s <the question>`, then "
-            "`resolved %(d)s %(s)s %(d)s handed up` (the pin clears; "
-            "the item carries it from here)"
-            % {'ask': JOURNAL_ASK_TAG, 'd': JOURNAL_NOTE_DELIMITER,
-               's': n.get('subject', '')})
-    return line
-
-
-def render_journal_view(view):
-    """Bound working continuity by whole rows, with explicit omissions.
-
-    Lifecycle state precedes ordinary observations. The trace history and
-    selected state stay intact when a row cannot fit in the prompt.
-    Returns text and telemetry shared by every encoder binding.
-    """
-    notes = view.get('notes', [])
-    ordered = sorted(notes, key=lambda n: journal_key(n['tag'])
-                     not in JOURNAL_LIFECYCLE_TAGS)
-    coverage = []
-    if view.get('history_truncated'):
-        coverage.append('Older journal history beyond the newest %d events '
-                        'is outside this view.' % JOURNAL_VIEW_HISTORY_LIMIT)
-    if view.get('changes_pending'):
-        coverage.append('Journal updates remain unread; this view is incomplete.')
-    if view.get('stale'):
-        coverage.append('Latest journal read failed; showing last known continuity.')
-    if view.get('selection_failed'):
-        coverage.append('Initial journal selection unavailable; private notes '
-                        'resume next run.')
-    if view.get('render_failed'):
-        coverage.append('Journal rendering failed; private notes omitted.')
-
-    def notice(omitted):
-        parts = list(coverage)
-        if omitted:
-            parts.append('%d journal entries omitted from context; retained '
-                         'in trace history.' % omitted)
-        return ('\n'.join(parts) + '\n\n') if parts else ''
-
-    text, rendered = '', 0
-    # Reserve the largest omission notice before selecting complete rows.
-    reserve = len(notice(len(notes)))
-    for note in ordered:
-        row = _render_journal_note(note, annotate_tag=False)
-        prefix = text.rstrip('\n') if text else JOURNAL_NOTES_HEADER % 'RECENT REVIEW NOTES'
-        candidate = prefix + '\n' + row + '\n\n'
-        if len(candidate) + reserve <= JOURNAL_VIEW_MAX_CHARS:
-            text = candidate
-            rendered += 1
-    omitted = len(notes) - rendered
-    text += notice(omitted)
-    return text, {
-        'journal_view_version': JOURNAL_VIEW_VERSION,
-        'selected_rows': len(notes), 'rendered_rows': rendered,
-        'omitted_rows': omitted, 'residue_chars': len(text),
-        'history_truncated': bool(view.get('history_truncated')),
-        'changes_pending': bool(view.get('changes_pending')),
-        'stale': bool(view.get('stale')),
-        'selection_failed': bool(view.get('selection_failed')),
-        'render_failed': bool(view.get('render_failed')),
-    }
+        "Use task tools until the work is finished. Your final reply may call only "
+        "`journal`, or make no tool call when there is nothing to record. A reply "
+        "with only `journal` ends the run after its operations execute. "
+        "Include the Arc when requested, then write \"DONE\".")
 
 
 # ── Producer view: what the encoder told or asked, and how it ended ──
@@ -1246,13 +1140,6 @@ PRODUCER_VIEW_NOTE_LIMIT = 300   # an item body, or an answer, is one line here
 PRODUCER_VIEW_SUBJECT_LIMIT = 80  # a subject is a key, not prose
 PRODUCER_VIEW_LABEL = ('YOUR MESSAGES — what you told or asked, and how it '
                        'ended (not a to-do list):')
-
-
-def _journal_line(tag, subject, note):
-    """The one line grammar both journal renders share: `- tag · subject ·
-    note` (tag omitted when empty) — the mirror of the write format."""
-    head = ('%s · ' % tag) if tag else ''
-    return '- %s%s · %s' % (head, subject, note)
 
 
 def _producer_view_line(r):
@@ -1289,91 +1176,49 @@ def render_producer_view(rows):
     return out + '\n\n'
 
 
-def parse_journal_notes(text):
-    """Parse an encoder's review section into notes.
+def legacy_journal_items(events):
+    """Adopt surviving pre-JSON observations once, before applying view limits.
 
-    One note per line: `tag · subject · note`, split on '·' with maxsplit=2 so
-    a '·' inside the prose is safe (it all stays in `note`).
-      • 3 fields → (tag, subject, note)
-      • 2 fields → (subject, note) with tag='' — tag is optional
-      • no delimiter, or empty subject/note → MALFORMED
-    Blank lines and markdown headers (`#`-prefixed, e.g. the `## Review`
-    header) are skipped silently. Malformed lines are NOT silently dropped —
-    they're returned so the caller logs loud (loud-by-default).
-
-    Returns (notes, malformed): notes is a list of {'tag','subject','note'};
-    malformed is a list of the raw offending lines.
+    Input is newest-first. Legacy closures retire earlier same-subject rows;
+    repeated lifecycle lines and exact repeated observations collapse. Modern
+    snapshots never pass through label-based lifecycle interpretation.
     """
-    notes, malformed = [], []
-    for raw in (text or '').splitlines():
-        line = raw.strip()
-        if not line:
+    events = [e for e in events if not (e.get('metadata') or {}).get('journal_id')]
+    subjects = {journal_key(e.get('ref_id')) for e in events}
+    resolved, lifecycle, observations, items = set(), set(), set(), []
+    for event in events:
+        meta = event.get('metadata') or {}
+        subject = journal_key(event.get('ref_id'))
+        display_subject = event.get('ref_id', '')
+        label, text = meta.get('tag', ''), meta.get('note', '')
+        tag = journal_key(label)
+        if subject in resolved:
             continue
-        if line[0] in '-*•':       # tolerate a leading markdown bullet (LLMs
-            line = line[1:].lstrip()   # list-format their review); keep the tag clean
-            if not line:
+        if tag in LEGACY_JOURNAL_RESOLVE_TAGS + LEGACY_JOURNAL_OPEN_TAGS:
+            if tag in LEGACY_JOURNAL_RESOLVE_TAGS:
+                # Old encoders sometimes echoed the tag into the subject slot.
+                lead = journal_key(text.split(JOURNAL_NOTE_DELIMITER, 1)[0])
+                if lead in subjects and lead != subject:
+                    subject = display_subject = lead
+                resolved.add(subject)
+            if subject in lifecycle:
                 continue
-        if JOURNAL_NOTE_DELIMITER not in line:
-            # No delimiter: a markdown header (e.g. the `## Review` title) is
-            # structural — skip silently. Anything else is a malformed note,
-            # surfaced loud (never silently dropped). A delimiter-bearing line
-            # is ALWAYS a note candidate even if it starts with '#', so a
-            # subject like a `#1234` issue id isn't eaten by the header skip.
-            if line.startswith('#'):
+            lifecycle.add(subject)
+        else:
+            key = (tag, subject, text, meta.get('undelivered', ''))
+            if key in observations:
                 continue
-            malformed.append(raw)
-            continue
-        parts = [p.strip() for p in line.split(JOURNAL_NOTE_DELIMITER, 2)]
-        if len(parts) == 3:
-            tag, subject, note = parts
-        elif journal_key(parts[0]) in JOURNAL_LIFECYCLE_TAGS:
-            # `resolved · subject` — a lifecycle verb carries its payload in
-            # (tag, subject) and the trailing `why` is optional. Without this
-            # branch the two-field default below reads the VERB as the subject,
-            # so the lifecycle action is lost and the line looks well-formed.
-            tag, subject, note = parts[0], parts[1], ''
-        elif journal_key(parts[0]) in JOURNAL_ADDRESSED_TAGS:
-            # `tell · message` — an addressed verb with no subject is about
-            # the run itself. Without this branch the message becomes a
-            # residue note whose subject is the word "tell", never delivered.
-            tag, subject, note = parts[0], JOURNAL_RUN_SUBJECT, parts[1]
-        else:  # delimiter present + maxsplit=2 → exactly 2 parts here
-            tag, subject, note = '', parts[0], parts[1]
-        if not subject or (not note
-                           and journal_key(tag) not in JOURNAL_LIFECYCLE_TAGS):
-            malformed.append(raw)
-            continue
-        notes.append({'tag': tag, 'subject': subject, 'note': note})
-    return notes, malformed
+            observations.add(key)
+        items.append(dict(
+            journal_id=event['id'], subject=display_subject, text=text, label=label,
+            persist=tag in LEGACY_JOURNAL_OPEN_TAGS,
+            start_run=1, carried_runs=0, counted_through=0,
+            chain_id=event['chain_id'], version=event['id'],
+            undelivered=meta.get('undelivered', '')))
+    return items
 
 
-def resolve_target(subject, note, known_subjects):
-    """The subject a `resolved`/`retire` note actually retires.
-
-    Encoders reference a prior note by echoing its rendered `tag · subject ·
-    note` head, which lands the old TAG in the subject slot and the real
-    subject at the head of `note` (maxsplit=2 keeps it intact there). Recover
-    it when that leading segment names a subject that exists — `known_subjects`
-    is the guard, so a target is never invented.
-
-    Falls back to the subject slot, so well-formed resolves are untouched.
-    Recovering also REPLACES the tag-shaped subject rather than adding to it:
-    otherwise a word like `friction` enters the retire set and silently drops
-    an unrelated note that happens to use it as a subject.
-    """
-    lead = journal_key((note or '').split(JOURNAL_NOTE_DELIMITER, 1)[0])
-    return lead if lead and lead in known_subjects else subject
-
-
-JOURNAL_REVIEW_MARKER = '## Review'   # the section heading the encoder emits; the
-                                      # write path keys on it. Kept in sync with the
-                                      # prompt structure (§7.2) — #8 wires the prompt.
-
-JOURNAL_ARC_MARKER = '## Arc'         # the arc heading (§7.2: "Arc — ONE line: what
-                                      # progressed this run"). Its write path
-                                      # (write_session_arc) keys on it. A journal-
-                                      # mechanism component, per-encoder opt-in —
-                                      # S1 Scribe today; any S2 unit later.
+JOURNAL_ARC_MARKER = '## Arc'
 
 
 def _fenced_section_scan(text, marker):
@@ -1436,93 +1281,10 @@ def _extract_fenced_block(text, marker):
     return scan[2] if scan else None
 
 
-def strip_journal_sections(text):
-    """Remove the journal sections (`## Arc` / `## Review` heading + fenced
-    block) from an encoder's final text, returning the payload remainder.
-
-    This is harvest's envelope rule for single-shot agents: their response
-    carries a JSON payload AND the journal fence in one text, and
-    `extract_json`'s rfind-based scan would be corrupted by a `]`/`}` inside
-    a fence that follows the payload — so the journal is stripped first.
-    Sections that are absent or malformed (drift) are left untouched.
-    """
-    if not text:
-        return text
-    stripped_any = False
-    for marker in (JOURNAL_ARC_MARKER, JOURNAL_REVIEW_MARKER):
-        scan = _fenced_section_scan(text, marker)
-        if scan:
-            text = text[:scan[0]] + text[scan[1]:]
-            stripped_any = True
-    # Only tidy whitespace when a section was actually removed — a text with
-    # no journal sections passes through byte-identical.
-    return text.strip() if stripped_any else text
-
-
-def extract_review_block(text):
-    """The `## Review` fence — content ready for `parse_journal_notes`.
-    Three-valued; see `_extract_fenced_block`."""
-    return _extract_fenced_block(text, JOURNAL_REVIEW_MARKER)
-
-
 def extract_arc_block(text):
     """The `## Arc` fence — the run's one-line arc delta, ready for
     `write_session_arc`. Three-valued; see `_extract_fenced_block`."""
     return _extract_fenced_block(text, JOURNAL_ARC_MARKER)
-
-
-def salvage_review_fence(text):
-    """Drift salvage for the write door: notes the encoder fenced WITHOUT the
-    `## Review` heading. Observed on Haiku community runs — a perfectly formed
-    notes fence loses its heading and the whole batch's residue was dropped on
-    the strict marker match.
-
-    Strict all-or-nothing gate, so a code/table fence can never be harvested:
-    a fence qualifies only when `parse_journal_notes` accepts EVERY non-blank
-    line (>=1 note, zero malformed). Well-formed journal sections are stripped
-    first so an `## Arc` fence is never mistaken for notes. Multiple qualifying
-    fences → the LAST one (the closure puts the review at the end of the final
-    reply). Returns the fence content, or None when nothing qualifies — an
-    empty heading-less fence does NOT qualify (indistinguishable from a stray
-    code block, unlike a fenced `## Review` where empty means a clean run).
-    """
-    remainder = strip_journal_sections(text)
-    if not remainder:
-        return None
-    salvaged = None
-    pos = 0
-    while True:
-        open_fence = remainder.find('```', pos)
-        if open_fence == -1:
-            break
-        rest = remainder[open_fence + 3:]
-        nl = rest.find('\n')          # skip an optional language tag
-        if nl == -1:
-            break
-        body = rest[nl + 1:]
-        close_fence = body.find('```')
-        if close_fence == -1:
-            break
-        pos = open_fence + 3 + nl + 1 + close_fence + 3
-        content = body[:close_fence].strip()
-        if not content:
-            continue
-        # A JSON payload fence is never notes: a single-line array/object
-        # whose strings contain '·' parses cleanly as one "note" and would
-        # qualify — harvesting a single-shot encoder's PAYLOAD as residue
-        # (reachable since single-shot responses carry fenced JSON; loop
-        # encoders' final text never did).
-        if content[0] in '[{':
-            import json
-            try:
-                json.loads(content)
-                continue
-            except ValueError:
-                pass
-        notes, malformed = parse_journal_notes(content)
-        if notes and not malformed:
-            salvaged = content
-    return salvaged
 
 
 # Per-encoder continuity window: how many of an encoder's most recent
@@ -1551,7 +1313,7 @@ JOURNAL_CONTINUITY_RUNS_DEFAULT = 3
 # forward-compatible (add a residue type here, every consumer excludes it).
 # A Thalamus filing is residue by the same test: it shares the run's chain
 # and event_type='delta' but is not the run's integration delta.
-RESIDUE_REF_TYPES = ('journal_note', REF_THALAMUS_FILED)
+RESIDUE_REF_TYPES = ('journal_note', 'journal_invocation', 'journal_checkpoint', REF_THALAMUS_FILED)
 
 
 # Per-mutation ref_types written by the emitter (servers/mutation_emitter.py).
@@ -1966,6 +1728,8 @@ METADATA_REQUIRED_BY_REF_TYPE = {
     'community_enriched': DELTA_METADATA_SHAPE,  # S2 community
     'healer_generated':   DELTA_METADATA_SHAPE,  # S2 healer
     'aspect_classified':  DELTA_METADATA_SHAPE,  # S2 aspect integration
+    'journal_checkpoint': {'items': list},
+    'journal_invocation': {},
     'journal_note':       JOURNAL_NOTE_METADATA_SHAPE,  # encoder residue (one note per row)
     REF_THALAMUS_FILED:   THALAMUS_FILED_METADATA_SHAPE,  # a producer's filing, on its run chain
     'anchor_touched':     ANCHOR_TOUCHED_SHAPE,  # S0 per-turn Anchor action aggregate

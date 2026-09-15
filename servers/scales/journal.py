@@ -1,45 +1,25 @@
-"""The journal component — one object that attaches the encoder journal
-(the residue contract) to ANY agent request, loop or single-shot.
+"""One scoped journal binding for every encoder.
 
-The journal's TEXT and FORMAT live in trace_contract (single source: the
-review block, the closure, the notes renderer, the `tag · subject · note`
-parser, the fence scanner). This component owns the ORCHESTRATION: which
-blocks decorate a request, in what order, and how residue is harvested from
-the response — so an encoder binds the whole mechanism in one place instead
-of hand-assembling injects.
+The trace contract owns the JSON state, native tool schema, strategy text
+and Arc format. The binding owns invocation selection, shown-version receipts,
+scoped tool dispatch and live routing. Provider objects stay in the runner.
 
-There are no per-shape dialects — one wire format, one parser, one
-instruction block. Two request-derived conditionals only:
-  • the closure block is appended only for multi-round (loop) requests — it
-    exists to disambiguate the terminal turn, which a single-shot call
-    doesn't have;
-  • harvest() returns the final text with the journal sections stripped, so
-    a single-shot response's JSON payload survives extract_json (whose
-    rfind-based scan would be corrupted by a `]`/`}` inside a fence that
-    follows the payload). Loop callers simply ignore the return value.
-
-Placement rules the component enforces (earned decisions, see brain nodes
-2a81ea82 / 0e1a7303 / 7905e385): instruction blocks go at the SYSTEM tail —
-arc (when bound) before review, closure last; the continuity notes are
-CONTEXT, rendered by continuity() for the caller to place in user content
-(S2 units prepend it; S1E embeds it in its structured layout — placement is
-the binding's business where shipped layouts differ, the text is not).
-
-Provider separation: this module deals only in strings and note dicts —
-never SDK types. The provider seam is scales/runner.py.
+S1 and S2 retain distinct purpose text. Loop callers bind tools and dispatch
+at their runner seam; single-shot callers execute the same journal tool from
+one response. Arc is independent session context harvested from final prose.
 """
 
 
 class JournalBinding:
     """One encoder's attachment to the journal.
 
-    Identity mirrors journal_notes() scoping: S2 units bind (scale, unit);
+    Identity mirrors journal_view() scoping: S2 units bind (scale, unit);
     the S1 Scribe binds (scale, session_id) — its residue is session-walled.
     `arc=True` opts into the second journal object (the `## Arc` fence →
     session arc accumulator); only the Scribe carries it today.
 
     `source` is the producer's encoding_source. A binding WITH a source is
-    ADDRESSED: its review lines tagged tell/ask are messages to the people
+    ADDRESSED: its tell/ask operations are messages to the people
     working, filed through the Thalamus door instead of written as residue.
     The audience falls out of the binding: a session (the Scribe) makes the
     item directed — a tell or an ask reaches that session at its next Stop;
@@ -61,10 +41,10 @@ class JournalBinding:
         self._run_chain = None
         self._view = None
         self._selection_failed = False
+        self._reference_context = None
         self.stats = {}
 
-    # Error-log keys preserve the pre-component vocabulary so log continuity
-    # survives the refactor (s1e_* for the Scribe, s2_{unit}_* for S2 units).
+    # Stable log keys let operational queries span journal versions.
     def _log_key(self, op):
         if self.scale == 's1':
             return 's1e_journal_notes_%s' % op
@@ -86,7 +66,7 @@ class JournalBinding:
             if not self._selection_failed:
                 self._view = self.brain.journal_view(
                     scale=self.scale, unit=self.unit, session_id=self.session_id,
-                    previous=self._view)
+                    previous=self._view, invocation=chain_id)
             view = self._view or {'selection_failed': True}
         except Exception as e:
             # No initial snapshot means there is no safe private selection
@@ -99,11 +79,15 @@ class JournalBinding:
             view = dict(self._view or {}, stale=True,
                         selection_failed=self._selection_failed)
         try:
-            text, stats = render_journal_view(view)
+            text, stats, references = render_journal_view(view)
         except Exception as e:
             self.brain._log_error(self._log_key('render'), e,
                                   'journal rendering failed — encoding without residue')
-            text, stats = render_journal_view({'render_failed': True})
+            text, stats, references = render_journal_view({'render_failed': True})
+        self._reference_context = {
+            'chain_id': chain_id, 'view': self._view,
+            'references': references,
+        }
         messages = self.messages()
         self.stats = dict(stats, message_chars=len(messages),
                           continuity_chars=len(text) + len(messages))
@@ -169,57 +153,67 @@ class JournalBinding:
         call this AFTER all other prompt assembly (e.g. edge-aspect vocab).
         """
         from servers.trace_contract import (render_journal_arc_block,
-                                            render_journal_review_block,
+                                            JOURNAL_INSTRUCTION,
                                             render_prompt_closure)
-        out = system_prompt
+        from servers.trace_contract import JOURNAL_S1_INSTRUCTION, JOURNAL_S2_INSTRUCTION
+        purpose = JOURNAL_S1_INSTRUCTION if self.scale == 's1' else JOURNAL_S2_INSTRUCTION
+        out = system_prompt.rstrip() + '\n\n' + purpose
         if self.arc:
             out = out.rstrip() + '\n\n' + render_journal_arc_block()
-        out = out.rstrip() + '\n\n' + render_journal_review_block()
+        out = out.rstrip() + '\n\n' + JOURNAL_INSTRUCTION
         if multi_round:
             out = out.rstrip() + '\n\n' + render_prompt_closure()
         return out
 
-    def harvest(self, final_text, chain_id, arc_limit=800):
-        """The response side: write this run's residue notes (+ the session
-        arc when bound) and return `final_text` with the journal sections
-        stripped — the payload remainder a single-shot caller parses JSON
-        from. Note-write failures are isolated (logged loud, run intact);
-        write_session_arc is failure-isolated internally.
-        """
-        from servers.trace_contract import strip_journal_sections
-        res = {}
+    def bind_tools(self, tools, dispatch_fn, chain_id):
+        """Attach the scoped journal tool to a generic encoder loop."""
+        from servers.trace_contract import journal_tool_schema, JOURNAL_TOOL_NAME
+
+        def dispatch(name, arguments):
+            if name == JOURNAL_TOOL_NAME:
+                return self.apply(arguments, chain_id)
+            return dispatch_fn(name, arguments)
+
+        return dict(tools=[*tools, journal_tool_schema()], dispatch_fn=dispatch,
+                    terminal_tools=(JOURNAL_TOOL_NAME,))
+
+    def apply(self, arguments, chain_id):
+        """Execute a native journal call, preserving independent live operations."""
+        context, self._reference_context = self._reference_context, None
+        if not isinstance(arguments, dict) or set(arguments) != {'operations'}:
+            message = 'journal requires only an operations array'
+            self.brain._log_warning(self._log_key('arguments'), message)
+            return {'ok': False, 'error': message}
         try:
-            res = self.brain.write_journal_notes(
-                final_text=final_text, chain_id=chain_id,
-                scale=self.scale, session_id=self.session_id)
+            res = self.brain.write_journal_operations(
+                arguments['operations'], chain_id=chain_id,
+                scale=self.scale, session_id=self.session_id,
+                unit=self.unit, context=context)
         except Exception as e:
-            self.brain._log_error(
-                self._log_key('write'), e,
-                'residue note write failed — run otherwise intact')
-        # The routing half is isolated like the write half: a Thalamus read
-        # or write hiccup must never abort the encoder's run (S2's batch loop
-        # relies on it) nor cost the session arc below.
+            self.brain._log_error(self._log_key('write'), e,
+                                  'journal tool failed — task work preserved')
+            return {'ok': False, 'error': str(e)}
         try:
             if self.addressed:
                 self._route_addressed(res, chain_id)
             elif res.get('addressed'):
-                # No source to file under — the lines stay residue, but a
-                # message nobody will deliver is worth a warning.
                 self.brain._log_warning(
                     self._log_key('addressed_unbound'),
-                    'chain=%s: %d tell/ask line(s) from a binding without a '
-                    'source — written as plain notes, undelivered'
-                    % (chain_id, len(res['addressed'])))
-                self._write_rows(res['addressed'], chain_id)
+                    'No source for live messages; retained as undelivered notes')
+                self._write_rows([dict(n, undelivered='no bound producer')
+                                  for n in res['addressed']], chain_id)
         except Exception as e:
-            self.brain._log_error(
-                self._log_key('route'), e,
-                'addressed-line routing failed — run otherwise intact')
+            self.brain._log_error(self._log_key('route'), e,
+                                  'journal routing failed — task work preserved')
+            return {'ok': False, 'error': str(e), 'result': res}
+        return {'ok': res['status'] == 'ok', 'result': res,
+                **({'error': 'Some journal operations were rejected'} if res['status'] != 'ok' else {})}
+
+    def harvest_arc(self, final_text, arc_limit=800):
+        """Arc is separate session context; journal writes are native tool calls."""
         if self.arc:
-            self.brain.write_session_arc(
-                final_text=final_text, session_id=self.session_id,
-                limit=arc_limit)
-        return strip_journal_sections(final_text)
+            self.brain.write_session_arc(final_text=final_text, session_id=self.session_id,
+                                         limit=arc_limit)
 
     def _route_addressed(self, res, chain_id):
         """File this run's tell/ask lines as Thalamus items — the non-LLM
@@ -229,18 +223,15 @@ class JournalBinding:
         holds literally: a re-assertion updates, never duplicates — and a
         node-id subject is also its ref. The run chain rides along so the
         filing is traced on it. A door rejection is LOUD and the line is
-        kept as a plain note carrying the reason, so the residue survives
-        and the encoder reads the rejection next run. A `resolved · <subject>`
-        line also withdraws this binding's open item under that key — the
-        encoder's existing verb closes its own item."""
+        kept as a plain note carrying the reason. Only an explicit withdraw
+        operation withdraws a live message; private persistence is independent."""
         addressed = res.get('addressed') or []
-        resolved = res.get('resolved') or []
-        if not (addressed or resolved):
+        withdrawn = res.get('withdrawn') or []
+        if not (addressed or withdrawn):
             return
         from servers.channels.thalamus import thalamus
         from servers.trace_contract import (JOURNAL_ASK_TAG, journal_key,
-                                            journal_subject_refs,
-                                            resolve_target)
+                                            journal_subject_refs)
         kept = []
         for n in addressed:
             try:
@@ -259,25 +250,31 @@ class JournalBinding:
                     'chain=%s: %s · %s not filed — %s' % (
                         chain_id, n.get('tag'), n['subject'], r.get('error')))
                 kept.append(dict(n, undelivered=r.get('error') or 'rejected'))
-        if kept:
-            self._write_rows(kept, chain_id)
-        if resolved:
-            # Close only what this binding actually has open (≤ the budget
-            # cap, one read) — with the read side's tolerance for an echoed
-            # `tag · subject · …` head (resolve_target), so the same resolve
-            # line that retires the note also closes the item.
+        if withdrawn:
+            # Only this producer's messages in the bound audience are eligible.
             open_keys = {i['dedup_key'] for i in thalamus.producer_items(
                              self.brain, self.source, self.session_id)
                          if i['dedup_key']}
-            for r in resolved:
-                target = resolve_target(journal_key(r['subject']), r['note'],
-                                        open_keys)
+            for r in withdrawn:
+                target = journal_key(r['subject'])
                 if target in open_keys:
-                    thalamus.withdraw(self.brain, self.source,
-                                      dedup_key=target,
-                                      target_session=self.session_id)
+                    try:
+                        outcome = thalamus.withdraw(
+                            self.brain, self.source, dedup_key=target,
+                            target_session=self.session_id)
+                    except Exception as exc:
+                        outcome = {'ok': False, 'error': str(exc)}
+                    if not outcome.get('ok'):
+                        reason = outcome.get('error') or 'withdrawal rejected'
+                        self.brain._log_warning(self._log_key('withdraw_failed'), reason)
+                        kept.append(dict(
+                            tag='failure', subject=target,
+                            note='Message withdrawal failed: ' + reason))
+        # Feedback storage must not prevent independent live operations.
+        if kept:
+            self._write_rows(kept, chain_id)
 
     def _write_rows(self, notes, chain_id):
         self.brain.write_journal_note_rows(
             notes, chain_id=chain_id, scale=self.scale,
-            session_id=self.session_id)
+            session_id=self.session_id, unit=self.unit)

@@ -17,18 +17,17 @@ from tests.brain_test_base import BrainTestBase
 from servers.scales.s1.encode import _build_user_content
 
 # A parseable `## Review` section: a fenced ``` block of `tag · subject · note`
-# lines (the format extract_review_block requires — the review-block instructions
-# tell the encoder to emit exactly this).
+# lines, retained here to verify continuity from stored legacy reviews.
 _REVIEW = (
-    "Some narrative the encoder wrote.\n\n"
-    "## Review\n```\n"
-    "watch · dedup-risk · unsure if the LAF node duplicates 9a3017ea\n"
-    "```\n"
+    (
+        {'operations': [{'op': 'note', 'subject': 'dedup-risk', 'text': 'unsure if the LAF node duplicates 9a3017ea', 'label': 'watch'}]}
+    )
 )
 
 
-def _review(note_line):
-    return "## Review\n```\n%s\n```\n" % note_line
+def _review(subject, text):
+    from tests.test_journal_items import review
+    return review(dict(op='note', subject=subject, text=text))
 
 
 def _msgs():
@@ -46,9 +45,7 @@ class TestResidueWiring(BrainTestBase):
     def test_session_bound_roundtrip_via_public_doors(self):
         # Write a run's review notes scoped to session A; they read back for A,
         # and are WALLED from session B (the S1E session-bound continuity).
-        self.brain.write_journal_notes(
-            final_text=_REVIEW, chain_id='s1e-sessAxxx-5',
-            scale='s1', session_id='sessA')
+        self.brain.write_journal_operations(operations=_REVIEW['operations'], chain_id='s1e-sessAxxx-5', scale='s1', session_id='sessA', context=None)
 
         a = self.brain.journal_notes(scale='s1', session_id='sessA')
         assert any('dedup-risk' in n['subject'] for n in a)
@@ -59,14 +56,12 @@ class TestResidueWiring(BrainTestBase):
 
     def test_continuity_read_branch_uses_notes_when_lived(self):
         # Flag-on path: _build_user_content injects the residue notes (self-labeled
-        # 'RECENT REVIEW NOTES'), NOT the legacy '### Encoding Journal' blob.
+        # 'JOURNAL — existing state'), not the legacy '### Encoding Journal' blob.
         sid = 'sess-lived'
-        self.brain.write_journal_notes(
-            final_text=_REVIEW, chain_id='s1e-%s-3' % sid[:8],
-            scale='s1', session_id=sid)
+        self.brain.write_journal_operations(operations=_REVIEW['operations'], chain_id='s1e-%s-3' % sid[:8], scale='s1', session_id=sid, context=None)
         _pre, body, _cat, _ids = _build_user_content(
             self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=True)
-        assert 'RECENT REVIEW NOTES' in body
+        assert 'JOURNAL — existing state' in body
         assert 'dedup-risk' in body
         assert '### Encoding Journal' not in body     # legacy blob heading gone
 
@@ -78,14 +73,14 @@ class TestResidueWiring(BrainTestBase):
             self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=False)
         assert '### Encoding Journal' in body
         assert 'old blob entry' in body
-        assert 'RECENT REVIEW NOTES' not in body
+        assert 'JOURNAL — existing state' not in body
 
     def test_fresh_session_lived_has_no_continuity_block(self):
         # No prior notes this session → the continuity block is simply absent
         # (no 'first run' filler), and the encode still assembles.
         _pre, body, _cat, _ids = _build_user_content(
             self.brain, _msgs(), counter=1, session_id='sess-fresh', lived_sequence=True)
-        assert 'RECENT REVIEW NOTES' not in body
+        assert 'JOURNAL — existing state' not in body
         assert '### Encoding Journal' not in body
 
     def test_lived_body_uses_xml_section_wrappers(self):
@@ -94,9 +89,7 @@ class TestResidueWiring(BrainTestBase):
         # markdown headers. The session arc folds into <continuity>.
         sid = 'sess-xml'
         self.brain.set_config('session_context_%s' % sid, 'building S1E reconciliation')
-        self.brain.write_journal_notes(
-            final_text=_REVIEW, chain_id='s1e-%s-3' % sid[:8],
-            scale='s1', session_id=sid)
+        self.brain.write_journal_operations(operations=_REVIEW['operations'], chain_id='s1e-%s-3' % sid[:8], scale='s1', session_id=sid, context=None)
         pre, body, _cat, _ids = _build_user_content(
             self.brain, _msgs(), counter=8, session_id=sid, lived_sequence=True)
         assert '<continuity>' in body and '</continuity>' in body
@@ -105,7 +98,7 @@ class TestResidueWiring(BrainTestBase):
         # (exact shape + contents pinned in test_s1e_lived_sequence).
         assert '<timeline' in body and '</timeline>' in body
         assert 'Session arc: building S1E' in body      # arc folded into continuity
-        assert 'RECENT REVIEW NOTES' in body            # residue also in continuity
+        assert 'JOURNAL — existing state' in body       # residue also in continuity
         assert '### Session Context' not in body        # legacy headers gone
         assert '### Conversation Timeline' not in body
         # preamble drops the section legend on the new arm (v-next system prompt
@@ -137,11 +130,9 @@ class TestResidueWiring(BrainTestBase):
         # S1E keeps the last 5 note-bearing runs of THIS session (the 's1e' K).
         sid = 'sess-k'
         for i in range(1, 7):  # 6 runs, one note each
-            self.brain.write_journal_notes(
-                final_text=_review("note · subj%d · run %d residue" % (i, i)),
-                chain_id='s1e-%s-%d' % (sid[:8], i), scale='s1', session_id=sid)
-        notes = self.brain.journal_notes(scale='s1', session_id=sid)
-        runs = {n['note'] for n in notes}
+            self.brain.write_journal_operations(operations=_review('subj%d' % i, 'run %d residue' % i)['operations'], chain_id='s1e-%s-%d' % (sid[:8], i), scale='s1', session_id=sid, context=None)
+        notes = self.brain.journal_view(scale='s1', session_id=sid)['notes']
+        runs = {n['text'] for n in notes}
         assert 'run 1 residue' not in runs          # oldest dropped (K=5)
         assert 'run 6 residue' in runs
         assert len({n['subject'] for n in notes}) == 5
@@ -218,12 +209,11 @@ class TestSessionArcWriteDoor(BrainTestBase):
         # §7.2: the final reply carries Arc + Review; each write door consumes
         # only its own fence.
         sid = 'sess-arc-both'
-        text = ('## Arc\n```\narc write-path built\n```\n\n'
-                '## Review\n```\ndoubt · arc-fence · watch for drift\n```\nDONE')
-        self.brain.write_session_arc(final_text=text, session_id=sid)
-        self.brain.write_journal_notes(final_text=text,
-                                       chain_id='s1e-%s-5' % sid[:8],
-                                       scale='s1', session_id=sid)
+        text = ((
+            {'operations': [{'op': 'note', 'subject': 'arc-fence', 'text': 'watch for drift', 'label': 'doubt'}]}
+        ))
+        self.brain.write_session_arc(final_text='## Arc\n```\narc write-path built\n```', session_id=sid)
+        self.brain.write_journal_operations(operations=text['operations'], chain_id='s1e-%s-5' % sid[:8], scale='s1', session_id=sid, context=None)
         assert self.brain.session_context_for(sid) == 'arc write-path built'
         notes = self.brain.journal_notes(scale='s1', session_id=sid)
         assert any(n['subject'] == 'arc-fence' for n in notes)

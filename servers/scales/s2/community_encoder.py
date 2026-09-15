@@ -43,7 +43,7 @@ class CommunityEncoder(IntegrationUnit):
     # bound reads/resets it across cycles.
     THWARTED_STREAK_KEY = 's2_community_thwarted_streak'
 
-    # Residue flows to journal_note trace rows via brain.write_journal_notes,
+    # Residue flows to journal_note trace rows via brain.write_journal_operations,
     # read back via the journal binding's continuity() (the note contract). The old
     # s2_community_journal brain_meta blob is orphaned and no longer read.
 
@@ -506,8 +506,7 @@ class CommunityEncoder(IntegrationUnit):
                         max_rounds=self.config.get('max_rounds', 4),
                         system_prompt=system_prompt,
                         user_content=user_content,
-                        tools=tools,
-                        dispatch_fn=dispatch_fn,
+                        **self.journal.bind_tools(tools, dispatch_fn, self.chain_id()),
                         get_nodes_config=S2CE_NODE_FORMAT,
                         log_fn=lambda msg: print('[s2ce] %s' % msg, flush=True),
                         record_round_fn=self.brain.round_recorder(

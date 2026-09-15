@@ -129,7 +129,7 @@ class TestCommunityDecisionContext(BrainTestBase):
         def run(**kwargs):
             seen.append(kwargs['user_content'])
             return {'actions': 0, 'write_actions': 0, 'rounds': 1,
-                    'final_text': '## Review\n```\n```'}
+                    'final_text': {'operations': []}}
 
         with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'test-not-a-key'}), \
                 patch('servers.scales.runner.make_client', return_value=object()), \
@@ -143,21 +143,24 @@ class TestCommunityDecisionContext(BrainTestBase):
             self.assertEqual(text.count('HEALTH UPDATE'), 1)
 
     def test_second_batch_reads_new_message_but_not_same_run_residue(self):
+        import re
+        from tests.test_journal_items import review
         source = 's2:community_detection'
-        self.brain.write_journal_notes(
-            final_text='## Review\n```\nopen · deployment · old pending claim\n```',
-            chain_id='s2-previous-community_detection', scale='s2')
+        self.brain.write_journal_operations(operations=review(dict(op='note', subject='deployment', text='old pending claim', persist=True))['operations'], chain_id='s2-previous-community_detection', scale='s2', unit='community_detection', context=None)
         thalamus.file(self.brain, source, 'old report', needs_answer=True,
                       dedup_key='maintenance')
         seen = []
 
         def run(**kwargs):
             seen.append(kwargs['user_content'])
-            review = ('ask · maintenance · updated after first batch\n'
-                      'resolved · deployment · verified deployed\n'
-                      'open · fresh-residue · first batch private note') if len(seen) == 1 else ''
-            return {'actions': 0, 'write_actions': 0, 'rounds': 1,
-                    'final_text': '## Review\n```\n%s\n```' % review}
+            operations = [
+                dict(op='ask', subject='maintenance', text='updated after first batch'),
+                dict(op='edit', id=re.search(r'journal_[0-9a-f]{8}', seen[-1])[0],
+                     persist=False, text='verified deployed'),
+                dict(op='note', subject='fresh-residue', text='first batch private note', persist=True),
+            ] if len(seen) == 1 else []
+            kwargs['dispatch_fn']('journal', review(*operations))
+            return {'actions': 0, 'write_actions': 0, 'rounds': 1, 'final_text': 'DONE'}
 
         props = [{'type': 'new_community', 'member_count': 0,
                   'internal_fraction': 0, 'all_members': []}] * 2
@@ -172,7 +175,7 @@ class TestCommunityDecisionContext(BrainTestBase):
         self.assertNotIn('first batch private note', seen[1])
         self.assertIn('old pending claim', seen[0])
         self.assertNotIn('old pending claim', seen[1])
-        self.assertIn('resolved · deployment · verified deployed', seen[1])
+        self.assertIn('"text": "verified deployed"', seen[1])
 
     def test_packing_keeps_shared_target_together_without_reordering(self):
         targets = [self.node('Target %d' % i, 'community',

@@ -413,9 +413,11 @@ Type `community`, encoding_source `s2:community_detection`.
 - Runs the production decoder on an isolated brain copy with simulated
   encoder acceptance — backlog convergence, fingerprint suppression,
   proposal mix across cycles
-- `run_decoder()` is the shared seam the community sims
-  (`sim_community_journal`, `sim_community_structural`,
-  `diag_community_encode`) build on
+- `run_decoder()` is the shared seam used by `sim_community_structural`
+  and `diag_community_encode`.
+- `eval/journal_probe.py` inspects current journal rendering and probes the
+  shared JSON protocol on synthetic data across all five encoders. Its optional
+  S2 mode enters through `brain.run_s2()` with normal coordinator gates.
 
 ## Bug Fixes Shipped
 

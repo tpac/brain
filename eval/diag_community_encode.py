@@ -75,14 +75,13 @@ def dump_arm(label, transform):
 
         # Persisted journal notes for this run.
         run_chain = enc.chain_id()
-        rows = [r for r in brain.journal_notes(
-                    scale='s2', unit='community_detection', k=1)
-                if r.get('chain_id') == run_chain]
+        rows = [r for r in brain.query_traces(chain_id=run_chain)['chain']
+                if r['ref_type'] == 'journal_note']
         print('\n--- persisted journal notes (%d) ---' % len(rows))
         for r in rows:
             print('  [%s] %s :: %s' % (
-                r.get('tag') or '—', r.get('subject', ''),
-                (r.get('note') or '')[:240]))
+                r['metadata'].get('tag') or '—', r['ref_id'],
+                (r['metadata'].get('note') or '')[:240]))
 
 
 def main():

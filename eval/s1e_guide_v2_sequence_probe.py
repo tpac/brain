@@ -246,11 +246,11 @@ def run(arm):
                                   model=cfg.get('model') or 'claude-sonnet-4-6', effort=cfg.get('effort') or None,
                                   max_tokens=ENCODING_AGENT['max_tokens'], max_rounds=ENCODING_AGENT['max_rounds'],
                                   system_prompt=system, user_content=body, user_preamble=PREAMBLE,
-                                  tools=tools, dispatch_fn=dispatch, record_round_fn=capture)
+                                  **journal.bind_tools(tools, dispatch, f's1e-{SID[:8]}-{wn}'), record_round_fn=capture)
             save(d / 'result.json', {'result':result,'usage':usage,'writes':writes,'reads':reads})
             if result.get('error'):
                 raise RuntimeError('Encoder failed: '+str(result['error']))
-            journal.harvest(result.get('final_text') or '', f's1e-{SID[:8]}-{wn}')
+            journal.harvest_arc(result.get('final_text') or '')
             continuity = journal.continuity()
             if not isinstance(continuity,str):
                 raise TypeError('journal continuity changed shape: %r' % type(continuity))

@@ -8,43 +8,33 @@ breaking the `## Review` reference) fails loudly in CI rather than silently
 shipping a malformed prompt.
 
 Deterministic, no brain/embedder/LLM — a SimpleNamespace stub feeds the aspect
-dict, so this runs in CI where the real eval (sim_consolidation_journal.py,
+dict, so this runs in CI where the real eval (journal_probe.py,
 needs Sonnet) cannot.
 """
 from types import SimpleNamespace as NS
 
 from servers.aspects import render_edge_aspects_block
 from servers.trace_contract import (
-    render_prompt_closure, render_journal_review_block, JOURNAL_REVIEW_INSTRUCTION)
+    render_prompt_closure, JOURNAL_INSTRUCTION)
 from servers.scales.s2.base import IntegrationUnit
 
 
 # ── the three render sources ──
 
-def test_review_block_is_closure_free():
-    """The review block defines the `## Review` artifact ONLY — it must carry no
-    closure/terminal-turn/DONE language (the decoupling: removing or relocating
-    the review must never drag the closure)."""
-    rb = render_journal_review_block()
-    assert rb == JOURNAL_REVIEW_INSTRUCTION       # unchanged by the closure split
-    assert 'DONE' not in rb
-    assert 'Finishing' not in rb
-    assert 'no tool call' not in rb
-    assert '## Review' in rb                        # it DOES name the artifact's heading
+def test_journal_strategy_is_separate_from_tool_mechanics():
+    from servers.trace_contract import journal_tool_schema
+    assert '`journal`' in JOURNAL_INSTRUCTION
+    assert 'DONE' not in JOURNAL_INSTRUCTION
+    assert '8,000' in journal_tool_schema()['description']
+    assert '## Review' not in JOURNAL_INSTRUCTION
 
 
 def test_closure_shape():
-    """The closure carries the terminal-turn definition (incl. the no-tool-call
-    branch — the no-action-batch fix), references `## Review` by name, and ends
-    with the DONE stop signal."""
     c = render_prompt_closure()
     assert c.startswith('## Finishing')
-    assert 'no tool call' in c                      # terminal-turn defined as the runner does
-    assert 'no tool call at all' in c               # the no-action branch is present
-    assert '`## Review`' in c                       # references the artifact, by name
-    assert c.rstrip().endswith('"DONE".')           # stop signal is last
-    # closure must NOT redefine the note format (that's the review block's job)
-    assert 'tag · subject · note' not in c
+    assert 'only `journal` ends the run' in c
+    assert 'no tool call' in c
+    assert c.rstrip().endswith('"DONE".')
 
 
 def test_edge_aspects_skip_and_heading():
@@ -117,7 +107,7 @@ def test_assembly_order_and_done_last():
 
     # all three present, in order: edge aspects → review → closure
     i_edge = asm.index('## Edge Aspects')
-    i_review = asm.index('A review')
+    i_review = asm.index(JOURNAL_INSTRUCTION)
     i_closure = asm.index('## Finishing')
     assert i_edge < i_review < i_closure
     # closure is genuinely last — DONE is the final content
@@ -132,7 +122,7 @@ def test_single_shot_decoration_has_no_closure():
     instruction on a one-turn call is noise."""
     s = _Stub({})
     asm = s.journal.decorate_system('BODY...', multi_round=False)
-    assert 'A review' in asm
+    assert JOURNAL_INSTRUCTION in asm
     assert '## Finishing' not in asm and 'DONE' not in asm
 
 
@@ -143,7 +133,7 @@ def test_arc_binding_orders_arc_before_review():
     from servers.scales.journal import JournalBinding
     b = JournalBinding(None, scale='s1', session_id='sess', arc=True)
     asm = b.decorate_system('BODY...')
-    assert asm.index('## Arc') < asm.index('A review') < asm.index('## Finishing')
+    assert asm.index('## Arc') < asm.index(JOURNAL_INSTRUCTION) < asm.index('## Finishing')
 
 
 def test_inject_edge_aspects_noop_when_empty():

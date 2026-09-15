@@ -1,20 +1,4 @@
-"""Journal lifecycle verbs (audit finding #6) + boot standing items.
-
-Read-time only — traces stay append-only:
-  • `resolved · subject · why` drops older same-subject notes from the
-    continuity prefix (normalized exact match). The resolve note itself
-    stays until it ages out.
-  • `open · subject · note` pins the newest note per subject beyond the
-    K-run window until resolved; the READER computes ×N persistence
-    (distinct runs mentioning the subject) — never the encoder.
-  • Past JOURNAL_OPEN_NUDGE_RUNS the render nudges: resolve it, or hand it
-    up as an `ask` — a Thalamus item the live work answers (the boot
-    standing-items default ships empty; BRAIN_BOOT_INJECT_TYPES is the
-    operator's own extension point).
-
-The hotspot view (journal_notes(subject=...)) stays UNFILTERED — full
-history for investigation.
-"""
+"""Stored legacy journal adoption, current JSON display, and boot items."""
 
 import os
 import sys
@@ -26,10 +10,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from tests.brain_test_base import BrainTestBase
 
 
-def _review(*lines):
-    return '## Review\n```\n' + '\n'.join(lines) + '\n```\n'
-
-
 class JournalLifecycleBase(BrainTestBase):
     needs_embedder = False
 
@@ -37,15 +17,21 @@ class JournalLifecycleBase(BrainTestBase):
 
     def _write_run(self, n, *lines):
         """Write one run's notes under a distinct chain_id."""
-        r = self.brain.write_journal_notes(
-            final_text=_review(*lines),
-            chain_id='s2-2026072800%04d-%s' % (n, self.UNIT),
-            scale='s2')
-        self.assertEqual(r['status'], 'ok')
-        return r
+        # Historical traces are migration input, not a supported output protocol.
+        from servers.trace_contract import build_journal_note_metadata
+        for line in lines:
+            tag, subject, text = line.split('·', 2)
+            self.brain._trace_dal.append(
+                chain_id='s2-2026072800%04d-%s' % (n, self.UNIT), scale='s2',
+                event_type='delta', ref_type='journal_note', ref_id=subject.strip(),
+                metadata=build_journal_note_metadata(note=text, tag=tag))
 
     def _continuity(self, k=None):
-        return self.brain.journal_notes(scale='s2', unit=self.UNIT, k=k)
+        from servers.trace_contract import JOURNAL_CONTINUITY_RUNS
+        with mock.patch.dict(JOURNAL_CONTINUITY_RUNS, {self.UNIT: k or 3}):
+            notes = self.brain.journal_view(scale='s2', unit=self.UNIT,
+                invocation='s2-adoption-' + self.UNIT)['notes']
+        return [dict(n, tag=n['label'], note=n['text']) for n in notes]
 
     def _subjects(self, notes):
         return [n['subject'] for n in notes]
@@ -103,7 +89,7 @@ class TestOpenPins(JournalLifecycleBase):
         notes = self._continuity(k=2)   # window holds runs 5,4 only
         opens = [n for n in notes if n['subject'] == 'repo-question']
         self.assertEqual(len(opens), 1)
-        self.assertTrue(opens[0].get('open_runs'))
+        self.assertTrue(opens[0].get('persist'))
 
     def test_resolved_unpins(self):
         self._write_run(1, 'open · repo-question · still undecided')
@@ -114,8 +100,8 @@ class TestOpenPins(JournalLifecycleBase):
         notes = self._continuity(k=2)
         self.assertNotIn('repo-question', self._subjects(notes))
 
-    def test_open_runs_counts_distinct_runs(self):
-        # Old-habit re-assertion across 3 runs → one line, ×3.
+    def test_repeated_legacy_mentions_do_not_invent_elapsed_invocations(self):
+        # Adoption collapses repeated mentions and starts a truthful new run clock.
         for i in (1, 2, 3):
             self._write_run(i, 'open · repo-question · still undecided')
         self._write_run(4, 'friction · other · noise')
@@ -123,7 +109,7 @@ class TestOpenPins(JournalLifecycleBase):
         notes = self._continuity(k=2)
         opens = [n for n in notes if n['subject'] == 'repo-question']
         self.assertEqual(len(opens), 1)          # deduped to newest
-        self.assertEqual(opens[0]['open_runs'], 3)
+        self.assertEqual(opens[0]['runsPersisted'], 1)
 
     def test_still_open_alias_pins(self):
         self._write_run(1, 'still-open · legacy-item · from the wild corpus')
@@ -137,15 +123,15 @@ class TestOpenPins(JournalLifecycleBase):
         # Exact-count both sides: the cap is hit (not zero pins vacuously),
         # and never exceeded. All open runs are pushed outside the k=2 window
         # by the trailing friction runs, so every pin is carry-over.
-        from servers.trace_contract import JOURNAL_OPEN_PIN_CAP
-        for i in range(JOURNAL_OPEN_PIN_CAP + 4):
+        from servers.trace_contract import JOURNAL_PERSIST_PIN_CAP
+        for i in range(JOURNAL_PERSIST_PIN_CAP + 4):
             self._write_run(i + 1, 'open · item-%02d · lingering' % i)
         for j in range(30, 33):
             self._write_run(j, 'friction · run-%d · unrelated' % j)
 
         notes = self._continuity(k=2)
-        pinned = [n for n in notes if n.get('open_runs')]
-        self.assertEqual(len(pinned), JOURNAL_OPEN_PIN_CAP)
+        pinned = [n for n in notes if n.get('persist')]
+        self.assertEqual(len(pinned), JOURNAL_PERSIST_PIN_CAP)
 
     def test_reopen_after_resolve_starts_fresh_epoch(self):
         # A resolve closes the epoch: a re-opened subject counts ×1 with a
@@ -159,59 +145,36 @@ class TestOpenPins(JournalLifecycleBase):
 
         notes = self._continuity(k=2)
         opens = [n for n in notes if n['subject'] == 'repo-question'
-                 and n.get('open_runs')]
+                 and n.get('persist')]
         self.assertEqual(len(opens), 1)
-        self.assertEqual(opens[0]['open_runs'], 1)
+        self.assertEqual(opens[0]['runsPersisted'], 1)
         self.assertEqual(opens[0]['note'], 're-opened, new grounds')
 
 
 class TestRenderLifecycle(JournalLifecycleBase):
 
-    def test_render_shows_count_and_nudge_at_threshold(self):
-        """Past the threshold the nudge hands the item UP through the
-        addressed verb — the Thalamus ask — never to a node type."""
-        from servers.trace_contract import (render_journal_notes_prefix,
-                                             JOURNAL_OPEN_NUDGE_RUNS)
-        note = {'tag': 'open', 'subject': 'repo-question', 'note': 'undecided',
-                'open_runs': JOURNAL_OPEN_NUDGE_RUNS,
-                'first_seen': '2026-07-17T00:00:00+00:00'}
-        from servers.trace_contract import JOURNAL_ASK_TAG, JOURNAL_NOTE_DELIMITER as D
-        text = render_journal_notes_prefix([note])
-        self.assertIn('open ×%d since 07-17' % JOURNAL_OPEN_NUDGE_RUNS, text)
-        self.assertIn('hand it up: `%s %s repo-question %s <the question>`'
-                      % (JOURNAL_ASK_TAG, D, D), text)
-        # …and clear the pin — otherwise the nudge repeats every run while
-        # the item already carries the question.
-        self.assertIn('`resolved %s repo-question %s handed up`' % (D, D), text)
+    def test_render_shows_runtime_count_and_review_due(self):
+        import json
+        from servers.trace_contract import render_journal_view
+        for count, due in ((2, False), (5, True)):
+            with self.subTest(count=count):
+                note = dict(id='journal_a1b2c3d4', subject='repo-question',
+                            text='undecided', persist=True,
+                            runsPersisted=count, reviewDue=due)
+                text, stats, references = render_journal_view({'notes': [note]})
+                shown = json.loads(text.split('\n', 1)[1])['items'][0]
+                self.assertEqual(shown, note)
+                self.assertEqual(stats['rendered_rows'], 1)
+                self.assertNotIn('hand it up', text)
 
-    def test_render_below_threshold_no_nudge(self):
-        from servers.trace_contract import render_journal_notes_prefix
-        note = {'tag': 'open', 'subject': 'repo-question', 'note': 'undecided',
-                'open_runs': 2, 'first_seen': '2026-07-17T00:00:00+00:00'}
-        text = render_journal_notes_prefix([note])
-        self.assertIn('open ×2', text)
-        self.assertNotIn('hand it up', text)
+    def test_tool_schema_owns_all_operation_shapes(self):
+        from servers.trace_contract import journal_tool_schema
+        schema = journal_tool_schema()
+        variants = schema['input_schema']['properties']['operations']['items']['oneOf']
+        self.assertEqual({v['properties']['op']['enum'][0] for v in variants},
+                         {'note', 'edit', 'tell', 'ask', 'withdraw'})
+        self.assertIn('persistence', schema['description'])
 
-    def test_instruction_teaches_both_verbs(self):
-        from servers.trace_contract import JOURNAL_REVIEW_INSTRUCTION
-        from servers.trace_contract import (render_journal_review_block,
-                                            JOURNAL_ADDRESSED_LIVE,
-                                            JOURNAL_ADDRESSED_INSTRUCTION,
-                                            JOURNAL_TELL_TAG, JOURNAL_ASK_TAG)
-        # The addressed verbs are LIVE (one flag for every encoder): the one
-        # block every encoder reads carries the paragraph between the `open`
-        # line and the output-format close, and the render IS the constant.
-        self.assertTrue(JOURNAL_ADDRESSED_LIVE)
-        block = render_journal_review_block()
-        self.assertEqual(block, JOURNAL_REVIEW_INSTRUCTION)
-        self.assertIn(JOURNAL_ADDRESSED_INSTRUCTION, block)
-        self.assertIn('`%s · subject · note`' % JOURNAL_TELL_TAG, block)
-        self.assertLess(block.index('`%s · subject' % JOURNAL_ASK_TAG),
-                        block.index('Put the notes under a `## Review`'))
-        self.assertGreater(block.index('`%s · subject' % JOURNAL_ASK_TAG),
-                           block.index('open · subject · note'))
-        self.assertTrue(block.endswith('Stay sharp.'))
-        self.assertIn('resolved · <its exact subject> · why', block)
 
 
 class TestBootStandingItems(BrainTestBase):

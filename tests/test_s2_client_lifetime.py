@@ -53,6 +53,8 @@ def _unit():
     u = IntegrationUnit.__new__(IntegrationUnit)
     u.brain = _StubBrain()
     u.dispatch = None
+    from servers.scales.s2.healer_contract import HEALER_RESULT_TOOL
+    u.RESULT_TOOL = HEALER_RESULT_TOOL
     return u
 
 
@@ -132,11 +134,11 @@ class CallLlmWiringTest(unittest.TestCase):
             self.constructions += 1
             return _FakeClient(self.constructions)
 
-        def capturing_run_llm_once(client, model, max_tokens, system, user):
+        def capturing_run_llm_once(client, model, max_tokens, system, user, *, tools):
             self.clients_seen.append(client)
             self.calls.append(
                 {'model': model, 'max_tokens': max_tokens, 'system': system})
-            return '{"ok": true}', {'elapsed_ms': 1}
+            return [{'name': 'submit_healings', 'input': {'healings': []}}], {'elapsed_ms': 1}
 
         s2_base.make_client = counting_make_client
         s2_base.run_llm_once = capturing_run_llm_once
@@ -151,8 +153,8 @@ class CallLlmWiringTest(unittest.TestCase):
         unit.NAME = 'healer'
 
         for batch in range(3):
-            result, _tel = unit._call_llm('s2_healer', 'batch %d' % batch)
-            self.assertEqual(result, {'ok': True})
+            result, _tel = unit._call_llm('s2_healer', 'batch %d' % batch, journal=False)
+            self.assertEqual(result, [])
 
         self.assertEqual(
             self.constructions, 1,

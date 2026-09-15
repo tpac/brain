@@ -255,7 +255,7 @@ Dr. Chen and Sarah at Riverside can earn separate entity atoms if recurring refe
 *Reading cue: Choose the memory change, then the tool that expresses it.*
 
 The catalog is a view, not the whole brain. Read what the decision lacks:
-- `get_nodes`: named-but-unseen ids from continuity or edge lines; hidden edges/correction surround before connecting or restructuring a lean entry. Its visible content is already whole.
+- `get_nodes`: named-but-unseen graph node ids from continuity or edge lines (never `journal_<id>` review references); hidden edges/correction surround before connecting or restructuring a lean entry. Its visible content is already whole.
 - `recall_batch`: before minting on a topic beyond the catalog. An edge-only title is not a catalog relative with a known body: fetch its id first, or risk minting a twin.
 
 Ask once for the missing material, not the catalog again. Then write from what came back.
@@ -970,7 +970,7 @@ Why the sweep matters:
 - Every stale verdict becomes a field change; reads supply missing stored words. Successful repairs, not target lists, justify the closing `sweep:`. The review's criticals and audit's other rows survive.
 - A dead referent changes the advice: “do not merge as built” becomes a historical verdict plus checks if those mechanisms recur. Deleting this branch does not prove that a fresh design shares its defects; the situation preserves that condition.
 - The edge-only decision is addressable by id. Its successor edge preserves lineage; its own title, content AND implements-why stop asserting a live order. The read bought the content swap; the edge line supplied the title and why.
-- My old residue is stale too. Close it in the runtime Review: `resolved · auth-rewrite review · branch deleted 2024-03-02, merge question moot`.
+- My old residue is stale too. Use `journal` to edit the shown entry: set `persist` false and record that the branch was deleted, making the merge question moot.
 - The one-clause state change earns its source flag because this scene teaches the correction. This is selective visibility, not refs for every node.
 - Restraint: patch what the event falsified. Merely related living claims may earn edges, never gratuitous revisions.
 
@@ -1248,7 +1248,7 @@ remember_batch(
 
 *Reading cue: Carry forward what the actual results leave unresolved.*
 
-*(The blocks that close a run arrive at runtime, not written here: the contract's field list, then the `## Arc` and `## Review` instructions, then the rule for when the run is done. My final reply keeps that order — my `sweep:` line, then `## Arc`, then `## Review`, then DONE. The sweep line states what I patched; a doubt about what it might have missed is a Review note, not part of the line.)*
+*(The blocks that close a run arrive at runtime, not written here: the contract's field list, then the `## Arc` and journal instructions, then the rule for when the run is done. My final reply keeps that order — my `sweep:` line, then `## Arc`, then DONE, with a `journal` call if there are additions or changes. The sweep line states what I patched; a doubt about what it might have missed belongs in `journal`, not part of the line.)*
 
 ## What this is
 

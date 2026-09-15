@@ -15,6 +15,7 @@ import os
 import sys
 
 from servers.contract import render_rich_node
+from servers.trace_contract import JOURNAL_TOOL_NAME
 
 ENCODE_EVERY_DEFAULT = 5
 
@@ -197,14 +198,11 @@ def validate_s1e_gist_config(config):
         return ["enabled must be true or false, got %r" % (enabled,)]
     return []
 
-# The encoder's toolset — the brain_mcp tools handed to the S1 encoding
-# agent (encode._get_tool_schemas). Contract-owned so the vocabulary guardrail
-# (tests/test_teaching_vocabulary_sync.py) and the prompt's tool names bind
-# to the same set. Standalone tools outside it (revise_edge, connect, ...)
-# are Anchor's and S2's, not the encoder's.
+# Complete S1 tool vocabulary. brain_mcp supplies graph tools; JournalBinding
+# supplies the scoped journal schema and dispatch. Teaching checks use this set.
 ENCODING_TOOLS = frozenset({
     'remember_batch', 'revise_batch', 'brain_batch', 'connect_batch',
-    'recall_batch', 'get_nodes',
+    'recall_batch', 'get_nodes', JOURNAL_TOOL_NAME,
 })
 
 # Lived-sequence timeline (S1E code-half piece 1): how many recent s0 events to

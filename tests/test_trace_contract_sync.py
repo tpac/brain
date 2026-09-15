@@ -20,7 +20,7 @@ TRACE_WRITER_FILES = [
     'servers/daemon_hooks.py',
     'servers/channels/delivery.py',  # the last-mile leg traces each delivery (s0/K per source)
     'servers/brain.py',            # stamp_boot_liveness writes a boot heartbeat (s0/K/heartbeat)
-    'servers/brain_traces.py',     # write_journal_notes batches journal_note rows
+    'servers/brain_traces.py',     # write_journal_operations batches journal_note rows
     'servers/mutation_emitter.py', # THE mutation-trace writer (node_created/archived/deleted)
     'servers/scales/s1/encode.py',
     'servers/scales/s1/surface.py',
@@ -304,7 +304,7 @@ class TestTraceContractSync:
         # Validates itself instead: _emit_mutation_traces calls
         # validate_trace_event(scale, 'delta', ref_type) per row before writing.
         'servers/mutation_emitter.py',
-        # Two variable-scale doors. write_journal_notes: ref_type is the
+        # Two variable-scale doors. write_journal_operations: ref_type is the
         # literal 'journal_note', `scale` is the caller's (s1 Scribe or an
         # S2 unit) — covered by the (s1|s2, delta, journal_note)
         # registrations. write_thalamus_filed: scale is DERIVED from the
@@ -829,90 +829,30 @@ class TestJournalNoteContract:
         assert len(m['tag']) < 200    # capped
 
 
-class TestJournalNoteParser:
-    """parse_journal_notes splits an encoder review section into rows;
-    render_journal_review_block assembles the shared instruction + per-encoder
-    examples. Single source for all journaling encoders (§7.1/§7.3)."""
+class TestJournalReviewContract:
+    """Shared JSON operations and independent marked fence extraction."""
 
-    def test_three_field_line(self):
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('friction · temporal-scout · misread a number')
+    def test_json_preserves_arbitrary_subjects_and_text(self):
+        import json
+        from servers.trace_contract import parse_journal_operations
+        operation = dict(op='note', subject='#49019', text='old · beat fresh — ] } odd')
+        notes, bad = parse_journal_operations([operation])
+        assert notes == [operation]
         assert bad == []
-        assert notes == [{'tag': 'friction', 'subject': 'temporal-scout',
-                          'note': 'misread a number'}]
 
-    def test_two_field_line_tag_optional(self):
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('nodes a1/b2 · merged but unsure')
-        assert bad == []
-        assert notes == [{'tag': '', 'subject': 'nodes a1/b2',
-                          'note': 'merged but unsure'}]
+    def test_only_arrays_of_operations_are_accepted(self):
+        from servers.trace_contract import parse_journal_operations
+        for text in ('ordinary prose', '{}', '[null]', '[{"op": "unknown"}]'):
+            notes, bad = parse_journal_operations(text)
+            assert notes == [] and bad
 
-    def test_delimiter_in_note_preserved(self):
-        # maxsplit=2 keeps any '·' inside the prose in the note field.
-        from servers.trace_contract import parse_journal_notes
-        notes, _ = parse_journal_notes('surprise · recall · old · beat fresh — odd')
-        assert notes[0]['note'] == 'old · beat fresh — odd'
+    def test_tool_schema_is_the_one_contract(self):
+        from servers.trace_contract import journal_tool_schema, JOURNAL_TOOL_DESCRIPTION
+        tool = journal_tool_schema()
+        assert tool['name'] == 'journal'
+        assert tool['description'] == JOURNAL_TOOL_DESCRIPTION
+        assert tool['input_schema']['required'] == ['operations']
 
-    def test_no_delimiter_is_malformed(self):
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('this line has no delimiter')
-        assert notes == [] and len(bad) == 1
-
-    def test_empty_subject_or_note_malformed(self):
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('friction ·  · ')
-        assert notes == [] and len(bad) == 1
-
-    def test_headers_and_blanks_skipped(self):
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('## Review\n\nfriction · scout · misfired\n')
-        assert bad == [] and len(notes) == 1
-
-    def test_render_block_is_the_one_instruction(self):
-        """One text for every encoder: the render IS the constant readers
-        compare prompts against (no per-encoder variants, no examples fence)."""
-        from servers.trace_contract import (render_journal_review_block,
-                                            JOURNAL_REVIEW_INSTRUCTION)
-        block = render_journal_review_block()
-        assert block == JOURNAL_REVIEW_INSTRUCTION
-        assert block.startswith('A review — a short note to the next run')
-        assert '```' not in block
-
-    def test_hash_subject_not_dropped(self):
-        # A delimiter-bearing line whose subject starts with '#' (e.g. an issue
-        # id) must parse — not be eaten by the markdown-header skip.
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('#49019 · still unresolved after refresh')
-        assert bad == []
-        assert notes == [{'tag': '', 'subject': '#49019',
-                          'note': 'still unresolved after refresh'}]
-
-    def test_markdown_headers_skipped_not_malformed(self):
-        # Header lines (no delimiter, '#'-prefixed) are structural — skipped
-        # silently, never logged as malformed.
-        from servers.trace_contract import parse_journal_notes
-        notes, bad = parse_journal_notes('## Review\n### Notes')
-        assert notes == [] and bad == []
-
-    def test_leading_markdown_bullet_stripped(self):
-        # LLMs list-format their review; a leading '-'/'*'/'•' must not become
-        # part of the tag (the future miner's grouping key).
-        from servers.trace_contract import parse_journal_notes
-        for bullet in ('- ', '* ', '• '):
-            notes, bad = parse_journal_notes(bullet + 'friction · nodeA · misread')
-            assert bad == []
-            assert notes == [{'tag': 'friction', 'subject': 'nodeA', 'note': 'misread'}]
-
-    def test_extract_review_block_none_vs_empty(self):
-        # None = no section / broken fence (drift); '' = empty fence (clean run);
-        # str = content. The writer keys its loud-vs-quiet decision on this.
-        from servers.trace_contract import extract_review_block
-        assert extract_review_block('no marker here') is None
-        assert extract_review_block('## Review\nbare line, no fence') is None
-        assert extract_review_block('## Review\n```\nunclosed') is None
-        assert extract_review_block('## Review\n```\n```\n') == ''
-        assert extract_review_block('## Review\n```\nfriction · a · b\n```') == 'friction · a · b'
 
     def test_extract_arc_block_none_vs_empty(self):
         # The arc extractor shares the fence machinery: same three-valued
@@ -924,25 +864,14 @@ class TestJournalNoteParser:
         assert extract_arc_block('## Arc\n```\n```\n') == ''
         assert extract_arc_block('## Arc\n```\narc fix shipped\n```') == 'arc fix shipped'
 
-    def test_arc_and_review_extract_independently(self):
-        # A final reply carries BOTH sections (§7.2: Encode → Arc → Review);
-        # each extractor pulls only its own fence.
-        from servers.trace_contract import extract_arc_block, extract_review_block
-        text = ('narrative\n\n## Arc\n```\narc write-path built\n```\n\n'
-                '## Review\n```\ndoubt · arc-fence · one-liner may drift\n```\nDONE')
+    def test_arc_ignores_other_sections(self):
+        from servers.trace_contract import extract_arc_block
+        text = '## Arc\n```\narc write-path built\n```\n## Other\n```\nunrelated\n```'
         assert extract_arc_block(text) == 'arc write-path built'
-        assert extract_review_block(text) == 'doubt · arc-fence · one-liner may drift'
 
-    def test_fenceless_arc_does_not_capture_review_fence(self):
-        # Regression (code-review 2026-07-03): §7.2 orders Arc BEFORE Review.
-        # A fenceless `## Arc` must NOT reach forward into the `## Review` fence
-        # — else review notes get silently written as the session arc. A heading
-        # before the fence = drift → None (→ write_session_arc 'no_arc_extracted').
-        from servers.trace_contract import extract_arc_block, extract_review_block
-        drift = ('## Arc\nI made progress but forgot to fence it\n\n'
-                 '## Review\n```\ndoubt · x · y\n```\nDONE')
-        assert extract_arc_block(drift) is None                # NOT 'doubt · x · y'
-        assert extract_review_block(drift) == 'doubt · x · y'  # review still fine
+    def test_fenceless_arc_does_not_capture_other_fence(self):
+        from servers.trace_contract import extract_arc_block
+        assert extract_arc_block('## Arc\nmissing fence\n## Other\n```\nunrelated\n```') is None
 
     def test_arc_fence_content_with_hash_hash_line_survives(self):
         # The fix checks heading POSITION (before the fence), not blunt

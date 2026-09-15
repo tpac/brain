@@ -34,21 +34,24 @@ class TestJournalNotesRead(BrainTestBase):
         for i in range(1, 5):  # 4 runs, one note each, appended oldest→newest
             self._note('s2-2026010100000%d-consolidation' % i, 's2',
                        'node%d' % i, 'run %d' % i)
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=3)
-        assert {n['note'] for n in out} == {'run 2', 'run 3', 'run 4'}  # oldest dropped
+        out = self.brain.journal_view(scale='s2', unit='consolidation')['notes']
+        assert {n['text'] for n in out} == {'run 2', 'run 3', 'run 4'}  # oldest dropped
 
     def test_continuity_groups_multi_note_run_as_one(self):
         # An older run with TWO notes + a newer run with one; k=1 → only newest run.
         self._note('s2-20260101000001-consolidation', 's2', 'a', 'old1')
         self._note('s2-20260101000001-consolidation', 's2', 'b', 'old2')
         self._note('s2-20260101000002-consolidation', 's2', 'c', 'new1')
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=1)
-        assert {n['note'] for n in out} == {'new1'}
+        from unittest.mock import patch
+        from servers.trace_contract import JOURNAL_CONTINUITY_RUNS
+        with patch.dict(JOURNAL_CONTINUITY_RUNS, {'consolidation': 1}):
+            out = self.brain.journal_view(scale='s2', unit='consolidation')['notes']
+        assert {n['text'] for n in out} == {'new1'}
 
     def test_unit_scoping_excludes_other_units_same_scale(self):
         self._note('s2-20260101000001-consolidation', 's2', 'a', 'consol-note')
         self._note('s2-20260101000001-community_detection', 's2', 'b', 'community-note')
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
+        out = self.brain.journal_notes(scale='s2', unit='consolidation')
         assert {n['note'] for n in out} == {'consol-note'}
 
     def test_continuity_k_defaults_from_contract(self):
@@ -56,13 +59,13 @@ class TestJournalNotesRead(BrainTestBase):
         for i in range(1, 6):  # 5 runs
             self._note('s2-2026010100000%d-consolidation' % i, 's2',
                        'n%d' % i, 'r%d' % i)
-        out = self.brain.journal_notes(scale='s2', unit='consolidation')
+        out = self.brain.journal_view(scale='s2', unit='consolidation')['notes']
         assert len({n['chain_id'] for n in out}) == 3  # default K
 
     def test_s1_continuity_scoped_by_session(self):
         self._note('s1e-aaaa-5', 's1', 'nodeX', 'sess-a note', session_id='sess-a')
         self._note('s1e-bbbb-5', 's1', 'nodeY', 'sess-b note', session_id='sess-b')
-        out = self.brain.journal_notes(scale='s1', session_id='sess-a', k=5)
+        out = self.brain.journal_notes(scale='s1', session_id='sess-a')
         assert {n['note'] for n in out} == {'sess-a note'}
 
     def test_empty_when_no_notes(self):
@@ -73,7 +76,7 @@ class TestJournalNotesRead(BrainTestBase):
         # match literally, not as a single-char wildcard.
         self._note('s2-20260101000001-community_detection', 's2', 'a', 'real')
         self._note('s2-20260101000001-communityXdetection', 's2', 'b', 'decoy')
-        out = self.brain.journal_notes(scale='s2', unit='community_detection', k=5)
+        out = self.brain.journal_notes(scale='s2', unit='community_detection')
         assert {n['note'] for n in out} == {'real'}
 
     def test_unit_filter_pushed_down_so_limit_bounds_per_unit(self):
@@ -90,260 +93,65 @@ class TestJournalNotesRead(BrainTestBase):
 
 
 class TestJournalNotesWrite(BrainTestBase):
-    """brain.write_journal_notes() — the write door. Extracts the encoder's
-    ## Review fenced block, parses it, writes journal_note rows. Mirror of the
-    read door; round-trips through brain.journal_notes."""
+    """The write door accepts one JSON protocol and isolates invalid operations."""
     needs_embedder = False
 
+    def write(self, text):
+        return self.brain.write_journal_operations(operations=text['operations'], chain_id='s2-test-consolidation', scale='s2', unit='consolidation', context=None)
+
     def test_write_then_read_roundtrip(self):
-        final = (
-            "Encoded 3 nodes, merged 1.\n\n"
-            "## Review\n"
-            "```\n"
-            "friction · temporal-scout · misread a number again — 3rd run\n"
-            "doubt · nodeA · merged but unsure the claims match\n"
-            "```\n"
-        )
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000005-consolidation', scale='s2')
-        assert r['written'] == 2 and r['status'] == 'ok'
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['subject'] for x in out} == {'temporal-scout', 'nodeA'}
-        assert {x['tag'] for x in out} == {'friction', 'doubt'}
+        from tests.test_journal_items import review
+        result = self.write(review(
+            dict(op='note', subject='temporal-scout', text='misread a number', label='friction'),
+            dict(op='note', subject='nodeA', text='claims may differ')))
+        self.assertEqual((result['written'], result['status']), (2, 'ok'))
+        notes = self.brain.journal_notes(scale='s2', unit='consolidation')
+        self.assertEqual({n['subject'] for n in notes}, {'temporal-scout', 'nodeA'})
 
-    def test_no_review_section_warns_loud(self):
-        # No `## Review` at all → loud signal (not a silent 0), distinct status.
-        r = self.brain.write_journal_notes(
-            final_text="Encoded 3 nodes. No review here.",
-            chain_id='s2-20260101000006-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section',
-                     'addressed': [], 'resolved': []}
 
-    def test_marker_present_but_no_fence_warns(self):
-        # `## Review` present but no fenced block → format drift, distinct status.
-        r = self.brain.write_journal_notes(
-            final_text="## Review\nfriction · nodeA · misread (no fence!)\n",
-            chain_id='s2-20260101000066-consolidation', scale='s2')
-        assert r['status'] == 'no_review_extracted' and r['written'] == 0
+    def test_empty_operations_have_no_writes(self):
+        result = self.write({'operations': []})
+        self.assertEqual((result['written'], result['malformed']), (0, 0))
 
-    def test_empty_fenced_review_is_clean_not_drift(self):
-        # `## Review` with an empty fence = a legit clean run, NOT drift.
-        r = self.brain.write_journal_notes(
-            final_text="## Review\n```\n```\n",
-            chain_id='s2-20260101000067-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'empty_review',
-                     'addressed': [], 'resolved': []}
 
-    def test_prose_outside_fence_not_parsed(self):
-        # Review #4: prose before the fence with a stray '·' must NOT become a
-        # malformed note — only the fenced block is parsed.
-        final = (
-            "## Review\n"
-            "Some reflection · with a stray middot in prose, not a note.\n"
-            "```\n"
-            "surprise · recall-ranking · IDF boost helped, unexpectedly\n"
-            "```\n"
-        )
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000007-consolidation', scale='s2')
-        assert r['written'] == 1
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['note'] for x in out} == {'IDF boost helped, unexpectedly'}
+    def test_invalid_operation_does_not_drop_valid_note(self):
+        from tests.test_journal_items import review
+        result = self.write(review(
+            dict(op='note', subject='nodeX', text='keep this'),
+            dict(op='edit', id='journal_a1b2c3d4', persist='false')))
+        self.assertEqual((result['written'], result['malformed']), (1, 1))
+        self.assertEqual(self.brain.journal_notes(subject='nodeX')[0]['note'], 'keep this')
 
-    def test_malformed_line_in_fence_isolated(self):
-        # One good note + one delimiter-less line: the good note is written, the
-        # malformed one skipped (logged loud), the batch survives.
-        final = (
-            "## Review\n"
-            "```\n"
-            "doubt · nodeX · a real note\n"
-            "this line has no delimiter and is malformed\n"
-            "```\n"
-        )
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000008-consolidation', scale='s2')
-        assert r['written'] == 1 and r['malformed'] == 1
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['note'] for x in out} == {'a real note'}
 
-    def test_bullet_prefixed_notes_write_clean_tags(self):
-        # LLMs love bullet lists; a leading '- '/'* ' must not pollute the tag.
-        final = ("## Review\n```\n"
-                 "- friction · nodeA · misread again\n"
-                 "* doubt · nodeB · unsure the merge is coherent\n"
-                 "```\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000009-consolidation', scale='s2')
-        assert r['written'] == 2
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['tag'] for x in out} == {'friction', 'doubt'}   # not '- friction'
-
-    def test_headingless_valid_fence_salvaged(self):
-        # Observed Haiku drift (community batch 2, chain s2-20260729180005):
-        # a perfectly formed notes fence with the `## Review` heading dropped.
-        # Salvage harvests it — status 'salvaged', still a (loud) warning.
-        final = (
-            "All eight proposals acted:\n"
-            "- **[1-6]** connected as community members.\n\n"
-            "```\n"
-            "resolved · proposal_1_2_3 · six members connected across three communities\n"
-            "drift_none_detected · proposals_4_5 · all placements above threshold\n"
-            "```\n"
-        )
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000010-consolidation', scale='s2')
-        assert r['written'] == 2 and r['status'] == 'salvaged'
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['subject'] for x in out} == {'proposal_1_2_3', 'proposals_4_5'}
-
-    def test_headingless_code_fence_not_salvaged(self):
-        # A code fence must never be harvested as notes — strict gate: every
-        # line must parse, so one delimiter-less line disqualifies the fence.
-        final = ("Rejected everything.\n\n"
-                 "```\n"
-                 "def foo():\n"
-                 "    return 1\n"
-                 "```\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000011-consolidation', scale='s2')
-        assert r == {'written': 0, 'malformed': 0, 'status': 'no_review_section',
-                     'addressed': [], 'resolved': []}
-
-    def test_headingless_mixed_fence_not_salvaged(self):
-        # One valid note + one malformed line → all-or-nothing gate rejects.
-        final = ("```\n"
-                 "doubt · nodeX · a real note\n"
-                 "this line has no delimiter\n"
-                 "```\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000012-consolidation', scale='s2')
-        assert r['status'] == 'no_review_section' and r['written'] == 0
-
-    def test_headingless_empty_fence_not_salvaged(self):
-        # An empty heading-less fence is indistinguishable from a stray code
-        # block — NOT treated as a clean run (that requires the heading).
-        r = self.brain.write_journal_notes(
-            final_text="Nothing to do.\n```\n```\n",
-            chain_id='s2-20260101000013-consolidation', scale='s2')
-        assert r['status'] == 'no_review_section' and r['written'] == 0
-
-    def test_salvage_takes_last_qualifying_fence(self):
-        # The closure puts the review at the end — with several qualifying
-        # fences, the LAST one is the review.
-        final = ("```\n"
-                 "old · nodeA · earlier fence, not the review\n"
-                 "```\n"
-                 "Some prose between.\n"
-                 "```\n"
-                 "resolved · nodeB · the actual review notes\n"
-                 "```\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000014-consolidation', scale='s2')
-        assert r['written'] == 1 and r['status'] == 'salvaged'
-        out = self.brain.journal_notes(scale='s2', unit='consolidation', k=5)
-        assert {x['subject'] for x in out} == {'nodeB'}
-
-    def test_arc_fence_not_mistaken_for_review(self):
-        # A well-formed `## Arc` section is stripped before the salvage scan —
-        # its fence must never be harvested as review notes, even when the
-        # arc line happens to parse as one.
-        final = ("## Arc\n"
-                 "```\n"
-                 "milestone · nodeC · arc line that looks like a note\n"
-                 "```\n"
-                 "No review this run.\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000015-consolidation', scale='s2')
-        assert r['status'] == 'no_review_section' and r['written'] == 0
-
-    def test_broken_review_section_with_valid_fence_elsewhere_salvaged(self):
-        # Notes fenced BEFORE a fenceless `## Review` heading: the extractor
-        # finds no fence after the marker (drift), but salvage recovers the
-        # notes from the earlier fence.
-        final = ("```\n"
-                 "resolved · nodeD · notes landed before the heading\n"
-                 "```\n"
-                 "## Review\n"
-                 "(forgot the fence here)\n")
-        r = self.brain.write_journal_notes(
-            final_text=final, chain_id='s2-20260101000016-consolidation', scale='s2')
-        assert r['written'] == 1 and r['status'] == 'salvaged'
+    def test_legacy_commands_rejected_without_side_effects(self):
+        result = self.write({'operations': 'resolved · target · done'})
+        self.assertEqual(result['written'], 0)
+        self.assertGreater(result['malformed'], 0)
+        self.assertEqual(result['withdrawn'], [])
 
 
 class TestJournalNotesAddressed(BrainTestBase):
-    """The write door PARTITIONS: tell/ask lines come back under 'addressed'
-    (messages to the people working, not residue — the binding routes them)
-    and this run's resolve lines under 'resolved'; the door holds no routing
-    policy and returns one shape on every path."""
+    """The trace owner partitions private edits from explicit live operations."""
     needs_embedder = False
 
-    TEXT = ('## Review\n```\n'
-            'friction · abc12345 · drift\n'
-            'tell · segment 6.a · confirm first\n'
-            'ask · 7e6decd2 · revise, or leave?\n'
-            'resolved · 9a9a9a9a · done\n'
-            '```\n')
+    def test_addressed_operations_are_returned_not_written(self):
+        from tests.test_journal_items import review
+        result = self.brain.write_journal_operations(operations=review(dict(op='note', subject='abc12345', text='drift'), dict(op='tell', subject='segment', text='confirm first'), dict(op='ask', subject='node', text='revise or leave?'), dict(op='withdraw', subject='prior', reason='handled'))['operations'], chain_id='s1e-session-1', scale='s1', session_id='session', context=None)
+        self.assertEqual(result['written'], 1)
+        self.assertEqual([n['tag'] for n in result['addressed']], ['tell', 'ask'])
+        self.assertEqual(result['withdrawn'], [dict(tag='withdraw', subject='prior', note='handled')])
 
-    def test_addressed_lines_returned_not_written(self):
-        r = self.brain.write_journal_notes(
-            final_text=self.TEXT, chain_id='s1e-aaaaaaaa-1', scale='s1',
-            session_id='sess-a')
-        self.assertEqual((r['written'], r['malformed'], r['status']),
-                         (2, 0, 'ok'))
-        self.assertEqual([(n['tag'], n['subject']) for n in r['addressed']],
-                         [('tell', 'segment 6.a'), ('ask', '7e6decd2')])
-        self.assertEqual([(n['tag'], n['subject'], n['note'])
-                          for n in r['resolved']],
-                         [('resolved', '9a9a9a9a', 'done')])
-        tags = sorted(n['tag'] for n in
-                      self.brain.journal_notes(scale='s1', session_id='sess-a'))
-        self.assertEqual(tags, ['friction', 'resolved'])
-
-    def test_two_field_addressed_line_is_about_the_run(self):
-        """`tell · message` (no subject — the shape a model reaches for) is
-        a message about the run itself, never a residue note whose subject
-        is the word 'tell'."""
-        from servers.trace_contract import (parse_journal_notes,
-                                            JOURNAL_RUN_SUBJECT)
-        notes, malformed = parse_journal_notes(
-            'tell · you are proceeding on "I wonder if", not a yes\n'
-            'ask · 7e6decd2\n')
-        self.assertEqual(malformed, [])
-        self.assertEqual(
-            [(n['tag'], n['subject'], n['note']) for n in notes],
-            [('tell', JOURNAL_RUN_SUBJECT,
-              'you are proceeding on "I wonder if", not a yes'),
-             ('ask', JOURNAL_RUN_SUBJECT, '7e6decd2')])
-        r = self.brain.write_journal_notes(
-            final_text='## Review\n```\ntell · confirm first\n```\n',
-            chain_id='s1e-aaaaaaaa-5', scale='s1', session_id='sess-e')
-        self.assertEqual([n['subject'] for n in r['addressed']],
-                         [JOURNAL_RUN_SUBJECT])
-        self.assertEqual(r['written'], 0)
-
-    def test_one_shape_on_every_path(self):
-        r = self.brain.write_journal_notes(
-            final_text='## Review\n```\n```\n', chain_id='s1e-aaaaaaaa-3',
-            scale='s1', session_id='sess-c')
-        self.assertEqual(r, {'written': 0, 'malformed': 0,
-                             'status': 'empty_review',
-                             'addressed': [], 'resolved': []})
-
-    def test_undelivered_rides_the_note_row_and_renders(self):
-        """A rejected addressed line kept as residue carries the door's
-        reason as a FIELD — the note stays the line the encoder wrote and the
-        reason cannot be eaten by the note cap."""
-        from servers.trace_contract import render_journal_notes_prefix
-        n = self.brain.write_journal_note_rows(
-            [{'tag': 'ask', 'subject': '7e6decd2', 'note': 'revise, or leave?',
-              'undelivered': 'thalamus budget: cap 8'}],
-            chain_id='s1e-aaaaaaaa-4', scale='s1', session_id='sess-d')
-        self.assertEqual(n, 1)
-        notes = self.brain.journal_notes(scale='s1', session_id='sess-d')
-        self.assertEqual((notes[0]['note'], notes[0]['undelivered']),
-                         ('revise, or leave?', 'thalamus budget: cap 8'))
-        self.assertIn('— not delivered: thalamus budget: cap 8',
-                      render_journal_notes_prefix(notes))
+    def test_undelivered_is_separate_from_note_text(self):
+        from servers.scales.journal import JournalBinding
+        binding = JournalBinding(self.brain, scale='s1', session_id='session')
+        binding.continuity(chain_id='s1e-session-1')
+        self.brain.write_journal_note_rows(
+            [dict(tag='ask', subject='node', note='revise or leave?', undelivered='budget cap')],
+            chain_id='s1e-session-1', scale='s1', session_id='session')
+        import json
+        item = json.loads(binding.continuity(chain_id='s1e-session-2').split('\n', 1)[1])['items'][0]
+        self.assertEqual(item['text'], 'revise or leave?')
+        self.assertEqual(item['undelivered'], 'budget cap')
 
 
 class TestJournalNotesRecallGuard(BrainTestBase):

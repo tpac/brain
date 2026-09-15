@@ -115,7 +115,7 @@ Per cycle, the user message contains:
 
 ## What you return
 
-Return a JSON array, one entry per candidate, in order. Use this exact shape (no markdown fences around the array, no prose before it):
+Call `submit_classifications` once with a `classifications` array, one entry per candidate in order. Submit any `journal` operations in that same response; there is no follow-up round. Array entries have this shape:
 
 ```json
 [

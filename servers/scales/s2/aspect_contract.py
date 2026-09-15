@@ -49,3 +49,21 @@ ASPECT_INTERACTION_DEFAULT = {
     'model': ASPECT['model'],
     'max_tokens': ASPECT['max_tokens'],
 }
+
+
+ASPECT_RESULT_TOOL = {
+    'name': 'submit_classifications',
+    'description': 'Submit one classification per candidate in order, once. Use existing aspect names; the first is primary. The runtime validates and applies these after this response.',
+    'input_schema': {
+        'type': 'object', 'additionalProperties': False, 'required': ['classifications'],
+        'properties': {'classifications': {'type': 'array', 'items': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['category', 'value', 'aspects', 'rationale'],
+            'properties': {
+                'category': {'type': 'string', 'enum': ['node_types', 'edge_relations']},
+                'value': {'type': 'string'},
+                'aspects': {'type': 'array', 'minItems': 1, 'items': {'type': 'string'}},
+                'rationale': {'type': 'string'},
+            }}}},
+    },
+}

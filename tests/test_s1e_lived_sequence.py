@@ -275,23 +275,23 @@ def test_system_prompt_injects_review_block_and_closure_when_lived():
     # none of them.
     from servers.scales.s1.encode import _build_system_prompt
     from servers.trace_contract import (render_journal_arc_block,
-                                        render_journal_review_block,
+                                        JOURNAL_INSTRUCTION,
                                         render_prompt_closure)
     saved = os.environ.get('BRAIN_S1E_LIVED_SEQUENCE')
     try:
         os.environ['BRAIN_S1E_LIVED_SEQUENCE'] = '1'
         on = _build_system_prompt('SYSTEM RULES HERE')
         assert render_journal_arc_block() in on
-        assert render_journal_review_block() in on
+        assert JOURNAL_INSTRUCTION in on
         assert render_prompt_closure() in on
         assert on.rstrip().endswith(render_prompt_closure().rstrip())  # closure LAST
         assert on.index(render_journal_arc_block()) < on.index(
-            render_journal_review_block())        # §7.2: Arc before Review
+            JOURNAL_INSTRUCTION)        # §7.2: Arc before Review
 
         os.environ['BRAIN_S1E_LIVED_SEQUENCE'] = ''
         off = _build_system_prompt('SYSTEM RULES HERE')
         assert render_journal_arc_block() not in off
-        assert render_journal_review_block() not in off
+        assert JOURNAL_INSTRUCTION not in off
         assert '## Finishing' not in off          # closure absent in the control arm
     finally:
         if saved is None:
@@ -304,13 +304,13 @@ def test_system_prompt_lived_param_overrides_env():
     # #3 fix: run_encoding resolves the arm ONCE and threads `lived` down, so the
     # explicit param must win over the env (the no-torn-arm guarantee).
     from servers.scales.s1.encode import _build_system_prompt
-    from servers.trace_contract import render_journal_review_block
+    from servers.trace_contract import JOURNAL_INSTRUCTION
     saved = os.environ.get('BRAIN_S1E_LIVED_SEQUENCE')
     try:
         os.environ['BRAIN_S1E_LIVED_SEQUENCE'] = ''        # env OFF
-        assert render_journal_review_block() in _build_system_prompt('x', lived=True)
+        assert JOURNAL_INSTRUCTION in _build_system_prompt('x', lived=True)
         os.environ['BRAIN_S1E_LIVED_SEQUENCE'] = '1'        # env ON
-        assert render_journal_review_block() not in _build_system_prompt('x', lived=False)
+        assert JOURNAL_INSTRUCTION not in _build_system_prompt('x', lived=False)
     finally:
         if saved is None:
             os.environ.pop('BRAIN_S1E_LIVED_SEQUENCE', None)

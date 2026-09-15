@@ -166,7 +166,7 @@ One specific question, not multiple. The question that best bridges the vocabula
 
 ## Response Format
 
-JSON array. One object per node. Only include fields that were flagged as needed.
+Call `submit_healings` once with a `healings` array. One object per node. Only include fields that were flagged as needed.
 
 [
   {"node_id": "f58e9b12", "question": "What should I do before deleting brain data?", "situation": "Before any delete or purge operation on brain data or files"},
@@ -174,5 +174,4 @@ JSON array. One object per node. Only include fields that were flagged as needed
   {"node_id": "af791f93", "reasoning": "Operator directed each scale should own its contract file — separation of concerns at scale boundaries."}
 ]
 
-No markdown fences around the array, no explanation before it — just the JSON array.
-Process ALL nodes in ONE response."""
+Process ALL nodes in ONE response. Submit any `journal` operations in that same response; there is no follow-up round."""

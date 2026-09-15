@@ -2,7 +2,7 @@
 
 Reads the taxonomy via brain.aspects (the menu + current member lists),
 builds a prompt with the menu + candidate strings + example records, calls
-Sonnet once, parses the JSON response, validates each classification, and
+Sonnet once, reads submit_classifications arguments, validates each classification, and
 writes through the registry's door (brain.aspects.add_members). Auto-merge —
 no operator review gate in v1.
 
@@ -16,7 +16,7 @@ from servers.aspect_store import atomic_json_write
 from servers.trace_contract import build_delta_metadata
 
 from .base import IntegrationUnit
-from .aspect_contract import ASPECT, aspects_proposed_path
+from .aspect_contract import ASPECT, ASPECT_RESULT_TOOL, aspects_proposed_path
 
 
 # Which aspects the classifier may route to, and which categories each takes,
@@ -43,13 +43,14 @@ def _routing_map(aspects):
 class AspectEncoder(IntegrationUnit):
     NAME = 'aspect_integration'
     SCALE = 's2'
+    RESULT_TOOL = ASPECT_RESULT_TOOL
     ENCODING_SOURCE = 's2:aspect_integration'
 
     O_SOURCES = ['aspect_proposals']
     K_SOURCES = ['llm_aspect_classifier', 'aspects_v1.json', 'journal_notes']
 
     # Residue flows to journal_note trace rows via the journal binding on
-    # _call_llm (decorate → harvest), read back via continuity(). For this
+    # _call_llm (native tool dispatch), read back via continuity(). For this
     # unit the notes are the ONLY durable record of a classification's
     # reasoning — aspects_proposed.json is overwritten every cycle, and a
     # classification is permanent (never re-examined).
