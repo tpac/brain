@@ -363,8 +363,8 @@ class TestScribeReactor(unittest.TestCase):
         from servers.scales.s1.encode_contract import ENCODE_EVERY
         now = 1_000_000.0
         due = self._due(
-            [{'session_id': 'par-A', 'updated_at': self._iso(now, 10)},
-             {'session_id': 'par-B', 'updated_at': self._iso(now, 10)}],
+            [{'session_id': 'par-A', 'live_recency': self._iso(now, 10)},
+             {'session_id': 'par-B', 'live_recency': self._iso(now, 10)}],
             {'par-A': ENCODE_EVERY, 'par-B': ENCODE_EVERY + 4}, now=now,
             skip={'par-B'})
         self.assertEqual(due['session_id'], 'par-A')
@@ -450,7 +450,7 @@ class TestScribeReactor(unittest.TestCase):
         from servers.scales.s1.encode_contract import ENCODE_EVERY
         now = 1_000_000.0
         due = self._due(
-            [{'session_id': 'gate-A', 'updated_at': self._iso(now, 10)}],
+            [{'session_id': 'gate-A', 'live_recency': self._iso(now, 10)}],
             {'gate-A': ENCODE_EVERY}, now=now)
         self.assertEqual(due, {'session_id': 'gate-A', 'counter': 42})
 
@@ -459,7 +459,7 @@ class TestScribeReactor(unittest.TestCase):
         now = 1_000_000.0
         # Sub-threshold AND recently active → neither clause fires.
         due = self._due(
-            [{'session_id': 'gate-B', 'updated_at': self._iso(now, 10)}],
+            [{'session_id': 'gate-B', 'live_recency': self._iso(now, 10)}],
             {'gate-B': ENCODE_EVERY - 2}, now=now)
         self.assertIsNone(due)
 
@@ -489,8 +489,8 @@ class TestScribeReactor(unittest.TestCase):
         from servers.scales.s1.encode_contract import ENCODE_EVERY
         now = 1_000_000.0
         due = self._due(
-            [{'session_id': 'par-A', 'updated_at': self._iso(now, 10)},
-             {'session_id': 'par-B', 'updated_at': self._iso(now, 10)}],
+            [{'session_id': 'par-A', 'live_recency': self._iso(now, 10)},
+             {'session_id': 'par-B', 'live_recency': self._iso(now, 10)}],
             {'par-A': ENCODE_EVERY, 'par-B': ENCODE_EVERY + 4}, now=now)
         self.assertEqual(due['session_id'], 'par-B')
 
@@ -502,7 +502,7 @@ class TestScribeReactor(unittest.TestCase):
         now = 1_000_000.0
         due = self._due(
             [{'session_id': 'tail',
-              'updated_at': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
+              'live_recency': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
             {'tail': SCRIBE_TAIL_MIN_TURNS + 1}, now=now)
         self.assertEqual(due['session_id'], 'tail')
 
@@ -514,7 +514,7 @@ class TestScribeReactor(unittest.TestCase):
         now = 1_000_000.0
         due = self._due(
             [{'session_id': 'trivial',
-              'updated_at': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
+              'live_recency': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
             {'trivial': SCRIBE_TAIL_MIN_TURNS}, now=now)
         self.assertIsNone(due)
 
@@ -523,7 +523,7 @@ class TestScribeReactor(unittest.TestCase):
         from servers.scales.s1.encode_contract import SCRIBE_TAIL_MIN_TURNS
         now = 1_000_000.0
         due = self._due(
-            [{'session_id': 'recent', 'updated_at': self._iso(now, 120)}],
+            [{'session_id': 'recent', 'live_recency': self._iso(now, 120)}],
             {'recent': SCRIBE_TAIL_MIN_TURNS + 1}, now=now)
         self.assertIsNone(due)
 
@@ -537,12 +537,12 @@ class TestScribeReactor(unittest.TestCase):
         now = 1_000_000.0
         stale = self._iso(now, SCRIBE_ACTIVE_WINDOW_SECONDS + 60)  # quiet, under 1h
         self.assertIsNone(
-            self._due([{'session_id': 'quiet', 'updated_at': stale}],
+            self._due([{'session_id': 'quiet', 'live_recency': stale}],
                       {'quiet': ENCODE_EVERY + 3}, now=now),
             '5+ must not sweep a session that has gone quiet')
         fresh = self._iso(now, 10)
         self.assertEqual(
-            self._due([{'session_id': 'active', 'updated_at': fresh}],
+            self._due([{'session_id': 'active', 'live_recency': fresh}],
                       {'active': ENCODE_EVERY + 3}, now=now)['session_id'],
             'active', 'an actively-conversing 5+ session still fires')
 
@@ -555,7 +555,7 @@ class TestScribeReactor(unittest.TestCase):
         # until the newest conversational row is the assistant's answer.
         from servers.scales.s1.encode_contract import ENCODE_EVERY
         now = 1_000_000.0
-        fresh = [{'session_id': 'midturn', 'updated_at': self._iso(now, 10)}]
+        fresh = [{'session_id': 'midturn', 'live_recency': self._iso(now, 10)}]
         turns = {'midturn': ENCODE_EVERY + 1}
         self.assertIsNone(
             self._due(fresh, turns, now=now, last_role='user'),
@@ -576,7 +576,7 @@ class TestScribeReactor(unittest.TestCase):
         now = 1_000_000.0
         due = self._due(
             [{'session_id': 'dangling',
-              'updated_at': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
+              'live_recency': self._iso(now, SCRIBE_TAIL_IDLE_SECONDS + 60)}],
             {'dangling': SCRIBE_TAIL_MIN_TURNS + 1}, now=now, last_role='user')
         self.assertEqual(due['session_id'], 'dangling')
 
@@ -586,7 +586,7 @@ class TestScribeReactor(unittest.TestCase):
         from servers.scales.s1.encode_contract import ENCODE_EVERY
         now = 1_000_000.0
         due = self._due(
-            [{'session_id': 'active', 'updated_at': self._iso(now, 10)}],
+            [{'session_id': 'active', 'live_recency': self._iso(now, 10)}],
             {'active': ENCODE_EVERY + 3}, now=now, boot_time=now)   # just booted
         self.assertIsNone(due)
 
