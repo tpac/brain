@@ -1390,7 +1390,7 @@ class TraceDAL(_LogsWriteBase):
         stream that stops taking turns of any kind ages out once its last turn
         passes the cutoff; a sid relaunched under a new id drops its stale sid.
 
-        Returns [{'session_id', 'last_turn', 'focus'}] where `focus` is the
+        Returns [{'session_id', 'live_recency', 'focus'}] where `focus` is the
         latest CONVERSATIONAL turn — user_message OR assistant_message, per
         trace_contract.OPERATOR_DIALOGUE_REF_TYPES (not user-only): a watcher's
         last real work is often its own last reply. `focus` drops only the
@@ -1414,6 +1414,14 @@ class TraceDAL(_LogsWriteBase):
         from .trace_contract import (OPERATOR_DIALOGUE_REF_TYPES,
                                      PRESENCE_LIVE_REF_TYPES, WAKE_ENVELOPE_MARKER)
         conv_ph = ','.join('?' * len(OPERATOR_DIALOGUE_REF_TYPES))
+        # TWO RECENCIES, and they are NOT interchangeable. `live_recency` spans
+        # PRESENCE_LIVE_REF_TYPES (heartbeats INCLUDED) and proves the stream can
+        # be REACHED — a watch listener living purely on heartbeats is the most
+        # reachable stream there is (B2, 2026-06-04). `conv_recency` spans attended
+        # operator dialogue and proves WORK happened. A heartbeat moves the first
+        # and cannot move the second, which is exactly why a gate asking "has this
+        # gone quiet" must not read live_recency: its counter (see
+        # conversational_turns_since) spans the second row set, not the first.
         live_types = PRESENCE_LIVE_REF_TYPES
         live_ph = ','.join('?' * len(live_types))
         # scale='s0' is a behavior-preserving predicate (every conversational +
@@ -1429,7 +1437,7 @@ class TraceDAL(_LogsWriteBase):
         #  length — by number of conversational turns (user_message count).
         order = ("turn_count DESC, conv_recency DESC"
                  if sort_by == 'length'
-                 else "conv_recency DESC, last_turn DESC")
+                 else "conv_recency DESC, live_recency DESC")
         # RANKING (conv_recency) counts only OPERATOR-ATTENDED turns — that is
         # what a machine-woken stream was winning the roster on. FOCUS keeps the
         # older, weaker rule (drop the envelope, keep everything else): the
@@ -1440,7 +1448,7 @@ class TraceDAL(_LogsWriteBase):
         # other "what is this". Membership (the outer WHERE) still counts
         # heartbeats and envelopes, so watch-mode streams stay VISIBLE.
         rows = self.conn.execute(
-            "SELECT t.session_id, MAX(t.created_at) AS last_turn, "
+            "SELECT t.session_id, MAX(t.created_at) AS live_recency, "
             "  (SELECT u.summary FROM trace_events u "
             "   WHERE u.scale = 's0' AND u.session_id = t.session_id AND u.ref_type IN (%s) "
             "     AND u.summary NOT LIKE ? "
@@ -1463,7 +1471,7 @@ class TraceDAL(_LogsWriteBase):
              WAKE_ENVELOPE_MARKER + '%',
              WAKE_ENVELOPE_MARKER + '%',
              *live_types, cutoff_iso, exclude_session or '', limit)).fetchall()
-        return [{'session_id': r[0], 'last_turn': r[1], 'focus': r[2] or '',
+        return [{'session_id': r[0], 'live_recency': r[1], 'focus': r[2] or '',
                  'conv_recency': r[3] or '', 'turn_count': r[4] or 0}
                 for r in rows]
 

@@ -323,7 +323,18 @@ shape to this plan — send them the resolved signature rather than letting a se
 
 ---
 
-## Step 4 — Rename the projection key `updated_at` → `last_turn`  ✅ LANDED
+## Step 4 — Rename the projection key to `live_recency`  ✅ LANDED
+
+**Landed in two passes, and the first one was wrong — recorded because the error is instructive.**
+Pass one renamed `updated_at` → `last_turn`, the DAL's own alias. That traded one misleading name for
+a subtler one: `trace_contract.py` declares `"heartbeat": False — a wakeup re-arm is never a turn`,
+while the value being named `last_turn` *counts heartbeats*. The rename made two layers consistently
+wrong instead of inconsistently wrong. Pass two renamed the value at BOTH layers to `live_recency`,
+which pairs with the `conv_recency` the same query already computes: two recencies over two row sets,
+one proving reachability and one proving work. `presence.py` keeps `updated_at` as its own PUBLIC
+output key, so the `self_presence` MCP surface is unchanged.
+
+### Original step (historical)
 
 **Problem.** `servers/brain_traces.py:1054` projects the key as `updated_at` — named after the
 `session_state` column its own docstring explicitly says it is *not* ("Liveness is sourced from
